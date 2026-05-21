@@ -244,10 +244,19 @@ solver.run()  # 翼面仍用涡环，尾涡替换为涡粒子
 |------|------|
 | GPU 加速需要 NVIDIA GPU | Warp 目前不支持 AMD/Intel GPU；无 GPU 时自动回退 CPU |
 | 小问题规模加速有限 | N×M < 50,000 时 GPU launch overhead 抵消并行收益 |
-| 涡粒子尾涡相关系数偏低 | 当前 rVPM 尾涡与 PteraSoftware 涡环尾涡的 CL 相关系数约 0.67（趋势一致，幅值有偏差），尚需调参 |
+| 涡粒子尾涡幅值偏低 | 当前 rVPM 尾涡与 PteraSoftware 涡环尾涡的 CL 相关系数 0.95（趋势一致），但幅值约为涡环尾涡的 63%，因单粒子仅捕获涡环前缘分量 |
 | Monkey-patch 方式的传输开销 | 每次 BS 调用需 numpy→wp.array→numpy，占 GPU 模式 50%+ 耗时 |
 
 ## Updates & Bug Fixes / 更新进展与缺陷修复
+
+### v0.3.0 (2026-05-21)
+
+- **涡粒子尾涡改进**：
+  - 修正 Gamma 单位：`Gamma = edge_vector * ring_strength`（m³/s），而非 `unit_dir * strength`（m²/s）
+  - Kutta 条件：尾涡粒子方向与附着涡环后缘方向相反
+  - RK3 稳定性：速度钳位 (v_max=50 m/s)、Gamma 幅值限制、NaN/Inf 保护
+  - sigma = |V_inf| * dt / 2（核心半径与时间步长匹配）
+  - CL 相关系数从 0.67 提升至 0.95
 
 ### v0.2.0 (2026-05-21)
 
