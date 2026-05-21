@@ -67,7 +67,7 @@ benchmark(N=500, M=2000)  # 500 points, 2000 ring vortices
 
 ## 复现方法
 
-### 1. 精度校验 (CPU vs GPU)
+### 1. 精度校验 — Biot-Savart 函数级 (CPU vs GPU)
 
 ```bash
 conda activate fluxvortex
@@ -77,7 +77,15 @@ python tests/test_correctness.py
 
 预期输出：所有 4 个 Biot-Savart 函数的 max absolute error < 1e-14。
 
-### 2. Benchmark (翼面 flapping)
+### 2. 精度校验 — 升力系数级 (CL/CD)
+
+```bash
+python tests/test_cl_validation.py
+```
+
+运行 PteraSoftware 完整非定常模拟，对比 CPU (Numba) 和 GPU (Warp) 的 CL/CD 时间历程。
+
+### 3. Benchmark (翼面 flapping)
 
 ```bash
 python src/fluxvortex/benchmark.py
@@ -88,7 +96,7 @@ python src/fluxvortex/benchmark.py
 - UVPM Hybrid (涡粒子尾涡 + rVPM)
 - FLOWVLM (马蹄涡 + VPM) — 如有结果文件
 
-### 3. GPU Benchmark (CPU vs GPU 计时)
+### 4. GPU Benchmark (CPU vs GPU 计时)
 
 ```bash
 python tests/test_benchmark.py
@@ -96,7 +104,20 @@ python tests/test_benchmark.py
 
 ## Precision Validation / 精度校验
 
-### Biot-Savart GPU vs CPU
+### 升力系数 (CL/CD) 级验证
+
+运行 PteraSoftware 完整非定常模拟，对比 CPU Numba 和 GPU Warp 的气动力系数：
+
+| 算例 | 面板数 | 步数 | CL max abs err | CL correlation | CDi max abs err |
+|------|--------|------|----------------|----------------|-----------------|
+| NACA 0012 矩形翼, AoA=5°, V=10 m/s | 100 | 50 | 3.50e-15 | 1.0000000000 | 1.89e-16 |
+| NACA 0012 锥形翼, AoA=10°, V=15 m/s | 100 | 50 | 5.22e-15 | 1.0000000000 | 8.47e-16 |
+
+GPU 与 CPU 结果在双精度范围内完全一致（CL 相关系数 = 1.0）。
+
+![CL Validation](figures/cl_validation.png)
+
+### Biot-Savart 函数级验证
 
 | 函数 | N (points) | M (vortices) | Max Abs Error | Max Rel Error |
 |------|-----------|-------------|--------------|--------------|
@@ -159,8 +180,11 @@ FLUXVortex/
 │   ├── benchmark.py          # 三求解器对比 benchmark
 │   └── diagnostic.py         # 粒子场诊断工具
 ├── tests/
-│   ├── test_correctness.py   # GPU vs CPU 精度校验
+│   ├── test_correctness.py   # Biot-Savart 函数级精度校验
+│   ├── test_cl_validation.py # CL/CD 升力系数级精度校验
 │   └── test_benchmark.py     # GPU vs CPU 性能基准
+├── figures/
+│   └── cl_validation.png     # CL 验证对比图
 ├── README.md
 └── .gitignore
 ```
