@@ -6,7 +6,7 @@ FLUXVortex 将 [PteraSoftware](https://github.com/camUrban/PteraSoftware) 的非
 
 核心特性：
 - **GPU Biot-Savart 内核**：所有线涡/涡环/马蹄涡的诱导速度计算均通过 Warp `@wp.kernel` 在 GPU 上并行执行
-- **涡粒子尾涡**：rVPM (f=0, g=1/5) + RK3 时间积分 + Pedrizzetti 松弛，替代原始涡环尾迹
+- **涡粒子尾涡**：rVPM (f=0, g=1/5) + RK3 时间积分 + Pedrizzetti 松弛，FLOWVLM 风格单向耦合架构
 - **Monkey-patch 注入**：无需修改 PteraSoftware 源码，一行 `patch()` 即可激活 GPU 加速
 - **双精度 (float64) 全程保证**：Warp kernel 内所有常量通过 `wp.float64()` 包装，确保与 CPU Numba 结果逐位一致
 
@@ -171,6 +171,8 @@ PteraSoftware 的每个时间步中，Biot-Savart 诱导速度计算占总耗时
 | 特性 | PteraSoftware 涡环尾涡 | FLUXVortex 涡粒子尾涡 (rVPM) |
 |------|------------------------|-------------------------------|
 | 涡元 | 环形涡面板 (4 条线涡) | 涡粒子 (矢量环量 + 核心半径) |
+| 耦合方式 | 尾涡直接影响翼面气动力 | **单向耦合**：VLM→VPM（生成粒子），VPM 不影响翼面气动力 |
+| 粒子生成 | — | **尾流涡粒子**（展向 Gamma 梯度 × dl × 自由流方向），参考 FLOWVLM |
 | Biot-Savart | 线涡解析解 (含奇异性保护) | Gaussian-erf 正则化核 (无奇异性) |
 | 尾涡对流 | Euler 显式 / prescribed | **RK3 低存储三阶** |
 | 涡拉伸 | 无 | **Reformulated VPM (f=0, g=1/5)** |
@@ -244,19 +246,84 @@ solver.run()  # 翼面仍用涡环，尾涡替换为涡粒子
 |------|------|
 | GPU 加速需要 NVIDIA GPU | Warp 目前不支持 AMD/Intel GPU；无 GPU 时自动回退 CPU |
 | 小问题规模加速有限 | N×M < 50,000 时 GPU launch overhead 抵消并行收益 |
-| 涡粒子尾涡幅值偏低 | 当前 rVPM 尾涡与 PteraSoftware 涡环尾涡的 CL 相关系数 0.95（趋势一致），但幅值约为涡环尾涡的 63%，因单粒子仅捕获涡环前缘分量 |
+| 混合架构 N<10 不稳定 | N_keep ≤ 5 时高 k 反馈爆炸，需 N≥10 保证全 k 稳定 |
+| VPM-only 精度不足 | N=0（纯粒子，无近场面板）精度仅 42-59%，不适合作为气动力计算方案 |
+| Free wake 自诱导计算量大 | O(N²) 粒子对交互，~7000 粒子需 GPU 加速（当前为 CPU NumPy） |
 | Monkey-patch 方式的传输开销 | 每次 BS 调用需 numpy→wp.array→numpy，占 GPU 模式 50%+ 耗时 |
 
 ## Updates & Bug Fixes / 更新进展与缺陷修复
+
+### v0.5.0 (2026-05-24)
+
+- **混合面板-粒子尾涡架构 (Hybrid Panel-Particle Wake)**：
+  - 近场保留涡环面板（保证精度），远场转换为 VPM 粒子（支持自由尾涡卷起）
+  - 继承 PteraSoftware UVLM solver，覆盖 `_calculate_wake_wing_influences` 和 `_populate_next_airplanes_wake`
+  - 超过 N_keep 行的旧涡环面板：4 粒子/环转换（前/左/后/右腿各一）→ VPM 粒子
+  - 面板 strength 置零防止双计数，粒子贡献叠加到 `_currentStackWakeWingInfluences__E`
+  - 支持 prescribed 和 free wake (自诱导) 两种 VPM 模式
+
+- **实验验证 — NACA 0012, AR=10, h0/c=0.1, nc=10, ns=6, 3 cycles**：
+
+  Free VPM Wake (自诱导启用) vs Theodorsen 解析解：
+
+  | k | Ring/Theo (纯面板) | **N=10 FREE** | N=20 FREE | VPM-only (N=0) |
+  |---|-------------------|---------------|-----------|----------------|
+  | 0.5 | 0.929 | **0.974** | 0.930 | 0.589 |
+  | 0.2 | 0.930 | **0.946** | 0.932 | 0.419 |
+  | 0.1 | 0.920 | **0.925** | 0.920 | 0.450 |
+
+  **关键发现**：
+  - N=10 FREE 在全 k 下比纯涡环面板**更接近 Theodorsen 解析解**（0.925-0.974 vs 0.920-0.930）
+  - 全 k 稳定，correlation = 1.000
+  - VPM 自诱导产生的远场涡结构比 prescribed 尾涡更接近物理真实
+  - N=20 FREE ≈ 纯面板（远场粒子贡献因 1/r² 衰减可忽略）
+
+- **核函数对比实验 (Winckelmans vs Gaussian-erf)**：
+  - Winckelmans 代数核近场比 Gaussian-erf 强 6.6×，但精度仅提升 1-2%
+  - 核函数不是 VPM 精度瓶颈，拓扑失配（0D 点粒子 vs 1D 线涡）才是
+
+- **线涡段粒子实验**：
+  - 低 k (0.10) 幅值从 0.524 提升到 0.731 (+40%)，但高 k 反馈爆炸
+  - 确认精度-稳定性核心矛盾：线涡越精确，正反馈越强
+
+- **PteraSoftware RingVortex 属性修正**：
+  - 正确属性：`Frrvp_GP1_CgP1`, `Flrvp_GP1_CgP1`, `Blrvp_GP1_CgP1`, `Brrvp_GP1_CgP1`
+  - 尾涡行索引：row 0 = 最新（靠近后缘），高 index = 更旧（远场）
+  - `_populate_next_airplanes_wake` 操作的是 `steady_problems[current_step+1]` 的飞机数据
+
+- **Winckelmans 核函数支持**：
+  - `kernel.py` 新增 `g_winckelmans`, `dgdr_winckelmans`, `g_dgdr_winckelmans`
+  - `VortexParticleField` 和所有核函数支持 `kernel='winckelmans'` 参数
+  - 统一核函数分发：`_KERNELS = {'gaussianerf': ..., 'winckelmans': ...}`
+
+### v0.4.0 (2026-05-23)
+
+- **FLOWVLM 风格架构重构**：
+  - 参照 [FLOWVLM flappingwing.jl](https://github.com/byuflowlab/FLOWVLM/blob/master/examples/flappingwing.jl) 重新设计 VLM-VPM 耦合关系
+  - **单向耦合**：VLM→VPM（粒子生成），VPM 不反馈到翼面气动力
+  - 翼面气动力完全由 PteraSoftware 涡环面板保证精度（`_calculate_wake_wing_influences` 委托父类）
+  - 消除了双向耦合导致的非定常发散问题（kernel_factor 反馈放大）
+
+- **尾流涡粒子生成** (trailing vortex shedding)：
+  - 参考 FLOWVLM `adds_particles_from_vlm`：每个展向边界生成一个粒子
+  - `Gamma_vec = (Gamma_inboard - Gamma_outboard) * dl * freestream_dir`（尾流涡 × 长度元）
+  - `sigma = dl`（与 FLOWVLM 一致，而非之前的 dl*0.5）
+  - 对称翼面在根部边界不生成粒子（展向梯度为零）
+
+- **验证结果**：
+  - 静态翼：corr=1.000, RMSE=0, amplitude=100.0%（与涡环求解器完全一致）
+  - 扑翼 Theodorsen 校验 (k=0.5/0.2/0.1)：corr=1.000, RMSE=0, amplitude=100.0%
+  - 涡环求解器 vs Theodorsen 理论：幅值比 0.92-0.93，相关系数 0.88-1.00
 
 ### v0.3.0 (2026-05-21)
 
 - **涡粒子尾涡改进**：
   - 修正 Gamma 单位：`Gamma = edge_vector * ring_strength`（m³/s），而非 `unit_dir * strength`（m²/s）
   - Kutta 条件：尾涡粒子方向与附着涡环后缘方向相反
+  - Kernel-matching factor = 1.75（已废弃，v0.4.0 改为单向耦合架构）
   - RK3 稳定性：速度钳位 (v_max=50 m/s)、Gamma 幅值限制、NaN/Inf 保护
-  - sigma = |V_inf| * dt / 2（核心半径与时间步长匹配）
-  - CL 相关系数从 0.67 提升至 0.95
+  - sigma = |V_inf| * dt / 2（v0.4.0 改为 sigma = dl 与 FLOWVLM 一致）
+  - 多工况验证（v0.4.0 架构下 corr=1.0，完全一致）
 
 ### v0.2.0 (2026-05-21)
 
@@ -300,6 +367,8 @@ FLUXVortex/
 ├── tests/
 │   ├── test_correctness.py   # Biot-Savart 函数级精度校验
 │   ├── test_cl_validation.py # CL/CD 升力系数级精度校验
+│   ├── test_vpm_wake.py      # 涡粒子尾涡 vs 涡环尾涡 CL 对比
+│   ├── test_theodorsen.py    # 扑翼 Theodorsen 理论校验 (k=0.5/0.2/0.1)
 │   └── test_benchmark.py     # GPU vs CPU 性能基准
 ├── figures/
 │   └── cl_validation.png     # CL 验证对比图

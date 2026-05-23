@@ -1,6 +1,6 @@
 """
 Vortex particle Biot-Savart kernels — vectorized NumPy implementation.
-Ported from FLOWVPM's Gaussian-erf kernel with Jacobian computation.
+Supports Gaussian-erf and Winckelmans algebraic kernels.
 """
 import numpy as np
 from math import sqrt, pi
@@ -9,25 +9,21 @@ from scipy.special import erf
 
 # ── Gaussian-erf regularizing kernel ──────────────────────────────────
 def zeta_gauserf(r_bar):
-    """Vorticity distribution function ζ(r/σ)."""
     c = 1.0 / (2.0 * pi) ** 1.5
     return c * np.exp(-0.5 * r_bar ** 2)
 
 
 def g_gauserf(r_bar):
-    """Regularizing function g(r/σ) for velocity."""
     c = sqrt(2.0 / pi)
     return erf(r_bar / sqrt(2.0)) - c * r_bar * np.exp(-0.5 * r_bar ** 2)
 
 
 def dgdr_gauserf(r_bar):
-    """Derivative dg/d(r/σ)."""
     c = sqrt(2.0 / pi)
     return c * r_bar ** 2 * np.exp(-0.5 * r_bar ** 2)
 
 
 def g_dgdr_gauserf(r_bar):
-    """Evaluate g and dg/dr simultaneously."""
     c = sqrt(2.0 / pi)
     exp_val = np.exp(-0.5 * r_bar ** 2)
     g = erf(r_bar / sqrt(2.0)) - c * r_bar * exp_val
@@ -35,14 +31,44 @@ def g_dgdr_gauserf(r_bar):
     return g, dgdr
 
 
+# ── Winckelmans algebraic kernel ──────────────────────────────────────
+# g(r) = r³(r² + 2.5) / (r² + 1)^2.5
+# dg/dr(r) = 7.5 r² / (r² + 1)^3.5
+# Reference: Winckelmans & Leonard (1993), also FLOWVPM kernel_winckelmans
+def zeta_winckelmans(r_bar):
+    return (1.0 / (4.0 * pi)) * 7.5 / (r_bar ** 2 + 1.0) ** 3.5
+
+
+def g_winckelmans(r_bar):
+    r2 = r_bar ** 2
+    return r_bar ** 3 * (r2 + 2.5) / (r2 + 1.0) ** 2.5
+
+
+def dgdr_winckelmans(r_bar):
+    return 7.5 * r_bar ** 2 / (r_bar ** 2 + 1.0) ** 3.5
+
+
+def g_dgdr_winckelmans(r_bar):
+    r2 = r_bar ** 2
+    g = r_bar ** 3 * (r2 + 2.5) / (r2 + 1.0) ** 2.5
+    dgdr = 7.5 * r2 / (r2 + 1.0) ** 3.5
+    return g, dgdr
+
+
+# ── Kernel dispatch ──────────────────────────────────────────────────
+_KERNELS = {
+    'gaussianerf': g_dgdr_gauserf,
+    'winckelmans': g_dgdr_winckelmans,
+}
+
+
 # ── Chunked pairwise Biot-Savart ─────────────────────────────────────
 _CHUNK = 512  # chunk size to control memory
 
 
-def velocity_from_particles(target_points, src_pos, src_gamma, src_sigma):
+def velocity_from_particles(target_points, src_pos, src_gamma, src_sigma, kernel='gaussianerf'):
     """
     Induced velocity at M target points from N vortex particles.
-    Uses Gaussian-erf regularization.
 
     Parameters
     ----------
@@ -62,6 +88,7 @@ def velocity_from_particles(target_points, src_pos, src_gamma, src_sigma):
     if N == 0:
         return U
 
+    g_func = _KERNELS[kernel]
     _C = -1.0 / (4.0 * pi)
 
     for i0 in range(0, M, _CHUNK):
@@ -79,18 +106,17 @@ def velocity_from_particles(target_points, src_pos, src_gamma, src_sigma):
             r = np.maximum(r, 1e-12)
 
             r_bar = r / s_sig[None, :]          # (Bt, Bs)
-            g = g_gauserf(r_bar)                 # (Bt, Bs)
+            g, _ = g_func(r_bar)                # (Bt, Bs)
 
             cross = np.cross(dx, s_gam[None, :, :])  # (Bt, Bs, 3)
 
-            # U = -1/(4π) * g/r³ * (dx × Γ)
             coeff = _C * g / (r ** 3)            # (Bt, Bs)
             U[i0:i1] += np.sum(coeff[:, :, None] * cross, axis=1)
 
     return U
 
 
-def jacobian_from_particles(tgt_pos, tgt_gamma, src_pos, src_gamma, src_sigma):
+def jacobian_from_particles(tgt_pos, tgt_gamma, src_pos, src_gamma, src_sigma, kernel='gaussianerf'):
     """
     Compute velocity gradient tensor J = dU/dx at each target particle
     due to all source particles. Used for vortex stretching.
@@ -115,6 +141,7 @@ def jacobian_from_particles(tgt_pos, tgt_gamma, src_pos, src_gamma, src_sigma):
     if N == 0:
         return J
 
+    g_func = _KERNELS[kernel]
     _C = -1.0 / (4.0 * pi)
 
     for i0 in range(0, M, _CHUNK):
@@ -131,7 +158,7 @@ def jacobian_from_particles(tgt_pos, tgt_gamma, src_pos, src_gamma, src_sigma):
             r = np.sqrt(np.maximum(r2, 1e-24))
 
             r_bar = r / s_sig[None, :]
-            g, dgdr = g_dgdr_gauserf(r_bar)
+            g, dgdr = g_func(r_bar)
 
             # K × Γ = -1/(4π) * 1/r³ * (dx × Γ)
             r3inv = 1.0 / (r ** 3)

@@ -15,10 +15,11 @@ from .kernel import velocity_from_particles, jacobian_from_particles
 class VortexParticleField:
     """Structure-of-arrays vortex particle field."""
 
-    def __init__(self, max_particles=50000, nu=0.0, rlxf=0.3):
+    def __init__(self, max_particles=50000, nu=0.0, rlxf=0.3, kernel='gaussianerf'):
         self.max_particles = max_particles
         self.nu = nu          # kinematic viscosity (0 = inviscid)
         self.rlxf = rlxf      # Pedrizzetti relaxation factor
+        self.kernel = kernel  # 'gaussianerf' or 'winckelmans'
 
         self._pos = np.zeros((max_particles, 3))
         self._gamma = np.zeros((max_particles, 3))
@@ -77,10 +78,11 @@ class VortexParticleField:
             self._pos[:self.np],
             self._gamma[:self.np],
             self._sigma[:self.np],
+            kernel=self.kernel,
         )
 
     # ── RK3 + rVPM time integration ──────────────────────────────
-    def advect_rk3(self, dt, U_inf_func, bound_velocity_func=None):
+    def advect_rk3(self, dt, U_inf_func, bound_velocity_func=None, stretch=True, free_wake=True):
         """
         Advance particles one timestep using RK3 + Reformulated VPM.
 
@@ -89,6 +91,11 @@ class VortexParticleField:
         dt : float — timestep
         U_inf_func : callable(X) -> (N,3) — freestream velocity at particle positions
         bound_velocity_func : callable(X) -> (N,3) — velocity induced by bound wing vortices
+        stretch : bool — whether to apply rVPM vortex stretching
+        free_wake : bool — whether particles feel each other during advection.
+            True: full free-wake (particles advect with freestream + mutual induction)
+            False: prescribed-wake (particles advect with freestream only, no mutual induction)
+            In both modes, particles still induce velocity at the wing.
         """
         if self.np == 0:
             return
@@ -110,8 +117,11 @@ class VortexParticleField:
         max_gamma_sq = 1e4
 
         for a_coeff, b_coeff in rk_coeffs:
-            # Total velocity at current particle positions
-            U_part = velocity_from_particles(pos, pos, gamma, sigma)
+            # Particle-particle induction (skip for prescribed wake)
+            if free_wake:
+                U_part = velocity_from_particles(pos, pos, gamma, sigma, kernel=self.kernel)
+            else:
+                U_part = np.zeros_like(pos)
 
             if bound_velocity_func is not None:
                 U_bound = bound_velocity_func(pos)
@@ -124,55 +134,53 @@ class VortexParticleField:
 
             # Clamp velocity to prevent blowup
             U_speed = np.linalg.norm(U_total, axis=1)
-            v_max = 50.0  # max allowed velocity magnitude
+            v_max = 50.0
             fast = U_speed > v_max
             if np.any(fast):
                 U_total[fast] *= (v_max / U_speed[fast])[:, None]
 
-            # Jacobian for stretching
-            J = jacobian_from_particles(pos, gamma, pos, gamma, sigma)
-
-            # Stretching: S = J^T · Gamma
-            S = np.einsum('tij,tj->ti', J, gamma)
-
-            # rVPM reformulation: Z = g * (S · Gamma) / |Gamma|^2
-            Gamma_sq = np.sum(gamma ** 2, axis=1)
-            SdotG = np.sum(S * gamma, axis=1)
-
-            mask = Gamma_sq > 1e-20
-            Z = np.zeros(n)
-            Z[mask] = 0.2 * SdotG[mask] / Gamma_sq[mask]
-
-            # Clamp Z rate to prevent excessive stretching
-            Z_max = 10.0 / max(dt, 1e-10)
-            Z = np.clip(Z, -Z_max, Z_max)
-
-            # RHS
-            dGamma = S - 3.0 * Z[:, None] * gamma
-            dsigma = -sigma * Z
-
-            # Viscous core spreading: d(sigma^2)/dt = 2*nu
-            if self.nu > 0:
-                dsigma += self.nu / np.maximum(sigma, 1e-10)
-
-            # RK update: storage = a*storage + dt*RHS; variable += b*storage
+            # RK update for position (always)
             rk_X = a_coeff * rk_X + dt * U_total
-            rk_G = a_coeff * rk_G + dt * dGamma
-            rk_s = a_coeff * rk_s + dt * dsigma
-
             pos += b_coeff * rk_X
-            gamma += b_coeff * rk_G
-            sigma += b_coeff * rk_s
 
-            # Clamp Gamma magnitude to prevent runaway
-            g_sq = np.sum(gamma ** 2, axis=1)
-            too_big = g_sq > max_gamma_sq
-            if np.any(too_big):
-                scale = np.sqrt(max_gamma_sq / g_sq[too_big])
-                gamma[too_big] *= scale[:, None]
+            if stretch:
+                # Jacobian for stretching
+                J = jacobian_from_particles(pos, gamma, pos, gamma, sigma, kernel=self.kernel)
 
-            # Clamp sigma
-            sigma = np.clip(sigma, 1e-6, 5.0)
+                # Stretching: S = J^T · Gamma
+                S = np.einsum('tij,tj->ti', J, gamma)
+
+                # rVPM reformulation: Z = g * (S · Gamma) / |Gamma|^2
+                Gamma_sq = np.sum(gamma ** 2, axis=1)
+                SdotG = np.sum(S * gamma, axis=1)
+
+                mask = Gamma_sq > 1e-20
+                Z = np.zeros(n)
+                Z[mask] = 0.2 * SdotG[mask] / Gamma_sq[mask]
+
+                Z_max = 10.0 / max(dt, 1e-10)
+                Z = np.clip(Z, -Z_max, Z_max)
+
+                dGamma = S - 3.0 * Z[:, None] * gamma
+                dsigma = -sigma * Z
+
+                if self.nu > 0:
+                    dsigma += self.nu / np.maximum(sigma, 1e-10)
+
+                rk_G = a_coeff * rk_G + dt * dGamma
+                rk_s = a_coeff * rk_s + dt * dsigma
+
+                gamma += b_coeff * rk_G
+                sigma += b_coeff * rk_s
+
+                # Clamp Gamma magnitude
+                g_sq = np.sum(gamma ** 2, axis=1)
+                too_big = g_sq > max_gamma_sq
+                if np.any(too_big):
+                    scale = np.sqrt(max_gamma_sq / g_sq[too_big])
+                    gamma[too_big] *= scale[:, None]
+
+                sigma = np.clip(sigma, 1e-6, 5.0)
 
         # NaN/Inf protection: zero out bad particles
         bad_pos = ~np.isfinite(pos).all(axis=1)

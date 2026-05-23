@@ -1,12 +1,19 @@
 """
 UVPMHybridSolver — PteraSoftware UVLM wing solver + vortex particle wake.
 
-Inherits UnsteadyRingVortexLatticeMethodSolver and overrides only the wake-related
-methods to use vortex particles instead of wake ring vortex panels.
+Architecture (FLOWVLM-style one-way coupling):
+  1. Wing aerodynamics: solved with PteraSoftware's ring-vortex UVLM (parent)
+     — wake-wing influence comes from ring vortex panels (accurate, stable)
+  2. VPM particles: shed from TE and advected independently
+     — trailing-vortex particles (spanwise Gamma gradient × dl × freestream dir)
+     — used for wake visualization and free-wake roll-up
+     — do NOT feed back into the wing aerodynamics
 
-Shedding combines two mechanisms:
-  1. Trailing vortex (FLOWVLM-style): spanwise circulation gradient at boundaries
-  2. TE bound vortex: back-edge ring vortex contribution at panel midpoints
+Shedding strategy (after FLOWVLM flappingwing.jl / adds_particles_from_vlm):
+  - One particle per spanwise boundary at the trailing edge
+  - Circulation = (Gamma_inboard - Gamma_outboard) * dl (trailing vortex × length)
+  - Direction = freestream (downstream)
+  - sigma = dl (same as streamwise spacing)
 
 Compatible with PteraSoftware 5.x.
 """
@@ -21,30 +28,28 @@ from .particles import VortexParticleField
 
 class UVPMHybridSolver(ps.unsteady_ring_vortex_lattice_method.UnsteadyRingVortexLatticeMethodSolver):
     """
-    UVLM + VPM hybrid solver. Uses ring vortex panels on the wing and vortex
-    particles for the wake.
+    UVLM + VPM hybrid solver.
+
+    Wing aerodynamics use the parent's ring-vortex UVLM (accurate wake-wing
+    influence). VPM particles are shed alongside for wake visualization and
+    free-wake dynamics, following FLOWVLM's one-way coupling approach.
     """
 
-    def __init__(self, unsteady_problem, max_particles=50000, nu=0.0, rlxf=0.3):
+    def __init__(self, unsteady_problem, max_particles=50000, nu=0.0, rlxf=0.3,
+                 stretch=True, free_wake=True):
         super().__init__(unsteady_problem)
         self._vpm_field = VortexParticleField(
             max_particles=max_particles, nu=nu, rlxf=rlxf
         )
+        self._stretch = stretch
+        self._free_wake = free_wake
 
     def _calculate_wake_wing_influences(self):
-        """Compute wake influence on wing using vortex particles."""
-        if self._current_step == 0 or self._vpm_field.np == 0:
-            self._currentStackWakeWingInfluences__E = np.zeros(self.num_panels)
-            return
-
-        collocation_points = self.stackCpp_GP1_CgP1
-        U_wake = self._vpm_field.induce_velocity_at(collocation_points)
-        self._currentStackWakeWingInfluences__E = np.einsum(
-            "ij,ij->i", U_wake, self.stackUnitNormals_GP1
-        )
+        """Delegate to parent: ring vortex panels for wake-wing influence."""
+        super()._calculate_wake_wing_influences()
 
     def _populate_next_airplanes_wake(self):
-        """Shed particles from TE, advect them, maintain parent wake data."""
+        """Shed VPM particles, advect them, then let parent handle ring vortex wake."""
         if self._current_step > 0:
             self._shed_particles_from_trailing_edge()
             self._advect_wake_particles()
@@ -55,14 +60,15 @@ class UVPMHybridSolver(ps.unsteady_ring_vortex_lattice_method.UnsteadyRingVortex
 
     def _shed_particles_from_trailing_edge(self):
         """
-        Shed vortex particles from trailing edge panels.
+        Shed trailing-vortex particles from TE spanwise boundaries.
 
-        Each TE panel sheds one particle representing its back-edge ring vortex.
-        The wake ring front leg opposes the bound ring back leg (Kutta condition):
-          Gamma_vec = -gamma * back_edge_vector
+        FLOWVLM approach: each spanwise boundary between TE panels sheds one
+        particle whose circulation equals the spanwise Gamma gradient × dl,
+        directed along the freestream. This represents the trailing vortex
+        filament shed from that boundary.
 
-        The edge vector (not unit direction) is used so Gamma has correct units
-        (m^3/s) for the Gaussian-erf Biot-Savart kernel.
+        For a symmetric wing, the root boundary has zero gradient (symmetric
+        image carries the same Gamma), so no particle is shed there.
         """
         strength = self._current_bound_vortex_strengths
         if strength is None:
@@ -81,8 +87,8 @@ class UVPMHybridSolver(ps.unsteady_ring_vortex_lattice_method.UnsteadyRingVortex
 
         dt = self.delta_time
         dl = V_inf * dt
-        sigma = dl * 0.5  # core radius ~ half shedding length
-        te_offset = infD * dl * 0.25
+        sigma = dl
+        te_offset = infD * dl * 0.5
 
         new_positions = []
         new_gammas = []
@@ -95,28 +101,48 @@ class UVPMHybridSolver(ps.unsteady_ring_vortex_lattice_method.UnsteadyRingVortex
                 nc = wing.num_chordwise_panels
                 ns = wing.num_spanwise_panels
 
+                is_symmetric = getattr(wing, 'symmetric', False)
+
+                # Collect TE panels in spanwise order
+                te_data = []
                 for i in range(nc):
                     for j in range(ns):
                         panel = panels[i, j]
                         gamma = strength[panel_idx]
                         panel_idx += 1
 
-                        if not panel.is_trailing_edge:
-                            continue
+                        if panel.is_trailing_edge:
+                            te_data.append((gamma,
+                                            panel.Blpp_GP1_CgP1,
+                                            panel.Brpp_GP1_CgP1))
 
-                        if abs(gamma) < 1e-15:
-                            continue
+                n_te = len(te_data)
+                if n_te == 0:
+                    continue
 
-                        bl = panel.Blpp_GP1_CgP1
-                        br = panel.Brpp_GP1_CgP1
-                        back_vec = br - bl
+                # Shed one trailing-vortex particle at each spanwise boundary
+                for b in range(n_te + 1):
+                    if b == 0:
+                        gamma_in = te_data[0][0] if is_symmetric else 0.0
+                        gamma_out = te_data[0][0]
+                        pos = te_data[0][1]  # back-left of first TE panel
+                    elif b == n_te:
+                        gamma_in = te_data[-1][0]
+                        gamma_out = 0.0
+                        pos = te_data[-1][2]  # back-right of last TE panel
+                    else:
+                        gamma_in = te_data[b - 1][0]
+                        gamma_out = te_data[b][0]
+                        pos = 0.5 * (te_data[b - 1][2] + te_data[b][1])
 
-                        pos = 0.5 * (bl + br) + te_offset
-                        Gamma_vec = -back_vec * gamma
+                    mag_gamma = (gamma_in - gamma_out) * dl
+                    if abs(mag_gamma) < 1e-15:
+                        continue
 
-                        new_positions.append(pos)
-                        new_gammas.append(Gamma_vec)
-                        new_sigmas.append(sigma)
+                    Gamma_vec = mag_gamma * infD
+                    new_positions.append(pos + te_offset)
+                    new_gammas.append(Gamma_vec)
+                    new_sigmas.append(sigma)
 
         if new_positions:
             self._vpm_field.add_particles_batch(
@@ -139,4 +165,5 @@ class UVPMHybridSolver(ps.unsteady_ring_vortex_lattice_method.UnsteadyRingVortex
         def U_inf_func(positions):
             return np.broadcast_to(V_inf, positions.shape).copy()
 
-        self._vpm_field.advect_rk3(dt, U_inf_func, bound_velocity_func=None)
+        self._vpm_field.advect_rk3(dt, U_inf_func, bound_velocity_func=None,
+                                    stretch=self._stretch, free_wake=self._free_wake)
