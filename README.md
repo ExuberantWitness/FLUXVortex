@@ -6,9 +6,11 @@ FLUXVortex 将 [PteraSoftware](https://github.com/camUrban/PteraSoftware) 的非
 
 核心特性：
 - **GPU Biot-Savart 内核**：所有线涡/涡环/马蹄涡的诱导速度计算均通过 Warp `@wp.kernel` 在 GPU 上并行执行
-- **涡粒子尾涡**：rVPM (f=0, g=1/5) + RK3 时间积分 + Pedrizzetti 松弛，FLOWVLM 风格单向耦合架构
+- **混合面板-粒子尾涡**：近场涡环面板（保证精度）+ 远场 VPM 粒子（支持自由尾涡卷起），N=10 free wake 达到 92.5-97.4% Theodorsen 精度
 - **Monkey-patch 注入**：无需修改 PteraSoftware 源码，一行 `patch()` 即可激活 GPU 加速
 - **双精度 (float64) 全程保证**：Warp kernel 内所有常量通过 `wp.float64()` 包装，确保与 CPU Numba 结果逐位一致
+
+![Hybrid Panel-Particle Wake Demo](figures/hybrid_k05_free.gif)
 
 ## Quick Start / 快速开始
 
