@@ -47,6 +47,10 @@ class AeroelasticSolver(
         self.tip_theta_history = []
         self.force_history = []
 
+        # Full nodal displacement history for animation
+        self.w_history = []
+        self.theta_history = []
+
     def run(self, prescribed_wake=True, calculate_streamlines=False,
             show_progress=True):
         self.steady_problems = list(self.steady_problems)
@@ -97,6 +101,10 @@ class AeroelasticSolver(
         # Record tip displacement
         self.tip_w_history.append(w_new[-1])
         self.tip_theta_history.append(theta_new[-1])
+
+        # Record full nodal displacements
+        self.w_history.append(w_new.copy())
+        self.theta_history.append(theta_new.copy())
 
         # 5. Deform panel vertices for next timestep
         self._deform_panels(step + 1, w_new, theta_new)

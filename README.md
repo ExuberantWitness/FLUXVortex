@@ -97,6 +97,8 @@ FLUXVortex 在 PteraSoftware 官方验证案例上进行了逐项精度对比。
 
 ### Case 4: Goland Wing 气动弹性颤振 — 经典基准验证
 
+![Flutter Animation: V=100 stable vs V=160 flutter](figures/flutter_animation.gif)
+
 **测试条件**（匹配 Goland & Luke 1948 经典颤振基准）：
 - NACA 0012 矩形翼，chord=1.8288m (6ft)，semi-span=6.096m (20ft)，AR=6.67
 - Euler-Bernoulli 梁 FE（8 单元 Hermite 立方弯曲 + 线性扭转，3 DOF/节点：w, dw/dy, θ）
@@ -289,6 +291,9 @@ python tests/plot_flapping.py
 # Goland Wing 颤振基准 (气弹性耦合)
 python tests/benchmark_goland.py
 
+# 颤振动画 (stable vs flutter 对比)
+python tests/animate_flutter.py
+
 # GPU 性能基准
 python tests/test_benchmark.py
 ```
@@ -400,6 +405,7 @@ FLUXVortex/
 │   ├── benchmark_vs_pterasoftware.py        # vs PteraSoftware 精度对比
 │   ├── benchmark_flapping.py                # 扑翼精度对比
 │   ├── benchmark_goland.py                  # Goland Wing 颤振基准
+│   ├── animate_flutter.py                  # 颤振动画生成 (stable vs flutter)
 │   ├── plot_flapping.py                     # 扑翼对比图生成
 │   └── animate_hybrid.py     # 动态 GIF 演示
 ├── figures/
@@ -408,6 +414,7 @@ FLUXVortex/
 │   ├── feature_comparison.png    # 功能对比表
 │   ├── architecture.png          # 架构示意图
 │   ├── hybrid_k05_free.gif       # 混合尾涡动态演示
+│   ├── flutter_animation.gif    # 颤振动画 (stable vs flutter)
 │   ├── flapping_comparison.png   # 扑翼精度对比图
 │   └── cl_validation.png         # CL 验证对比图
 ├── README.md
