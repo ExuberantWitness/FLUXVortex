@@ -319,12 +319,41 @@ python tests/test_benchmark.py
 | VPM-only 精度不足 | N=0（纯粒子）精度仅 42-59%，不适合作为气动力计算方案 |
 | Free wake O(N²) 计算量大 | ~7000 粒子单步 ~13s (CPU)，需 GPU 加速 |
 | CDi 精度偏低 | 诱导阻力对尾涡模型更敏感，Hybrid CDi 误差 23-35% |
-| 气动弹性网格较粗 | 8×4 面板 + 8 梁 FE，细分网格可进一步提升颤振精度 |
+| BST 壳纯 Python 性能不足 | UVLM 耦合颤振扫描需 GPU 加速 (Taichi/CuPy) 方可实用化 |
+| 各向同性壳 EI/GJ 限制 | 无法同时匹配 Goland Wing 弯曲+扭转刚度，需正交各向异性扩展 |
 | 仅悬臂梁边界条件 | 当前仅支持 cantilever BC（固定翼根），未实现自由-自由等其他边界 |
 
 ## Updates & Bug Fixes / 更新进展与缺陷修复
 
-### v0.6.0 (2026-05-24)
+### v0.8.0 (2026-05-29)
+
+- **BST 旋转自由度壳单元 (BSTShell)**：
+  - 3 节点三角形，每节点仅 3 个位移 DOF，**无转动自由度**
+  - 膜力：标准 CST（常应变三角形），面内 Green-Lagrange 应变 → PK2 应力 → 节点力
+  - 弯曲力：二面角模型（Bridson 2002），每个内边由相邻两个三角形的二面角变化产生弯曲恢复力
+  - 时间积分：显式 Velocity-Verlet，**速度为真实独立状态变量**（非 XPBD 导出量）
+  - 统一膜/板：同一组参数 `(E, ν, h)` 连续可调，无 if-else 模式切换
+  - GPU 友好：逐单元/逐边力计算 → scatter-add 到节点，无全局矩阵
+  - 静态验证通过 5/5 测试（膜力 0.0% 误差、弯曲恢复力正确、h³ 缩放精确）
+
+- **PD Micro-Beam Bond 模型 (PDBeam)**：
+  - 1D 显式梁求解器，3 DOF/节点 (w, ψ, θ)
+  - 标准 Hermite 梁单元弯曲刚度 + 线性扭转单元
+  - Velocity-Verlet 时间积分，GPU 友好（逐单元计算）
+  - UVLM 耦合验证：Goland Wing 颤振 **130.4 m/s**（参考 137 m/s，**误差 4.8%**）
+
+- **XPBD 速度伪影分析**：
+  - XPBD 的速度 `v = (x - x_old) / dt` 是位置差分导出量，**不是独立状态变量**
+  - 约束投影（投影步修正位置以满足约束）会直接污染速度状态
+  - 在气动弹性耦合中，被污染的速度反馈给气动力计算 → 产生虚假气动阻尼/激励
+  - 结论：**XPBD/PBD 不适用于需要真实速度反馈的气动弹性耦合**
+  - 改用 Velocity-Verlet（PD beam / BST shell）或 Newmark-β（BeamFE），速度均为真实独立变量
+
+- **各向同性板 EI/GJ 限制发现**：
+  - Goland Wing 需 EI/GJ = 9.89（弯曲弱、扭转强，真实机翼用集中翼梁实现）
+  - 各向同性平板的 EI/GJ 由泊松比 ν 决定，最大仅约 0.65
+  - 无法同时匹配弯曲和扭转刚度 → 各向同性壳模型颤振速度必然偏高
+  - 解决方向：(1) 使用 1D 梁模型（PD beam / BeamFE 已验证）；(2) 未来引入正交各向异性壳 (E_x ≠ E_y)
 
 - **气动弹性耦合求解器 (AeroelasticSolver)**：
   - UVLM 气动力 + Euler-Bernoulli 梁 FE 分区交错耦合
@@ -389,6 +418,9 @@ FLUXVortex/
 │   ├── particles.py          # CPU: VortexParticleField (RK3 + rVPM)
 │   ├── solver.py             # UVPMHybridSolver (继承 PteraSoftware)
 │   ├── beam_fe.py            # Euler-Bernoulli 梁 FE (弯曲-扭转耦合)
+│   ├── pd_beam.py            # PD Micro-Beam (1D 显式, Velocity-Verlet)
+│   ├── bst_shell.py          # BST 旋转自由度壳 (三角形, Velocity-Verlet)
+│   ├── particle_mesh.py      # 网格生成/拓扑工具
 │   ├── aeroelastic_solver.py # 气动弹性耦合求解器 (UVLM + 梁 FE)
 │   ├── warp_kernels.py       # GPU: 线涡/涡环 Biot-Savart (Warp)
 │   ├── warp_vpm.py           # GPU: 涡粒子 Biot-Savart + Jacobian (Warp)
@@ -400,6 +432,9 @@ FLUXVortex/
 │   ├── test_cl_validation.py # CL/CD 升力系数级精度校验
 │   ├── test_theodorsen.py    # 扑翼 Theodorsen 理论校验
 │   ├── test_beam_fe.py       # 梁 FE 单元测试 (固有频率 vs 解析解)
+│   ├── test_bst_shell.py     # BST 壳单元测试 (膜力/弯曲/h³缩放)
+│   ├── test_bst_uvlm_flutter.py  # BST + UVLM 颤振验证
+│   ├── test_pd_uvlm_flutter.py   # PD Beam + UVLM 颤振验证 (130.4 m/s)
 │   ├── test_benchmark.py     # GPU vs CPU 性能基准
 │   ├── experiment_hybrid_panel_particle.py  # 混合求解器实验
 │   ├── benchmark_vs_pterasoftware.py        # vs PteraSoftware 精度对比
