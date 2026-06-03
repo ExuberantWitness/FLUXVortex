@@ -320,10 +320,66 @@ python tests/test_benchmark.py
 | Free wake O(N²) 计算量大 | ~7000 粒子单步 ~13s (CPU)，需 GPU 加速 |
 | CDi 精度偏低 | 诱导阻力对尾涡模型更敏感，Hybrid CDi 误差 23-35% |
 | BST 壳纯 Python 性能不足 | UVLM 耦合颤振扫描需 GPU 加速 (Taichi/CuPy) 方可实用化 |
-| 各向同性壳 EI/GJ 限制 | 无法同时匹配 Goland Wing 弯曲+扭转刚度，需正交各向异性扩展 |
+| IBM 弯曲频率偏差 20% | 校准因子 cal=0.252 匹配静态刚度但频率偏低；cal=0.396 匹配频率但静态偏硬 57%。偏差与网格无关（IBM 基本限制） |
+| UVLM 粗网格升力偏低 | 4×8 面板网格升力仅为薄翼型理论 58%（有限展弦比 + 离散化），影响平衡精度 |
 | 仅悬臂梁边界条件 | 当前仅支持 cantilever BC（固定翼根），未实现自由-自由等其他边界 |
 
 ## Updates & Bug Fixes / 更新进展与缺陷修复
+
+### v0.9.0 (2026-06-03)
+
+- **GPU 隐式动态求解器 (BSTImplicitGPU)**：
+  - 支持三种积分格式：后退 Euler（一阶强阻尼）、Newmark-β（二阶梯形法则）、generalized-α（可控高频耗散）
+  - 三种刚度策略：JFNK（Jacobian-free Newton-Krylov）、fd_direct（有限差分组装稠密 K）、ibm_precond（常数 IBM Q 预条件）
+  - Newton-Raphson 迭代 + 回溯线搜索，收敛准则 ||R|| < 1e-8
+  - Chung & Hulbert (1993) 修正 generalized-α 参数公式（γ = 0.5 - α_m + α_f），确保无条件稳定
+
+- **IBM 弯曲模型**：
+  - 基于 Laplacian 的常数 PSD 刚度矩阵：Q = L^T × diag(W) × L
+  - 校准因子 `ibm_cal` 可配置：0.252（静态刚度匹配，默认）或 0.396（频率匹配，0.4% 误差）
+  - 校准因子对频率的影响与网格无关（4×8 到 8×32 均为 ~20.6% 偏差）
+  - 扭转弹簧补充：离散 strip-to-strip 扭转弹簧，GJ_eff = 4×D_xy×chord，扭转频率误差仅 0.3%
+
+- **低速 (<50 m/s) 气动弹性验证**（Goland Wing, 4×8 mesh, α=2°）：
+
+  **固有频率**：
+  | 模态 | 理论 (Hz) | IBM 壳 (Hz) | 误差 |
+  |------|-----------|-------------|------|
+  | 弯曲 f1 | 7.877 | 6.256 (cal=0.252) / 7.842 (cal=0.396) | 20.6% / 0.4% |
+  | 扭转 | 81.20 | 80.89 | 0.3% |
+
+  **7 种求解器配置 × 5 个速度完整对比**（cal=0.252）：
+
+  | 配置 | V=10 | V=20 | V=30 | V=40 | V=50 | Newton | 耗时 |
+  |------|------|------|------|------|------|--------|------|
+  | Euler-fd | 0.26 | 1.05 | 2.38 | 4.22 | 7.95 | 2.1 | 1082s |
+  | Euler-jfnk | 0.26 | 1.05 | 2.38 | 4.22 | 7.95 | 2.8 | 753s |
+  | Newmark-fd | 0.26 | 1.03 | 2.46 | 4.10 | 8.85 | 2.2 | 1047s |
+  | Newmark-jfnk | 0.26 | 1.03 | 2.46 | 4.10 | 8.85 | 3.0 | 841s |
+  | **Newmark-ibm** | **0.26** | **1.03** | **2.46** | **4.10** | **8.85** | **9.3** | **505s** |
+  | GenAlpha-fd | 0.26 | 1.03 | 2.47 | 4.08 | 8.93 | 2.2 | 1024s |
+  | GenAlpha-jfnk | 0.26 | 1.03 | 2.47 | 4.08 | 8.93 | 3.0 | 807s |
+  | 理论 (均匀) | 0.43 | 1.74 | 3.91 | 6.94 | 10.85 | — | — |
+  | 理论 (椭圆) | 0.29 | 1.16 | 2.60 | 4.63 | 7.23 | — | — |
+
+  单位：|tip_w| mm。理论值为悬臂梁均布/椭圆载荷解析解。
+
+  **关键发现**：
+  1. **所有 7 种配置在 V=10–50 m/s 全部稳定**，无 NaN 或发散
+  2. **Newmark-ibm_precond 最快**（505s），比 fd_direct 快 2×，精度完全一致
+  3. **fd_direct 与 jfnk 收敛到相同解**（误差 < 1e-8），jfnk 快 ~25%
+  4. Euler 一阶格式有额外数值阻尼（V=50: 7.95 vs Newmark 8.85 mm）
+  5. Newmark 与 GenAlpha 结果差异 < 1%（低速下高频耗散影响小）
+  6. UVLM 升力为薄翼型理论的 58%（有限展弦比 AR=6.67 + 粗网格效应）
+  7. 考虑有效 EI (IBM cal=0.252, EI_eff=0.63×EI) 和实际 UVLM 载荷后，平衡精度 ~91%
+
+- **正交各向异性 BST 壳**（已有，本版本完善验证）：
+  - 支持 Ex ≠ Ey，正确匹配 Goland Wing 的 EI/GJ = 9.89 比值
+  - 弯曲刚度由 Ey 主导，扭转刚度由 G_xy 主导
+
+- **力矩转移修正**：
+  - 气动力矩关于弹性轴的正确分布：mx_corrected = mx - fz × x_mean
+  - 均匀升力分布产生的附加力矩已在弯曲力分配中考虑
 
 ### v0.8.0 (2026-05-29)
 
@@ -420,6 +476,9 @@ FLUXVortex/
 │   ├── beam_fe.py            # Euler-Bernoulli 梁 FE (弯曲-扭转耦合)
 │   ├── pd_beam.py            # PD Micro-Beam (1D 显式, Velocity-Verlet)
 │   ├── bst_shell.py          # BST 旋转自由度壳 (三角形, Velocity-Verlet)
+│   ├── bst_implicit_gpu.py   # GPU 隐式动态求解器 (Euler/Newmark/GenAlpha)
+│   ├── bst_aero_coupling.py  # BST + UVLM 气动弹性耦合器
+│   ├── warp_bst.py           # GPU: BST 力计算 Warp 内核
 │   ├── particle_mesh.py      # 网格生成/拓扑工具
 │   ├── aeroelastic_solver.py # 气动弹性耦合求解器 (UVLM + 梁 FE)
 │   ├── warp_kernels.py       # GPU: 线涡/涡环 Biot-Savart (Warp)

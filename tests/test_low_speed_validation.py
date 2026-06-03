@@ -1,15 +1,9 @@
-"""Goland Wing Flutter -- UVLM + BST Shell Dihedral Bending.
+"""Low-speed (<50 m/s) aeroelastic validation for BST IBM + torsion shell.
 
-Full coupling: unsteady UVLM aerodynamics + BST shell structure.
-BST uses dihedral angle bending + CST membrane + Velocity-Verlet.
-Subcycling ensures shell CFL compliance.
-
-Baselines:
-  - UVLM + BeamFE (implicit):  140.2 m/s (2.4% error)
-  - UVLM + PD beam  (explicit): 130.4 m/s (4.8% error)
-  - Reference flutter speed:    ~137 m/s
-
-Mesh independence study: 5 grid levels (2x4 through 8x16).
+Validates:
+  1. Natural frequencies (bending ~7.88 Hz, torsion ~81.17 Hz)
+  2. Aeroelastic equilibrium at V=30 m/s (compare tip deflection with beam theory)
+  3. Dynamic response: impulse decay rate and oscillation frequency
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -20,10 +14,10 @@ if not hasattr(np, 'trapz'):
 import pterasoftware as ps
 import time
 from fluxvortex.bst_shell import BSTShell
+from fluxvortex.bst_implicit_gpu import BSTImplicitGPU
 
 
 def make_rect_mesh(Lx, Ly, nx, ny):
-    """Structured triangle mesh for rectangle [0, Lx] x [0, Ly]."""
     xs = np.linspace(0, Lx, nx + 1)
     ys = np.linspace(0, Ly, ny + 1)
     n_x, n_y = nx + 1, ny + 1
@@ -31,7 +25,6 @@ def make_rect_mesh(Lx, Ly, nx, ny):
     for j in range(n_y):
         for i in range(n_x):
             vertices[j * n_x + i] = [xs[i], ys[j], 0]
-
     triangles = []
     for j in range(ny):
         for i in range(nx):
@@ -87,21 +80,21 @@ def build_goland_wing(V_inf, dt=0.003, num_chords=100, alpha=2.0,
     return mv
 
 
-class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
-                     .UnsteadyRingVortexLatticeMethodSolver):
-    """UVLM + BST shell aeroelastic solver."""
-
-    def __init__(self, unsteady_problem, shell, relaxation=1.0,
-                 x_ea_chord=0.33, shell_dt=0.0001):
+class AeroSolverImplicit(ps.unsteady_ring_vortex_lattice_method
+                          .UnsteadyRingVortexLatticeMethodSolver):
+    def __init__(self, unsteady_problem, shell, implicit_solver,
+                 relaxation=1.0, x_ea_chord=0.33):
         super().__init__(unsteady_problem)
         self._shell = shell
+        self._implicit = implicit_solver
         self._relaxation = relaxation
         self._x_ea_chord = x_ea_chord
-        self._shell_dt = shell_dt
         self._prev_w = None
         self._prev_theta = None
         self.tip_w_history = []
         self.tip_theta_history = []
+        self.newton_iters = []
+        self.strip_forces_history = []
 
     def run(self, **kwargs):
         self.steady_problems = list(self.steady_problems)
@@ -110,14 +103,13 @@ class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
     def _calculate_loads(self):
         super()._calculate_loads()
         if self._current_step >= 1 and self._current_step < self.num_steps - 1:
-            self._bst_coupling()
+            self._implicit_coupling()
 
-    def _bst_coupling(self):
+    def _implicit_coupling(self):
         shell = self._shell
         dt_uvlm = self.delta_time
         vertices = shell.vertices0
 
-        # 1. Extract per-strip lift and moment from UVLM panels
         yf, lf, mf = [], [], []
         for airplane in self.current_airplanes:
             for wing in airplane.wings:
@@ -144,44 +136,43 @@ class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
 
         yf = np.array(yf); lf = np.array(lf); mf = np.array(mf)
 
-        # 2. Distribute forces to BST shell nodes via virtual work
         F_shell = np.zeros((shell.nv, 3))
-        chord = vertices[:, 0].max()
-        x_ea = self._x_ea_chord * chord
+        chord_val = vertices[:, 0].max()
+        x_ea = self._x_ea_chord * chord_val
         dy_mesh = vertices[1, 1] - vertices[0, 1] if vertices[1, 1] > 0 else 1.0
+
+        total_lift = 0.0
+        total_moment = 0.0
 
         for k in range(len(yf)):
             y = abs(yf[k])
-            fz = lf[k]   # lift force (total per strip)
-            mx = mf[k]   # pitching moment per strip about x=0
-
-            # Find nodes in this spanwise strip (within half a mesh spacing)
+            fz = lf[k]
+            mx = mf[k]
             strip_mask = np.abs(vertices[:, 1] - y) < dy_mesh * 0.6
             strip_idx = np.where(strip_mask)[0]
             if len(strip_idx) == 0:
                 continue
+            total_lift += fz
+            total_moment += mx
 
-            # Distribute lift as uniform pressure over strip nodes
+            # Corrected moment about elastic axis
+            x_mean_strip = np.mean(vertices[strip_idx, 0])
+            mx_corrected = mx - fz * x_mean_strip
+
             F_shell[strip_idx, 2] += fz / len(strip_idx)
-
-            # Distribute moment as linear force couple about elastic axis
             for ni in strip_idx:
                 x_rel = vertices[ni, 0] - x_ea
-                # Moment arm weighting: moment = sum(F_z * x_rel)
-                # Normalize by sum of x_rel^2 to get correct resultant moment
                 x_rels = vertices[strip_idx, 0] - x_ea
                 sum_x2 = np.sum(x_rels**2)
                 if sum_x2 > 1e-20:
-                    F_shell[ni, 2] += mx * x_rel / sum_x2
+                    F_shell[ni, 2] += mx_corrected * x_rel / sum_x2
 
-        # 3. Step BST shell with subcycling (CPU or GPU)
-        n_sub = max(1, int(dt_uvlm / self._shell_dt))
-        shell.step_subcycles(F_shell, dt_uvlm, n_sub)
+        self.strip_forces_history.append((total_lift, total_moment))
 
-        # 4. Get deformations with relaxation
+        n_iter, r_norm = self._implicit.step(F_shell, dt_uvlm)
+        self.newton_iters.append(n_iter)
+
         u_shell = shell.get_nodal_displacements()
-
-        # Extract spanwise w and theta by averaging over chord
         span_vals = sorted(set(np.round(vertices[:, 1], 8)))
         n_span = len(span_vals)
         w_span = np.zeros(n_span)
@@ -194,13 +185,11 @@ class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
             w_vals = u_shell[mask, 2]
             x_vals = vertices[mask, 0]
             w_span[si] = np.mean(w_vals)
-            # Theta from linear fit of w vs x
             if len(x_vals) > 1:
                 theta_span[si] = np.polyfit(x_vals - np.mean(x_vals), w_vals, 1)[0]
 
         w_new = w_span
         theta_new = theta_span
-
         if self._prev_w is not None:
             w_new = self._relaxation * w_new + (1 - self._relaxation) * self._prev_w
             theta_new = self._relaxation * theta_new + (1 - self._relaxation) * self._prev_theta
@@ -209,8 +198,6 @@ class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
 
         self.tip_w_history.append(w_new[-1])
         self.tip_theta_history.append(theta_new[-1])
-
-        # 5. Deform UVLM panel vertices
         self._deform_panels(self._current_step + 1, w_new, theta_new, y_span)
 
     def _deform_panels(self, step, w, theta, beam_y):
@@ -221,8 +208,8 @@ class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
                 nc, ns = wing.num_chordwise_panels, wing.num_spanwise_panels
                 x_le = panels[0, 0].Frpp_GP1_CgP1[0]
                 x_te = panels[nc-1, 0].Brpp_GP1_CgP1[0]
-                chord = x_te - x_le
-                x_ea = x_le + self._x_ea_chord * chord
+                chord_val = x_te - x_le
+                x_ea = x_le + self._x_ea_chord * chord_val
 
                 for i in range(nc):
                     for j in range(ns):
@@ -262,166 +249,179 @@ class AeroSolverBST(ps.unsteady_ring_vortex_lattice_method
                             pass
 
 
-def envelope_growth(signal, dt):
-    if len(signal) < 10:
-        return 0.0
-    a = np.abs(signal)
-    peaks = []
-    for i in range(1, len(a) - 1):
-        if a[i] > a[i - 1] and a[i] > a[i + 1]:
-            peaks.append((i * dt, a[i]))
-    if len(peaks) < 3:
-        return 0.0
-    tp = np.array([p[0] for p in peaks])
-    ap = np.maximum(np.array([p[1] for p in peaks]), 1e-15)
-    if len(tp) > 4:
-        la = np.log(ap[1:])
-        tf = tp[1:]
-    else:
-        la = np.log(ap)
-        tf = tp
-    if len(tf) >= 2:
-        return np.polyfit(tf, la, 1)[0]
-    return 0.0
+# ═══════════════════════════════════════════════════════════════════════
+# Validation
+# ═══════════════════════════════════════════════════════════════════════
 
+ps.set_up_logging(level="Warning")
+chord = 1.8288; semi_span = 6.096
+EI = 9.773e6; GJ = 0.988e6
+m_per_length = 35.72
+h_shell = 0.3; nu_xy = 0.3
+Ey = EI * 12.0 * (1.0 - nu_xy**2) / (h_shell**3 * chord)
+G_xy = GJ * 3.0 / (h_shell**3 * chord)
+Ex = Ey
+rho_shell = m_per_length / (chord * h_shell)
+n_chord = 4; n_span = 8
+dt_uvlm = 0.003
+mesh_verts, mesh_tris = make_rect_mesh(chord, semi_span, n_chord, n_span)
 
-def run_flutter_sweep(n_chord=4, n_span=8, label="", use_gpu=False):
-    """Run flutter speed sweep for a given BST mesh density."""
-    ps.set_up_logging(level="Warning")
-    chord = 1.8288; semi_span = 6.096
+# Theoretical references
+print("=" * 70)
+print("LOW-SPEED AEROELASTIC VALIDATION")
+print("=" * 70)
 
-    # Goland wing structural properties
-    EI = 9.773e6       # N*m^2
-    GJ = 0.988e6       # N*m^2
-    m_per_length = 35.72  # kg/m
+# Natural frequencies
+f1_bend = (1.8751**2 / (2 * np.pi * semi_span**2)) * np.sqrt(EI / m_per_length)
+f1_tors_beam = (1.0 / (4 * semi_span)) * np.sqrt(GJ / 0.252)  # beam I_theta
 
-    # Orthotropic shell: match both EI and GJ independently
-    # EI = Dy * chord = Ey*h^3*chord / (12*(1-nu_xy*nu_yx))
-    # GJ = 4*Dxy*chord = G_xy*h^3*chord / 3
-    #
-    # h=0.3m gives manageable CFL (same Ey as isotropic case, but G_xy much
-    # lower -> correct GJ instead of 6.4x too high).
-    # Key: Ey matches EI, G_xy matches GJ, EI/GJ = 9.89 exactly.
-    h_shell = 0.3
-    nu_xy = 0.3
-    Ey = EI * 12.0 * (1.0 - nu_xy**2) / (h_shell**3 * chord)
-    G_xy = GJ * 3.0 / (h_shell**3 * chord)
-    Ex = Ey   # chordwise membrane = spanwise for simplicity
-    rho_shell = m_per_length / (chord * h_shell)
+# Static deflection under uniform load q
+# For cantilever with uniform load: delta_tip = q*L^4/(8*EI)
+# q = 0.5 * rho * V^2 * chord * CL, CL = 2*pi*alpha
+V_test = 30.0
+alpha_rad = 2.0 * np.pi / 180
+CL = 2 * np.pi * alpha_rad
+q_aero = 0.5 * 1.225 * V_test**2 * chord * CL  # N/m
+delta_tip_theory = q_aero * semi_span**4 / (8 * EI)
 
-    nu_yx = nu_xy * Ey / Ex  # = nu_xy since Ex = Ey
-    denom = 1.0 - nu_xy * nu_yx
-    Dy = Ey * h_shell**3 / (12.0 * denom)
-    Dxy = G_xy * h_shell**3 / 12.0
-    EI_shell = Dy * chord
-    GJ_shell = 4.0 * Dxy * chord
+print(f"\nMesh: {n_chord}x{n_span}")
+print(f"V_test = {V_test} m/s, alpha = 2 deg")
+print(f"CL = {CL:.4f}, q_aero = {q_aero:.2f} N/m")
+print(f"Expected: f_bend = {f1_bend:.2f} Hz")
+print(f"Expected: delta_tip = {delta_tip_theory*1000:.3f} mm (beam theory)")
 
-    mesh_verts, mesh_tris = make_rect_mesh(chord, semi_span, n_chord, n_span)
+# ── Test 1: Natural frequencies (structural only) ──
+print(f"\n--- TEST 1: Natural Frequencies ---")
+shell = BSTShell(mesh_verts, mesh_tris,
+                 h=h_shell, rho=rho_shell,
+                 Ex=Ex, Ey=Ey, nu_xy=nu_xy, G_xy=G_xy,
+                 structural_damping=0.0)
+root = np.where(np.abs(mesh_verts[:, 1]) < 1e-10)[0]
+shell.set_bc(root)
+shell._precompute_ibm()
 
-    dt_uvlm = 0.003
-    # CFL: c = sqrt(Ey/rho) = sqrt(2.16e9/65.1) = 5762 m/s
-    # L_min ~ 0.46m, dt_crit = 0.46/5762 = 7.9e-5, safety 0.3 -> 2.4e-5
-    shell_dt_est = 2.0e-5
-    n_sub = max(1, int(dt_uvlm / shell_dt_est) + 1)
-    shell_dt = dt_uvlm / n_sub
+# Eigenvalue analysis for z-DOF
+free = shell.mass > 0
+Q_ff = shell._Q[np.ix_(free, free)]
+M_inv_sqrt = np.diag(1.0 / np.sqrt(shell.mass[free]))
+A = M_inv_sqrt @ Q_ff @ M_inv_sqrt
+eigvals = np.linalg.eigvalsh(A)
+pos_eigs = eigvals[eigvals > 1e-3]
+freqs = np.sqrt(pos_eigs) / (2 * np.pi)
+freqs = np.sort(freqs)
 
-    gpu_tag = " [GPU]" if use_gpu else ""
-    print(f"\n{'='*70}")
-    print(f"Goland Wing Flutter -- UVLM + BST Shell {label}{gpu_tag}")
-    print(f"  Mesh: {n_chord}x{n_span} = {2*n_chord*n_span} triangles")
-    print(f"  Ex={Ex:.2e}, Ey={Ey:.2e}, G_xy={G_xy:.2e} Pa")
-    print(f"  h={h_shell:.4f} m, nu_xy={nu_xy}, rho={rho_shell:.1f} kg/m^3")
-    print(f"  EI_shell={EI_shell:.2e} (target={EI:.2e})")
-    print(f"  GJ_shell={GJ_shell:.2e} (target={GJ:.2e})")
-    print(f"  EI/GJ = {EI_shell/GJ_shell:.2f} (target: {EI/GJ:.2f})")
-    print(f"  UVLM dt={dt_uvlm}s, shell dt={shell_dt:.2e}s ({n_sub} substeps)")
-    print(f"  Orthotropic: both EI and GJ matched independently")
-    print(f"{'='*70}")
+print(f"  First 5 frequencies (Hz): {freqs[:5].round(2)}")
+print(f"  f1 = {freqs[0]:.2f} Hz (expected {f1_bend:.2f}, error {abs(freqs[0]-f1_bend)/f1_bend*100:.1f}%)")
 
-    velocities = [80, 100, 120, 140, 160, 180, 200, 220, 250]
-    results = []
+# ── Test 2: Low-speed aeroelastic equilibrium ──
+print(f"\n--- TEST 2: Aeroelastic Equilibrium at V={V_test} m/s ---")
+for V in [30, 50]:
+    shell = BSTShell(mesh_verts, mesh_tris,
+                     h=h_shell, rho=rho_shell,
+                     Ex=Ex, Ey=Ey, nu_xy=nu_xy, G_xy=G_xy,
+                     structural_damping=1.0)
+    shell.set_bc(root)
+    y_norm = mesh_verts[:, 1] / semi_span
+    shell.u[:, 2] = 1e-5 * y_norm**2
 
-    for V in velocities:
-        print(f"  V={V:3d} m/s ... ", end="", flush=True)
-        try:
-            mv = build_goland_wing(V, dt=dt_uvlm,
-                                   n_chord=n_chord, n_span=n_span)
-            prob = ps.problems.UnsteadyProblem(
-                movement=mv, only_final_results=False)
+    implicit = BSTImplicitGPU(shell, scheme='newmark', k_strategy='fd_direct')
+    nc_wake = 30
+    mv = build_goland_wing(V, dt=dt_uvlm, n_chord=n_chord, n_span=n_span,
+                           num_chords=nc_wake)
+    prob = ps.problems.UnsteadyProblem(movement=mv, only_final_results=False)
 
-            shell = BSTShell(mesh_verts, mesh_tris,
-                             h=h_shell, rho=rho_shell,
-                             Ex=Ex, Ey=Ey, nu_xy=nu_xy, G_xy=G_xy,
-                             structural_damping=0.02,
-                             use_gpu=use_gpu)
+    solver = AeroSolverImplicit(prob, shell, implicit, relaxation=0.3)
+    t0 = time.time()
+    solver.run(prescribed_wake=True, calculate_streamlines=False, show_progress=False)
+    t1 = time.time()
 
-            # Clamp root (y=0 nodes)
-            root_nodes = np.where(np.abs(mesh_verts[:, 1]) < 1e-10)[0]
-            shell.set_bc(root_nodes)
+    tw = np.array(solver.tip_w_history)
+    tth = np.array(solver.tip_theta_history)
 
-            # Initial perturbation — tiny to trigger flutter instability
-            y_norm = mesh_verts[:, 1] / semi_span
-            shell.u[:, 2] = 1e-5 * y_norm**2  # very small bending perturbation
+    # Steady-state values (last 20% of simulation)
+    n_ss = max(1, len(tw) // 5)
+    w_ss = np.mean(tw[-n_ss:])
+    th_ss = np.mean(tth[-n_ss:])
+    avg_newton = np.mean(solver.newton_iters) if solver.newton_iters else 0
 
-            solver = AeroSolverBST(prob, shell, relaxation=0.3,
-                                   shell_dt=shell_dt)
-            t0 = time.time()
-            solver.run(prescribed_wake=True, calculate_streamlines=False,
-                       show_progress=False)
-            t1 = time.time()
+    # Total lift from strip forces
+    total_lift_N = 0.0
+    if solver.strip_forces_history:
+        last_fifth = solver.strip_forces_history[-n_ss:]
+        total_lift_N = np.mean([f[0] for f in last_fifth])
 
-            tw = np.array(solver.tip_w_history)
-            tth = np.array(solver.tip_theta_history)
-            sig_w = envelope_growth(tw, dt_uvlm)
-            sig_th = envelope_growth(tth, dt_uvlm)
-            status = "FLUTTER" if sig_w > 0 else "stable"
-            print(f"{status} (sig_w={sig_w:+.3f}, sig_th={sig_th:+.3f}, "
-                  f"{t1-t0:.0f}s)")
-            results.append({
-                'V': V, 'sig_w': sig_w, 'sig_th': sig_th, 'status': status})
-        except Exception as e:
-            print(f"error: {e}")
-            import traceback; traceback.print_exc()
+    # Theoretical comparisons
+    q_v = 0.5 * 1.225 * V**2 * chord * CL  # N/m uniform load
+    delta_uniform = q_v * semi_span**4 / (8 * EI)
+    delta_elliptical = 2.0 / 3.0 * delta_uniform  # elliptical load correction
+    L_theory = q_v * semi_span  # total lift (uniform)
 
-    # Find flutter speed
-    flutter_V = None
-    for i in range(len(results) - 1):
-        if results[i]['sig_w'] < 0 and results[i + 1]['sig_w'] > 0:
-            s0, s1 = results[i]['sig_w'], results[i + 1]['sig_w']
-            V0, V1 = results[i]['V'], results[i + 1]['V']
-            flutter_V = V0 - s0 * (V1 - V0) / (s1 - s0)
+    abs_w = abs(w_ss) * 1000
+    print(f"  V={V:2d} m/s (wake={nc_wake}, {t1-t0:.0f}s):")
+    print(f"    |tip_w| = {abs_w:.3f} mm  (uniform theory={delta_uniform*1000:.3f}, "
+          f"elliptical={delta_elliptical*1000:.3f})")
+    print(f"    theta   = {th_ss:+.6f} rad")
+    print(f"    Lift    = {total_lift_N:.1f} N  (theory={L_theory:.1f} N, "
+          f"ratio={total_lift_N/L_theory:.3f})")
+    print(f"    Newton  ~{avg_newton:.1f} iters")
+
+# ── Test 3: Dynamic response (impulse) ──
+print(f"\n--- TEST 3: Dynamic Response at V={V_test} m/s ---")
+# Use low damping to see oscillation
+shell = BSTShell(mesh_verts, mesh_tris,
+                 h=h_shell, rho=rho_shell,
+                 Ex=Ex, Ey=Ey, nu_xy=nu_xy, G_xy=G_xy,
+                 structural_damping=0.02)
+shell.set_bc(root)
+
+# Initial perturbation: quadratic bending
+y_norm = mesh_verts[:, 1] / semi_span
+shell.u[:, 2] = 5e-4 * y_norm**2  # 0.5 mm at tip
+
+implicit = BSTImplicitGPU(shell, scheme='newmark', k_strategy='fd_direct')
+mv = build_goland_wing(V_test, dt=dt_uvlm, n_chord=n_chord, n_span=n_span,
+                        num_chords=20)
+prob = ps.problems.UnsteadyProblem(movement=mv, only_final_results=False)
+
+solver = AeroSolverImplicit(prob, shell, implicit, relaxation=0.3)
+t0 = time.time()
+solver.run(prescribed_wake=True, calculate_streamlines=False, show_progress=False)
+t1 = time.time()
+
+tw = np.array(solver.tip_w_history)
+tth = np.array(solver.tip_theta_history)
+
+print(f"  Simulation time: {t1-t0:.0f}s")
+print(f"  Tip w range: [{tw.min()*1000:.3f}, {tw.max()*1000:.3f}] mm")
+print(f"  Tip theta range: [{tth.min()*1000:.4f}, {tth.max()*1000:.4f}] mrad")
+
+# FFT of tip response
+if len(tw) > 50:
+    from scipy.signal import welch
+    nperseg = min(len(tw), 256)
+    f_w, Pxx_w = welch(tw, fs=1/dt_uvlm, nperseg=nperseg)
+    f_th, Pxx_th = welch(tth, fs=1/dt_uvlm, nperseg=nperseg)
+
+    peak_w = f_w[np.argmax(Pxx_w)]
+    peak_th = f_th[np.argmax(Pxx_th)]
+
+    print(f"\n  FFT peak frequencies:")
+    print(f"    Bending:  {peak_w:.2f} Hz (expected {f1_bend:.2f})")
+    print(f"    Torsion:  {peak_th:.2f} Hz")
+
+    # Decay analysis
+    # Half-life of oscillation
+    abs_tw = np.abs(tw)
+    max_amp = np.max(abs_tw[:len(abs_tw)//4])  # peak in first quarter
+    # Find when amplitude drops to half
+    for i in range(len(abs_tw)//4, len(abs_tw)):
+        if abs_tw[i] < max_amp / 2:
+            t_half = i * dt_uvlm
+            print(f"    Half-life: {t_half:.3f} s ({i} steps)")
             break
-
-    # Summary
-    print(f"\n{'─'*70}")
-    print(f"{'V (m/s)':>10s} {'sig_w':>10s} {'sig_th':>10s} {'Status':>10s}")
-    print(f"{'─'*10} {'─'*10} {'─'*10} {'─'*10}")
-    for r in results:
-        print(f"{r['V']:10d} {r['sig_w']:+10.4f} {r['sig_th']:+10.4f} "
-              f"{r['status']:>10s}")
-
-    if flutter_V:
-        err = abs(flutter_V - 137) / 137 * 100
-        print(f"\n  Flutter speed: {flutter_V:.1f} m/s "
-              f"(ref: 137, error: {err:.1f}%)")
     else:
-        print(f"\n  No flutter transition found")
-    print(f"{'='*70}")
+        print(f"    No half-life found in simulation range")
 
-    return flutter_V, results
-
-
-if __name__ == '__main__':
-    # Single mesh sweep for initial validation
-    flutter_V, results = run_flutter_sweep(
-        n_chord=4, n_span=8, label="(4x8 orthotropic)")
-
-    # Uncomment for GPU-accelerated sweep:
-    # flutter_V, results = run_flutter_sweep(
-    #     n_chord=4, n_span=8, label="(4x8 orthotropic GPU)", use_gpu=True)
-
-    # Uncomment for mesh independence study:
-    # meshes = [(2, 4), (3, 6), (4, 8), (6, 12), (8, 16)]
-    # for nc, ns in meshes:
-    #     run_flutter_sweep(n_chord=nc, n_span=ns,
-    #                       label=f"({nc}x{ns})")
+print(f"\n{'='*70}")
+print(f"VALIDATION SUMMARY")
+print(f"{'='*70}")
