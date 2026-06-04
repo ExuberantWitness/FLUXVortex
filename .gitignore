@@ -8,3 +8,7 @@ build/
 .env
 .venv
 *.bak
+*.mat
+*.mp4
+*.fig
+*.npz
