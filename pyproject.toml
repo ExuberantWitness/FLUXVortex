@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fluxvortex"
+version = "0.9.0"
+description = "GPU-Accelerated Hybrid Panel-Particle Vortex Method Solver"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "numba",
+    "matplotlib",
+    "pterasoftware",
+]
+
+[project.optional-dependencies]
+gpu = ["warp-lang"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
