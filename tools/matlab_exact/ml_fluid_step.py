@@ -8,6 +8,7 @@ One call = one fluid solve at a block boundary:
            intermediate panel-level quantities (for fixture validation).
 """
 import numpy as np
+from ml_uvlm import _cnorm, _cmax
 from ml_uvlm import q1234_mat, aic_from_q1234
 from ml_fluidforce import MatlabFluidForce
 
@@ -20,7 +21,7 @@ def dt_q1234_mat(rc, P, dt_rc, dtP):
     pairs = [(0, 3), (1, 0), (2, 1), (3, 2)]
     Nt = rc.shape[0]
     Ns = P[0].shape[0]
-    out = np.zeros((Nt, Ns, 3))
+    out = np.zeros((Nt, Ns, 3), dtype=np.result_type(rc, dt_rc, P[0]))
     R = rc[:, None, :]; dR = dt_rc[:, None, :]
     for a, b in pairs:
         r1 = R - P[a][None]; r2 = R - P[b][None]
@@ -31,8 +32,8 @@ def dt_q1234_mat(rc, P, dt_rc, dtP):
         dcr = np.cross(d1, r2) + np.cross(r1, d2)
         term1 = (dcr / ncr2[..., None]
                  - 2.0 * cr * np.einsum('tsc,tsc->ts', dcr, cr)[..., None] / (ncr2**2)[..., None])
-        n1 = np.linalg.norm(r1, axis=-1)[..., None]
-        n2 = np.linalg.norm(r2, axis=-1)[..., None]
+        n1 = _cnorm(r1)[..., None]
+        n2 = _cnorm(r2)[..., None]
         u = r1 / n1 - r2 / n2
         cr_n2 = cr / ncr2[..., None]
         du = (d1 / n1 - r1 * np.einsum('tsc,tsc->ts', d1, r1)[..., None] / n1**3
@@ -85,7 +86,7 @@ class MatlabFluidStep:
         d13 = np.asarray(self.S31 @ dtq).reshape(-1, 3)
         d42 = np.asarray(self.S24 @ dtq).reshape(-1, 3)
         cr = np.cross(r13, r42)
-        nrm = np.linalg.norm(cr, axis=1, keepdims=True)
+        nrm = _cnorm(cr)[:, None]
         nv = cr / nrm
         dtc = (np.cross(d13, r42) + np.cross(r13, d42)) / nrm
         dtn = dtc - nv * np.sum(dtc * nv, axis=1, keepdims=True)
@@ -230,8 +231,8 @@ class MatlabFluidStep:
         t21 = bP[1] - bP[0]; t34 = bP[2] - bP[3]
         t14 = bP[0] - bP[3]; t23 = bP[1] - bP[2]
         tx = (t21 + t34) / 2; ty = (t14 + t23) / 2
-        dx = np.linalg.norm(tx, axis=1, keepdims=True)
-        dy = np.linalg.norm(ty, axis=1, keepdims=True)
+        dx = _cnorm(tx)[:, None]
+        dy = _cnorm(ty)[:, None]
         tx /= dx; ty /= dy
         Gm = Gamma.reshape(self.Nx, Ny)
         dxm = dx.reshape(self.Nx, Ny); dym = dy.reshape(self.Nx, Ny)
@@ -294,8 +295,8 @@ class MatlabFluidStep:
         t21 = bP[1] - bP[0]; t34 = bP[2] - bP[3]
         t14 = bP[0] - bP[3]; t23 = bP[1] - bP[2]
         tx = (t21 + t34) / 2; ty = (t14 + t23) / 2
-        dx = np.linalg.norm(tx, axis=1, keepdims=True)
-        dy = np.linalg.norm(ty, axis=1, keepdims=True)
+        dx = _cnorm(tx)[:, None]
+        dy = _cnorm(ty)[:, None]
         tx /= dx; ty /= dy
         Gm = Gamma.reshape(self.Nx, Ny)
         dxm = dx.reshape(self.Nx, Ny); dym = dy.reshape(self.Nx, Ny)

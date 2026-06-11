@@ -9,6 +9,18 @@ Segments: (1->4), (2->1), (3->2), (4->3) per the r11/r21 definitions.
 """
 import numpy as np
 
+def _cnorm(v, axis=-1):
+    """norm that stays analytic for complex-step (sqrt of plain square sum);
+    bit-identical to np.linalg.norm for real input."""
+    return np.sqrt(np.sum(v * v, axis=axis))
+
+
+def _cmax(a, b):
+    """maximum by real part (complex-step-safe; identical for real input)."""
+    return np.where(np.real(a) >= np.real(b), a, b)
+
+
+
 MEPS = np.finfo(float).eps   # MATLAB eps
 
 
@@ -23,25 +35,27 @@ def q1234_mat(rc, x1, x2, x3, x4, Length, Nx, r_eps, Ncore=2, eps_v=1e-9):
     # source-ring core radius (per ring): max segment length vs Length/Nx
     seglen = []
     for a, b in pairs:
-        seglen.append(np.linalg.norm((P[b] - P[a])[0], axis=-1))   # (Ns,)
-    max_r0 = np.maximum.reduce(seglen)
-    max_r0 = np.maximum(max_r0, Length / Nx)            # (Ns,)
+        seglen.append(_cnorm((P[b] - P[a])[0]))   # (Ns,)
+    max_r0 = seglen[0]
+    for _s in seglen[1:]:
+        max_r0 = _cmax(max_r0, _s)
+    max_r0 = _cmax(max_r0, Length / Nx)            # (Ns,)
     r_core = max_r0 * r_eps                              # (Ns,)
-    V = np.zeros((Nt, Ns, 3))
+    V = np.zeros((Nt, Ns, 3), dtype=np.result_type(rc, x1))
     for a, b in pairs:
         r1 = R - P[a]                                    # (Nt,Ns,3)
         r2 = R - P[b]
         r0 = r1 - r2                                     # = b - a... (x_b - x_a)
         cr = np.cross(r1, r2)
         ncr2 = np.einsum('tsc,tsc->ts', cr, cr)          # |r1xr2|^2
-        n1 = np.linalg.norm(r1, axis=-1)
-        n2 = np.linalg.norm(r2, axis=-1)
+        n1 = _cnorm(r1)
+        n2 = _cnorm(r2)
         dot = np.einsum('tsc,tsc->ts',
-                        r0, r1 / np.maximum(n1, MEPS)[..., None]
-                        - r2 / np.maximum(n2, MEPS)[..., None])
+                        r0, r1 / _cmax(n1, MEPS)[..., None]
+                        - r2 / _cmax(n2, MEPS)[..., None])
         q = cr / (ncr2 + eps_v)[..., None] * (dot / (4.0 * np.pi))[..., None]
         # vortex core factor
-        n0 = np.linalg.norm(r0, axis=-1)
+        n0 = _cnorm(r0)
         h = np.sqrt(ncr2) / n0                           # perpendicular distance
         Kv = h**2 / (h**(2 * Ncore) + r_core[None, :]**(2 * Ncore))**(1.0 / Ncore)
         V += Kv[..., None] * q

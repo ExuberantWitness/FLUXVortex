@@ -71,7 +71,7 @@ class MatlabFluidForce:
         """nodal: (Ne, ...) per-element nodal values -> (Ne, 3, ...) chordwise
         (prev, self, next) stencil with zero ends (MATLAB dp_nvec_i pattern)."""
         Ny = self.Ny
-        s = np.zeros((self.Ne, 3) + nodal.shape[1:])
+        s = np.zeros((self.Ne, 3) + nodal.shape[1:], dtype=nodal.dtype)
         s[:, 1] = nodal
         s[Ny:, 0] = nodal[:-Ny]
         s[:-Ny, 2] = nodal[Ny:]
@@ -84,10 +84,11 @@ class MatlabFluidForce:
         sc_l2 = self._stencil(np.einsum('ec,ed->ecd', n_vec_i, dp_lift2))       # (Ne,3,3,3) n⊗dp2
         sc_m0 = self._stencil(np.einsum('ec,ej->ecj', n_vec_i, Mf2_mat))        # (Ne,3,3,Ne)
         sc_m1 = self._stencil(np.einsum('ec,ej->ecj', n_vec_i, Mf1_mat))        # (Ne,3,3,Nq)
-        Qv = np.zeros(Nq)
-        M0 = np.zeros((Nq, Ne))
-        L2 = np.zeros((Nq, 3*Ne))
-        Mm = np.zeros((Nq, Nq))
+        _dt = np.result_type(dp_lift1, Mf2_mat, n_vec_i)
+        Qv = np.zeros(Nq, dtype=_dt)
+        M0 = np.zeros((Nq, Ne), dtype=_dt)
+        L2 = np.zeros((Nq, 3*Ne), dtype=_dt)
+        Mm = np.zeros((Nq, Nq), dtype=_dt)
         for e in range(Ne):
             scale = self.dL[e]*self.dW[e]/4.0
             # interp over chord per gauss-xi: weights pw (ng,3)
