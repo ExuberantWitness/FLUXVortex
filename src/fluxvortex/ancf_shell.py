@@ -698,6 +698,25 @@ class ANCFShell:
                     Qf[dofs] += w * (S.T @ F_body)
         return Qf
 
+    # ─── Prescribed (time-varying) boundary motion ───
+    def set_prescribed_motion(self, nodes_presc, callback):
+        """Drive boundary nodes kinematically: callback(t) -> (q_b, dq_b, ddq_b)
+        over the prescribed DOFs (9 per node, node-major order of
+        ``sorted(nodes_presc)``).
+
+        Implementation: the prescribed DOFs are eliminated like static BCs;
+        elastic coupling into free DOFs flows exactly through Qe(q_full); the
+        inertial coupling is added to the RHS as -M[free, presc] @ ddq_b(t).
+        ``step_newmark`` must then be called with its ``t_end`` argument.
+        With ``callback=None`` semantics are identical to ``set_bc``.
+        """
+        nodes = sorted(int(n) for n in nodes_presc)
+        self.set_bc(nodes, fix_slopes=True)
+        self._presc_dofs = np.array([9 * n + d for n in nodes
+                                     for d in range(9)], dtype=np.int64)
+        self._presc_cb = callback
+        self._M_fp = None  # lazy: M[free, presc] (depends on final BC set)
+
     def set_added_mass_matrix(self, M_added):
         """Set the fluid added-mass matrix (Mf1 contribution).
 
@@ -707,7 +726,8 @@ class ANCFShell:
         self._M_added = M_added
 
     # ─── Implicit Newmark-beta time step ───
-    def step_newmark(self, F_ext, dt, alpha_v=0.5, newton_tol=1e-8, max_newton=20):
+    def step_newmark(self, F_ext, dt, alpha_v=0.5, newton_tol=1e-8, max_newton=20,
+                     t_end=None):
         """One implicit Newmark-beta step (trapezoidal rule when alpha_v=0.5).
 
         Following MATLAB reference: new_X_func_FAST.m + solve_structure.m
@@ -724,6 +744,19 @@ class ANCFShell:
 
         q_n = self.q.copy()
         dq_n = self.dq.copy()
+
+        # Prescribed boundary motion: inertial coupling enters the RHS as
+        # -M[free, presc] @ ddq_b(t_end); elastic coupling flows through
+        # Qe(q_full) below (q_p1 / final state carry the new boundary values).
+        _presc = getattr(self, '_presc_cb', None)
+        _qb = _dqb = None
+        if _presc is not None and t_end is not None:
+            _qb, _dqb, _ddqb = _presc(t_end)
+            pd = self._presc_dofs
+            if self._M_fp is None:
+                self._M_fp = self.M[np.ix_(free, pd)].tocsc()
+            F_ext = F_ext.copy()
+            F_ext[free] -= self._M_fp @ np.asarray(_ddqb, dtype=float)
 
         # Stage 0: separate membrane and bending forces
         Q_mem_n, Q_bend_n = self._internal_forces_separated(q_n)
@@ -771,6 +804,8 @@ class ANCFShell:
         # MATLAB corrector: Qe = Q_mem_n + (Q_bend_n + Q_bend_np1)/2
         q_p1 = q_n.copy()
         q_p1[free] = X_p1_free[:nf]
+        if _qb is not None:
+            q_p1[self._presc_dofs] = _qb   # boundary at end-of-step for averaging
         _, Q_bend_p1 = self._internal_forces_separated(q_p1)
 
         # MATLAB: Q_global = Qf - (Q_mem_n + (Q_bend_n + Q_bend_np1)/2)
@@ -783,6 +818,9 @@ class ANCFShell:
 
         self.q[free] = X_new_free[:nf]
         self.dq[free] = X_new_free[nf:]
+        if _qb is not None:
+            self.q[self._presc_dofs] = _qb
+            self.dq[self._presc_dofs] = _dqb
 
     # ─── Time stepping (Velocity-Verlet explicit) ───
     def step(self, F_ext, dt, n_sub=1):
