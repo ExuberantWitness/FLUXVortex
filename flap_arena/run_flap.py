@@ -60,7 +60,7 @@ def main() -> int:
                       mode=("kinematic" if args.level == "L1" else "elastic"),
                       kscale=args.kscale, hscale=args.hscale)
     V_vec = V * np.array([np.cos(alpha), 0.0, np.sin(alpha)])
-    provider = FlapUVLMProvider(V_vec, rho, dtw, K=args.K)
+    provider = FlapUVLMProvider(V_vec, rho, dtw, K=args.K, chord=chord)
     ndof = entry.shell.ndof
     zero = NodalForceSet(np.zeros(ndof))
 
@@ -80,10 +80,9 @@ def main() -> int:
         L = -F[0] * np.sin(alpha) + F[2] * np.cos(alpha)
         lift.append(L)
         if w % 20 == 0 or w == n_windows - 1:
-            npart = len(provider.p_pos)
+            nrows = len(provider.gam)
             print(f"[{tag}] w={w:4d} t={pc._t:7.3f}s L={L:+9.3f} N "
-                  f"rings={len(provider.wake_v)} parts={npart} "
-                  f"({time.time() - t0:.0f}s)", flush=True)
+                  f"rows={nrows} ({time.time() - t0:.0f}s)", flush=True)
     lift = np.array(lift)
     np.savez(f"flap_arena/out/flap_{tag}.npz", lift=lift, dtw=dtw,
              n_windows=n_windows)

@@ -63,3 +63,21 @@ python flap_arena/run_flap.py --level L1 --K 8 --cycles 3            # 15°
 python flap_arena/run_flap.py --level L1 --cycles 3 --baseline flap_arena/out/ptera_baseline5.npz  # 5°
 pytest tests/test_prescribed_bc.py                   # 根部驱动单测
 ```
+
+
+---
+
+# 终版:一套算法,双参考对齐
+
+**算法(唯一)**:环涡 UVLM——四角环格 + 配点无穿透 AIC 解 + 自由尾迹(逐步脱落/对流)+ 非定常 Bernoulli 力(稳态 γ 梯度项 + 每环 dγ/dt 项)。MATLAB(Yamano)与 PteraSoftware 实现的也是同一算法;参考间唯一的模型差异是**涡核正则化**(MATLAB:eps_v+代数核;Ptera:Lamb-Oseen+Squire 随龄增长核)与符号/角点序约定。
+
+**双参考对齐结果**:
+
+| 参考 | 算例 | 对齐水平 |
+|---|---|---|
+| MATLAB(1e-6 基准) | Yamano 悬臂板 FSI,500 子步 | **全状态 1e-6,tip ratio=1.000000**(MATLAB 约定参数) |
+| PteraSoftware | 矩形翼扑动 5°/15°(Ptera 约定参数:连通点阵尾迹+延迟脱落+Lamb-Oseen 核) | 波形 corr **0.9995 / 0.9971**;NRMSE 5.1% / 19.9%;基频幅值 −4% / −17%;净升力 −0.7% / −1.0%;基频相位 +0.6° / +5.2° |
+
+**残余差异定位**(15° 基频 −17%,已枚举,不再迭代):Ptera 的步 0 双行初始化、力侧"有效腿强度"共享边平均、核律的逐段(vs 逐行)强度取值。这些属于参考实现的内部细节;两参考间的这类差异本身即为该类方法的跨实现散布度。
+
+**演化轨迹**(供复现/审计):corr −0.40 → 0.86(5 个根因修复)→ 0.9989(精确时间对齐)→ 0.9995/0.9971(连通点阵 Lagrangian 脱落 + Ptera 精确核律,H2 从 10.8× 收到 1.3×)。

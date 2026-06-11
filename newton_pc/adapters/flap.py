@@ -158,35 +158,52 @@ class FlapEntry:
 
 
 
-# ── physical-convention ring kernel (validated vs PteraSoftware steady) ───
-def _seg_vel(p, a, b, core=0.0):
-    """Biot-Savart segment a->b at p, unit circulation, PHYSICAL sign.
+# ── Ptera-exact ring kernel ────────────────────────────────────────────
+# Biot-Savart with PteraSoftware's exact regularization (source-verified):
+#   r_c^2 = r_c0^2 + 4*1.25643*(nu + 1e-4*|Gamma|)*age   (Lamb-Oseen + Squire)
+#   v += (G/4pi)*(r1+r2)*(r1*r2 - r1.r2)/(r1*r2*(|r1xr2|^2 + |seg|^2*r_c^2)) * r1xr2
+_LAMB4 = 4.0 * 1.25643
+_SQUIRE = 1.0e-4
 
-    ``core`` is a finite vortex-core radius (meters): the perpendicular
-    distance h is regularized to sqrt(h^2 + core^2) via the denominator
-    |r1 x r2|^2 + (core*|b-a|)^2. Coincident points contribute zero.
-    """
-    r1 = p - a; r2 = p - b
+
+def _seg_vel_pt(p, a, b, rc_sq):
+    """Ptera-form segment velocity, unit circulation; rc_sq broadcast (S,)."""
+    r1 = p - a
+    r2 = p - b
     cr = np.cross(r1, r2)
-    d = np.einsum('...c,...c->...', cr, cr)
+    r3sq = np.einsum('...c,...c->...', cr, cr)
     seg2 = np.einsum('...c,...c->...', b - a, b - a)
-    n1 = np.maximum(np.linalg.norm(r1, axis=-1), 1e-12)
-    n2 = np.maximum(np.linalg.norm(r2, axis=-1), 1e-12)
-    dot = np.einsum('...c,...c->...', b - a, r1 / n1[..., None] - r2 / n2[..., None])
-    den = d + (core * core) * seg2 + 1e-12
-    coef = np.where(d > 1e-12, dot / (4.0 * np.pi * den), 0.0)
+    n1 = np.linalg.norm(r1, axis=-1)
+    n2 = np.linalg.norm(r2, axis=-1)
+    c3 = np.einsum('...c,...c->...', r1, r2)
+    n1n2 = np.maximum(n1 * n2, 1e-30)
+    den = n1n2 * (r3sq + seg2 * rc_sq)
+    coef = np.where((r3sq > (1e-10 * n1n2) ** 2) & (n1 > 1e-12) & (n2 > 1e-12),
+                    (n1 + n2) * (n1n2 - c3) / (4.0 * np.pi * np.maximum(den, 1e-30)),
+                    0.0)
     return cr * coef[..., None]
 
 
-def _rings_vel(targets, c0, c1, c2, c3, gamma=None, core=0.0):
-    """Velocity at targets (T,3) from rings with corners (S,3) x4, physical.
-    Returns (T,S,3) unit-ring velocities, or (T,3) if gamma (S,) given."""
+def _rings_vel(targets, c0, c1, c2, c3, gamma=None, rc_sq=0.0):
+    """Velocity at targets (T,3) from rings (S,3)x4; rc_sq scalar or (S,)."""
     T = targets[:, None, :]
-    v = (_seg_vel(T, c0[None], c1[None], core) + _seg_vel(T, c1[None], c2[None], core)
-         + _seg_vel(T, c2[None], c3[None], core) + _seg_vel(T, c3[None], c0[None], core))
+    rc = np.broadcast_to(np.atleast_1d(rc_sq), (c0.shape[0],))[None, :]
+    v = (_seg_vel_pt(T, c0[None], c1[None], rc) + _seg_vel_pt(T, c1[None], c2[None], rc)
+         + _seg_vel_pt(T, c2[None], c3[None], rc) + _seg_vel_pt(T, c3[None], c0[None], rc))
     if gamma is None:
         return v
     return np.einsum('tsc,s->tc', v, gamma)
+
+
+FIXED_WAKE_CORE = None   # set to a float (e.g. 0.12) to override the growth law
+
+
+def _wake_rc_sq(rc0, gam_rows, ages, nu):
+    """Per-row core radius squared via Ptera's growth law (or fixed override)."""
+    if FIXED_WAKE_CORE is not None:
+        return np.full(len(gam_rows), FIXED_WAKE_CORE ** 2)
+    return np.array([rc0 ** 2 + _LAMB4 * (nu + _SQUIRE * np.abs(g).mean()) * a
+                     for g, a in zip(gam_rows, ages)])
 
 
 # ── hybrid-wake UVLM provider ────────────────────────────────────────────
@@ -203,72 +220,80 @@ def _particle_induce(targets, pos, alpha, sigma):
 
 
 class FlapUVLMProvider:
-    """ForceProvider: free ring wake (newest K rows) + far-field particles."""
+    """ForceProvider: Ptera-exact connected-lattice free wake.
 
-    def __init__(self, V_inf_vec, rho, dt_window, K=8, sigma_factor=1.0,
-                 max_particles=20000, core=0.12):
+    Wake = point grid pts (R+1, ns+1, 3) shared between adjacent rings
+    (Lagrangian sheet, exactly PteraSoftware's gridWrvp): the newest front row
+    is the wing's TE ring back vertices at the CURRENT time, so TE motion
+    never opens gaps. Ring (i,j) corners = pts[i,j], pts[i,j+1], pts[i+1,j+1],
+    pts[i+1,j]; row circulations gam (R, ns); row ages for the Lamb-Oseen +
+    Squire core growth (r_c0 = 0.03 * mean chord, Ptera's default).
+    """
+
+    def __init__(self, V_inf_vec, rho, dt_window, K=130, nu=15.06e-6,
+                 chord=1.5):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
         self.dtw = dt_window
         self.K = K
-        self.sigma = sigma_factor * np.linalg.norm(self.V_inf) * dt_window
-        self.core = core    # finite wake vortex core (m), ~panel/5
-        self.max_particles = max_particles
-        # persistent wake state (committed)
-        self.wake_v: list = []      # ring corner arrays (ns,4,3)
-        self.wake_g: list = []      # ring circulations (ns,)
-        self.gamma_prev = None      # bound gamma of last accepted solve
-        self.gamma_pprev = None
-        self.p_pos = np.zeros((0, 3))
-        self.p_alpha = np.zeros((0, 3))
-        self._gb_prev = None     # cumulative bound circulation of last commit
+        self.nu = nu
+        self.rc0 = 0.03 * chord
+        # committed wake state
+        self.pts = None             # (R+1, ns+1, 3)
+        self.gam = []               # list of (ns,) rows, newest first
+        self.ages = []              # list of floats, newest first
+        self.gamma_prev = None
+        self._gb_prev = None
         self.n_solves = 0
 
     # ------------------------------------------------------------------
-    def _trial(self, state: dict) -> dict:
-        """Repeatable physical-convention solve at `state` (no commit).
+    def _wake_rings(self):
+        if self.pts is None or len(self.gam) == 0:
+            return None
+        p = self.pts
+        c0 = p[:-1, :-1].reshape(-1, 3)
+        c1 = p[:-1, 1:].reshape(-1, 3)
+        c2 = p[1:, 1:].reshape(-1, 3)
+        c3 = p[1:, :-1].reshape(-1, 3)
+        gam = np.concatenate(self.gam)
+        ns = p.shape[1] - 1
+        rc_row = _wake_rc_sq(self.rc0, self.gam, self.ages, self.nu)
+        rc = np.repeat(rc_row, ns)
+        return c0, c1, c2, c3, gam, rc
 
-        Standard unsteady ring-VLM (Katz & Plotkin): rings at quarter-panel
-        offset, collocation at 3/4 panel; free ring wake + far-field
-        particles; pressure = rho*(V_loc . tau)*dGamma/ds + rho*d(Gamma_b)/dt.
-        Validated: steady limit matches PteraSoftware exactly (37.6 N arena).
-        """
-        verts, vels = state["verts"], state["vels"]   # (nc+1, ns+1, 3)
+    def _trial(self, state: dict) -> dict:
+        verts, vels = state["verts"], state["vels"]
         nc, ns = verts.shape[0] - 1, verts.shape[1] - 1
         P = nc * ns
-        # panel ring corners (quarter-panel offset along chord index)
+        # bound ring corners at quarter-panel offset
         vq = verts + 0.25 * (np.roll(verts, -1, axis=0) - verts)
-        vq[-1] = verts[-1] + 0.25 * (verts[-1] - verts[-2])  # extrapolate TE row
+        vq[-1] = verts[-1] + 0.25 * (verts[-1] - verts[-2])
         c0 = vq[:-1, :-1].reshape(P, 3); c1 = vq[:-1, 1:].reshape(P, 3)
         c2 = vq[1:, 1:].reshape(P, 3);  c3 = vq[1:, :-1].reshape(P, 3)
-        # collocation at 3/4 panel, panel normal/area from corners
         vc = verts + 0.75 * (np.roll(verts, -1, axis=0) - verts)
-        rc = 0.25 * (vc[:-1, :-1] + vc[:-1, 1:] + vc[1:, 1:] + vc[1:, :-1])
-        rc = rc.reshape(P, 3)
+        rc_pt = 0.25 * (vc[:-1, :-1] + vc[:-1, 1:] + vc[1:, 1:] + vc[1:, :-1])
+        rc_pt = rc_pt.reshape(P, 3)
         d1 = (verts[1:, 1:] - verts[:-1, :-1]).reshape(P, 3)
         d2 = (verts[:-1, 1:] - verts[1:, :-1]).reshape(P, 3)
-        cr = np.cross(d1, d2)
-        area = 0.5 * np.linalg.norm(cr, axis=1)
-        nrm = cr / (np.linalg.norm(cr, axis=1, keepdims=True) + 1e-30)
-        # structural velocity at colloc (corner average)
-        vvel = 0.25 * (vels[:-1, :-1] + vels[:-1, 1:]
-                       + vels[1:, 1:] + vels[1:, :-1]).reshape(P, 3)
-        # external induction at colloc: committed wake rings + particles
+        crn = np.cross(d1, d2)
+        area = 0.5 * np.linalg.norm(crn, axis=1)
+        nrm = crn / (np.linalg.norm(crn, axis=1, keepdims=True) + 1e-30)
+        vv = state["vels"]
+        vvel = 0.25 * (vv[:-1, :-1] + vv[:-1, 1:]
+                       + vv[1:, 1:] + vv[1:, :-1]).reshape(P, 3)
+        # wake induction at colloc (Ptera core law)
         V_ext = np.zeros((P, 3))
-        for wv, wg in zip(self.wake_v, self.wake_g):
-            V_ext += _rings_vel(rc, wv[:, 0], wv[:, 1], wv[:, 2], wv[:, 3], wg,
-                                core=self.core)
-        V_ext += self._particles_at(rc)
-        # AIC + solve (physical no-penetration)
-        Vq = _rings_vel(rc, c0, c1, c2, c3)            # (P,P,3) unit rings
+        wr = self._wake_rings()
+        if wr is not None:
+            w0, w1, w2, w3, wg, wrc = wr
+            V_ext += np.einsum('tsc,s->tc',
+                               _seg_grouped(rc_pt, w0, w1, w2, w3, wrc), wg)
+        # solve (bound rings regularized with rc0^2, age 0)
+        Vq = _rings_vel(rc_pt, c0, c1, c2, c3, rc_sq=self.rc0 ** 2)
         A = np.einsum('tsc,tc->ts', Vq, nrm)
         rhs = -np.einsum('tc,tc->t', self.V_inf[None, :] + V_ext - vvel, nrm)
         gamma = np.linalg.solve(A, rhs).reshape(nc, ns)
-        # forces: steady + unsteady Bernoulli (Katz-Plotkin 13.12)
-        # Katz-Plotkin reference velocity: freestream + wake/particles -
-        # structure motion. The bound sheet's own contribution is carried by
-        # the gamma-gradient terms; including bound self-induction here
-        # double-counts it (blows up under large flapping gamma swings).
+        # forces (validated composition; V_loc excludes bound self-induction)
         V_loc = self.V_inf[None, :] + V_ext - vvel
         tau_c = (0.5 * (verts[1:, 1:] + verts[1:, :-1])
                  - 0.5 * (verts[:-1, 1:] + verts[:-1, :-1])).reshape(P, 3)
@@ -279,45 +304,38 @@ class FlapUVLMProvider:
         g2 = gamma
         dgc = np.vstack([g2[:1], np.diff(g2, axis=0)]) / dc.reshape(nc, ns)
         dgs = np.hstack([g2[:, :1], np.diff(g2, axis=1)]) / ds_.reshape(nc, ns)
-        # unsteady Bernoulli: ring vortex == constant-doublet panel, so the
-        # potential jump on panel ij is gamma_ij ITSELF (not the chordwise
-        # cumulative). CCW ring ordering w.r.t. +n flips the sign (same
-        # convention note as PteraSoftware issue #27).
         gb = g2
         gb_prev = self._gb_prev if self._gb_prev is not None else gb
         dgb_dt = (gb - gb_prev) / self.dtw
         dp = self.rho * (np.einsum('tc,tc->t', V_loc, tch).reshape(nc, ns) * dgc
                          + np.einsum('tc,tc->t', V_loc, tsh).reshape(nc, ns) * dgs
                          + dgb_dt)
-        f_panel = dp.reshape(P)[:, None] * area[:, None] * nrm
-        f_panel = f_panel.reshape(nc, ns, 3)
-        # wake bookkeeping for commit: advect committed wake, shed new TE row
-        wake_v_new = []
-        for wv in self.wake_v:
-            pts = wv.reshape(-1, 3)
+        f_panel = (dp.reshape(P)[:, None] * area[:, None] * nrm).reshape(nc, ns, 3)
+        # ---- wake evolution (Ptera order): convect grid, then prepend TE row
+        te_back = np.vstack([c3[(nc - 1) * ns:],
+                             c2[(nc - 1) * ns + ns - 1][None, :]])  # (ns+1,3)
+        # shed strength: the departing bound TE ring carries its strength from
+        # the PREVIOUS accepted solve (Ptera/classic delayed-Kutta timing)
+        shed_gam = (self.gamma_prev[nc - 1].copy()
+                    if self.gamma_prev is not None else gamma[nc - 1].copy())
+        if self.pts is None:
+            new_pts = np.stack([te_back, te_back + self.V_inf * self.dtw])
+            new_gam = [shed_gam]
+            new_ages = [0.0]
+        else:
+            pts_flat = self.pts.reshape(-1, 3)
             Vp = (self.V_inf[None, :]
-                  + _rings_vel(pts, c0, c1, c2, c3, gamma.reshape(-1),
-                               core=self.core))
-            for wv2, wg2 in zip(self.wake_v, self.wake_g):
-                Vp += _rings_vel(pts, wv2[:, 0], wv2[:, 1], wv2[:, 2],
-                                 wv2[:, 3], wg2, core=self.core)
-            wake_v_new.append((pts + Vp * self.dtw).reshape(wv.shape))
-        # new TE row: front edge pinned at current TE ring back edge
-        te0 = c3[(nc - 1) * ns:].copy(); te1 = c2[(nc - 1) * ns:].copy()
-        back0 = te0 + self.V_inf * self.dtw
-        back1 = te1 + self.V_inf * self.dtw
-        new_row = np.stack([te0, te1, back1, back0], axis=1)   # (ns,4,3)
-        new_gam = gamma[nc - 1].copy()
+                  + _rings_vel(pts_flat, c0, c1, c2, c3, gamma.reshape(-1),
+                               rc_sq=self.rc0 ** 2))
+            if wr is not None:
+                Vp += np.einsum('tsc,s->tc',
+                                _seg_grouped(pts_flat, w0, w1, w2, w3, wrc), wg)
+            moved = (pts_flat + Vp * self.dtw).reshape(self.pts.shape)
+            new_pts = np.vstack([te_back[None], moved])
+            new_gam = [shed_gam] + [g.copy() for g in self.gam]
+            new_ages = [0.0] + [a + self.dtw for a in self.ages]
         return dict(f_panel=f_panel, gamma=gamma, gb=gb,
-                    wake_v_new=[new_row] + wake_v_new,
-                    wake_g_new=[new_gam] + [g.copy() for g in self.wake_g])
-
-    def _particles_at(self, targets: np.ndarray) -> np.ndarray:
-        if len(self.p_pos) == 0:
-            return np.zeros_like(targets)
-        sig = np.full(len(self.p_pos), self.sigma)
-        contrib = _particle_induce(targets, self.p_pos, self.p_alpha, sig)
-        return contrib.sum(axis=1)
+                    new_pts=new_pts, new_gam=new_gam, new_ages=new_ages)
 
     # protocol -----------------------------------------------------------
     def solve(self, state: dict) -> NodalForceSet:
@@ -325,14 +343,12 @@ class FlapUVLMProvider:
         self.n_solves += 1
         panel_f = out["f_panel"]
         nc, ns = panel_f.shape[0], panel_f.shape[1]
-        # lump quarter of each panel force to its 4 corner nodes (grid (nc+1,ns+1))
         fgrid = np.zeros((nc + 1, ns + 1, 3))
         quarter = 0.25 * panel_f
         fgrid[:-1, :-1] += quarter
         fgrid[1:, :-1] += quarter
         fgrid[:-1, 1:] += quarter
         fgrid[1:, 1:] += quarter
-        # map to shell DOF vector (node layout j-outer, position DOFs)
         ndof = 9 * (nc + 1) * (ns + 1)
         f = np.zeros(ndof)
         f9 = f.reshape(-1, 9)
@@ -343,33 +359,21 @@ class FlapUVLMProvider:
         out = forces.payload
         if out is None:
             return
-        self.gamma_pprev = self.gamma_prev
         self.gamma_prev = out["gamma"].copy()
         self._gb_prev = out["gb"].copy()
-        wv, wg = list(out["wake_v_new"]), list(out["wake_g_new"])
-        while len(wv) > self.K:
-            ring_v, ring_g = wv.pop(), wg.pop()    # oldest = last
-            self._rings_to_particles(ring_v, ring_g)
-        self.wake_v, self.wake_g = wv, wg
-        if len(self.p_pos):
-            self.p_pos = self.p_pos + self.V_inf * self.dtw
-            if len(self.p_pos) > self.max_particles:
-                drop = len(self.p_pos) - self.max_particles
-                self.p_pos = self.p_pos[drop:]
-                self.p_alpha = self.p_alpha[drop:]
+        pts, gam, ages = out["new_pts"], out["new_gam"], out["new_ages"]
+        if len(gam) > self.K:                  # truncate oldest rows
+            gam = gam[:self.K]
+            ages = ages[:self.K]
+            pts = pts[:self.K + 1]
+        self.pts, self.gam, self.ages = pts, list(gam), list(ages)
 
-    def _rings_to_particles(self, ring_v: np.ndarray, ring_g: np.ndarray):
-        """4 segment-particles per ring: alpha = Gamma * (p2 - p1) at midpoint."""
-        segs = [(0, 1), (1, 2), (2, 3), (3, 0)]
-        pos, alpha = [], []
-        for js in range(ring_v.shape[0]):
-            g = ring_g[js]
-            if abs(g) < 1e-14:
-                continue
-            c = ring_v[js]
-            for a, b in segs:
-                pos.append(0.5 * (c[a] + c[b]))
-                alpha.append(g * (c[b] - c[a]))
-        if pos:
-            self.p_pos = np.vstack([self.p_pos, np.array(pos)])
-            self.p_alpha = np.vstack([self.p_alpha, np.array(alpha)])
+
+def _seg_grouped(targets, c0, c1, c2, c3, rc_sq):
+    """Ring velocities with PER-RING rc_sq array; returns (T,S,3) unit rings."""
+    T = targets[:, None, :]
+    rc = rc_sq[None, :]
+    return (_seg_vel_pt(T, c0[None], c1[None], rc)
+            + _seg_vel_pt(T, c1[None], c2[None], rc)
+            + _seg_vel_pt(T, c2[None], c3[None], rc)
+            + _seg_vel_pt(T, c3[None], c0[None], rc))
