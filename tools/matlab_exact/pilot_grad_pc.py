@@ -39,6 +39,9 @@ SUBSHED = int(args[args.index('--subshed') + 1]) if '--subshed' in args else 1
 MSCALE = float(args[args.index('--mscale') + 1]) if '--mscale' in args else 1.0
 PICARD = int(args[args.index('--picard') + 1]) if '--picard' in args else 1
 JVP = args[args.index('--jvp') + 1] if '--jvp' in args else 'march'
+ACCEL = args[args.index('--accel') + 1] if '--accel' in args else 'none'
+CONVTEST = int(args[args.index('--convtest') + 1]) if '--convtest' in args else 0
+AITERS = int(args[args.index('--aiters') + 1]) if '--aiters' in args else 3
 DENSE_N = int(MODE[5:]) if MODE.startswith('dense') else 0
 
 F3 = 'FSI_by_FEM_and_UVLM/single_sheet/fixtures_traj/fixture_step3_t0.3000.mat'
@@ -375,7 +378,104 @@ def run():
                 seg = steps[si:si + DENSE_N]
                 Xs = march(Xs, seg, tf, F_new, ctx_lin)
             dense_samples.append(Aero.from_out(frozen_force(Xs, wake_new, Gp))); n_fluid += 1
-        for pic in range(n_pic):
+        if CONVTEST and b == boundaries[CONVTEST] and len(steps) > 1:
+            # ---- single-window residual-convergence test (clean solver metric) ----
+            def Hmap(Xp_):
+                o = ms.solve_chain(Xp_, wake, Gp, Gp2, first_wake=(iw == 1))
+                Fn = Aero.from_out(o)
+                cx = dict(mode='linear', Fk=F_cur, Fk1=Fn, Fkm1=None, dFk=None, dFk1=None)
+                return march(X, steps[:-1], tf, Fn, cx)
+            import numpy.linalg as la
+            nX = la.norm(Xf)
+            print(f"== CONVTEST window b={b} t*={b*d_t:.3f} M*={MSCALE} ==", flush=True)
+            # Picard
+            Xp = Xf.copy()
+            for i in range(6):
+                Xn = Hmap(Xp); r = la.norm(Xn - Xp) / nX
+                print(f"  picard   it{i+1}: res={r:.3e}", flush=True)
+                Xp = Xn
+            # Anderson(1D Aitken) with damping beta=0.5
+            Xp = Xf.copy(); hx, hg = [], []
+            for i in range(6):
+                Xn = Hmap(Xp); g = Xn - Xp; r = la.norm(g) / nX
+                print(f"  anderson it{i+1}: res={r:.3e}", flush=True)
+                hx.append(Xp.copy()); hg.append(g.copy())
+                if len(hg) >= 2:
+                    dG = hg[-1] - hg[-2]; den = float(dG @ dG)
+                    th = float(dG @ hg[-1]) / den if den > 0 else 0.0
+                    Xp = (1 - th) * (Xp + g) + th * (hx[-2] + hg[-2])
+                else:
+                    Xp = Xn
+            # Newton-GMRES (FD-JVP), 3 outer x (1 res + 3 JVP)
+            from scipy.sparse.linalg import LinearOperator, gmres
+            Xp = Xf.copy()
+            for i in range(3):
+                Xn = Hmap(Xp); R0 = Xn - Xp; r = la.norm(R0) / nX
+                print(f"  newton   it{i+1}: res={r:.3e}", flush=True)
+                eps = 1e-7 * (la.norm(Xp) + 1.0)
+                def mv(v, _Xp=Xp, _Xn=Xn, _eps=eps):
+                    nv_ = la.norm(v)
+                    if nv_ == 0: return v
+                    Hv = (Hmap(_Xp + (_eps / nv_) * v) - _Xn) * (nv_ / _eps)
+                    return v - Hv
+                A = LinearOperator((len(Xp), len(Xp)), matvec=mv)
+                dx, _ = gmres(A, R0, rtol=1e-2, maxiter=3, restart=3)
+                Xp = Xp + dx
+            Xn = Hmap(Xp)
+            print(f"  newton   final: res={la.norm(Xn - Xp) / nX:.3e}", flush=True)
+            import sys as _s; _s.exit(0)
+        if ACCEL != 'none' and prev_b is not None and len(steps) > 1:
+            # ---- window fixed point X_pre* = H(X_pre*), H = fluid solve + corrector re-march ----
+            def Hmap(Xp):
+                o = ms.solve_chain(Xp, wake, Gp, Gp2, first_wake=(iw == 1))
+                Fn = Aero.from_out(o)
+                cx = dict(mode='linear', Fk=F_cur, Fk1=Fn, Fkm1=None, dFk=None, dFk1=None)
+                Xn = march(X, steps[:-1], tf, Fn, cx)
+                return Xn, o, Fn, cx
+            Xp = Xf.copy()
+            if ACCEL == 'anderson':
+                # Anderson(m=2) on the window map
+                hist_x, hist_g = [], []
+                for it_a in range(AITERS):
+                    Xn, out, F_new, ctx_c = Hmap(Xp); n_fluid += 1
+                    g = Xn - Xp
+                    hist_x.append(Xp.copy()); hist_g.append(g.copy())
+                    if len(hist_g) >= 2:
+                        dG = hist_g[-1] - hist_g[-2]
+                        denom = float(dG @ dG)
+                        th = float(dG @ hist_g[-1]) / denom if denom > 0 else 0.0
+                        Xp = (1 - th) * (Xp + g) + th * (hist_x[-2] + hist_g[-2])
+                    else:
+                        Xp = Xn
+            elif ACCEL == 'newton':
+                # Newton-Krylov (FD-JVP, GMRES k small) on R(Xp)=H(Xp)-Xp
+                from scipy.sparse.linalg import LinearOperator, gmres
+                for it_n in range(AITERS):
+                    Xn, out, F_new, ctx_c = Hmap(Xp); n_fluid += 1
+                    R = Xn - Xp
+                    rn = np.linalg.norm(R) / (np.linalg.norm(Xp) + 1e-30)
+                    if rn < 1e-9:
+                        break
+                    eps = 1e-7 * (np.linalg.norm(Xp) + 1.0)
+                    def mv(v, _Xp=Xp, _R=R, _eps=eps):
+                        nv_ = np.linalg.norm(v)
+                        if nv_ == 0:
+                            return v
+                        Xv, _, _, _ = Hmap(_Xp + (_eps / nv_) * v)
+                        Hv = (Xv - (_Xp + _R)) * (nv_ / _eps)   # H'(Xp)·v approx
+                        return v - Hv                            # (I - H')v
+                    A = LinearOperator((len(Xp), len(Xp)), matvec=lambda v: mv(v))
+                    dx, _ = gmres(A, R, rtol=1e-2, maxiter=3, restart=3)
+                    n_fluid += 3
+                    Xp = Xp + dx
+            # FINAL evaluation at the accelerated X_pre (without this the
+            # accelerated iterate's force never reaches the corrector!)
+            _, out, F_new, ctx_c = Hmap(Xp); n_fluid += 1
+            wake_new = out['wake']
+            Xc = march(X, steps, tf, F_new, ctx_c)
+            _pen_c = [march(X, steps[:-1], tf, F_new, ctx_c)] if len(steps) > 1 else []
+        else:
+          for pic in range(n_pic):
             _pen_c = []
             Xc = march(X, steps, tf, F_new, ctx_c, dense_samples=dense_samples, pen_out=_pen_c)
             if pic < n_pic - 1:
@@ -394,10 +494,10 @@ def run():
         tf = b * d_t
         prev_b = b
         rows.append((b, b * d_t, X[zdof], n_fluid))
-        print(f"[{MODE} bs={BLOCK_STEPS} ss={SUBSHED} m={MSCALE} pic={PICARD}] "
+        print(f"[{MODE} bs={BLOCK_STEPS} ss={SUBSHED} m={MSCALE} pic={PICARD} acc={ACCEL}] "
               f"b={b:4d} t*={b*d_t:.3f} tip={X[zdof]:+.6e} fluids={n_fluid} "
               f"({tmod.time()-t0:.0f}s)", flush=True)
-    tag = f"{MODE}_bs{BLOCK_STEPS}_ss{SUBSHED}_m{MSCALE}_p{PICARD}"
+    tag = f"{MODE}_bs{BLOCK_STEPS}_ss{SUBSHED}_m{MSCALE}_p{PICARD}_a{ACCEL}"
     np.save(f'/tmp/pilot_{tag}.npy', np.array(rows))
 
 
