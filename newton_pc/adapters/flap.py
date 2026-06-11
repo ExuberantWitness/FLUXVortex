@@ -230,21 +230,38 @@ class FlapUVLMProvider:
     Squire core growth (r_c0 = 0.03 * mean chord, Ptera's default).
     """
 
-    def __init__(self, V_inf_vec, rho, dt_window, K=130, nu=15.06e-6,
-                 chord=1.5):
+    def __init__(self, V_inf_vec, rho, dt_window, K=8, nu=15.06e-6,
+                 chord=1.5, particles=True, max_particles=60000):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
         self.dtw = dt_window
         self.K = K
         self.nu = nu
         self.rc0 = 0.03 * chord
+        self.particles = particles
+        self.max_particles = max_particles
         # committed wake state
-        self.pts = None             # (R+1, ns+1, 3)
+        self.pts = None             # (R+1, ns+1, 3) near-field ring lattice
         self.gam = []               # list of (ns,) rows, newest first
         self.ages = []              # list of floats, newest first
+        # far-field vortex particles (FLUXVortex hybrid)
+        self.p_pos = np.zeros((0, 3))
+        self.p_alpha = np.zeros((0, 3))
+        self.p_sigma = np.zeros(0)
         self.gamma_prev = None
         self._gb_prev = None
         self.n_solves = 0
+
+    def _particles_at(self, targets):
+        """Gaussian-kernel particle induction (far field), vectorized."""
+        if len(self.p_pos) == 0:
+            return np.zeros_like(targets)
+        r = targets[:, None, :] - self.p_pos[None, :, :]
+        d = np.linalg.norm(r, axis=-1) + 1e-30
+        rho_ = d / self.p_sigma[None, :]
+        g = rho_ ** 3 / (rho_ ** 2 + 1.0) ** 1.5
+        cross = np.cross(self.p_alpha[None, :, :], r)
+        return (g / (4.0 * np.pi * d ** 3))[..., None].__mul__(cross).sum(axis=1)
 
     # ------------------------------------------------------------------
     def _wake_rings(self):
@@ -288,6 +305,7 @@ class FlapUVLMProvider:
             w0, w1, w2, w3, wg, wrc = wr
             V_ext += np.einsum('tsc,s->tc',
                                _seg_grouped(rc_pt, w0, w1, w2, w3, wrc), wg)
+        V_ext += self._particles_at(rc_pt)
         # solve (bound rings regularized with rc0^2, age 0)
         Vq = _rings_vel(rc_pt, c0, c1, c2, c3, rc_sq=self.rc0 ** 2)
         A = np.einsum('tsc,tc->ts', Vq, nrm)
@@ -330,6 +348,7 @@ class FlapUVLMProvider:
             if wr is not None:
                 Vp += np.einsum('tsc,s->tc',
                                 _seg_grouped(pts_flat, w0, w1, w2, w3, wrc), wg)
+            Vp += self._particles_at(pts_flat)
             moved = (pts_flat + Vp * self.dtw).reshape(self.pts.shape)
             new_pts = np.vstack([te_back[None], moved])
             new_gam = [shed_gam] + [g.copy() for g in self.gam]
@@ -362,11 +381,44 @@ class FlapUVLMProvider:
         self.gamma_prev = out["gamma"].copy()
         self._gb_prev = out["gb"].copy()
         pts, gam, ages = out["new_pts"], out["new_gam"], out["new_ages"]
-        if len(gam) > self.K:                  # truncate oldest rows
+        if len(gam) > self.K:
+            if self.particles:                 # convert oldest rows to particles
+                for ridx in range(self.K, len(gam)):
+                    self._row_to_particles(pts[ridx], pts[ridx + 1],
+                                           gam[ridx], ages[ridx])
             gam = gam[:self.K]
             ages = ages[:self.K]
             pts = pts[:self.K + 1]
         self.pts, self.gam, self.ages = pts, list(gam), list(ages)
+        # convect particles with the freestream (far-field treatment)
+        if len(self.p_pos):
+            self.p_pos = self.p_pos + self.V_inf * self.dtw
+            if len(self.p_pos) > self.max_particles:
+                drop = len(self.p_pos) - self.max_particles
+                self.p_pos = self.p_pos[drop:]
+                self.p_alpha = self.p_alpha[drop:]
+                self.p_sigma = self.p_sigma[drop:]
+
+    def _row_to_particles(self, front, back, gam_row, age):
+        """4 segment-particles per lattice ring; sigma from the core law."""
+        ns = len(gam_row)
+        rc = np.sqrt(self.rc0 ** 2
+                     + _LAMB4 * (self.nu + _SQUIRE * np.abs(gam_row).mean()) * age)
+        sigma = max(rc, 0.5 * np.linalg.norm(self.V_inf) * self.dtw)
+        pos, alpha = [], []
+        for j in range(ns):
+            g = gam_row[j]
+            if abs(g) < 1e-12:
+                continue
+            c = [front[j], front[j + 1], back[j + 1], back[j]]
+            for a, b in ((0, 1), (1, 2), (2, 3), (3, 0)):
+                pos.append(0.5 * (c[a] + c[b]))
+                alpha.append(g * (c[b] - c[a]))
+        if pos:
+            self.p_pos = np.vstack([self.p_pos, np.array(pos)])
+            self.p_alpha = np.vstack([self.p_alpha, np.array(alpha)])
+            self.p_sigma = np.concatenate([self.p_sigma,
+                                           np.full(len(pos), sigma)])
 
 
 def _seg_grouped(targets, c0, c1, c2, c3, rc_sq):
