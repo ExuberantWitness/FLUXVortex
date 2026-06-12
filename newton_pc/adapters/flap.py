@@ -37,21 +37,36 @@ from fluxvortex.standalone_uvlm import StandaloneUVLM  # noqa: E402
 
 # ── force container ──────────────────────────────────────────────────────
 class NodalForceSet:
-    """Per-node (ndof,) structural force vector; affine/lincomb interpolable."""
+    """Per-node (ndof,) force vector + optional added-mass OPERATOR.
 
-    def __init__(self, f: np.ndarray, payload: dict | None = None):
+    The operator M_add = dF_aero/d(accel) rides the same interpolation and is
+    absorbed into the structural effective mass (M_eff = M - M_add), exactly
+    the MATLAB Qf_p_mat treatment - mandatory for added-mass ratios ~1.
+    """
+
+    def __init__(self, f: np.ndarray, payload: dict | None = None,
+                 madd: np.ndarray | None = None):
         self.f = f
         self.payload = payload
+        self.madd = madd
 
     def affine(self, other: "NodalForceSet", beta: float) -> "NodalForceSet":
-        return NodalForceSet(self.f + (other.f - self.f) * beta)
+        ma = None
+        if self.madd is not None or other.madd is not None:
+            a = self.madd if self.madd is not None else 0.0 * other.madd
+            b = other.madd if other.madd is not None else 0.0 * self.madd
+            ma = a + (b - a) * beta
+        return NodalForceSet(self.f + (other.f - self.f) * beta, madd=ma)
 
     def lincomb(self, pairs) -> "NodalForceSet":
         acc = None
+        ma = None
         for fs, w in pairs:
             term = fs.f * w
             acc = term if acc is None else acc + term
-        return NodalForceSet(acc)
+            if fs.madd is not None:
+                ma = fs.madd * w if ma is None else ma + fs.madd * w
+        return NodalForceSet(acc, madd=ma)
 
 
 # ── kinematics ───────────────────────────────────────────────────────────
@@ -101,16 +116,20 @@ class FlapEntry:
 
     def __init__(self, chord, span, nc, ns, kin: FlapKinematics,
                  mode="kinematic", kscale=1.0, hscale=1.0,
-                 thickness=2e-3, rho_s=1200.0, E0=5e9):
+                 thickness=2e-3, rho_s=1200.0, E0=5e9, nu_xy=0.3,
+                 clamp_edge="y0", extra_force_fn=None):
         self.kin = kin
         self.mode = mode
         self.nc, self.ns = nc, ns
+        self.extra_force_fn = extra_force_fn
         self.shell, self.nodes0 = build_plate_shell(
-            chord, span, nc, ns, thickness * hscale, rho_s, E0 * kscale)
+            chord, span, nc, ns, thickness * hscale, rho_s, E0 * kscale,
+            nu=nu_xy)
         self.t = 0.0
+        axis = 1 if clamp_edge == "y0" else 0
         if mode == "elastic":
             root = [n for n in range(self.shell.nn)
-                    if abs(self.nodes0[n, 1]) < 1e-12]
+                    if abs(self.nodes0[n, axis]) < 1e-12]
             pd = np.array([9 * n + d for n in sorted(root)
                            for d in range(9)])
             q0 = self.shell.q[pd].reshape(-1, 3, 3)
@@ -124,7 +143,10 @@ class FlapEntry:
                 return ((q0 @ R.T).reshape(-1), (q0 @ dR.T).reshape(-1),
                         (q0 @ ddR.T).reshape(-1))
 
-            self.shell.set_prescribed_motion(root, cb)
+            if abs(kin.A) < 1e-15:
+                self.shell.set_bc(root, fix_slopes=True)   # static clamp (FSI)
+            else:
+                self.shell.set_prescribed_motion(root, cb)
 
     # protocol -----------------------------------------------------------
     def snapshot(self) -> Any:
@@ -145,7 +167,13 @@ class FlapEntry:
             dgrid9 = self.shell.dq.reshape(-1, 9)
             dgrid9[:, 0:3] = (thd * (r0 @ Rp.T))
         else:
-            self.shell.step_newmark(forces.f, dt, t_end=t)
+            f = forces.f
+            if self.extra_force_fn is not None:
+                f = f + self.extra_force_fn(t)
+            if forces.madd is not None:
+                from scipy.sparse import csr_matrix
+                self.shell.set_added_mass_matrix(csr_matrix(forces.madd))
+            self.shell.step_newmark(f, dt, t_end=t)
         self.t = t
 
     def state(self) -> dict:
@@ -231,7 +259,8 @@ class FlapUVLMProvider:
     """
 
     def __init__(self, V_inf_vec, rho, dt_window, K=8, nu=15.06e-6,
-                 chord=1.5, particles=True, max_particles=60000):
+                 chord=1.5, particles=True, max_particles=60000,
+                 added_mass_operator=False):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
         self.dtw = dt_window
@@ -240,6 +269,7 @@ class FlapUVLMProvider:
         self.rc0 = 0.03 * chord
         self.particles = particles
         self.max_particles = max_particles
+        self.added_mass_operator = added_mass_operator
         # committed wake state
         self.pts = None             # (R+1, ns+1, 3) near-field ring lattice
         self.gam = []               # list of (ns,) rows, newest first
@@ -324,7 +354,10 @@ class FlapUVLMProvider:
         dgs = np.hstack([g2[:, :1], np.diff(g2, axis=1)]) / ds_.reshape(nc, ns)
         gb = g2
         gb_prev = self._gb_prev if self._gb_prev is not None else gb
-        dgb_dt = (gb - gb_prev) / self.dtw
+        # with the implicit added-mass operator active, the acceleration part
+        # of dgamma/dt is carried by M_add - keep only it (no double count)
+        dgb_dt = (0.0 * gb if self.added_mass_operator
+                  else (gb - gb_prev) / self.dtw)
         dp = self.rho * (np.einsum('tc,tc->t', V_loc, tch).reshape(nc, ns) * dgc
                          + np.einsum('tc,tc->t', V_loc, tsh).reshape(nc, ns) * dgs
                          + dgb_dt)
@@ -353,7 +386,31 @@ class FlapUVLMProvider:
             new_pts = np.vstack([te_back[None], moved])
             new_gam = [shed_gam] + [g.copy() for g in self.gam]
             new_ages = [0.0] + [a + self.dtw for a in self.ages]
-        return dict(f_panel=f_panel, gamma=gamma, gb=gb,
+        madd = None
+        if self.added_mass_operator:
+            # dF/daccel: gamma responds as A^-1 N to colloc normal velocity;
+            # the impulsive pressure rho*dgamma/dt gives F = M_add @ ddq_z.
+            # Quarter lumping maps nodal z-accel -> colloc and panel force ->
+            # nodes (same lumping as the force path). MATLAB Qf_p_mat analog.
+            nn = (nc + 1) * (ns + 1)
+            L_v = np.zeros((P, nn))           # nodal z -> colloc normal accel
+            Lf = np.zeros((nn, P))            # panel z-force -> nodal z
+            for i in range(nc):
+                for j in range(ns):
+                    p_ = i * ns + j
+                    for (ii, jj) in ((i, j), (i + 1, j), (i, j + 1),
+                                     (i + 1, j + 1)):
+                        node = jj * (nc + 1) + ii
+                        L_v[p_, node] += 0.25 * nrm[p_, 2]
+                        Lf[node, p_] += 0.25
+            Ainv_N = np.linalg.solve(A, L_v)          # dgamma/d(vz_nodal)
+            # panel force per dgamma/dt: rho * area * n_z  (unsteady term)
+            Fz = (self.rho * area * nrm[:, 2])[:, None] * Ainv_N
+            M_zz = Lf @ Fz                            # (nn, nn): Fz per ddq_z
+            madd = np.zeros((9 * nn, 9 * nn))
+            zidx = 9 * np.arange(nn) + 2
+            madd[np.ix_(zidx, zidx)] = M_zz
+        return dict(f_panel=f_panel, gamma=gamma, gb=gb, madd=madd,
                     new_pts=new_pts, new_gam=new_gam, new_ages=new_ages)
 
     # protocol -----------------------------------------------------------
@@ -372,7 +429,8 @@ class FlapUVLMProvider:
         f = np.zeros(ndof)
         f9 = f.reshape(-1, 9)
         f9[:, 0:3] = fgrid.transpose(1, 0, 2).reshape(-1, 3)
-        return NodalForceSet(f, payload=out)
+        madd = out.get("madd")
+        return NodalForceSet(f, payload=out, madd=madd)
 
     def commit(self, forces: NodalForceSet) -> None:
         out = forces.payload
