@@ -483,12 +483,25 @@ class FlapUVLMProvider:
         P = len(self.p_pos)
         if P < 2 * self.merge_protect:
             return
-        n_free = P - self.merge_protect
-        pos = self.p_pos[:n_free]
-        alpha = self.p_alpha[:n_free]
-        sig = self.p_sigma[:n_free]
-        # distance-graded spatial hash (cells grow away from the wing)
         wing_c = ref_pts.mean(axis=0)
+        if getattr(self, "merge_protect_dist", None):
+            # distance-based protection: never merge within this radius
+            far = np.linalg.norm(self.p_pos - wing_c, axis=1) \
+                > self.merge_protect_dist
+            far_idx = np.nonzero(far)[0]
+            if len(far_idx) < 4:
+                return
+            pos = self.p_pos[far_idx]
+            alpha = self.p_alpha[far_idx]
+            sig = self.p_sigma[far_idx]
+            n_free = len(far_idx)
+        else:
+            far_idx = None
+            n_free = P - self.merge_protect
+            pos = self.p_pos[:n_free]
+            alpha = self.p_alpha[:n_free]
+            sig = self.p_sigma[:n_free]
+        # distance-graded spatial hash (cells grow away from the wing)
         d_wing = np.linalg.norm(pos - wing_c, axis=1)
         cell = 0.1 + 0.15 * d_wing
         key = np.floor(pos / cell[:, None]).astype(np.int64)
@@ -534,6 +547,9 @@ class FlapUVLMProvider:
         if not ok.any():
             return
         ci, cj = ci[ok], cj[ok]
+        if far_idx is not None:
+            ci = far_idx[ci]
+            cj = far_idx[cj]
         keep = np.ones(P, bool)
         keep[cj] = False
         self.p_pos[ci] = xm[ok]

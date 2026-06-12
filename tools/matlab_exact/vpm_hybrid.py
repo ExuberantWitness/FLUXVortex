@@ -67,7 +67,8 @@ class HybridFluidStep(MatlabFluidStep):
     """MatlabFluidStep with hybrid ring+particle wake. K = retained ring rows.
     Particle state lives on the instance (ppos/palpha/psigma)."""
 
-    def init_hybrid(self, K, particle_core_eps=0.1):
+    def init_hybrid(self, K, particle_core_eps=0.1, merge_eps=None):
+        self.merge_eps = merge_eps   # None = off; e.g. 1e-3 enables merging
         self.K = K
         self.p_eps = particle_core_eps          # rough-style core scale
         self.ppos = None; self.palpha = None; self.psigma = None
@@ -75,6 +76,60 @@ class HybridFluidStep(MatlabFluidStep):
     # particle velocity field at arbitrary points (MATLAB sign)
     def pv(self, targets):
         return particle_induce(targets, self.ppos, self.palpha, self.psigma, self.p_eps)
+
+    def merge_pass(self, ref_pts, eps_rel=1e-3, protect=80, vref=1.0):
+        """Pairwise moment-conserving merge with at-wing error threshold
+        (same scheme as newton_pc flap provider; UAV-VPM precedent)."""
+        if self.ppos is None or len(self.ppos) < 2 * protect:
+            return 0
+        P = len(self.ppos)
+        n_free = P - protect
+        pos, alpha, sig = self.ppos[:n_free], self.palpha[:n_free], self.psigma[:n_free]
+        wc = ref_pts.mean(axis=0)
+        cell = 0.1 + 0.15 * np.linalg.norm(pos - wc, axis=1)
+        key = np.floor(pos / cell[:, None]).astype(np.int64)
+        order = np.lexsort((key[:, 2], key[:, 1], key[:, 0]))
+        ks = key[order]
+        same = np.all(ks[1:] == ks[:-1], axis=1)
+        used = np.zeros(n_free, bool)
+        ci, cj = [], []
+        for a in np.nonzero(same)[0]:
+            i, j = order[a], order[a + 1]
+            if used[i] or used[j] or alpha[i] @ alpha[j] <= 0:
+                continue
+            used[i] = used[j] = True
+            ci.append(i); cj.append(j)
+        if not ci:
+            return 0
+        ci = np.array(ci); cj = np.array(cj)
+        a1, a2 = alpha[ci], alpha[cj]
+        x1, x2 = pos[ci], pos[cj]
+        w1 = np.linalg.norm(a1, axis=1, keepdims=True)
+        w2 = np.linalg.norm(a2, axis=1, keepdims=True)
+        am = a1 + a2
+        xm = (w1 * x1 + w2 * x2) / (w1 + w2 + 1e-30)
+        sm = np.maximum(sig[ci], sig[cj])
+
+        def vel(R, X, A, S):
+            r = R[:, None, :] - X[None, :, :]
+            d = np.linalg.norm(r, axis=-1) + 1e-30
+            sg = np.maximum(S * self.p_eps, 1e-12)[None, :]
+            rho_ = d / sg
+            g = rho_ ** 3 / (rho_ ** 2 + 1.0) ** 1.5
+            return -(g / (4 * np.pi * d ** 3))[..., None] * np.cross(A[None], r)
+
+        dv = (vel(ref_pts, x1, a1, sig[ci]) + vel(ref_pts, x2, a2, sig[cj])
+              - vel(ref_pts, xm, am, sm))
+        err = np.abs(dv).max(axis=(0, 2))
+        ok = err < eps_rel * vref
+        if not ok.any():
+            return 0
+        ci, cj = ci[ok], cj[ok]
+        keep = np.ones(P, bool); keep[cj] = False
+        self.ppos[ci] = xm[ok]; self.palpha[ci] = am[ok]; self.psigma[ci] = sm[ok]
+        self.ppos = self.ppos[keep]; self.palpha = self.palpha[keep]
+        self.psigma = self.psigma[keep]
+        return int(ok.sum())
 
     def _convect_particles(self, bP, Gamma, wk):
         if self.ppos is None or len(self.ppos) == 0:
@@ -91,6 +146,9 @@ class HybridFluidStep(MatlabFluidStep):
         m = self.ppos[:, 0] <= self.Rtrunc
         if not m.all():
             self.ppos = self.ppos[m]; self.palpha = self.palpha[m]; self.psigma = self.psigma[m]
+        if self.merge_eps is not None and self.ppos is not None and len(self.ppos):
+            self.merge_pass(np.asarray(bP[0])[::17][:9],
+                            eps_rel=self.merge_eps, vref=self.U_in)
 
     def induce_like(self, targets, P, Gam, fine):
         v, _ = self.vwake(targets, P, Gam, fine)

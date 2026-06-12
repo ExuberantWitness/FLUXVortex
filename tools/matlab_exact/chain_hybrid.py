@@ -55,7 +55,7 @@ ms.Sp = [f3s[f'Sc_mat_panel_global_{k}'] for k in (1, 2, 3, 4)]
 ms.asm = MatlabFluidForce(f3r)
 ms.idof = ms.asm.idof
 ms.Sc_col_d = g(f3s, 'Sc_mat_col_global')
-ms.init_hybrid(K_RINGS)
+ms.init_hybrid(K_RINGS, merge_eps=(float(os.environ['MERGE_EPS']) if 'MERGE_EPS' in os.environ else None))
 
 M_global = g(f3s, 'M_global')
 Qf_time = g(f3s, 'Qf_time_global').ravel()

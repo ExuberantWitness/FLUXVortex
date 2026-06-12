@@ -34,6 +34,8 @@ def main() -> int:
     ap.add_argument("--cycles", type=int, default=100)
     ap.add_argument("--K", type=int, default=8)
     ap.add_argument("--tag", required=True)
+    ap.add_argument("--cap", type=int, default=20000)
+    ap.add_argument("--protect_dist", type=float, default=0.0)
     args = ap.parse_args()
 
     base = np.load("flap_arena/out/ptera_baseline5.npz")
@@ -51,8 +53,10 @@ def main() -> int:
     V_vec = V * np.array([np.cos(alpha), 0.0, np.sin(alpha)])
     provider = FlapUVLMProvider(
         V_vec, rho, dtw, K=args.K, chord=chord, particles=True,
-        max_particles=(10**6 if args.scheme != "drop" else 20000),
+        max_particles=(10**6 if args.scheme != "drop" else args.cap),
         pop_scheme=args.scheme, merge_eps=args.eps)
+    if args.protect_dist > 0:
+        provider.merge_protect_dist = args.protect_dist
     pc = WindowPredictorCorrector(entry=entry, provider=provider,
                                   substeps=8, dt=dtw / 8, mode="two-pass")
     pc.initialize(NodalForceSet(np.zeros(entry.shell.ndof)))
