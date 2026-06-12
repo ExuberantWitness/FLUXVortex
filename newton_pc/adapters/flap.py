@@ -260,7 +260,8 @@ class FlapUVLMProvider:
 
     def __init__(self, V_inf_vec, rho, dt_window, K=8, nu=15.06e-6,
                  chord=1.5, particles=True, max_particles=60000,
-                 added_mass_operator=False):
+                 added_mass_operator=False, pop_scheme="drop",
+                 merge_eps=1e-3, merge_protect=64):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
         self.dtw = dt_window
@@ -270,6 +271,10 @@ class FlapUVLMProvider:
         self.particles = particles
         self.max_particles = max_particles
         self.added_mass_operator = added_mass_operator
+        self.pop_scheme = pop_scheme        # none | drop | merge
+        self.merge_eps = merge_eps          # at-wing rel. velocity threshold
+        self.merge_protect = merge_protect  # newest particles excluded
+        self.stats = dict(n_merged=0)       # cumulative merge count
         # committed wake state
         self.pts = None             # (R+1, ns+1, 3) near-field ring lattice
         self.gam = []               # list of (ns,) rows, newest first
@@ -282,16 +287,22 @@ class FlapUVLMProvider:
         self._gb_prev = None
         self.n_solves = 0
 
-    def _particles_at(self, targets):
-        """Gaussian-kernel particle induction (far field), vectorized."""
+    def _particles_at(self, targets, chunk=256):
+        """Particle induction (far field), target-chunked to bound memory
+        at large populations ((chunk x P x 3) intermediates only)."""
         if len(self.p_pos) == 0:
             return np.zeros_like(targets)
-        r = targets[:, None, :] - self.p_pos[None, :, :]
-        d = np.linalg.norm(r, axis=-1) + 1e-30
-        rho_ = d / self.p_sigma[None, :]
-        g = rho_ ** 3 / (rho_ ** 2 + 1.0) ** 1.5
-        cross = np.cross(self.p_alpha[None, :, :], r)
-        return (g / (4.0 * np.pi * d ** 3))[..., None].__mul__(cross).sum(axis=1)
+        out = np.empty_like(targets)
+        for s in range(0, len(targets), chunk):
+            t = targets[s:s + chunk]
+            r = t[:, None, :] - self.p_pos[None, :, :]
+            d = np.linalg.norm(r, axis=-1) + 1e-30
+            rho_ = d / self.p_sigma[None, :]
+            g = rho_ ** 3 / (rho_ ** 2 + 1.0) ** 1.5
+            cross = np.cross(self.p_alpha[None, :, :], r)
+            out[s:s + chunk] = ((g / (4.0 * np.pi * d ** 3))[..., None]
+                                * cross).sum(axis=1)
+        return out
 
     # ------------------------------------------------------------------
     def _wake_rings(self):
@@ -410,8 +421,10 @@ class FlapUVLMProvider:
             madd = np.zeros((9 * nn, 9 * nn))
             zidx = 9 * np.arange(nn) + 2
             madd[np.ix_(zidx, zidx)] = M_zz
+        ref_pts = rc_pt[:: max(1, P // 9)][:9].copy()
         return dict(f_panel=f_panel, gamma=gamma, gb=gb, madd=madd,
-                    new_pts=new_pts, new_gam=new_gam, new_ages=new_ages)
+                    new_pts=new_pts, new_gam=new_gam, new_ages=new_ages,
+                    ref_pts=ref_pts)
 
     # protocol -----------------------------------------------------------
     def solve(self, state: dict) -> NodalForceSet:
@@ -451,11 +464,100 @@ class FlapUVLMProvider:
         # convect particles with the freestream (far-field treatment)
         if len(self.p_pos):
             self.p_pos = self.p_pos + self.V_inf * self.dtw
-            if len(self.p_pos) > self.max_particles:
+            if self.pop_scheme == "drop" and len(self.p_pos) > self.max_particles:
                 drop = len(self.p_pos) - self.max_particles
                 self.p_pos = self.p_pos[drop:]
                 self.p_alpha = self.p_alpha[drop:]
                 self.p_sigma = self.p_sigma[drop:]
+            elif self.pop_scheme == "merge":
+                self._merge_pass(out["ref_pts"])
+
+    # ── pairwise moment-conserving merging (at-wing error criterion) ────
+    def _merge_pass(self, ref_pts):
+        """Merge particle pairs whose replacement changes the induced
+        velocity at the wing reference points by < merge_eps * |V_inf|.
+
+        Merge formula conserves the 0th vorticity moment exactly
+        (alpha_new = a1 + a2) and the 1st via the strength-weighted
+        centroid (UAV-VPM scheme, arXiv 2307.02371)."""
+        P = len(self.p_pos)
+        if P < 2 * self.merge_protect:
+            return
+        n_free = P - self.merge_protect
+        pos = self.p_pos[:n_free]
+        alpha = self.p_alpha[:n_free]
+        sig = self.p_sigma[:n_free]
+        # distance-graded spatial hash (cells grow away from the wing)
+        wing_c = ref_pts.mean(axis=0)
+        d_wing = np.linalg.norm(pos - wing_c, axis=1)
+        cell = 0.1 + 0.15 * d_wing
+        key = np.floor(pos / cell[:, None]).astype(np.int64)
+        order = np.lexsort((key[:, 2], key[:, 1], key[:, 0]))
+        ks = key[order]
+        same = np.all(ks[1:] == ks[:-1], axis=1)
+        cand_i, cand_j = [], []
+        used = np.zeros(n_free, bool)
+        idx = order
+        for a in np.nonzero(same)[0]:
+            i, j = idx[a], idx[a + 1]
+            if used[i] or used[j]:
+                continue
+            if alpha[i] @ alpha[j] <= 0.0:          # aligned pairs only
+                continue
+            used[i] = used[j] = True
+            cand_i.append(i)
+            cand_j.append(j)
+        if not cand_i:
+            return
+        ci = np.array(cand_i)
+        cj = np.array(cand_j)
+        a1, a2 = alpha[ci], alpha[cj]
+        x1, x2 = pos[ci], pos[cj]
+        w1 = np.linalg.norm(a1, axis=1, keepdims=True)
+        w2 = np.linalg.norm(a2, axis=1, keepdims=True)
+        am = a1 + a2
+        xm = (w1 * x1 + w2 * x2) / (w1 + w2 + 1e-30)
+        sm = np.maximum(sig[ci], sig[cj])
+
+        def vel(R, X, A, S):
+            r = R[:, None, :] - X[None, :, :]
+            d = np.linalg.norm(r, axis=-1) + 1e-30
+            rho_ = d / S[None, :]
+            g = rho_ ** 3 / (rho_ ** 2 + 1.0) ** 1.5
+            return ((g / (4 * np.pi * d ** 3))[..., None]
+                    * np.cross(A[None], r))          # (R, M, 3)
+
+        dv = (vel(ref_pts, x1, a1, sig[ci]) + vel(ref_pts, x2, a2, sig[cj])
+              - vel(ref_pts, xm, am, sm))
+        err = np.abs(dv).max(axis=(0, 2))            # per candidate pair
+        ok = err < self.merge_eps * np.linalg.norm(self.V_inf)
+        if not ok.any():
+            return
+        ci, cj = ci[ok], cj[ok]
+        keep = np.ones(P, bool)
+        keep[cj] = False
+        self.p_pos[ci] = xm[ok]
+        self.p_alpha[ci] = am[ok]
+        self.p_sigma[ci] = sm[ok]
+        self.p_pos = self.p_pos[keep]
+        self.p_alpha = self.p_alpha[keep]
+        self.p_sigma = self.p_sigma[keep]
+        self.stats["n_merged"] += int(ok.sum())
+
+    def circulation_ledger(self):
+        """Total vector circulation of rings + particles (conservation audit)."""
+        tot = self.p_alpha.sum(axis=0) if len(self.p_alpha) else np.zeros(3)
+        if self.pts is not None:
+            p = self.pts
+            ns = p.shape[1] - 1
+            for ridx, g in enumerate(self.gam):
+                c0 = p[ridx, :-1]; c1 = p[ridx, 1:]
+                c2 = p[ridx + 1, 1:]; c3 = p[ridx + 1, :-1]
+                for jj in range(ns):
+                    cc = [c0[jj], c1[jj], c2[jj], c3[jj]]
+                    for a_, b_ in ((0, 1), (1, 2), (2, 3), (3, 0)):
+                        tot = tot + g[jj] * (cc[b_] - cc[a_])
+        return tot
 
     def _row_to_particles(self, front, back, gam_row, age):
         """4 segment-particles per lattice ring; sigma from the core law."""
