@@ -92,7 +92,8 @@ class FlapKinematics:
         return np.array([[0, 0, 0], [0, -s, -c], [0, c, -s]])
 
 
-def build_plate_shell(chord, span, nc, ns, thickness, rho_s, E, nu=0.3):
+def build_plate_shell(chord, span, nc, ns, thickness, rho_s, E, nu=0.3,
+                      damping=0.0):
     x = np.arange(nc + 1) / nc * chord
     y = np.arange(ns + 1) / ns * span
     nn = (nc + 1) * (ns + 1)
@@ -107,7 +108,8 @@ def build_plate_shell(chord, span, nc, ns, thickness, rho_s, E, nu=0.3):
             n1 = j * (nc + 1) + i
             quads[j * nc + i] = (n1, n1 + 1, n1 + nc + 2, n1 + nc + 1)
     return ANCFShell(nodes, quads, h=thickness, rho=rho_s,
-                     Ex=E, Ey=E, nu_xy=nu), nodes
+                     Ex=E, Ey=E, nu_xy=nu,
+                     structural_damping=damping), nodes
 
 
 # ── structural entry ─────────────────────────────────────────────────────
@@ -117,14 +119,14 @@ class FlapEntry:
     def __init__(self, chord, span, nc, ns, kin: FlapKinematics,
                  mode="kinematic", kscale=1.0, hscale=1.0,
                  thickness=2e-3, rho_s=1200.0, E0=5e9, nu_xy=0.3,
-                 clamp_edge="y0", extra_force_fn=None):
+                 clamp_edge="y0", extra_force_fn=None, damping=0.0):
         self.kin = kin
         self.mode = mode
         self.nc, self.ns = nc, ns
         self.extra_force_fn = extra_force_fn
         self.shell, self.nodes0 = build_plate_shell(
             chord, span, nc, ns, thickness * hscale, rho_s, E0 * kscale,
-            nu=nu_xy)
+            nu=nu_xy, damping=damping)
         self.t = 0.0
         axis = 1 if clamp_edge == "y0" else 0
         if mode == "elastic":

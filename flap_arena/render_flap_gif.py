@@ -29,12 +29,20 @@ from newton_pc.adapters.flap import (FlapEntry, FlapKinematics,  # noqa: E402
                                      FlapUVLMProvider, NodalForceSet)
 
 
-def render_frame(ax, verts, wake_pts, p_pos, p_alpha, t, n_p, ms, lift):
+def render_frame(ax, verts, wake_pts, p_pos, p_alpha, t, n_p, ms, lift,
+                 bend=None, bend_max=0.5):
     ax.cla()
-    # wing surface
+    # wing surface (colored by elastic bending when provided)
     X, Y, Z = verts[..., 0], verts[..., 1], verts[..., 2]
-    ax.plot_surface(X, Y, Z, color="#4a86c8", alpha=0.85, edgecolor="k",
-                    linewidth=0.4, shade=True)
+    if bend is not None:
+        face = plt.cm.coolwarm(0.5 + 0.5 * np.clip(bend / bend_max, -1, 1))
+        fc = 0.25 * (face[:-1, :-1] + face[1:, :-1]
+                     + face[:-1, 1:] + face[1:, 1:])
+        ax.plot_surface(X, Y, Z, facecolors=fc, alpha=0.95, edgecolor="k",
+                        linewidth=0.3, shade=False)
+    else:
+        ax.plot_surface(X, Y, Z, color="#4a86c8", alpha=0.85, edgecolor="k",
+                        linewidth=0.4, shade=True)
     # near-field wake ring lattice
     if wake_pts is not None:
         W = wake_pts
@@ -51,11 +59,11 @@ def render_frame(ax, verts, wake_pts, p_pos, p_alpha, t, n_p, ms, lift):
         ax.scatter(p_pos[order, 0], p_pos[order, 1], p_pos[order, 2],
                    c=s[order], cmap="plasma", s=4.0, alpha=0.8,
                    vmin=0.0, vmax=np.percentile(s, 95), linewidths=0)
-    ax.set_xlim(-0.5, 12)
-    ax.set_ylim(-1.0, 7.0)
+    ax.set_xlim(-2.0, 11)
+    ax.set_ylim(-0.5, 7.0)
     ax.set_zlim(-2.8, 2.8)
-    ax.set_box_aspect((12.5, 8, 5.6), zoom=1.35)
-    ax.view_init(elev=16, azim=-128)
+    ax.set_box_aspect((13, 7.5, 5.6), zoom=1.22)
+    ax.view_init(elev=18, azim=-118)
     ax.set_axis_off()
     ax.set_title(f"t={t:6.2f}s   particles={n_p:5d}   {ms:4.0f} ms/window"
                  f"   L={lift:+7.0f} N", fontsize=10, family="monospace")
@@ -66,6 +74,10 @@ def main() -> int:
     ap.add_argument("--cycles", type=int, default=15)
     ap.add_argument("--every", type=int, default=3)
     ap.add_argument("--amp", type=float, default=15.0)
+    ap.add_argument("--elastic", action="store_true")
+    ap.add_argument("--kscale", type=float, default=0.03)
+    ap.add_argument("--damping", type=float, default=2e-3)
+    ap.add_argument("--substeps", type=int, default=8)
     ap.add_argument("--out", default="flap_arena/out/flap_demo.gif")
     args = ap.parse_args()
 
@@ -79,14 +91,19 @@ def main() -> int:
     n_windows = int(round(args.cycles * period / dtw))
 
     kin = FlapKinematics(np.deg2rad(args.amp), period)
-    entry = FlapEntry(chord, span, nc, ns, kin, mode="kinematic")
+    if args.elastic:
+        entry = FlapEntry(chord, span, nc, ns, kin, mode="elastic",
+                          kscale=args.kscale, damping=args.damping)
+    else:
+        entry = FlapEntry(chord, span, nc, ns, kin, mode="kinematic")
     V_vec = V * np.array([np.cos(alpha), 0.0, np.sin(alpha)])
     provider = FlapUVLMProvider(V_vec, rho, dtw, K=8, chord=chord,
                                 particles=True, max_particles=10**6,
                                 pop_scheme="merge", merge_eps=1e-4)
     provider.merge_protect_dist = 7.5
     pc = WindowPredictorCorrector(entry=entry, provider=provider,
-                                  substeps=8, dt=dtw / 8, mode="two-pass")
+                                  substeps=args.substeps,
+                                  dt=dtw / args.substeps, mode="two-pass")
     pc.initialize(NodalForceSet(np.zeros(entry.shell.ndof)))
 
     fig = plt.figure(figsize=(9.6, 5.4), dpi=110)
@@ -104,8 +121,14 @@ def main() -> int:
         F = pc._F_cur.payload["f_panel"].sum(axis=(0, 1))
         L = -F[0] * np.sin(alpha) + F[2] * np.cos(alpha)
         st = entry.state()
+        bend = None
+        if args.elastic:
+            th = kin.angles(pc._t)[0]
+            zr = (entry.nodes0[:, 1] * np.sin(th)).reshape(ns + 1, nc + 1).T
+            bend = st["verts"][..., 2] - zr      # elastic z minus rigid z
         render_frame(ax, st["verts"], provider.pts, provider.p_pos,
-                     provider.p_alpha, pc._t, len(provider.p_pos), ms, L)
+                     provider.p_alpha, pc._t, len(provider.p_pos), ms, L,
+                     bend=bend)
         fig.canvas.draw()
         img = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()
         frames.append(img)
