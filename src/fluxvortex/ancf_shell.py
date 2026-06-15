@@ -236,15 +236,30 @@ class ANCFShell:
         self.ne = len(self.quads)
         self.ndof = self.nn * NDOF_NODE
 
-        if G_xy is None:
-            G_xy = Ex / (2.0 * (1.0 + nu_xy))
+        self.Ex, self.Ey = Ex, Ey
 
-        # Membrane stiffness matrix (stress resultants per unit thickness)
-        self.Dm = Ex / (1 - nu_xy**2) * np.array([
-            [1,     nu_xy, 0],
-            [nu_xy, 1,     0],
-            [0,     0,     (1-nu_xy)/2]
-        ])
+        # Membrane plane-stress constitutive (orthotropic; reduces to isotropic).
+        # The isotropic convention (Ey==Ex and G_xy unset) keeps the exact legacy
+        # expression so the bit-exact warp_fsi golden is preserved by construction.
+        if G_xy is None and Ey == Ex:
+            G_xy = Ex / (2.0 * (1.0 + nu_xy))
+            self.Dm = Ex / (1 - nu_xy**2) * np.array([
+                [1,     nu_xy, 0],
+                [nu_xy, 1,     0],
+                [0,     0,     (1-nu_xy)/2]
+            ])
+        else:
+            # orthotropic plane stress: nu_yx from reciprocity nu_xy/Ex = nu_yx/Ey
+            if G_xy is None:
+                G_xy = Ex / (2.0 * (1.0 + nu_xy))
+            nu_yx = nu_xy * Ey / Ex
+            denom = 1.0 - nu_xy * nu_yx
+            self.Dm = np.array([
+                [Ex / denom,         nu_yx * Ex / denom, 0.0],
+                [nu_xy * Ey / denom, Ey / denom,         0.0],
+                [0.0,                0.0,                G_xy]
+            ])
+        self.G_xy = G_xy
         # Bending stiffness matrix
         if mode == 'membrane':
             self.Dk = np.zeros((3, 3))
