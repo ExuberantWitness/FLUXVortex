@@ -41,7 +41,30 @@ Verified `tape == FD` (rel ≤ 1e-9) for, in increasing complexity:
   NaN therefore needs **instrumented debugging of the actual kernel** (locate the
   first non-finite adjoint by Gauss point / DOF), not more black-box isolation.
 
+## Update — root-caused + half-fixed (pure Warp)
+
+Splitting the monolithic `ancf_force_gauss_kernel` into **membrane-only** and
+**bending-only** kernels (pure Warp, no numpy in the tape path):
+
+- **Membrane kernel: forward bit-exact (`|Δ|=0`) AND differentiable** — `q.grad`
+  finite, tape vs FD = **5.2e-5** (central-difference truncation, not NaN). ✓
+- **Bending kernel: still NaN alone.** The seed-independent NaN (even pure-membrane
+  `Dm_eps` seed NaNs in the *monolithic* kernel) is the bending block's auto-adjoint
+  contaminating shared registers via `0×Inf`. Normals are well-conditioned
+  (`nn∈[1.0000,1.0016]` over all Gauss points — **not** degeneracy).
+- **Exact trigger:** the bending force term `dk = dot(d2x, dnh) + dot(nhat, dxx)`
+  where **both** `d2x` (q-dependent curvature vector, gathered+accumulated) **and**
+  `dnh = (dn − n̂(n̂·dn))/nn` (q-dependent *through* `normalize`) depend on `q`. The
+  isolation `dot(d2_const, dnh)` (curvature vector constant) is differentiable; making
+  the curvature vector q-dependent (the real case) breaks Warp 1.14's auto-adjoint.
+
 ## Fix (next focused work — the plan's flagged largest-effort item)
+**Remaining = a custom `@wp.func_grad` for the bending curvature contribution**
+(hand-derive the adjoint of `q → (nhat, dnh, d2x) → dk/Dk_k`, the shell geometric
+stiffness), then assemble: differentiable membrane kernel + custom-adjoint bending
+kernel + (linear) assemble kernel = fully differentiable ANCF operator, pure Warp,
+forward bit-exact. Membrane is already done.
+
 1. Provide a **custom adjoint** for the bending-normal-gradient contribution:
    wrap the `(nvec, dxr, dyr, sxa, sya, d2x, dxx) → dk_a` map in a `@wp.func` with
    an explicit `@wp.func_grad`, hand-deriving the Jacobian of the tangent-plane
