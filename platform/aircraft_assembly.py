@@ -65,10 +65,16 @@ def _xf(x, y, z, q=None):
 
 @dataclass
 class AircraftIndex:
-    """DOF/coord indices of every actuator, resolved after finalize()."""
+    """DOF/coord indices of every actuator + body indices/geometry, after finalize()."""
     flap: dict = field(default_factory=dict)        # 'L','R' -> (qi, di)
     surf: dict = field(default_factory=dict)        # 0..13 -> (qi, di)
     joint_labels: list = field(default_factory=list)
+    fus_body: int = 0
+    wing_body: dict = field(default_factory=dict)   # 'L','R' -> body idx
+    vtail_body: dict = field(default_factory=dict)  # 'L','R' -> body idx
+    surf_body: dict = field(default_factory=dict)   # 0..13 -> body idx
+    surf_meta: dict = field(default_factory=dict)    # 0..13 -> aero metadata
+    lift_geom: dict = field(default_factory=dict)    # body idx -> (chord, span, is_wing)
 
     @property
     def n_actuators(self):
@@ -103,6 +109,8 @@ def build_aircraft(design=None, *, spring_ke=1.2, spring_kd=0.02,
         wing_com_y = sgn * (0.05 + HALF / 2.0)
         wing = mb.add_link(mass=M_WING, com=wp.vec3(0.0, 0.0, 0.0),
                            inertia=_plate_inertia(M_WING, CHORD, HALF), label=f"wing_{side}")
+        idx.wing_body[side] = wing
+        idx.lift_geom[wing] = (CHORD, HALF, True, sgn)
         j_flap = mb.add_joint_revolute(
             parent=fus, child=wing, axis=flap_ax,
             parent_xform=_xf(0.0, sgn * 0.05, 0.0),
@@ -119,7 +127,6 @@ def build_aircraft(design=None, *, spring_ke=1.2, spring_kd=0.02,
                 s = mb.add_link(mass=M_SURF, com=wp.vec3(0.0, 0.0, 0.0),
                                 inertia=_plate_inertia(M_SURF, 0.3 * CHORD, 0.25 * HALF),
                                 label=f"surf_{side}_{edge}_{st}")
-                # hinge on the wing at this station/edge; surface COM just aft/fwd of it
                 j = mb.add_joint_revolute(
                     parent=wing, child=s, axis=surf_ax,
                     parent_xform=_xf(cx, sy, 0.0),
@@ -127,8 +134,13 @@ def build_aircraft(design=None, *, spring_ke=1.2, spring_kd=0.02,
                     target_ke=surf_ke, target_kd=surf_kd, target_pos=0.0,
                     label=f"surf_{side}_{edge}_{st}")
                 joints.append(j)
-                # surface ordering index 0..11 (filled below after both wings)
-                idx.surf[len(idx.surf)] = j
+                k = len(idx.surf)
+                idx.surf[k] = j
+                idx.surf_body[k] = s
+                # camber sign: TE-down (+defl) raises lift; LE deflection weaker
+                eff = 0.6 if edge == "TE" else 0.3
+                idx.surf_meta[k] = dict(side=side, edge=edge, wing_body=wing,
+                                        frac=frac, eff=eff, sgn=sgn)
 
     add_wing("L", +1.0)
     add_wing("R", -1.0)
@@ -145,7 +157,12 @@ def build_aircraft(design=None, *, spring_ke=1.2, spring_kd=0.02,
             child_xform=_xf(0.0, -sgn * 0.5 * VTAIL_SPAN * c, -0.5 * VTAIL_SPAN * s),
             target_ke=surf_ke, target_kd=surf_kd, target_pos=0.0, label=f"vtail_{side}")
         joints.append(j)
-        idx.surf[len(idx.surf)] = j        # surfaces 12,13 = V-tail
+        k = len(idx.surf)
+        idx.surf[k] = j                    # surfaces 12,13 = V-tail ruddervators
+        idx.vtail_body[side] = panel
+        idx.lift_geom[panel] = (0.18, VTAIL_SPAN, False, sgn)
+        idx.surf_meta[k] = dict(side=side, edge="VT", wing_body=panel,
+                                frac=0.5, eff=1.0, sgn=sgn)
 
     mb.add_articulation(joints, label="aircraft")
     model = mb.finalize(requires_grad=requires_grad)
@@ -168,7 +185,8 @@ def launch_state(model, *, alt=30.0, speed=10.0, climb_deg=45.0):
     q0[3:7] = [0.0, 0.0, 0.0, 1.0]                  # identity quat (xyzw)
     qd0 = np.zeros(model.joint_dof_count, dtype=np.float32)
     th = np.deg2rad(climb_deg)
-    qd0[3:6] = [speed * np.cos(th), 0.0, speed * np.sin(th)]
+    # free-joint qd layout = [linear(0:3), angular(3:6)] (verified on this Newton build)
+    qd0[0:3] = [speed * np.cos(th), 0.0, speed * np.sin(th)]
     return q0, qd0
 
 
