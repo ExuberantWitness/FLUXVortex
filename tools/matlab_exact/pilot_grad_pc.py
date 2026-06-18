@@ -41,6 +41,8 @@ PICARD = int(args[args.index('--picard') + 1]) if '--picard' in args else 1
 JVP = args[args.index('--jvp') + 1] if '--jvp' in args else 'march'
 ACCEL = args[args.index('--accel') + 1] if '--accel' in args else 'none'
 CONVTEST = int(args[args.index('--convtest') + 1]) if '--convtest' in args else 0
+AMEXP = '--amexp' in args     # E1 ablation: added mass EXPLICIT (lagged accel on RHS)
+AMAD = '--amad' in args       # E2: AD-reconstructed operator back into LHS
 AITERS = int(args[args.index('--aiters') + 1]) if '--aiters' in args else 3
 DENSE_N = int(MODE[5:]) if MODE.startswith('dense') else 0
 
@@ -220,6 +222,7 @@ def force_at(beta, ctx):
 
 def march(X, steps, tf, wq, ctx, dense_samples=None, pen_out=None):
     X = X.copy()
+    _dtq_prev = None
     for it in steps:
         if pen_out is not None and it == steps[-1]:
             pen_out.append(X.copy())
@@ -239,13 +242,23 @@ def march(X, steps, tf, wq, ctx, dense_samples=None, pen_out=None):
             Fa = force_at(beta, ctx)
             Fp_, Mat, Mat0, L2_ = Fa.Fp, Fa.mat, Fa.mat0, Fa.l2
         q = X[:N]; dtq = X[N:]
+        if AMEXP:
+            ddq_lag = (dtq - _dtq_prev) / d_t if _dtq_prev is not None else np.zeros(N)
+            f_am = Mat @ ddq_lag
+            _dtq_prev = dtq.copy()
+        else:
+            f_am = 0.0
         nv, dtn = dt_n_vec(q, dtq)
         drc = np.asarray(ms.Sc_col @ dtq).reshape(-1, 3)
         slip = np.einsum('ec,ec->e', drc - ms.V_in - wq.Vwp - wq.dA2G, dtn) - wq.dA1 @ wq.Gamma
         fm0 = Mat0 @ slip; fl2 = L2_ @ drc.ravel()
         Qe_n, Qk_n = elastic(q)
         dqQe = kmem(q)
-        Meff = (M_global - Mat)[np.ix_(free, free)]
+        if AMEXP:
+            # textbook weak treatment: AM force explicit with lagged acceleration
+            Meff = M_global[np.ix_(free, free)]
+        else:
+            Meff = (M_global - Mat)[np.ix_(free, free)]
         D21 = (C_damp * d_t / 2.0) * dqQe[np.ix_(free, free)]
         S = Meff + alpha * d_t * D21
         lu = lu_factor(S)
@@ -257,7 +270,7 @@ def march(X, steps, tf, wq, ctx, dense_samples=None, pen_out=None):
             return c1 + alpha * d_t * x2, x2
         a1, a2 = sol(b1, b2)
         pulse = Qf_time * q_in_norm(t)
-        s1, s2 = sol(np.zeros(nf), (pulse + Fp_ + fm0 + fl2 - (Qe_n + Qk_n))[free])
+        s1, s2 = sol(np.zeros(nf), (pulse + Fp_ + fm0 + fl2 + f_am - (Qe_n + Qk_n))[free])
         Xp = X.copy(); Xp[free] = a1 + d_t * s1; Xp[N + free] = a2 + d_t * s2
         qp = Xp[:N]; dtqp = Xp[N:]
         nv2, dtn2 = dt_n_vec(qp, dtqp)
@@ -265,7 +278,7 @@ def march(X, steps, tf, wq, ctx, dense_samples=None, pen_out=None):
         slip2 = np.einsum('ec,ec->e', drc2 - ms.V_in - wq.Vwp - wq.dA2G, dtn2) - wq.dA1 @ wq.Gamma
         fm0b = Mat0 @ slip2; fl2b = L2_ @ drc2.ravel()
         _, Qk_p = elastic(qp)
-        Qf1 = pulse + Fp_ + (fm0 + fm0b) / 2.0 + (fl2 + fl2b) / 2.0
+        Qf1 = pulse + Fp_ + (fm0 + fm0b) / 2.0 + (fl2 + fl2b) / 2.0 + f_am
         Qe1 = Qe_n + (Qk_n + Qk_p) / 2.0
         t1, t2 = sol(np.zeros(nf), (Qf1 - Qe1)[free])
         X[free] = a1 + d_t * t1; X[N + free] = a2 + d_t * t2

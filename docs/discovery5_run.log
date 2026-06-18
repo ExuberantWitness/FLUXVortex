@@ -1,0 +1,22 @@
+discovery #5: 6 stiffnesses, real (gust, L/D) from coupled FSI at AoA=6.0 deg
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  s=0.50: gust=9.4973e-03  L=+4.769e+00N  D_ind=+2.150e-01N  L/D_ind=+22.19  L/D_tot=+1.79  (76s)
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  s=0.80: gust=9.8244e-03  L=+4.764e+00N  D_ind=+2.108e-01N  L/D_ind=+22.60  L/D_tot=+1.79  (157s)
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  s=1.10: gust=1.0058e-02  L=+4.763e+00N  D_ind=+2.066e-01N  L/D_ind=+23.05  L/D_tot=+1.79  (243s)
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  s=1.40: gust=1.0232e-02  L=+4.763e+00N  D_ind=+2.027e-01N  L/D_ind=+23.50  L/D_tot=+1.80  (335s)
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  s=1.70: gust=1.0450e-02  L=+4.764e+00N  D_ind=+1.991e-01N  L/D_ind=+23.93  L/D_tot=+1.80  (430s)
+  rho_s=1225 kg/m³, E=2.352e+09 Pa, nu=0.3
+  s=2.00: gust=1.0766e-02  L=+4.767e+00N  D_ind=+1.958e-01N  L/D_ind=+24.34  L/D_tot=+1.80  (530s)
+=== REAL (gust x L/D) landscape, cruise AoA, coupled FSI ===
+  stiffness : 0.50  0.80  1.10  1.40  1.70  2.00
+  gust      : 9.50e-03  9.82e-03  1.01e-02  1.02e-02  1.04e-02  1.08e-02
+  L/D       : +22.19  +22.60  +23.05  +23.50  +23.93  +24.34
+=== FINDING ===
+  best GUST rejection : stiffness=0.50
+  best EFFICIENCY L/D : stiffness=2.00
+  -> REAL TRADE-OFF: gust favors 0.50, efficiency favors 2.00 — competing constraint confirmed on real physics.

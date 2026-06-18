@@ -147,17 +147,51 @@ benefit (the plan's hero mechanism) the production setup needs a **low-numerical
 integrator** (symplectic / much finer dt) — or the resonance must be carried by the
 *aeroelastic* coupled solver (the validated predictor-corrector), not the rigid hinge.
 
-## Overall honest read across discovery runs #1–#4
+---
+
+# Discovery run #5 — the REAL (gust × aerodynamic-efficiency) trade-off
+
+Fixes defect **D1** (`docs/fix_plan.md`): #1/#2 scored "efficiency" as a force-norm
+proxy and #3 used an *analytical* resonance COT. This run measures BOTH co-design
+objectives from the **same real coupled-FSI rollout** at a 6° cruise AoA — gust
+rejection (1-cosine gust, peak tip excursion) and aerodynamic efficiency (lift and
+induced drag read directly from the validated UVLM `Fbern`). `discovery5.py`,
+`power_probe.py`, `discovery5.npz`. ~9 min on the 4090.
+
+| stiffness | 0.50 | 0.80 | 1.10 | 1.40 | 1.70 | 2.00 |
+|---|---|---|---|---|---|---|
+| gust (×10⁻³, smaller better) | **9.50** | 9.82 | 10.06 | 10.23 | 10.45 | 10.77 |
+| L/D induced (larger better) | 22.19 | 22.60 | 23.05 | 23.50 | 23.93 | **24.34** |
+| induced drag (N) | 0.2150 | 0.2108 | 0.2066 | 0.2027 | 0.1991 | **0.1958** |
+
+**F8 — a clean, monotone, REAL gust×efficiency trade-off (no analytical proxy).**
+Lift is essentially constant (~4.76 N across all designs), so the efficiency signal is
+purely the **induced drag falling 0.215→0.196 N as the wing stiffens** (~9%), while gust
+excursion **rises 9.5→10.8 ×10⁻³** (~13%). The two objectives pull in *opposite*
+directions across the entire stiffness range: a flexible wing sheds transient gust load
+(passive aeroelastic alleviation, F1) **but** its steady load-induced deformation
+degrades the spanwise lift distribution → higher induced drag → lower L/D. Stiff is the
+mirror image. This is the **genuine competing constraint** the single-objective
+single-wing runs (#1/#2, where flexibility won every axis) lacked — now measured on real
+physics, not modeled. It is the real Pareto trade-off the co-design optimizes over, and
+the substrate on which the ranking-inversion *synergy* question becomes well-posed.
+
+## Overall honest read across discovery runs #1–#5
 
 - **Real, quantified mechanism findings** on real coupled-FSI physics: F1 (flexibility
   improves gust rejection), F2 (orthotropy weak), F4 (control authority ∝ 1/stiffness),
-  F6 (resonance, when modeled, creates a real gust×efficiency trade-off).
-- **Honest negatives**: F3 (an interior-optimal-stiffness hypothesis falsified), the
-  ranking-inversion *synergy* does **not** appear in any simplified single-wing setup
-  (#3 weighting-dependent; #5 flexibility dominates; #4 resonance numerically damped).
-- **Conclusion**: the headline "co-design beats decoupled (optimum inverts under
-  control)" genuinely requires the **full multibody aircraft** (2 wings + V-tail + 14
-  surfaces + spring-driven emergent flap with a low-damping/aeroelastic resonance +
-  flapping power from the coupled rollout + structural limits) so no single design wins
-  every axis — the production run (A100). The iteration-1 platform, evaluators, and the
-  F1–F7 mechanism map are all built and pushed to drive it.
+  F6 (resonance, when modeled, creates a real gust×efficiency trade-off), and **F8 — a
+  clean, monotone, REAL gust×efficiency trade-off measured directly from the rollout
+  (no proxy): gust favors flexible, induced L/D favors stiff.**
+- **Honest negatives**: F3 (an interior-optimal-stiffness hypothesis falsified); the
+  *analytical* resonance synergy (#3) was weighting-dependent; the rigid-hinge resonance
+  (#4) was numerically damped.
+- **Where this leaves the synergy.** #5 (F8) closes the gap #1/#2 had: there now IS a
+  real single-wing competing constraint. The ranking-inversion *synergy* question — does
+  closing the control loop move the optimum along this real Pareto front? — is now
+  **well-posed on real physics** and is the next run (FIX 4): MOME over (gust, real L/D)
+  decoupled vs. with the Takens control loop. The remaining escalation, the **full
+  multibody aircraft** (2 wings + V-tail + spring-driven flap + flapping power), adds the
+  efficiency-favors-resonant-stiffness axis (F6) on top of F8's efficiency-favors-stiff,
+  compounding the competing constraints. Platform, evaluators, and the F1–F8 mechanism
+  map are all built to drive it.
