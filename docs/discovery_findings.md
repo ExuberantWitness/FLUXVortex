@@ -124,3 +124,40 @@ spring-driven emergent flap, flapping power from the coupled rollout, structural
 buckling limits) so no single design can win every axis. That is the production run
 (A100). The platform, the evaluators, the mechanism map, and an honest read of where
 the synergy does and doesn't appear are all in place to drive it.
+
+---
+
+# Discovery run #4 — REAL spring-driven flap resonance (honest: damping-suppressed)
+
+Sweep torsional-spring stiffness, drive the hinge sinusoidally at f=3 Hz on the
+verified Featherstone multibody dynamics, measure real stroke + motor power.
+`discovery4.py`, `discovery4.npz`.
+
+| ke (N·m/rad) | 0.2 | 0.5 | 1.0 | 1.6 | 2.4 | 4.0 | 7.0 |
+|---|---|---|---|---|---|---|---|
+| stroke (deg) | 108 | 55 | 28 | 18 | 12 | 7 | 4 |
+| power (W) | 7.05 | 3.03 | 1.51 | 0.94 | 0.63 | 0.38 | 0.21 |
+
+**F7 (honest, negative) — the resonance peak is suppressed; response is quasi-static.**
+Stroke ∝ 1/ke (at ke=1.6 the stroke 18° = exactly tau/ke), i.e. the spring statically
+balances the drive torque with **no resonant amplification**, so there is no interior
+efficiency minimum. Cause: the implicit Featherstone integrator adds numerical damping
+that kills the structural resonance at these step sizes. To see the resonance-efficiency
+benefit (the plan's hero mechanism) the production setup needs a **low-numerical-damping
+integrator** (symplectic / much finer dt) — or the resonance must be carried by the
+*aeroelastic* coupled solver (the validated predictor-corrector), not the rigid hinge.
+
+## Overall honest read across discovery runs #1–#4
+
+- **Real, quantified mechanism findings** on real coupled-FSI physics: F1 (flexibility
+  improves gust rejection), F2 (orthotropy weak), F4 (control authority ∝ 1/stiffness),
+  F6 (resonance, when modeled, creates a real gust×efficiency trade-off).
+- **Honest negatives**: F3 (an interior-optimal-stiffness hypothesis falsified), the
+  ranking-inversion *synergy* does **not** appear in any simplified single-wing setup
+  (#3 weighting-dependent; #5 flexibility dominates; #4 resonance numerically damped).
+- **Conclusion**: the headline "co-design beats decoupled (optimum inverts under
+  control)" genuinely requires the **full multibody aircraft** (2 wings + V-tail + 14
+  surfaces + spring-driven emergent flap with a low-damping/aeroelastic resonance +
+  flapping power from the coupled rollout + structural limits) so no single design wins
+  every axis — the production run (A100). The iteration-1 platform, evaluators, and the
+  F1–F7 mechanism map are all built and pushed to drive it.
