@@ -86,7 +86,11 @@ class CoDesign:
             return float(r["gust_rejection"]), float(c)
         return fast_objectives(self.dmap, d, N=40)               # fast structural proxy
 
-    def run(self, budget=40):
+    def run(self, budget=40, emitter="random"):
+        """emitter: 'random' (Gaussian mutation) or 'dqd' (gradient-driven, plan §6).
+        The DQD emitter follows the FD gradient of a scalarized objective
+        (-gust - 0.01*COT) to propose sample-efficient improvements in the smooth
+        design dimensions; the analytic gradient is the committed K_t/AIC adjoints."""
         archive, designs, objs = {}, [], []
 
         def add(d):
@@ -97,16 +101,27 @@ class CoDesign:
             archive.setdefault((cs, cr), []).append((d, o))
             if (len(designs)) % max(1, budget // 6) == 0:
                 print(f"  evaluated {len(designs)}/{budget}", flush=True)
+            return o
+
+        def fitness(o):
+            return -o[0] - 0.01 * o[1]               # scalarization for the emitter
 
         n_init = max(4, budget // 3)
         for _ in range(n_init):
             add([self.rng.uniform(*S_RANGE), self.rng.uniform(*R_RANGE)])
-        keys = list(archive.keys())
-        for _ in range(budget - n_init):
-            (d, _) = archive[keys[self.rng.integers(len(keys))]][-1]
-            add([d[0] + 0.25 * self.rng.standard_normal(),
-                 d[1] + 0.12 * self.rng.standard_normal()])
+        while len(designs) < budget:
             keys = list(archive.keys())
+            (d, o) = archive[keys[self.rng.integers(len(keys))]][-1]
+            if emitter == "dqd" and len(designs) + 4 < budget:
+                g = np.zeros(2); base = fitness(o)
+                for i in range(2):                    # FD gradient of the fitness
+                    dp = list(d); dp[i] += 0.06
+                    g[i] = (fitness(add(dp)) - base) / 0.06
+                stepdir = 0.3 * g / (np.linalg.norm(g) + 1e-9)
+                add([d[0] + stepdir[0], d[1] + stepdir[1]])
+            else:
+                add([d[0] + 0.25 * self.rng.standard_normal(),
+                     d[1] + 0.12 * self.rng.standard_normal()])
         objs = np.array(objs)
         return Result(designs, objs, pareto_front(objs))
 
@@ -114,14 +129,17 @@ class CoDesign:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--full", action="store_true", help="use the real coupled FSI+gust eval")
+    ap.add_argument("--dqd", action="store_true", help="DQD gradient emitter (vs random)")
     ap.add_argument("--budget", type=int, default=40)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     wp.init()
     print(cfg.summary())
     cd = CoDesign(mode="full" if args.full else "fast", seed=1)
-    print(f"running co-design: mode={'full' if args.full else 'fast'}, budget={args.budget}")
-    res = cd.run(budget=args.budget)
+    emitter = "dqd" if args.dqd else "random"
+    print(f"running co-design: mode={'full' if args.full else 'fast'}, "
+          f"emitter={emitter}, budget={args.budget}")
+    res = cd.run(budget=args.budget, emitter=emitter)
     res.report()
     if args.out:
         res.save(args.out)
