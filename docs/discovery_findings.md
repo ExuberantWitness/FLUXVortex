@@ -84,3 +84,43 @@ aircraft (resonant-spring efficiency that favors a tuned stiffness, flapping pow
 axis. That is the production discovery run (full flapping aircraft on A100). What
 iteration-1 establishes, on real physics, is the **mechanism map** (F1–F5) those runs
 build on.
+
+---
+
+# Discovery run #3 — adding the full-aircraft competing constraint (resonant flap)
+
+Combines the **real coupled-FSI gust data** (discovery2: passive & controlled gust
+vs stiffness, measured on the 4090) with a **resonance-aware COT** (Zhong&Xu power
+model + a root-spring flap drive whose inertial power is offset near
+`omega_n = 2*pi*f_flap`, resonant at stiffness ~1.86). This is the competing
+constraint the single plate lacked. `discovery3.py`.
+
+| stiffness | 0.50 | 0.80 | 1.10 | 1.40 | 1.70 | 2.00 |
+|---|---|---|---|---|---|---|
+| gust passive (×10⁻³) | **4.34** | 4.43 | 4.49 | 4.54 | 4.58 | 4.61 |
+| gust controlled (×10⁻³) | **1.13** | 1.38 | 1.64 | 1.83 | 1.98 | 2.10 |
+| COT (resonant flap) | 2.33 | 2.36 | 1.76 | 1.03 | **0.55** | 0.50 |
+
+**F6 — the resonant flap drive creates a GENUINE gust×efficiency trade-off.**
+Unlike iteration-1 (where flexibility won gust, COT, *and* controllability, so the
+optimum collapsed to the flexible corner), efficiency now favors a **tuned, stiffer**
+design (COT minimized near the resonant stiffness ~1.7) while gust still favors
+flexibility (0.5). The Pareto frontier genuinely spans flexible↔tuned-stiff. This is
+the competing constraint a full aircraft introduces.
+
+**Honest result on the ranking-inversion synergy (NEGATIVE here).**
+Scalarizing the two normalized objectives equally, the optimum design is **stiffness
+1.70 both passive and controlled** — closing the control loop shifts the balance
+*toward* the efficient stiffer design (the right direction: control handles the gust,
+so efficiency dominates), but **not enough to flip the discrete optimum**. So in this
+simplified single-wing + analytical-resonance model the clean ranking inversion does
+**not** appear; it is weighting- and magnitude-dependent.
+
+**Conclusion.** Iteration-1 + the resonance constraint establish, on real gust
+physics, the full **mechanism map** and a **real trade-off** (F1–F6). Whether the
+headline *ranking-inversion synergy* materializes is not settled by a tunable single
+wing — it requires the full multibody aircraft (2 wings + V-tail + 14 surfaces, the
+spring-driven emergent flap, flapping power from the coupled rollout, structural/
+buckling limits) so no single design can win every axis. That is the production run
+(A100). The platform, the evaluators, the mechanism map, and an honest read of where
+the synergy does and doesn't appear are all in place to drive it.
