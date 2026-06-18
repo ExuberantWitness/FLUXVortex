@@ -48,3 +48,39 @@ curve with an interior optimum. The high-resolution sweep refutes it — the cur
 Co-optimize design **and** a per-design control policy (close the loop with
 `control_eval`), and report where the gust×efficiency frontier with control differs
 from the passive one — i.e. the structure-control synergy the discovery paper claims.
+
+---
+
+# Discovery run #2 — structure-control interaction (passive vs controlled)
+
+6 stiffnesses × {passive, controlled (Takens PD policy)} under the same real
+coupled-FSI 1-cosine gust (~10 min, 4090). Data: `discovery2.npz`.
+
+| stiffness | 0.50 | 0.80 | 1.10 | 1.40 | 1.70 | 2.00 |
+|---|---|---|---|---|---|---|
+| passive (×10⁻³) | **4.34** | 4.43 | 4.49 | 4.54 | 4.58 | 4.61 |
+| controlled (×10⁻³) | **1.13** | 1.38 | 1.64 | 1.83 | 1.98 | 2.10 |
+| gust reduction | **74%** | 69% | 64% | 60% | 57% | 54% |
+
+**F4 — Control authority scales strongly INVERSELY with stiffness (corr = −0.99).**
+The same policy rejects 74% of the gust on the most flexible wing but only 54% on
+the stiffest. A more compliant wing deflects more per unit corrective load, so the
+control has more authority. Clean, monotone, near-perfect correlation.
+
+**F5 — Structure and control are ALIGNED (compounding), not a trade-off.**
+The flexible wing is both passively gust-tolerant (F1) **and** the most controllable
+(F4). The optimal design is stiffness 0.50 **both** passive and controlled — control
+does **not** invert the ranking here. For this objective, structure and control
+reinforce each other.
+
+**Honest contrast with the hypothesized "synergy".** The plan's headline is a
+*non-intuitive synergy where co-design beats decoupled optimization* (the optimum
+shifts when control is added). That **ranking inversion does not occur** in this
+iteration-1 setup: a single flexible plate where flexibility helps gust, COT, **and**
+controllability simultaneously, so flexibility dominates and co-design ≡ decoupled.
+The genuine ranking-inversion synergy needs **competing constraints** — the full
+aircraft (resonant-spring efficiency that favors a tuned stiffness, flapping power,
+14 surfaces, structural/buckling limits) — where flexibility can no longer win every
+axis. That is the production discovery run (full flapping aircraft on A100). What
+iteration-1 establishes, on real physics, is the **mechanism map** (F1–F5) those runs
+build on.
