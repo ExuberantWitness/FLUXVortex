@@ -63,9 +63,13 @@ class Result:
 
 
 class CoDesign:
-    def __init__(self, mode="fast", nx=8, ny=6, seed=0, device=None):
+    def __init__(self, mode="fast", nx=None, ny=None, seed=0, device=None):
         self.mode = mode
         self.device = device or cfg.DEVICE
+        # full mode runs the coupled FSI, which needs the 15x10 geometry cache;
+        # fast mode (structural proxy) can use a smaller/quicker mesh.
+        if nx is None:
+            nx, ny = (15, 10) if mode == "full" else (8, 6)
         from run_standalone_yamano import yamano_params, build_yamano_shell
         params = yamano_params()
         shell0, _, _, _ = build_yamano_shell(params, nx=nx, ny=ny)
