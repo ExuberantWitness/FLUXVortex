@@ -58,12 +58,32 @@ Splitting the monolithic `ancf_force_gauss_kernel` into **membrane-only** and
   isolation `dot(d2_const, dnh)` (curvature vector constant) is differentiable; making
   the curvature vector q-dependent (the real case) breaks Warp 1.14's auto-adjoint.
 
-## Fix (next focused work — the plan's flagged largest-effort item)
-**Remaining = a custom `@wp.func_grad` for the bending curvature contribution**
-(hand-derive the adjoint of `q → (nhat, dnh, d2x) → dk/Dk_k`, the shell geometric
-stiffness), then assemble: differentiable membrane kernel + custom-adjoint bending
-kernel + (linear) assemble kernel = fully differentiable ANCF operator, pure Warp,
-forward bit-exact. Membrane is already done.
+## THE FIX — analytic tangent stiffness as the custom adjoint (no Warp-bug hunt needed)
+
+After ~15 isolations the exact Warp-1.14 auto-adjoint trigger (curvature =
+`dot(normalize(cross(dxr,dyr)), d2x)` with all three vectors q-accumulated)
+resists black-box reduction. **We do not need to fix Warp's auto-adjoint.**
+
+The internal force `Qint(q)` is a known nonlinear operator whose Jacobian is the
+**structural tangent stiffness** `K_t(q) = ∂Qint/∂q`. Its vector-Jacobian product
+(the adjoint we need) is therefore **exactly**
+
+    adj_q = K_t(q)ᵀ · adj_Qint = K_t(q) · adj_Qint     (K_t symmetric)
+
+and **the GPU code already builds `K_t(q)`** — `assemble_kmem_blocks(q, C)` (block
+form, consumed by `gpu_newmark_step`'s CG every step) — bit-exact validated. So the
+custom adjoint of `assemble_internal_force_sep` is a single block matrix–vector
+product with already-computed, already-validated blocks. This **bypasses the Warp
+auto-adjoint pathology entirely**, is exact (not FD), pure-Warp, and keeps the
+forward bit-exact golden untouched.
+
+Implementation: register a custom-adjoint wrapper for the structural step — forward
+= `assemble_internal_force_sep` + `gpu_newmark_step` (unchanged); backward = apply
+`K_t` (and the Newmark/implicit-solve adjoint) via the existing block ops. Membrane
+is already auto-differentiable; this makes the **full** ANCF operator differentiable
+without touching the validated forward kernels. This de-risks the plan's flagged
+largest-effort item from "rewrite + re-derive adjoints" to "wire the tangent
+stiffness we already compute."
 
 1. Provide a **custom adjoint** for the bending-normal-gradient contribution:
    wrap the `(nvec, dxr, dyr, sxa, sya, d2x, dxx) → dk_a` map in a `@wp.func` with
