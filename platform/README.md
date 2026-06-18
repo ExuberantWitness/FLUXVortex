@@ -11,6 +11,27 @@ Everything below is **verified on an RTX 4090** (pure Warp / `fp64`).
 
 ---
 
+## Run the co-design (one command)
+
+```bash
+cd FLUXV/src
+FLUXV_DEVICE=cuda:0 python ../platform/codesign.py                       # fast, budget 40
+FLUXV_DEVICE=cuda:0 python ../platform/codesign.py --dqd --budget 30     # DQD gradient emitter
+FLUXV_DEVICE=cuda:0 python ../platform/codesign.py --full --budget 8 --out frontier.npz
+```
+or config-as-code:
+```python
+from codesign import CoDesign
+res = CoDesign(mode="fast").run(budget=40, emitter="dqd")   # mode "full" = real coupled FSI
+res.report();  res.save("frontier.npz")                      # gust x efficiency Pareto frontier
+```
+`mode`: **fast** = structural proxy (~1 s/design) · **full** = real coupled FSI + 1-cosine
+gust (~3 min/design, A100 for scale). `emitter`: **random** mutation · **dqd** gradient
+(plan §6). Output = the non-dominated **gust-rejection × efficiency** frontier + saved
+archive — the discovery hero artifact.
+
+---
+
 ## What runs today (every line is a passing check on GPU)
 
 | Layer | Module | What it does | Verified |
