@@ -21,29 +21,41 @@ import torch
 import torch.nn as nn
 
 from flight_ppo_env import FlightPPOEnv, OBS_DIM, ACT_DIM
+import design_field as dfield                                 # spanwise spline 刚柔 field
 
 N_EMBED = 6
 OBS_SCALE = torch.tensor([0.5, 0.5, 3, 3, 3, 6, 3, 4, 8, 2.5], dtype=torch.float32)
 CTX_DIM = OBS_DIM + ACT_DIM + 1 + 1      # obs + prev-action + prev-reward + design-belief slot
+K_CTRL = 4                               # spanwise stiffness-field control points (root->tip)
 
 
 class MetaFlightEnv(FlightPPOEnv):
-    """FlightPPOEnv with a per-episode wing-stiffness design that modulates dynamics."""
+    """FlightPPOEnv with a per-episode wing 刚柔 FIELD design that modulates dynamics.
+
+    The design is no longer a single scalar stiffness but a spanwise spline field
+    s(ξ) (K_CTRL control points root->tip; design_field.StiffnessField). The field's
+    physically-reduced aggregates drive the dynamics:
+      gust/control authority <- s_gust (load-weighted, TIP-biased effective stiffness),
+      cruise efficiency      <- s_root (bending-moment-weighted, ROOT-biased stiffness).
+    A UNIFORM field reproduces the old scalar surrogate exactly, so the scalar design is
+    the diagonal slice of this richer field design space the meta-policy now adapts over.
+    """
+
+    def _apply_design(self, field):
+        self.field = field
+        self.s = float(field.aggregates()["s_mean"])          # mean (for logging only)
+        self.gust_factor = dfield.gust_factor(field)          # <1 for tip-flexible
+        self.ctrl_factor = dfield.ctrl_factor(field)          # higher for tip-flexible
 
     def sample_design(self):
-        self.s = float(self.rng.uniform(0.5, 2.0))           # wing stiffness scale
-        # F1: flexible -> gust effect attenuated; F4: flexible -> more control authority
-        self.gust_factor = 1.0 / (0.6 + 0.4 * self.s)        # <1 for flexible
-        self.ctrl_factor = (1.6 - 0.5 * (self.s - 0.5))      # higher for flexible
-        return self.s
+        self._apply_design(dfield.StiffnessField.sample(self.rng, K=K_CTRL))
+        return self.field
 
     def reset(self, design=None):
         if design is None:
             self.sample_design()
-        else:
-            self.s = float(design)
-            self.gust_factor = 1.0 / (0.6 + 0.4 * self.s)
-            self.ctrl_factor = (1.6 - 0.5 * (self.s - 0.5))
+        else:                                                 # scalar / (K,) ctrl / field
+            self._apply_design(dfield.as_field(design, K=K_CTRL))
         return super().reset()
 
     def _gust(self):
@@ -55,9 +67,11 @@ class MetaFlightEnv(FlightPPOEnv):
         return super().step(a)
 
 
-def cruise_efficiency(s):
-    """L/D(s) cruise efficiency proxy (F8: stiffer -> higher induced L/D)."""
-    return 22.0 + 2.2 * (s - 0.5)                              # matches discovery #5 trend
+def cruise_efficiency(design):
+    """L/D cruise efficiency from the 刚柔 field (ROOT-stiffness driven, minus over-flex
+    penalty). Accepts a scalar (uniform field) or a StiffnessField — uniform s reduces to
+    the old 22.0+2.2*(s-0.5)."""
+    return dfield.cruise_efficiency(design)
 
 
 class RL2Policy(nn.Module):
@@ -162,34 +176,49 @@ def train(iters=140, steps=2048, epochs=8, mb=256, lr=3e-4, seed=0, log=print):
     return net, hist
 
 
+def eval_field(net, field, emb=None, seed=1):
+    """Controlled gust excursion for a 刚柔 field under the adapting meta-policy."""
+    emb = emb or CtxEmbedder()
+    env = MetaFlightEnv(seed=seed)
+    obs = env.reset(design=field); emb.reset(); gz = []
+    for k in range(env.horizon):
+        with torch.no_grad():
+            mu, _ = net(emb.push(obs).unsqueeze(0))
+        obs, r, d, info = env.step(mu[0].numpy()); emb.record(mu[0].numpy(), r)
+        if env.gust["t0"] <= env.t < env.gust["t0"] + env.gust["dur"] + 0.5:
+            gz.append(env.x[2])
+        if d:
+            break
+    return (max(gz) - min(gz)) if gz else np.nan
+
+
 def codesign_frontier(net):
-    """Evaluate the meta-policy across designs -> (controlled gust rejection, efficiency)
-    Pareto data. The meta-policy ADAPTS per design (no retraining) -> the discovery."""
+    """Evaluate the meta-policy across the 刚柔 FIELD design space -> (controlled gust
+    rejection, efficiency) Pareto data. Sweeps a 2-D (root, tip) grid of spanwise fields
+    (the distributional axis the scalar design could not express); the diagonal root==tip
+    is the old uniform-scalar frontier. The meta-policy ADAPTS per design (no retraining)."""
     emb = CtxEmbedder(); rows = []
-    for s in [0.5, 0.8, 1.1, 1.4, 1.7, 2.0]:
-        env = MetaFlightEnv(seed=1)
-        obs = env.reset(design=s); emb.reset(); gz = []
-        for k in range(env.horizon):
-            with torch.no_grad():
-                mu, _ = net(emb.push(obs).unsqueeze(0))
-            obs, r, d, info = env.step(mu[0].numpy()); emb.record(mu[0].numpy(), r)
-            if env.gust["t0"] <= env.t < env.gust["t0"] + env.gust["dur"] + 0.5:
-                gz.append(env.x[2])
-            if d:
-                break
-        gust_exc = (max(gz) - min(gz)) if gz else np.nan
-        rows.append((s, gust_exc, cruise_efficiency(s)))
+    roots = [0.6, 1.0, 1.4, 1.8, 2.2]
+    tips = [0.4, 0.9, 1.5]
+    for root in roots:
+        for tip in tips:
+            f = dfield.StiffnessField.from_root_tip(root, tip, K=K_CTRL)
+            g = eval_field(net, f, emb)
+            rows.append((root, tip, g, cruise_efficiency(f)))
     return rows
 
 
 if __name__ == "__main__":
     import warp as wp; wp.init()
-    print("Meta-RL (RL^2): adapt across the wing-design distribution; PPO meta-training")
+    print("Meta-RL (RL^2): adapt across the wing 刚柔 FIELD distribution (spline, "
+          f"K={K_CTRL} root->tip); PPO meta-training")
     net, hist = train(iters=140, steps=2048)
     print(f"meta-RL done: final mean return={hist[-1]:.2f} (best {max(hist):.2f})")
     torch.save(net.state_dict(), "docs/meta_policy.pt")
-    print("\nco-design frontier (meta-policy ADAPTS per design, no retraining):")
-    print("  stiffness | gust excursion (m, controlled) | cruise L/D")
-    for s, g, e in codesign_frontier(net):
-        print(f"   {s:.2f}     |   {g:6.2f}                       |  {e:.1f}")
-    print("  -> flexible: better gust rejection; stiff: better efficiency (抗风×效率 trade-off)")
+    np.savez("docs/ppo_hist.npz", hist=np.array(hist))
+    print("\nco-design frontier over the 刚柔 FIELD space (meta-policy ADAPTS, no retraining):")
+    print("  root | tip  | gust excursion (m) | cruise L/D")
+    for root, tip, g, e in codesign_frontier(net):
+        print(f"  {root:.1f}  | {tip:.1f}  |   {g:6.2f}           |  {e:.1f}")
+    print("  -> stiff-root/flex-tip can win BOTH (efficient AND gust-tolerant): the "
+          "distributional payoff a single uniform stiffness cannot reach")
