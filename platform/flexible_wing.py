@@ -59,12 +59,18 @@ def tip_twist_deg(entry, nodes0):
     return np.rad2deg(pitch_def - pitch_ref)
 
 
-def run(n_cycles=2, amp_deg=35.0, substeps=16, e0=E0, damping=DAMPING, verbose=True):
+def run(n_cycles=2, amp_deg=35.0, substeps=16, e0=E0, damping=DAMPING, verbose=True,
+        E_scale=None, rho_scale=None):
+    """E_scale/rho_scale: optional PER-ELEMENT 刚柔 + mass distribution on the main
+    wing (callable(x, y) of the element centroid, or (ne,) array). E.g. stiff/heavy
+    root -> flexible/light tip: E_scale=lambda x, y: 1 - 0.7*(y/SPAN)**2."""
     dtw = (CHORD / NC) / V_INF
     n_windows = int(round(n_cycles * PERIOD / dtw))
     kin = FlapKinematics(np.deg2rad(amp_deg), PERIOD)
     entry = FlapEntry(CHORD, SPAN, NC, NS, kin, mode="elastic", kscale=1.0,
                       thickness=THICK, rho_s=RHO_S, E0=e0, damping=damping)
+    if E_scale is not None or rho_scale is not None:
+        entry.shell.set_distribution(E_scale=E_scale, rho_scale=rho_scale)   # per-element
     V_vec = V_INF * np.array([np.cos(ALPHA), 0.0, np.sin(ALPHA)])
     # bounded ring wake (particles off) -> O(1) per-window cost for the feathering probe
     provider = FlapUVLMProvider(V_vec, RHO, dtw, K=6, nu=NU, chord=CHORD,

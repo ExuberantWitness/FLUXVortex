@@ -47,6 +47,18 @@ class WingDesign:
         import numpy as _np
         return root_val * (1.0 - (1.0 - taper) * _np.power(_np.clip(frac, 0, 1), self.dist_exp))
 
+    def stiffness_scale_fn(self, span, root_y=0.0):
+        """Per-element E-scale callable(x, y) for ANCFShell.set_distribution — the
+        spanwise stiffness profile (stiff root -> flexible tip) as a per-element knob."""
+        import numpy as _np
+        return lambda x, y: float(self.span_profile(
+            (abs(y) - root_y) / (span - root_y + 1e-9), self.stiff_root, self.stiff_taper))
+
+    def mass_scale_fn(self, span, root_y=0.0):
+        """Per-element density-scale callable(x, y): root-heavy -> light tip."""
+        return lambda x, y: float(self.span_profile(
+            (abs(y) - root_y) / (span - root_y + 1e-9), 1.0, self.mass_taper))
+
 
 @dataclass
 class TailDesign:

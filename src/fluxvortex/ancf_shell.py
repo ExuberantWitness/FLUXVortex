@@ -266,6 +266,13 @@ class ANCFShell:
         else:
             self.Dk = h**3 / 12.0 * self.Dm
 
+        # Per-element material (刚柔 + mass distribution). Defaults to the uniform
+        # broadcast -> bit-identical to the global case (golden redline preserved);
+        # set_distribution() overrides per element for a spanwise/per-element design.
+        self.Dm_e = np.broadcast_to(self.Dm, (self.ne, 3, 3)).copy()
+        self.Dk_e = np.broadcast_to(self.Dk, (self.ne, 3, 3)).copy()
+        self.rho_e = np.full(self.ne, float(self.rho))
+
         # Generalized coordinates: [q; dq/dt]
         # q per node: [rx,ry,rz, dx_rx,dx_ry,dx_rz, dy_rx,dy_ry,dy_rz]
         self.q = np.zeros(self.ndof)
@@ -307,6 +314,36 @@ class ANCFShell:
             dofs[k*9:(k+1)*9] = nd[k]*NDOF_NODE + np.arange(9)
         return dofs
 
+    def _elem_centers(self):
+        """(ne, 3) element-centroid coordinates (reference config)."""
+        return np.array([self.nodes[self.quads[e]].mean(0) for e in range(self.ne)])
+
+    def set_distribution(self, E_scale=None, rho_scale=None):
+        """Per-element 刚柔 + mass distribution (the design knob, esp. main wing).
+
+        E_scale / rho_scale: either a (ne,) array of per-element scale factors, or a
+        callable scale(x, y) of the element-centroid coordinates. Scales the base
+        Dm/Dk and density per element (1.0 = unchanged -> bit-identical to uniform).
+        Rebuilds the mass matrix. Affects the numpy ANCF/FSI path (the flexible wing).
+        """
+        def _scale(sc):
+            if callable(sc):
+                c = self._elem_centers()
+                return np.array([float(sc(c[e, 0], c[e, 1])) for e in range(self.ne)])
+            sc = np.asarray(sc, float)
+            return np.full(self.ne, float(sc)) if sc.ndim == 0 else sc
+        if E_scale is not None:
+            es = _scale(E_scale)
+            self.Dm_e = self.Dm[None, :, :] * es[:, None, None]
+            self.Dk_e = self.Dk[None, :, :] * es[:, None, None]
+            self.E_scale_e = es
+        if rho_scale is not None:
+            rs = _scale(rho_scale)
+            self.rho_e = self.rho * rs
+            self.M = self._assemble_mass()
+            self.rho_scale_e = rs
+        return self
+
     # ─── Mass matrix (constant) ───
     def _assemble_mass(self):
         rows, cols, vals = [], [], []
@@ -322,7 +359,7 @@ class ANCFShell:
                     StS = S.T @ S
                     w = wts[i] * wts[j] * ed.detJ
                     M_e += w * StS
-            M_e *= self.rho * self.h
+            M_e *= self.rho_e[e] * self.h
 
             for a in range(NDOF_ELEM):
                 for b in range(NDOF_ELEM):
@@ -380,11 +417,11 @@ class ANCFShell:
                 A2 = ed.A2[i, j]
                 A3 = ed.A3[i, j]
 
-                Dm_eps = self.Dm @ eps_v
+                Dm_eps = self.Dm_e[e] @ eps_v
                 Q_mem += w * (deps.T @ Dm_eps)
 
                 K_mem += w * (A1 * Dm_eps[0] + A2 * Dm_eps[1] + A3 * Dm_eps[2])
-                K_mem += w * (deps.T @ self.Dm @ deps)
+                K_mem += w * (deps.T @ self.Dm_e[e] @ deps)
 
                 # ── Bending (Kirchhoff-Love curvature) ──
                 if self.mode != 'membrane':
@@ -418,10 +455,10 @@ class ANCFShell:
                     dk[1] = d2y_r @ dn_hat + n_hat @ d2Sy
                     dk[2] = 2.0 * (d2xy_r @ dn_hat + n_hat @ d2Sxy)
 
-                    Dk_k = self.Dk @ k_v
+                    Dk_k = self.Dk_e[e] @ k_v
                     Q_bend += w * (dk.T @ Dk_k)
 
-                    K_bend += w * (dk.T @ self.Dk @ dk)
+                    K_bend += w * (dk.T @ self.Dk_e[e] @ dk)
 
         Qe = Q_mem * self.h + Q_bend
         Kt = K_mem * self.h + K_bend
@@ -473,10 +510,10 @@ class ANCFShell:
                 A2 = ed.A2[i, j]
                 A3 = ed.A3[i, j]
 
-                Dm_eps = self.Dm @ eps_v
+                Dm_eps = self.Dm_e[e] @ eps_v
                 Q_mem_e += w * (deps.T @ Dm_eps)
                 K_mem += w * (A1 * Dm_eps[0] + A2 * Dm_eps[1] + A3 * Dm_eps[2])
-                K_mem += w * (deps.T @ self.Dm @ deps)
+                K_mem += w * (deps.T @ self.Dm_e[e] @ deps)
 
                 # Bending
                 if self.mode != 'membrane':
@@ -512,9 +549,9 @@ class ANCFShell:
                     dk[1] = d2y_r @ dn_hat + n_hat @ d2Sy
                     dk[2] = 2.0 * (d2xy_r @ dn_hat + n_hat @ d2Sxy)
 
-                    Dk_k = self.Dk @ k_v
+                    Dk_k = self.Dk_e[e] @ k_v
                     Q_bend_e += w * (dk.T @ Dk_k)
-                    K_bend += w * (dk.T @ self.Dk @ dk)
+                    K_bend += w * (dk.T @ self.Dk_e[e] @ dk)
 
         Q_mem_e *= self.h
         K_mem_scaled = K_mem * self.h
@@ -542,7 +579,7 @@ class ANCFShell:
                 deps0 = dSx.T @ dx_r
                 deps1 = dSy.T @ dy_r
                 deps2 = dSx.T @ dy_r + dSy.T @ dx_r
-                Dm_eps = self.Dm @ eps_v
+                Dm_eps = self.Dm_e[e] @ eps_v
                 Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
 
                 if not membrane_only:
@@ -566,7 +603,7 @@ class ANCFShell:
                     dk0 = d2x_r @ dn_hat + n_hat @ d2Sx
                     dk1 = d2y_r @ dn_hat + n_hat @ d2Sy
                     dk2 = 2.0 * (d2xy_r @ dn_hat + n_hat @ d2Sxy)
-                    Dk_k = self.Dk @ k_v
+                    Dk_k = self.Dk_e[e] @ k_v
                     Q_bend_e += w * (dk0 * Dk_k[0] + dk1 * Dk_k[1] + dk2 * Dk_k[2])
         Q_mem_e *= self.h
         return Q_mem_e, Q_bend_e
@@ -616,10 +653,10 @@ class ANCFShell:
                     deps[0] = dSx.T @ dx_r
                     deps[1] = dSy.T @ dy_r
                     deps[2] = dSx.T @ dy_r + dSy.T @ dx_r
-                    Dm_eps = self.Dm @ eps_v
+                    Dm_eps = self.Dm_e[e] @ eps_v
                     K_mem += w * (ed.A1[i, j] * Dm_eps[0] + ed.A2[i, j] * Dm_eps[1]
                                   + ed.A3[i, j] * Dm_eps[2])
-                    K_mem += w * (deps.T @ self.Dm @ deps)
+                    K_mem += w * (deps.T @ self.Dm_e[e] @ deps)
             K_mem *= self.h
             dofs = self._elem_dofs(e)
             n = NDOF_ELEM
