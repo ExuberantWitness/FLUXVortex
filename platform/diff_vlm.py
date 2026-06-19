@@ -86,6 +86,24 @@ def total_force(corners, nx, ny, Vinf):
     return Ftot
 
 
+def panel_forces_flat(corners, nx, ny, Vinf):
+    Fp, _ = vlm_forces(corners, nx, ny, Vinf)
+    return Fp.reshape(-1)                                   # (nx*ny*3,)
+
+
+def panel_jacobian(corners, nx, ny, Vinf, h=1e-30):
+    """EXACT ∂(all panel forces)/∂(all corners) via complex-step. Shape (nx·ny·3, ncorner·3).
+    This is the VLM block for the coupled-FSI adjoint: adj_corners = Jᵀ·adj_panelForces."""
+    shape = corners.shape; flat = corners.reshape(-1)
+    m = nx * ny * 3
+    J = np.zeros((m, flat.size))
+    Vc = np.asarray(Vinf, np.complex128)
+    for k in range(flat.size):
+        cp = flat.astype(np.complex128).copy(); cp[k] += 1j * h
+        J[:, k] = np.imag(panel_forces_flat(cp.reshape(shape), nx, ny, Vc)) / h
+    return J
+
+
 def jac_complex_step(corners, nx, ny, Vinf, h=1e-30):
     """EXACT ∂(total force)/∂(corners) via complex-step (machine precision)."""
     shape = corners.shape
