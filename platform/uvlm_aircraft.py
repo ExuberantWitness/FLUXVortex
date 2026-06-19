@@ -168,6 +168,70 @@ class RigidSurfaceUVLM:
                     drag=float(F[0]), colloc=colw, dp=dpf)
 
 
+def build_aircraft_surfaces(ac, nc_box=4, nc_flap=2, ns_seg=3, nc_tail=3,
+                            nc_rud=2, ns_tail=5):
+    """Build every lifting surface's 3D panel lattice (aircraft frame) from
+    aircraft_geom: 2 wing boxes + 12 wing flaps + 2 V-stab + 2 ruddervators.
+
+    Returns a list of surface dicts for MultiSurfaceUVLM, each with body-frame
+    corners/colloc/normals (here body=aircraft frame, identity rest pose) tagged by
+    name and a `body` key (filled with a placeholder index; the multibody build
+    rebinds these to Featherstone bodies). Dihedral, taper, sweep, incidence applied.
+    """
+    w = ac.wing; t = ac.tail
+    dim = ac.wing_dims(); tdim = ac.tail_dims()
+    dih_w = np.deg2rad(w.dihedral_deg)
+    dih_t = np.deg2rad(t.dihedral_deg); inc_t = np.deg2rad(t.incidence_deg)
+    surfaces = []
+
+    def wing_grid(sgn, y0f, y1f, fa, fb, nc, ns):
+        ys = w.root_offset + np.linspace(y0f, y1f, ns + 1) * (dim["semi"] - w.root_offset)
+        V = np.zeros((nc + 1, ns + 1, 3))
+        for jj, ya in enumerate(ys):
+            c, x_le = ac._wing_chord(ya)
+            for ii, f in enumerate(np.linspace(fa, fb, nc + 1)):
+                s = ya - w.root_offset                       # spanwise dist from root
+                V[ii, jj] = [x_le - f * c, sgn * ya, s * np.tan(dih_w)]
+        return V
+
+    def tail_grid(sgn, fa, fb, nc, ns):
+        ys = 0.04 + np.linspace(0, 1, ns + 1) * (tdim["semi"] - 0.04)
+        x0 = -t.boom
+        V = np.zeros((nc + 1, ns + 1, 3))
+        for jj, ya in enumerate(ys):
+            fr = (ya - 0.04) / (tdim["semi"] - 0.04 + 1e-9)
+            c = tdim["c_root"] + (tdim["c_tip"] - tdim["c_root"]) * fr
+            x_le = x0 + 0.5 * tdim["c_root"]
+            s = ya - 0.04
+            for ii, f in enumerate(np.linspace(fa, fb, nc + 1)):
+                xc = -f * c                                  # aft of LE
+                xr = xc * np.cos(inc_t); zr = -xc * np.sin(inc_t)   # incidence: TE up
+                V[ii, jj] = [x_le + xr, sgn * s * np.cos(dih_t),
+                             zr + s * np.sin(dih_t)]          # dihedral tilts panel up
+        return V
+
+    def add(name, V, body):
+        cor, col, nrm, area = make_vlm_lattice(V)
+        nc, ns = V.shape[0] - 1, V.shape[1] - 1
+        surfaces.append(dict(corners=cor, colloc=col, normals=nrm, area=area,
+                             nc=nc, ns=ns, body=body, name=name))
+
+    bidx = 1
+    for sgn, side in ((+1, "L"), (-1, "R")):
+        add(f"box_{side}", wing_grid(sgn, 0.0, 1.0, w.le_flap_frac, 1 - w.te_flap_frac,
+                                     nc_box, 3 * ns_seg), bidx); bidx += 1
+        for k in range(w.n_le):
+            add(f"le_{side}{k}", wing_grid(sgn, k / w.n_le, (k + 1) / w.n_le, 0.0,
+                                           w.le_flap_frac, nc_flap, ns_seg), bidx); bidx += 1
+        for k in range(w.n_te):
+            add(f"te_{side}{k}", wing_grid(sgn, k / w.n_te, (k + 1) / w.n_te,
+                                           1 - w.te_flap_frac, 1.0, nc_flap, ns_seg), bidx); bidx += 1
+    for sgn, side in ((+1, "L"), (-1, "R")):
+        add(f"vstab_{side}", tail_grid(sgn, 0.0, 1 - t.ruddervator_frac, nc_tail, ns_tail), 0)
+        add(f"rud_{side}", tail_grid(sgn, 1 - t.ruddervator_frac, 1.0, nc_rud, ns_tail), bidx); bidx += 1
+    return surfaces
+
+
 class MultiSurfaceUVLM:
     """Composite-AIC multi-surface UVLM over rigid bodies (plan §2 Surface atoms).
 
