@@ -81,18 +81,18 @@ def interp_ctrl(ctrl: wp.array2d(dtype=wp.float64), e: int, K: int,
 
 
 # ───────────────────────── design-field aggregates (differentiable) ──────────
-# Split into TWO kernels by which accumulator sits in a DENOMINATOR. The efficiency path
-# uses the shared accumulators only in NUMERATORS (s_root=sum_mgs/norm, C=sum_wc/norm) ->
-# fully adjoint-clean. The gust path needs s_gust=norm_w/sum_wc (accumulator in the
-# denominator). Keeping them separate means the DQD design gradient ∂efficiency/∂ctrl
-# never shares a variable with the denominator-division (which trips a Warp adjoint NaN).
+# THREE kernels: one LOOP kernel accumulates the ctrl-dependent trapz sums (sum_wc, sum_mgs)
+# and OUTPUTS them; two POINTWISE finalizers read those sums as plain INPUT elements and do
+# the divisions. This is the key to a clean Warp adjoint for the GUST path: s_gust=norm_w/
+# sum_wc divides by an accumulator — fatal if sum_wc is a *loop-accumulated* variable in the
+# same kernel (Warp's reverse over the accumulation + denominator yields NaN), but fine when
+# sum_wc is a finalizer INPUT. Splitting also isolates the reciprocal from the efficiency
+# seed so it can't poison the DQD gradient. Both ∂efficiency/∂ctrl and ∂gust_factor/∂ctrl
+# then validate vs FD (the DQD design gradient and the SHAC gust design gradient).
 @wp.kernel
-def design_agg_eff(ctrl: wp.array2d(dtype=wp.float64), K: int, NG: int,
-                   taper: wp.float64, norm_w: wp.float64, norm_mg: wp.float64,
-                   pen_mask: wp.array(dtype=wp.float64),
-                   efficiency: wp.array(dtype=wp.float64),
-                   s_root_o: wp.array(dtype=wp.float64),
-                   c_o: wp.array(dtype=wp.float64)):
+def design_agg_sums(ctrl: wp.array2d(dtype=wp.float64), K: int, NG: int, taper: wp.float64,
+                    sum_wc_o: wp.array(dtype=wp.float64),
+                    sum_mgs_o: wp.array(dtype=wp.float64)):
     e = wp.tid()
     dx = wp.float64(1.0) / wp.float64(NG - 1)
     one_mt = wp.float64(1.0) - taper
@@ -110,8 +110,20 @@ def design_agg_eff(ctrl: wp.array2d(dtype=wp.float64), K: int, NG: int,
             wt = wp.float64(0.5)                            # trapezoid endpoints
         sum_wc += wt * (w / sg)
         sum_mgs += wt * mg * sg
-    C = sum_wc / norm_w                                     # tip-biased compliance (numerator)
-    s_root = sum_mgs / norm_mg                              # root-biased stiffness (numerator)
+    sum_wc_o[e] = sum_wc
+    sum_mgs_o[e] = sum_mgs
+
+
+@wp.kernel
+def design_agg_eff_final(sum_wc: wp.array(dtype=wp.float64), sum_mgs: wp.array(dtype=wp.float64),
+                         norm_w: wp.float64, norm_mg: wp.float64,
+                         pen_mask: wp.array(dtype=wp.float64),
+                         efficiency: wp.array(dtype=wp.float64),
+                         s_root_o: wp.array(dtype=wp.float64),
+                         c_o: wp.array(dtype=wp.float64)):
+    e = wp.tid()
+    C = sum_wc[e] / norm_w                                  # tip-biased compliance (numerator)
+    s_root = sum_mgs[e] / norm_mg                           # root-biased stiffness (numerator)
     # over-flex penalty 3·max(0,C-2): the relu mask (pen_mask[e]=1 iff C>2) is a DETACHED
     # input (precomputed host-side from C). Warp severs C's adjoint through any data-dependent
     # gate (if/wp.max/wp.clamp/wp.step on C), so we keep pen LINEAR in C with a constant mask
@@ -123,31 +135,17 @@ def design_agg_eff(ctrl: wp.array2d(dtype=wp.float64), K: int, NG: int,
 
 
 @wp.kernel
-def design_agg_gust(ctrl: wp.array2d(dtype=wp.float64), K: int, NG: int,
-                    taper: wp.float64, norm_w: wp.float64,
-                    gust_factor: wp.array(dtype=wp.float64),
-                    ctrl_factor: wp.array(dtype=wp.float64),
-                    s_gust_o: wp.array(dtype=wp.float64),
-                    c_o: wp.array(dtype=wp.float64)):
+def design_agg_gust_final(sum_wc: wp.array(dtype=wp.float64), norm_w: wp.float64,
+                          gust_factor: wp.array(dtype=wp.float64),
+                          ctrl_factor: wp.array(dtype=wp.float64),
+                          s_gust_o: wp.array(dtype=wp.float64)):
     e = wp.tid()
-    dx = wp.float64(1.0) / wp.float64(NG - 1)
-    one_mt = wp.float64(1.0) - taper
-    sum_wc = wp.float64(0.0)
-    for g in range(NG):
-        xi = wp.float64(g) * dx
-        sg = interp_ctrl(ctrl, e, K, xi)
-        w = xi * (wp.float64(1.0) - one_mt * xi)
-        wt = wp.float64(1.0)
-        if g == 0 or g == NG - 1:
-            wt = wp.float64(0.5)
-        sum_wc += wt * (w / sg)
-    s_gust = norm_w / sum_wc                                # = 1/C (tip-biased stiffness)
+    s_gust = norm_w / sum_wc[e]                             # = 1/C (sum_wc is an INPUT element)
     # plan F1 passive gust ALLEVIATION: flexible tip (low s_gust) sheds gust load (washout)
     # -> lower transmissibility. Monotone increasing, bounded (0.5,1).
     gust_factor[e] = wp.float64(0.5) + wp.float64(0.5) * s_gust / (s_gust + wp.float64(1.0))
     ctrl_factor[e] = wp.float64(1.6) - wp.float64(0.5) * (s_gust - wp.float64(0.5))
     s_gust_o[e] = s_gust
-    c_o[e] = sum_wc / norm_w                                # compliance C (for the relu mask)
 
 
 # ───────────────────────── batched 6-DOF flight step ─────────────────────────
@@ -354,6 +352,8 @@ class GpuFlightEnv:
         self.s_root = wp.zeros(B, dtype=f64, device=device)
         self.C = wp.zeros(B, dtype=f64, device=device)
         self.pen_mask = wp.zeros(B, dtype=f64, device=device)
+        self.sum_wc = wp.zeros(B, dtype=f64, device=device, requires_grad=True)
+        self.sum_mgs = wp.zeros(B, dtype=f64, device=device, requires_grad=True)
         self.obs = wp.zeros((B, OBS_DIM), dtype=f64, device=device)
         self.reward = wp.zeros(B, dtype=f64, device=device)
         self.done = wp.zeros(B, dtype=wp.int32, device=device)
@@ -366,15 +366,19 @@ class GpuFlightEnv:
         """ctrl: (B,K) stiffness control points (root->tip). Launches the differentiable
         aggregate kernel -> gust_factor/ctrl_factor/efficiency on GPU."""
         self.ctrl.assign(np.ascontiguousarray(ctrl, dtype=np.float64))
-        # gust pass first — it yields the compliance C used to build the detached relu mask
-        wp.launch(design_agg_gust, dim=self.B,
-                  inputs=[self.ctrl, self.K, _NG, np.float64(_TAPER), np.float64(_NORM_W)],
-                  outputs=[self.gust_factor, self.ctrl_factor, self.s_gust, self.C],
-                  device=self.device)
-        self.pen_mask.assign((self.C.numpy() > 2.0).astype(np.float64))   # relu mask (detached)
-        wp.launch(design_agg_eff, dim=self.B,
-                  inputs=[self.ctrl, self.K, _NG, np.float64(_TAPER),
-                          np.float64(_NORM_W), np.float64(_NORM_MG), self.pen_mask],
+        # 1) loop kernel -> the ctrl-dependent trapz sums (sum_wc, sum_mgs)
+        wp.launch(design_agg_sums, dim=self.B,
+                  inputs=[self.ctrl, self.K, _NG, np.float64(_TAPER)],
+                  outputs=[self.sum_wc, self.sum_mgs], device=self.device)
+        # 2) gust finalizer (pointwise; divides by sum_wc as an input element)
+        wp.launch(design_agg_gust_final, dim=self.B,
+                  inputs=[self.sum_wc, np.float64(_NORM_W)],
+                  outputs=[self.gust_factor, self.ctrl_factor, self.s_gust], device=self.device)
+        # 3) detached relu mask from C, then efficiency finalizer
+        self.pen_mask.assign(((self.sum_wc.numpy() / _NORM_W) > 2.0).astype(np.float64))
+        wp.launch(design_agg_eff_final, dim=self.B,
+                  inputs=[self.sum_wc, self.sum_mgs, np.float64(_NORM_W), np.float64(_NORM_MG),
+                          self.pen_mask],
                   outputs=[self.efficiency, self.s_root, self.C], device=self.device)
 
     def _sample_ctrl(self, n):

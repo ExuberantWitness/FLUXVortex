@@ -15,7 +15,8 @@ import numpy as np
 import warp as wp
 
 import design_field as dfield
-from gpu_flight_env import (GpuFlightEnv, design_agg_eff, K_CTRL, _NG, _TAPER,
+from gpu_flight_env import (GpuFlightEnv, design_agg_sums, design_agg_eff_final,
+                            design_agg_gust_final, K_CTRL, _NG, _TAPER,
                             _NORM_W, _NORM_MG, OBS_DIM, ACT_DIM)
 from meta_rl_train import MetaFlightEnv
 
@@ -119,38 +120,72 @@ def test_rollout(rng):
     return ok
 
 
-def test_grad(rng):
-    n = 32
-    dev = "cuda"
-    ctrl = _rand_fields(n, rng)
+def _grad_through_sums(n, ctrl, finalize, oracle, dev="cuda", eps=1e-6):
+    """∂(Σ output)/∂ctrl via the tape over [design_agg_sums -> finalize(sum_wc[,sum_mgs])],
+    vs central finite differences of the numpy oracle."""
     ctrl_wp = wp.array(ctrl, dtype=wp.float64, device=dev, requires_grad=True)
-    # detached relu mask (pen active iff compliance C>2), from the numpy oracle
-    Cv = np.array([dfield.StiffnessField(c).feather_compliance() for c in ctrl])
-    pen_mask = wp.array((Cv > 2.0).astype(np.float64), dtype=wp.float64, device=dev)
-    # fresh output arrays (zero-grad) so no stale .grad from non-tape launches leaks in
-    out = [wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True) for _ in range(3)]
+    sum_wc = wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True)
+    sum_mgs = wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True)
     tape = wp.Tape()
     with tape:
-        wp.launch(design_agg_eff, dim=n,
-                  inputs=[ctrl_wp, K_CTRL, _NG, np.float64(_TAPER),
-                          np.float64(_NORM_W), np.float64(_NORM_MG), pen_mask],
-                  outputs=out, device=dev)
-    out[0].grad = wp.array(np.ones(n, np.float64), dtype=wp.float64, device=dev)  # eff seed
+        wp.launch(design_agg_sums, dim=n, inputs=[ctrl_wp, K_CTRL, _NG, np.float64(_TAPER)],
+                  outputs=[sum_wc, sum_mgs], device=dev)
+        out, seed = finalize(sum_wc, sum_mgs, ctrl)
+    seed.grad = wp.array(np.ones(n, np.float64), dtype=wp.float64, device=dev)
     tape.backward()
-    g_ad = ctrl_wp.grad.numpy()                      # ∂(Σ eff)/∂ctrl
-    # finite differences
-    eps = 1e-5
+    g_ad = ctrl_wp.grad.numpy()
     g_fd = np.zeros_like(ctrl)
-    def eff_of(c):
-        return np.array([dfield.cruise_efficiency(dfield.StiffnessField(cc)) for cc in c])
     for k in range(K_CTRL):
-        cp = ctrl.copy(); cp[:, k] += eps
-        cm = ctrl.copy(); cm[:, k] -= eps
-        g_fd[:, k] = (eff_of(cp) - eff_of(cm)) / (2 * eps)
-    rel = float(np.max(np.abs(g_ad - g_fd) / (np.abs(g_fd) + 1e-2)))
-    ok = rel < 1e-4
-    print(f"[4 tape vs FD]  ∂(Σeff)/∂ctrl  max rel err={rel:.2e}  "
-          f"-> {'PASS' if ok else 'FAIL'} (Warp autodiff through aggregates)")
+        cp = ctrl.copy(); cp[:, k] += eps; cm = ctrl.copy(); cm[:, k] -= eps
+        g_fd[:, k] = (oracle(cp) - oracle(cm)) / (2 * eps)
+    return float(np.max(np.abs(g_ad - g_fd) / (np.abs(g_fd) + 1e-2))), np.all(np.isfinite(g_ad))
+
+
+def test_grad_eff(rng):
+    """DQD design gradient: ∂(Σ efficiency)/∂ctrl."""
+    n = 32; dev = "cuda"
+    ctrl = _rand_fields(n, rng)
+    Cv = np.array([dfield.StiffnessField(c).feather_compliance() for c in ctrl])
+    pen_mask = wp.array((Cv > 2.0).astype(np.float64), dtype=wp.float64, device=dev)
+
+    def finalize(sum_wc, sum_mgs, ctrl):
+        out = [wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True) for _ in range(3)]
+        wp.launch(design_agg_eff_final, dim=n,
+                  inputs=[sum_wc, sum_mgs, np.float64(_NORM_W), np.float64(_NORM_MG), pen_mask],
+                  outputs=out, device=dev)
+        return out, out[0]
+
+    def oracle(c):
+        return np.array([dfield.cruise_efficiency(dfield.StiffnessField(cc)) for cc in c])
+    rel, fin = _grad_through_sums(n, ctrl, finalize, oracle)
+    ok = fin and rel < 1e-4
+    print(f"[4 grad eff ]  ∂(Σefficiency)/∂ctrl  rel vs FD={rel:.2e}  "
+          f"-> {'PASS' if ok else 'FAIL'} (DQD design gradient)")
+    return ok
+
+
+def test_grad_gust(rng):
+    """SHAC gust design gradient: ∂(Σ gust_factor)/∂ctrl and ∂(Σ ctrl_factor)/∂ctrl."""
+    n = 32; dev = "cuda"
+    ctrl = _rand_fields(n, rng)
+    results = {}
+    for which, name in [(0, "gust_factor"), (1, "ctrl_factor")]:
+        def finalize(sum_wc, sum_mgs, ctrl, which=which):
+            gf = wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True)
+            cf = wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True)
+            sg = wp.zeros(n, dtype=wp.float64, device=dev, requires_grad=True)
+            wp.launch(design_agg_gust_final, dim=n, inputs=[sum_wc, np.float64(_NORM_W)],
+                      outputs=[gf, cf, sg], device=dev)
+            return [gf, cf, sg], (gf if which == 0 else cf)
+
+        def oracle(c, which=which):
+            fn = dfield.gust_factor if which == 0 else dfield.ctrl_factor
+            return np.array([fn(dfield.StiffnessField(cc)) for cc in c])
+        rel, fin = _grad_through_sums(n, ctrl, finalize, oracle)
+        results[name] = (rel, fin)
+    ok = all(fin and rel < 1e-4 for rel, fin in results.values())
+    print(f"[5 grad gust]  " + "  ".join(f"∂Σ{k}/∂ctrl rel={v[0]:.2e}" for k, v in results.items())
+          + f"  -> {'PASS' if ok else 'FAIL'} (SHAC gust design gradient)")
     return ok
 
 
@@ -161,8 +196,9 @@ if __name__ == "__main__":
     r1 = test_aggregates(rng)
     r2 = test_step(rng)
     r3 = test_rollout(rng)
-    r4 = test_grad(rng)
-    allok = r1 and r2 and r3 and r4
-    print(f"\nGPU env red lines: aggregates={r1} per-step={r2} rollout={r3} grad={r4}  "
-          f"-> {'ALL PASS' if allok else 'FAIL'}")
+    r4 = test_grad_eff(rng)
+    r5 = test_grad_gust(rng)
+    allok = r1 and r2 and r3 and r4 and r5
+    print(f"\nGPU env red lines: aggregates={r1} per-step={r2} rollout={r3} "
+          f"grad-eff={r4} grad-gust={r5}  -> {'ALL PASS' if allok else 'FAIL'}")
     raise SystemExit(0 if allok else 1)
