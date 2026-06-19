@@ -25,11 +25,28 @@ import newton
 from newton.solvers import SolverFeatherstone
 
 import aircraft_multibody as AM
-from sectional_lev import SectionalLEV
+from sectional_lev import SectionalLEV, _quat_to_R
 
 SURF_RANGE = np.deg2rad(25.0)
 FLAP_TORQUE = 0.6
 SERVO_KP, SERVO_KD = 4.0, 0.05
+ATTACHED_LIMIT = np.deg2rad(14.0)     # shallow-stall attached limit (literature, Q1)
+
+
+def _quat_about_axis(axis, ang):
+    ax = np.asarray(axis, float); n = np.linalg.norm(ax)
+    if n < 1e-12:
+        return np.array([0, 0, 0, 1.0])
+    ax = ax / n; s = np.sin(ang / 2)
+    return np.array([ax[0] * s, ax[1] * s, ax[2] * s, np.cos(ang / 2)])
+
+
+def _quat_mul(a, b):
+    ax, ay, az, aw = a; bx, by, bz, bw = b
+    return np.array([aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx,
+                     aw * bz + ax * by - ay * bx + az * bw,
+                     aw * bw - ax * bx - ay * by - az * bz])
 
 
 class AircraftFlight:
@@ -49,6 +66,33 @@ class AircraftFlight:
         self.surf_qi = [self.idx.surf[k][0] for k in range(14)]
         self.surf_di = [self.idx.surf[k][1] for k in range(14)]
         self.flap_di = [self.idx.flap["L"][1], self.idx.flap["R"][1]]
+        # wing-box aero frames (body frame) for the effective-AoA monitor + feathering
+        self.wing_box = {}
+        for s in self.surfs:
+            if not s["name"].startswith("box_"):
+                continue
+            V = s["V"]; jm = V.shape[1] // 2
+            le = 0.5 * (V[0, jm] + V[0, jm + 1]); te = 0.5 * (V[-1, jm] + V[-1, jm + 1])
+            ch = (te - le); ch /= np.linalg.norm(ch) + 1e-12
+            sp = (V[0, jm + 1] - V[0, jm]); sp /= np.linalg.norm(sp) + 1e-12
+            nm = np.cross(sp, ch); nm /= np.linalg.norm(nm) + 1e-12
+            self.wing_box[s["body"]] = dict(chord=ch, span=sp, norm=nm,
+                                            cen=V.reshape(-1, 3).mean(0))
+        self.aoa_log = []         # (t, {body: (aoa_raw_deg, feather_deg)})
+
+    def wing_effective_aoa(self, poses, twists, Vinf):
+        """Effective AoA (deg) per wing box from the local relative wind — the paper's
+        attached-flow monitor. Returns {body: aoa_deg}."""
+        out = {}
+        Vinf = np.asarray(Vinf, float)
+        for b, fr in self.wing_box.items():
+            p, q = poses[b]; v, om = twists[b]
+            R = _quat_to_R(np.asarray(q, float))
+            ch = R @ fr["chord"]; nm = R @ fr["norm"]; rc = R @ fr["cen"]
+            Vrel = Vinf - (np.asarray(v, float) + np.cross(np.asarray(om, float), rc))
+            uc = float(Vrel @ ch); un = float(Vrel @ nm)
+            out[b] = np.rad2deg(np.arctan2(un, uc))    # chord=te-le (aft) -> +AoA direct
+        return out
 
     def reset(self, *, alt=30.0, speed=10.0, body_aoa_deg=45.0):
         # cruise attitude: body pitched up body_aoa (about y), velocity horizontal fwd
@@ -78,7 +122,25 @@ class AircraftFlight:
     def step(self, action=None, wind=None):
         poses, twists = self._poses_twists()
         Vinf = np.zeros(3) if wind is None else np.asarray(wind, float)
-        bound = self.msu.solve(poses, twists, Vinf)["wrench"]
+        # effective-AoA monitor + upstroke feathering: the wing pitches (passive-torsion
+        # /SmartBird-style) so its effective AoA stays in the attached domain (literature
+        # Q1), keeping the bound UVLM valid and the loop stable.
+        aoa = self.wing_effective_aoa(poses, twists, Vinf)
+        poses_aero = dict(poses)
+        log = {}
+        for b, fr in self.wing_box.items():
+            a_rad = np.deg2rad(aoa[b])
+            excess = max(0.0, abs(a_rad) - ATTACHED_LIMIT)
+            log[b] = (aoa[b], np.rad2deg(np.sign(a_rad) * excess))
+            if excess > 0:
+                p, q = poses[b]
+                R = _quat_to_R(np.asarray(q, float))
+                # pitch axis = chord x normal (consistent world direction for L/R wings)
+                pitch_axis = np.cross(R @ fr["chord"], R @ fr["norm"])
+                fq = _quat_about_axis(pitch_axis, np.sign(a_rad) * excess)
+                poses_aero[b] = (p, _quat_mul(fq, np.asarray(q, float)))
+        self.aoa_log.append((self.t, log))
+        bound = self.msu.solve(poses_aero, twists, Vinf)["wrench"]
         lev = self.slev.step(poses, twists, Vinf, self.dt)
         levw = lev["wrench"]
         # assemble body_f = [force(0:3), moment(3:6)] world (verified convention)
