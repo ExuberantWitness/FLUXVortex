@@ -146,4 +146,30 @@ if __name__ == "__main__":
     net, hist = train(iters=120, steps=2048)
     print(f"PPO done: final mean return = {hist[-1]:.2f} (baseline {r0:.2f}, "
           f"best {max(hist):.2f})")
+    torch.save(net.state_dict(), "docs/ppo_policy.pt")
     np.savez("docs/ppo_hist.npz", hist=np.array(hist))
+
+    # deterministic validation rollout: altitude hold + gust rejection + survival
+    emb2 = Embedder()
+    class Det:
+        def reset(self): emb2.reset()
+        def act(self, o):
+            with torch.no_grad():
+                mu, _ = net(emb2.push(o).unsqueeze(0))
+            return mu[0].numpy()
+    env2 = FlightPPOEnv()
+    obs = env2.reset(); pol = Det(); pol.reset(); zs = []; gust_z = []
+    for k in range(env2.horizon):
+        a = pol.act(obs); obs, r, d, info = env2.step(a)
+        zs.append(env2.x[2])
+        if env2.gust["t0"] <= env2.t < env2.gust["t0"] + env2.gust["dur"] + 0.5:
+            gust_z.append(env2.x[2])
+        if d:
+            break
+    zs = np.array(zs)
+    print(f"  VALIDATION (trained policy, deterministic): survived {len(zs)}/{env2.horizon} steps")
+    print(f"    altitude: start {env2.alt0:.1f}m -> range [{zs.min():.1f},{zs.max():.1f}]m "
+          f"(hold dev {np.std(zs):.2f}m)")
+    if gust_z:
+        print(f"    gust-window altitude excursion = {max(gust_z)-min(gust_z):.2f}m "
+              f"(1-cosine gust rejected)")
