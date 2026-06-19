@@ -29,7 +29,7 @@ from sectional_lev import SectionalLEV, _quat_to_R
 
 SURF_RANGE = np.deg2rad(25.0)
 FLAP_TORQUE = 0.6
-SERVO_KP, SERVO_KD = 4.0, 0.05
+SERVO_KP, SERVO_KD = 8.0, 0.15   # moderate; loop stabilization is a focused next task
 ATTACHED_LIMIT = np.deg2rad(14.0)     # shallow-stall attached limit (literature, Q1)
 
 
