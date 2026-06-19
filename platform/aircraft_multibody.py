@@ -47,6 +47,31 @@ def _com_inertia(V, mass):
     return wp.vec3(*com), I
 
 
+def _distributed_mass_props(V, mass_wing, ac):
+    """COM + full inertia tensor for a wing box from the spanwise mass distribution
+    (刚柔分布, req #3): strip mass decreases root->tip per ac.wing profile. V is the
+    box vertex grid (nc+1, ns+1, 3); spanwise index = axis 1."""
+    ns = V.shape[1] - 1
+    fr = (np.arange(ns) + 0.5) / ns
+    wgt = ac.wing.span_profile(fr, 1.0, ac.wing.mass_taper)      # per-strip weight
+    m_strip = mass_wing * wgt / wgt.sum()
+    cen = 0.5 * (V[:, :-1, :] + V[:, 1:, :]).mean(0)             # (ns,3) strip centroids
+    com = (m_strip[:, None] * cen).sum(0) / mass_wing
+    It = np.zeros((3, 3))
+    for k in range(ns):
+        r = cen[k] - com
+        It += m_strip[k] * (np.dot(r, r) * np.eye(3) - np.outer(r, r))
+    Iw = wp.mat33(*It.flatten().tolist())
+    return wp.vec3(*com), Iw, m_strip.sum()
+
+
+def wing_stiffness_profile(ac, ns):
+    """Spanwise bending-stiffness scale EI(y)/EI_root for the flexible wing (req #3):
+    decreases root->tip per ac.wing.stiff_taper. Feeds the ANCF element stiffness."""
+    fr = (np.arange(ns) + 0.5) / ns
+    return ac.wing.span_profile(fr, ac.wing.stiff_root, ac.wing.stiff_taper)
+
+
 def _xf(pt):
     return wp.transform(wp.vec3(float(pt[0]), float(pt[1]), float(pt[2])),
                         wp.quat_identity())
@@ -107,10 +132,11 @@ def build(ac=None, *, spring_ke=1.2, spring_kd=0.02, surf_ke=2.0, surf_kd=0.002,
         return b, j
 
     for sgn, side in ((+1, "L"), (-1, "R")):
-        # wing box on the flap spring hinge (axis = longitudinal x; dihedral = rest)
+        # wing box on the flap spring hinge (axis = longitudinal x; dihedral = rest).
+        # mass uses the spanwise distribution (root-heavy, req #3) -> COM shifts inboard
         box = byname[f"box_{side}"]
-        com, I = _com_inertia(box["V"], M_BOX)
-        b_box = mb.add_link(mass=M_BOX, com=com, inertia=I, label=f"box_{side}")
+        com, I, m_box = _distributed_mass_props(box["V"], 0.5 * ac.wing.mass_total, ac)
+        b_box = mb.add_link(mass=float(m_box), com=com, inertia=I, label=f"box_{side}")
         root = np.array([0.0, sgn * ac.wing.root_offset, 0.0])     # wing root hinge pt
         j_flap = mb.add_joint_revolute(
             parent=fus, child=b_box, axis=(1.0, 0.0, 0.0),

@@ -35,6 +35,17 @@ class WingDesign:
     te_flap_frac: float = 0.28   # TE flap = rear 28% chord
     n_le: int = 3                # contiguous LE flap segments
     n_te: int = 3                # contiguous TE flap segments
+    # spanwise structural distribution (刚柔分布, designable; decrease root->tip)
+    mass_total: float = 0.16     # both-wings structural mass (kg)
+    mass_taper: float = 0.35     # tip/root mass-per-span ratio (<1: lighter tip)
+    stiff_root: float = 1.0      # root bending stiffness scale (EI), design var
+    stiff_taper: float = 0.30    # tip/root stiffness ratio (<1: more flexible tip)
+    dist_exp: float = 1.0        # profile exponent (1=linear, >1 concentrates at root)
+
+    def span_profile(self, frac, root_val, taper):
+        """Value of a spanwise property at span fraction frac in [0,1] (0=root)."""
+        import numpy as _np
+        return root_val * (1.0 - (1.0 - taper) * _np.power(_np.clip(frac, 0, 1), self.dist_exp))
 
 
 @dataclass
