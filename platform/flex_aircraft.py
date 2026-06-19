@@ -42,6 +42,18 @@ def _quat_to_R(q):
         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
 
 
+def _quat_conj(q):
+    return np.array([-q[0], -q[1], -q[2], q[3]])
+
+
+def _quat_mul(a, b):
+    ax, ay, az, aw = a; bx, by, bz, bw = b
+    return np.array([aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx,
+                     aw * bz + ax * by - ay * bx + az * bw,
+                     aw * bw - ax * bx - ay * by - az * bz])
+
+
 def _quat_integrate(q, om_world, dt):
     # qdot = 0.5 * omega_world (x) q  (quaternion kinematics, world angular velocity)
     wx, wy, wz = om_world
@@ -60,8 +72,9 @@ class FlexAircraft:
     def __init__(self, *, chord=0.29, span=0.85, nc=4, ns=6, flap_hz=3.0,
                  amp_deg=20.0, E0=50e9, thick=1.2e-3, rho_s=1200.0, damping=0.05,
                  m_fus=0.30, m_wing=0.08, substeps=16, V0=10.0, body_aoa_deg=45.0,
-                 root_y=0.05):
+                 root_y=0.05, trim_aoa_deg=6.0):
         self.chord, self.span = chord, span
+        self.trim_aoa = np.deg2rad(trim_aoa_deg)
         self.m_total = m_fus + 2 * m_wing
         self.I_fus = np.diag([3e-3, 5e-3, 5e-3])
         self.root_y = root_y
@@ -82,27 +95,40 @@ class FlexAircraft:
         a = np.deg2rad(body_aoa_deg)
         self.x = np.array([0.0, 0.0, 30.0])
         self.q = np.array([0.0, -np.sin(a / 2), 0.0, np.cos(a / 2)])   # nose up
+        self.q_des = self.q.copy()                       # desired cruise attitude
         self.v = np.array([V0, 0.0, 0.0])
         self.om = np.zeros(3)
         self.t = 0.0
+        # minimal attitude stabilizer (stands in for the control authority the NN learns)
+        self.att_kp, self.att_kd = 0.8, 0.25
 
     def step_window(self, wind=None):
         R = _quat_to_R(self.q)
         Vw = np.zeros(3) if wind is None else np.asarray(wind, float)
-        # body-frame relative wind the wing sees (fuselage moving through air)
+        # freestream the wing sees = air velocity relative to the body (body frame)
         Vrel_body = R.T @ (Vw - self.v)
-        # the wing FSI freestream is the relative wind magnitude along the wing axes;
-        # keep the provider's x-forward convention (flapping superposes in the FSI)
-        self.provider.V_inf = -Vrel_body
+        # ACTIVE FEATHER: cap the wing AoA at the trim limit (passive torsion alone is
+        # insufficient at high body AoA). Rotate the freestream in the chord(x)-normal(z)
+        # plane so |AoA| <= trim_aoa; flapping superposes inside the FSI.
+        Vf = Vrel_body.copy()
+        sp = float(np.hypot(Vf[0], Vf[2]))
+        if sp > 1e-6:
+            aoa_in = np.arctan2(Vf[2], -Vf[0])          # +AoA = wind from below-front
+            aoa_c = float(np.clip(aoa_in, -self.trim_aoa, self.trim_aoa))
+            Vf[0] = -sp * np.cos(aoa_c); Vf[2] = sp * np.sin(aoa_c)
+        self.provider.V_inf = Vf
+        self.aoa_in = np.rad2deg(np.arctan2(Vrel_body[2], -Vrel_body[0]))
         self.pc.advance()
         payload = self.pc._F_cur.payload
         F_wing_body = payload["f_panel"].sum(axis=(0, 1)) if payload else np.zeros(3)
         # two symmetric wings; net side force cancels, lift+thrust add
         F_world = 2.0 * (R @ F_wing_body)
         F_world[1] = 0.0                                  # symmetric: no net side force
-        # moment about CG from the wing aero center offset (approx; symmetric -> mostly pitch)
-        r_aero = R @ np.array([-0.1 * self.chord, 0.0, 0.0])
-        M_world = np.cross(r_aero, R @ F_wing_body) * 0.0   # symmetric pair ~ no net roll/yaw
+        # attitude stabilizer: restoring moment toward the cruise attitude (the control
+        # authority the NN policy will provide via surfaces + differential flapping)
+        q_err = _quat_mul(self.q_des, _quat_conj(self.q))
+        ax = q_err[0:3] * np.sign(q_err[3])              # error rotation vector (world)
+        M_world = self.att_kp * ax - self.att_kd * self.om
         # semi-implicit rigid-body integrate
         acc = (F_world + np.array([0, 0, -self.m_total * G])) / self.m_total
         self.v = self.v + acc * self.dtw
@@ -118,9 +144,12 @@ class FlexAircraft:
 
 def verify():
     print("rigid-flexible aircraft: fuselage + 2 flexible flapping wings (coupled FSI)")
-    ac = FlexAircraft(amp_deg=22.0, flap_hz=3.0, E0=50e9, body_aoa_deg=45.0)
+    # trim: cruise ~6 m/s, wing FEATHERED to 6deg (body at 45deg AoA) -> lift~weight
+    ac = FlexAircraft(amp_deg=22.0, flap_hz=3.0, E0=50e9, body_aoa_deg=45.0,
+                      V0=6.0, trim_aoa_deg=6.0)
     W = ac.m_total * G
-    print(f"  weight={W:.2f}N, flap 3Hz, E=50GPa, 45deg body AoA, dtw={ac.dtw*1e3:.1f}ms")
+    print(f"  weight={W:.2f}N, flap 3Hz, V~6m/s, wing feathered<=6deg (body 45deg), "
+          f"dtw={ac.dtw*1e3:.1f}ms")
     zs, lifts, thr = [], [], []
     N = 60
     for i in range(N):
