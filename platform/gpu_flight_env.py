@@ -142,7 +142,9 @@ def design_agg_gust(ctrl: wp.array2d(dtype=wp.float64), K: int, NG: int,
             wt = wp.float64(0.5)
         sum_wc += wt * (w / sg)
     s_gust = norm_w / sum_wc                                # = 1/C (tip-biased stiffness)
-    gust_factor[e] = wp.float64(1.0) / (wp.float64(0.6) + wp.float64(0.4) * s_gust)
+    # plan F1 passive gust ALLEVIATION: flexible tip (low s_gust) sheds gust load (washout)
+    # -> lower transmissibility. Monotone increasing, bounded (0.5,1).
+    gust_factor[e] = wp.float64(0.5) + wp.float64(0.5) * s_gust / (s_gust + wp.float64(1.0))
     ctrl_factor[e] = wp.float64(1.6) - wp.float64(0.5) * (s_gust - wp.float64(0.5))
     s_gust_o[e] = s_gust
     c_o[e] = sum_wc / norm_w                                # compliance C (for the relu mask)
@@ -355,6 +357,10 @@ class GpuFlightEnv:
         self.obs = wp.zeros((B, OBS_DIM), dtype=f64, device=device)
         self.reward = wp.zeros(B, dtype=f64, device=device)
         self.done = wp.zeros(B, dtype=wp.int32, device=device)
+        # launch-state observation (written into reset rows so the next policy input is fresh)
+        a = self.body_aoa
+        pitch0 = float(np.arcsin(np.clip(2.0 * (np.cos(a / 2) * (-np.sin(a / 2))), -1, 1)))
+        self._launch_obs = np.array([pitch0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float64)
 
     def set_designs(self, ctrl):
         """ctrl: (B,K) stiffness control points (root->tip). Launches the differentiable
@@ -371,8 +377,19 @@ class GpuFlightEnv:
                           np.float64(_NORM_W), np.float64(_NORM_MG), self.pen_mask],
                   outputs=[self.efficiency, self.s_root, self.C], device=self.device)
 
-    def sample_designs(self, lo=0.3, hi=2.5):
-        c = np.exp(self.rng.uniform(np.log(lo), np.log(hi), size=(self.B, self.K)))
+    def _sample_ctrl(self, n):
+        """Smooth spanwise 刚柔 fields: random root & tip stiffness, linear root->tip, with
+        mild per-point noise (a spline field, not independent extremes) — matches the
+        (root,tip) co-design sweep and keeps the design distribution physically controllable."""
+        root = np.exp(self.rng.uniform(np.log(0.4), np.log(2.4), n))
+        tip = np.exp(self.rng.uniform(np.log(0.3), np.log(2.0), n))
+        xi = np.linspace(0.0, 1.0, self.K)[None, :]
+        base = root[:, None] * (1.0 - xi) + tip[:, None] * xi
+        noise = np.exp(0.08 * self.rng.standard_normal((n, self.K)))
+        return np.clip(base * noise, 0.25, 2.6)
+
+    def sample_designs(self):
+        c = self._sample_ctrl(self.B)
         self.set_designs(c)
         return c
 
@@ -391,6 +408,25 @@ class GpuFlightEnv:
         self.x.assign(x0); self.q.assign(q0); self.v.assign(v0)
         self.om.zero_(); self.tt.zero_(); self.stepi.zero_(); self.done.zero_()
         return self.observe()
+
+    def reset_done(self, done):
+        """Auto-reset the flagged environments (new sampled design + launch state) for
+        vectorized PPO. Returns the boolean mask of which envs were reset."""
+        idx = np.where(done)[0]
+        if len(idx) == 0:
+            return done
+        ctrl = self.ctrl.numpy()
+        ctrl[idx] = self._sample_ctrl(len(idx))
+        self.set_designs(ctrl)                 # recompute factors for all B (2 cheap kernels)
+        a = self.body_aoa
+        x, v, om, q = self.x.numpy(), self.v.numpy(), self.om.numpy(), self.q.numpy()
+        tt, si = self.tt.numpy(), self.stepi.numpy()
+        x[idx] = [0.0, 0.0, self.alt0]; v[idx] = [self.V_cruise, 0.0, 0.0]; om[idx] = 0.0
+        q[idx] = [0.0, -np.sin(a / 2), 0.0, np.cos(a / 2)]; tt[idx] = 0.0; si[idx] = 0
+        self.x.assign(x); self.v.assign(v); self.om.assign(om); self.q.assign(q)
+        self.tt.assign(tt); self.stepi.assign(si.astype(np.int32))
+        ob = self.obs.numpy(); ob[idx] = self._launch_obs; self.obs.assign(ob)  # fresh obs rows
+        return done
 
     def observe(self):
         return self.obs.numpy()

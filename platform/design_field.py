@@ -115,8 +115,11 @@ class StiffnessField:
 
 
 def gust_factor(field):
-    """Design-dependent gust transmissibility (uniform field s -> old 1/(0.6+0.4 s))."""
-    return 1.0 / (0.6 + 0.4 * field.s_gust())
+    """Gust transmissibility (plan F1: passive gust ALLEVIATION). A flexible tip (low
+    s_gust) washes out under a gust, shedding load -> LESS effective gust. Monotone
+    increasing & bounded in (0.5,1): flexible-tip attenuates, stiff transmits."""
+    sg = field.s_gust()
+    return 0.5 + 0.5 * sg / (sg + 1.0)
 
 
 def ctrl_factor(field):
