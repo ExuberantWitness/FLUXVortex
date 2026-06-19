@@ -75,6 +75,48 @@ def _quat_to_R(q):
         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
 
 
+def make_vlm_lattice(V):
+    """Standard VLM ring lattice from a planform vertex grid V (nc+1, ns+1, 3).
+
+    Rings at the 1/4-chord (bound vortex), collocation at the 3/4-chord (Katz-Plotkin).
+    Returns (corners (P,4,3), colloc (P,3), normals (P,3), area (P)) with panel order
+    p = i*ns + j (chordwise i, spanwise j) and corner order [c0,c1(chordwise),c2,
+    c3(spanwise)] — the convention the validated kernels expect (verified).
+    """
+    V = np.asarray(V, float)
+    ncp1, nsp1 = V.shape[0], V.shape[1]
+    nc, ns = ncp1 - 1, nsp1 - 1
+    # quarter-chord vertex grid Q (shift each chord row back 1/4 panel; extend TE)
+    Q = np.zeros_like(V)
+    for i in range(ncp1):
+        if i < nc:
+            Q[i] = V[i] + 0.25 * (V[i + 1] - V[i])
+        else:
+            Q[i] = V[i] + 0.25 * (V[i] - V[i - 1])
+    P = nc * ns
+    corners = np.zeros((P, 4, 3)); colloc = np.zeros((P, 3))
+    normals = np.zeros((P, 3)); area = np.zeros(P)
+    for i in range(nc):
+        for j in range(ns):
+            p = i * ns + j
+            corners[p, 0] = Q[i, j]
+            corners[p, 1] = Q[i + 1, j]
+            corners[p, 2] = Q[i + 1, j + 1]
+            corners[p, 3] = Q[i, j + 1]
+            fmid = 0.5 * (V[i, j] + V[i, j + 1])
+            bmid = 0.5 * (V[i + 1, j] + V[i + 1, j + 1])
+            colloc[p] = fmid + 0.75 * (bmid - fmid)            # 3/4-chord collocation
+            d1 = V[i + 1, j + 1] - V[i, j]
+            d2 = V[i, j + 1] - V[i + 1, j]
+            nrm = np.cross(d1, d2)
+            ln = np.linalg.norm(nrm)
+            normals[p] = nrm / ln if ln > 1e-12 else np.array([0, 0, 1.0])
+            area[p] = 0.5 * ln
+    if normals[:, 2].mean() < 0:                               # orient +z (up)
+        normals = -normals
+    return corners, colloc, normals, area
+
+
 class RigidSurfaceUVLM:
     """One rigid lifting surface: validated UVLM driven by a body pose + twist."""
 
@@ -124,6 +166,98 @@ class RigidSurfaceUVLM:
         M = np.cross(colw - p[None, :], Fp).sum(0)
         return dict(F=F, M=M, gamma=gamma.numpy()[0], lift=float(F[2]),
                     drag=float(F[0]), colloc=colw, dp=dpf)
+
+
+class MultiSurfaceUVLM:
+    """Composite-AIC multi-surface UVLM over rigid bodies (plan §2 Surface atoms).
+
+    surfaces: list of dicts with body-frame lattice + the rigid body it rides on:
+      {corners(P,4,3), colloc(P,3), normals(P,3), nc, ns, body, name}
+    All surfaces' panels are concatenated, so one AIC solve carries wing<->tail
+    cross-induction; per-surface Kutta-Joukowski forces sum to per-body wrenches.
+    """
+
+    def __init__(self, surfaces, rho=1.225, core=1e-6, device=None):
+        self.device = device or cfg.DEVICE
+        self.surf = surfaces
+        self.rho = float(rho); self.core = float(core)
+        self.P = sum(s["nc"] * s["ns"] for s in surfaces)
+        # panel-index span of each surface in the concatenated arrays
+        off = 0
+        for s in surfaces:
+            s["p0"], s["p1"] = off, off + s["nc"] * s["ns"]
+            off = s["p1"]
+
+    def solve(self, poses, twists, V_inf_world):
+        """poses/twists: dict body->(p,quat) / body->(v,omega) world. Returns
+        dict body-> (F(3), M(3) about body origin), plus totals + gamma."""
+        d = self.device
+        cor = np.zeros((self.P, 4, 3)); col = np.zeros((self.P, 3))
+        nrm = np.zeros((self.P, 3)); Vpan = np.zeros((self.P, 3))
+        for s in surfaces_iter(self.surf):
+            p, q = poses[s["body"]]
+            v, om = twists[s["body"]]
+            R = _quat_to_R(np.asarray(q, float)); p = np.asarray(p, float)
+            a, b = s["p0"], s["p1"]
+            cw = (s["corners"].reshape(-1, 3) @ R.T + p).reshape(-1, 4, 3)
+            colw = s["colloc"] @ R.T + p
+            cor[a:b] = cw; col[a:b] = colw; nrm[a:b] = s["normals"] @ R.T
+            Vpan[a:b] = np.asarray(v, float)[None, :] + np.cross(
+                np.asarray(om, float)[None, :], colw - p[None, :])
+        Vinf = np.asarray(V_inf_world, float)
+        rhs = -np.einsum('pi,pi->p', (Vinf[None, :] - Vpan), nrm)
+        col_wp = wp.array(col.reshape(1, self.P, 3).astype(NP), dtype=VEC3, device=d)
+        n_wp = wp.array(nrm.reshape(1, self.P, 3).astype(NP), dtype=VEC3, device=d)
+        cor_wp = wp.array(cor.reshape(1, self.P, 4, 3).astype(NP), dtype=VEC3, device=d)
+        rhs_wp = wp.array(rhs.reshape(1, self.P).astype(NP), dtype=cfg.DTYPE, device=d)
+        AIC = build_aic_batched(col_wp, n_wp, cor_wp, self.core, device=d)
+        gamma = batched_dense_solve(AIC, rhs_wp, device=d).numpy()[0]      # (P,)
+        # per-surface Kutta-Joukowski force -> per-body wrench
+        wrench = {}
+        for s in self.surf:
+            a, nc, ns = s["p0"], s["nc"], s["ns"]
+            g = gamma[a:a + nc * ns].reshape(nc, ns)
+            p_origin = np.asarray(poses[s["body"]][0], float)
+            for i in range(nc):
+                for j in range(ns):
+                    pp = a + i * ns + j
+                    gnet = g[i, j] - (g[i - 1, j] if i > 0 else 0.0)
+                    lb = cor[pp, 3] - cor[pp, 0]               # spanwise bound edge
+                    Vrel = Vinf - Vpan[pp]
+                    Fp = self.rho * gnet * np.cross(Vrel, lb)
+                    F, M = wrench.get(s["body"], (np.zeros(3), np.zeros(3)))
+                    wrench[s["body"]] = (F + Fp, M + np.cross(col[pp] - p_origin, Fp))
+        Ftot = sum(w[0] for w in wrench.values())
+        return dict(wrench=wrench, F_total=Ftot, gamma=gamma,
+                    lift=float(Ftot[2]), drag=float(Ftot[0]))
+
+
+def surfaces_iter(surf):
+    return surf
+
+
+def _validate_my_lattice():
+    """make_vlm_lattice on a flat unit plate must reproduce the validated lift
+    (~3.79N at 6deg AoA) computed earlier from the ScGeometry lattice."""
+    wp.init()
+    nc, ns = 15, 10
+    xs = np.linspace(0, 1, nc + 1); ys = np.linspace(0, 1, ns + 1)
+    V = np.zeros((nc + 1, ns + 1, 3))
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            V[i, j] = [x, y, 0.0]
+    cor, col, nrm, area = make_vlm_lattice(V)
+    surf = [dict(corners=cor, colloc=col, normals=nrm, nc=nc, ns=ns, body=0, name="plate")]
+    msu = MultiSurfaceUVLM(surf, rho=1.225, core=1e-6)
+    V0 = 10.0; aoa = np.deg2rad(6.0)
+    Vinf = np.array([V0 * np.cos(aoa), 0.0, -V0 * np.sin(aoa)])
+    out = msu.solve({0: (np.zeros(3), np.array([0, 0, 0, 1.0]))},
+                    {0: (np.zeros(3), np.zeros(3))}, Vinf)
+    L = abs(out["lift"])
+    ok = abs(L - 3.79) / 3.79 < 0.08
+    print(f"make_vlm_lattice flat-plate UVLM: lift={L:.3f}N (ref ScGeometry lattice 3.79N) "
+          f"-> {'PASS' if ok else 'FAIL'}")
+    return ok
 
 
 def _validate_against_gpufluidsolve():
@@ -194,4 +328,8 @@ def _validate_against_gpufluidsolve():
 
 
 if __name__ == "__main__":
-    raise SystemExit(0 if _validate_against_gpufluidsolve() else 1)
+    ok1 = _validate_against_gpufluidsolve()
+    ok2 = _validate_my_lattice()
+    print(f"\nUVLM aircraft foundation: rigid-bridge {'PASS' if ok1 else 'FAIL'} | "
+          f"multi-surface lattice {'PASS' if ok2 else 'FAIL'}")
+    raise SystemExit(0 if (ok1 and ok2) else 1)
