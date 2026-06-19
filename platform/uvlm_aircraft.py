@@ -288,7 +288,7 @@ class MultiSurfaceUVLM:
                     gnet = g[i, j] - (g[i - 1, j] if i > 0 else 0.0)
                     lb = cor[pp, 3] - cor[pp, 0]               # spanwise bound edge
                     Vrel = Vinf - Vpan[pp]
-                    Fp = self.rho * gnet * np.cross(Vrel, lb)
+                    Fp = self.rho * gnet * np.cross(Vrel, lb)  # KJ (+lift for +AoA freestream)
                     F, M = wrench.get(s["body"], (np.zeros(3), np.zeros(3)))
                     wrench[s["body"]] = (F + Fp, M + np.cross(col[pp] - p_origin, Fp))
         Ftot = sum(w[0] for w in wrench.values())

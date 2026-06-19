@@ -32,10 +32,12 @@ class LDVM2D:
     """One 2D section. step(alpha, dalpha) advances one dt; sheds TEV (+LEV if the
     leading-edge suction A0 exceeds lesp_crit). Returns sectional CL and diagnostics."""
 
-    def __init__(self, U=10.0, c=1.0, n=40, lesp_crit=0.20, rho=1.225, dt=None):
+    def __init__(self, U=10.0, c=1.0, n=40, lesp_crit=0.20, rho=1.225, dt=None,
+                 max_wake=120):
         self.U, self.c, self.n = float(U), float(c), int(n)
         self.lesp_crit = lesp_crit
         self.rho = rho
+        self.max_wake = int(max_wake)      # cap convected vortices (bounded per-step cost)
         self.dl = c / n
         self.dt = dt if dt else c / U / 50.0
         self.pvor = (np.arange(n) + 0.25) * self.dl       # chordwise 1/4-panel
@@ -133,6 +135,11 @@ class LDVM2D:
             moves.append((uu, ww))
         for v, (uu, ww) in zip(allv, moves):
             v[0] += uu * dt; v[1] += ww * dt
+        # cap the wake: drop the oldest vortices beyond max_wake (bounded cost)
+        if len(self.tev) > self.max_wake:
+            self.tev = self.tev[-self.max_wake:]
+        if len(self.lev) > self.max_wake:
+            self.lev = self.lev[-self.max_wake:]
 
         # sectional lift from rate of change of total vortical impulse (z-impulse)
         ygam = sum(v[0] * v[2] for v in self.tev) + sum(v[0] * v[2] for v in self.lev)
