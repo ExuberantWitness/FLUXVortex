@@ -214,7 +214,7 @@ def build_aircraft_surfaces(ac, nc_box=4, nc_flap=2, ns_seg=3, nc_tail=3,
         cor, col, nrm, area = make_vlm_lattice(V)
         nc, ns = V.shape[0] - 1, V.shape[1] - 1
         surfaces.append(dict(corners=cor, colloc=col, normals=nrm, area=area,
-                             nc=nc, ns=ns, body=body, name=name))
+                             nc=nc, ns=ns, body=body, name=name, V=V))
 
     bidx = 1
     for sgn, side in ((+1, "L"), (-1, "R")):
