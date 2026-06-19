@@ -28,7 +28,8 @@ class WingDesign:
     taper: float = 0.5           # tip chord / root chord (根稍比 = root/tip = 1/taper)
     sweep_le_deg: float = 8.0    # leading-edge sweep
     dihedral_deg: float = 4.0    # 上反角
-    incidence_deg: float = 3.0   # 安装角 (root)
+    incidence_deg: float = 0.0   # 安装角 — FIXED at 0 (wing makes lift/thrust by
+    #                              flapping at high AoA; not a design variable)
     root_offset: float = 0.05    # half fuselage width (wing root y)
     le_flap_frac: float = 0.20   # LE flap = front 20% chord
     te_flap_frac: float = 0.28   # TE flap = rear 28% chord
