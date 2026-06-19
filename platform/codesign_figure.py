@@ -23,6 +23,8 @@ for p in (_FLUXV, os.path.dirname(__file__)):
 
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK JP", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt                                    # noqa: E402
 
 import design_field as dfield                                      # noqa: E402

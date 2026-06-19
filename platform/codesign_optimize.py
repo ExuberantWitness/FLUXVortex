@@ -72,21 +72,27 @@ class Adam:
         return self.lr * mh / (np.sqrt(vh) + self.eps)
 
 
-def optimize(ctrl0, alpha=20.0, lam=1.0, iters=200, lr=0.02, log=None):
-    """Ascend J = -α·gust_factor + λ·efficiency with Adam (gradients = validated tapes)."""
+def optimize(ctrl0, alpha=20.0, lam=1.0, iters=200, lr=0.02, log=None, snap_every=0):
+    """Ascend J = -α·gust_factor + λ·efficiency with Adam (gradients = validated tapes).
+    snap_every>0 also returns [(iter, mean-field)] snapshots of the spanwise 刚柔 field."""
     ctrl = ctrl0.copy()
     opt = Adam(ctrl.shape, lr=lr)
-    hist = []
+    hist = []; snaps = []
     for it in range(iters):
         gf, g_gf = _agg_and_grad(ctrl, "gust")
         eff, g_e = _agg_and_grad(ctrl, "eff")
         J = -alpha * gf + lam * eff
         g = -alpha * g_gf + lam * g_e
+        if snap_every and (it % snap_every == 0):
+            snaps.append((it, ctrl.mean(0).copy()))
         ctrl = np.clip(ctrl + opt.step(g), LO, HI)
         hist.append((float(J.mean()), float(gf.mean()), float(eff.mean())))
         if log and (it % 40 == 0 or it == iters - 1):
             log(f"  it {it:3d}: J={J.mean():7.2f}  gust_factor={gf.mean():.3f}  "
                 f"L/D={eff.mean():5.2f}  root={ctrl[:,0].mean():.2f} tip={ctrl[:,-1].mean():.2f}")
+    if snap_every:
+        snaps.append((iters, ctrl.mean(0).copy()))
+        return ctrl, np.array(hist), snaps
     return ctrl, np.array(hist)
 
 
