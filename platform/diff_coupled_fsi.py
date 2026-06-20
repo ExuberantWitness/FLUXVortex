@@ -62,31 +62,37 @@ def _aero_nodal(q, P, dist, nx, ny):
     return dist @ Fp
 
 
-def _forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny):
+def _forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, alpha=0.0, nsub=1):
+    """Symplectic coupled rollout. STABILIZATION (1a): `nsub` sub-steps of dt/nsub fix the
+    explicit-step CFL blow-up for stiff/over-flex designs; mass-proportional damping `alpha`
+    (a -= alpha·dq) bleeds energy. alpha=0,nsub=1 reproduces the validated S3 rollout."""
+    sdt = dt / nsub
     q, dq = q0.copy(), dq0.copy(); qs = [q.copy()]; as_ = []
-    for _ in range(N):
+    for _ in range(N * nsub):
         Qint, _, _ = _assemble(sh, q)
         rhs = _aero_nodal(q, P, dist, nx, ny) - Qint
         a = np.zeros(sh.ndof); a[free] = np.linalg.solve(Mff, rhs[free])
-        dq = dq + dt * a; q = q + dt * dq
+        a = a - alpha * dq                                       # mass-proportional damping
+        dq = dq + sdt * a; q = q + sdt * dq
         qs.append(q.copy()); as_.append(a.copy())
     return qs, as_
 
 
-def loss_and_grad(sh, q0, dq0, N, dt, free, w, nx, ny):
+def loss_and_grad(sh, q0, dq0, N, dt, free, w, nx, ny, alpha=0.0, nsub=1):
     P, dist = _index_maps(sh, nx, ny)
     Mff = sh.M[np.ix_(free, free)].toarray()
-    qs, as_ = _forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny)
+    sdt = dt / nsub
+    qs, as_ = _forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, alpha, nsub)
     L = float(w @ qs[-1])
     ndof = sh.ndof; rho, h = sh.rho, sh.h
     gE = np.zeros(sh.ne); gR = np.zeros(sh.ne)
     Mu = [_elem_mass_unit(sh, e) for e in range(sh.ne)]
     adj_q = w.copy(); adj_dq = np.zeros(ndof)
-    for t in reversed(range(N)):
+    for t in reversed(range(N * nsub)):
         aq1 = adj_q
-        ad1 = adj_dq + dt * aq1
-        adj_dq_t = ad1.copy()
-        adj_a = dt * ad1
+        ad1 = adj_dq + sdt * aq1
+        adj_a = sdt * ad1
+        adj_dq_t = ad1 - alpha * adj_a                          # damping: a depends on dq_t
         adj_rhs = np.zeros(ndof)
         adj_rhs[free] = np.linalg.solve(Mff, adj_a[free])
         # --- aero coupling adjoint: adj_q += Pᵀ J_vlmᵀ distᵀ adj_rhs ---
