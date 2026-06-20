@@ -212,12 +212,23 @@ non-dominated structure+control co-designs.*
 
 ## 5. Limitations and next steps (stated honestly)
 
-- **Goland flutter benchmark — not yet reproduced on this stack.** Two concrete blockers: (i) an
-  isotropic ANCF plate has bending/torsion ratio EI/GJ ≈ (1+ν)/2 ≈ 0.65, whereas the Goland wing needs
-  ≈ 9.9, so matching it requires an **orthotropic** constitutive calibration; (ii) flutter develops over
-  many oscillation periods, but the current **explicit symplectic integrator is stable only over short
-  windows** at the required step size. Both are infrastructure items (orthotropic shell + implicit /
-  sub-stepped integrator); we report them rather than tune a number to 137 m/s.
+- **Regime: short-transient (quasi-static) gust load, not the full dynamic response.** A modal analysis
+  of the soft test wing gives a fundamental frequency ≈0.2 Hz (period ≈4 s) and a highest mode ≈0.7–1.3
+  kHz; the explicit symplectic integrator is therefore stable up to dt≈250–670 µs (we run dt=1e-5,
+  comfortably inside this), and the co-design rollouts (N=40) span ≈4×10⁻⁴ s — a small fraction of the
+  fundamental period. The objective is thus the *initial* gust-load deflection (a legitimate, design-
+  sensitive aeroservoelastic quantity — the deflection-energy landscape varies ~30 % across designs),
+  not a full multi-period dynamic response. The integrator stability is **not** the obstacle to longer
+  rollouts; the obstacle is that the *free wake grows unboundedly* with rollout length (O(N²) cost), so
+  reaching the seconds-long structural timescale needs **wake truncation / far-field lumping plus
+  gradient checkpointing** — a scalability item, not a stability one. (This corrects an earlier
+  mis-attribution to integrator stability.)
+- **Goland flutter benchmark — not yet reproduced on this stack.** (i) An isotropic ANCF plate has
+  bending/torsion ratio EI/GJ ≈ (1+ν)/2 ≈ 0.65, whereas the Goland wing needs ≈ 9.9, so matching it
+  requires an **orthotropic** constitutive calibration; (ii) flutter must be tracked over many
+  oscillation periods, i.e. the long-rollout + wake-truncation infrastructure above, and — because
+  artificial damping would mask the instability — an *implicit, damping-free* scheme (generalised-α) for
+  the structure. We report these rather than tune a number to 137 m/s.
 - **Control co-design axis — in, but a single global gain.** Actuating the *position* DOFs (not the
   tiny-inertia ANCF slope DOFs, which destabilise the explicit integrator) makes the closed-loop control
   stable for gains up to k≈10 and keeps the policy gradient exact (dL/dk vs FD = 2.7e-6); this is what
