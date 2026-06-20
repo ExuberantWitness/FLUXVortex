@@ -141,7 +141,7 @@ class UnsteadyAeroGpu:
 
 
 def coupled_unsteady_forward_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
-                                 Vinf=VINF, cg_tol=1e-12, use_wake=True, control=None):
+                                 Vinf=VINF, cg_tol=1e-12, use_wake=True, control=None, fb_gain=None):
     dev = cfg.DEVICE; NP = cfg.NP_DTYPE; ndof = C.ndof
     npan = nx * ny; ncv = (nx + 1) * (ny + 1); maxw = N * ny
     Esw = wp.array(Es.astype(NP), dtype=DTYPE, device=dev)
@@ -176,7 +176,10 @@ def coupled_unsteady_forward_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
         Fnodal = dist @ Fp.numpy().reshape(-1)
         Qmem, Qbend = dsg.design_internal_force(wa(q), C, Esw, dev)
         Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
-        rhs_s = (Fnodal - Qint + (control[t] if control is not None else 0.0)) * C.free_np
+        ctrl_t = (control[t] if control is not None else 0.0)
+        if fb_gain is not None:
+            ctrl_t = ctrl_t - fb_gain * dq * C.free_np         # closed-loop feedback in the forward
+        rhs_s = (Fnodal - Qint + ctrl_t) * C.free_np
         a, _ = structural_cg(wa(rhs_s), Mscaled, Kblk0, C.edofs, C.free, 0.0, ndof, tol=cg_tol, device=dev)
         a_np = a.numpy()[0]
         dq = dq + dt * a_np; q = q + dt * dq; qs.append(q.copy())
