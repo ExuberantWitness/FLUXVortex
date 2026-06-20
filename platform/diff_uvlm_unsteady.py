@@ -103,8 +103,9 @@ def single_step_lift(C, Vinf, dt, gprev, nc, ns):
     gamma = np.linalg.solve(AIC, rhs)
     Fz = np.asarray(0.0, dtp)
     for p in range(npan):
+        gnet = gamma[p] - gamma[p - ns] if p // ns > 0 else gamma[p]   # net chordwise circulation
         lb = rings[p, 1] - rings[p, 0]
-        Fkj = RHO * gamma[p] * np.cross(np.asarray(Vinf, dtp), lb)
+        Fkj = RHO * gnet * np.cross(np.asarray(Vinf, dtp), lb)
         cr = np.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
         area = 0.5 * np.sqrt(np.dot(cr, cr) + 1e-30)
         dGdt = (gamma[p] - gprev[p]) / dt
@@ -138,8 +139,9 @@ def unsteady_rollout_corners(C, Vinf, dt, N, nc, ns, free_wake=True):
         gamma = np.linalg.solve(AIC, rhs)
         Fz = np.asarray(0.0, dtp)
         for p in range(npan):
+            gnet = gamma[p] - gamma[p - ns] if p // ns > 0 else gamma[p]   # net chordwise circulation
             lb = rings[p, 1] - rings[p, 0]
-            Fkj = RHO * gamma[p] * np.cross(Vinf, lb)
+            Fkj = RHO * gnet * np.cross(Vinf, lb)
             cr = np.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
             area = 0.5 * np.sqrt(np.dot(cr, cr) + 1e-30)
             dGdt = (gamma[p] - gamma_prev[p]) / dt
@@ -200,8 +202,9 @@ def unsteady_rollout(nc, ns, chord, span, aoa, Vinf, N, dt, free_wake=True):
         Fz = dtp.type(0.0) if hasattr(dtp, "type") else 0.0
         Fz = np.asarray(0.0, dtp)
         for p in range(npan):
+            gnet = gamma[p] - gamma[p - ns] if p // ns > 0 else gamma[p]   # net chordwise circulation
             lb = rings[p, 1] - rings[p, 0]       # front bound segment (spanwise)
-            Fkj = RHO * gamma[p] * np.cross(Vinf, lb)
+            Fkj = RHO * gnet * np.cross(Vinf, lb)
             area = 0.5 * np.linalg.norm(np.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1]))
             dGdt = (gamma[p] - gamma_prev[p]) / dt
             Fun = RHO * dGdt * area * nrm[p]     # ∂Γ/∂t added-mass (normal)

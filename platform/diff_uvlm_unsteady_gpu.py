@@ -93,10 +93,16 @@ def rhs_kernel(col: wp.array(dtype=V3), nrm: wp.array(dtype=V3), Vinf: V3,
 @wp.kernel
 def lift_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
                 gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),
-                Vinf: V3, dt: DTYPE, rho: DTYPE, lift: wp.array(dtype=DTYPE)):
+                Vinf: V3, dt: DTYPE, rho: DTYPE, ns: int, lift: wp.array(dtype=DTYPE)):
     p = wp.tid()
+    # KJ on the leading bound segment carries the NET chordwise circulation Γ_p − Γ_upstream
+    # (vortex-ring lattice: the shared chordwise segment between panels telescopes); for the
+    # leading row (i=0) there is no upstream panel → full Γ_p.
+    gnet = gamma[0, p]
+    if p // ns > 0:
+        gnet = gamma[0, p] - gamma[0, p - ns]
     lb = rings[p, 1] - rings[p, 0]
-    Fkj = rho * gamma[0, p] * wp.cross(Vinf, lb)
+    Fkj = rho * gnet * wp.cross(Vinf, lb)
     cr = wp.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
     area = wp.float64(0.5) * wp.sqrt(wp.dot(cr, cr) + wp.float64(1.0e-30))
     dGdt = (gamma[0, p] - gprev[0, p]) / dt
@@ -185,7 +191,7 @@ def single_step_grad(corners_np, Vinf, dt, gprev_np, nc, ns, device="cuda"):
     t2 = wp.Tape()
     with t2:
         wp.launch(bound_rings_kernel, dim=npan, inputs=[corners, nc, ns], outputs=[rings2, col2, nrm2], device=device)
-        wp.launch(lift_kernel, dim=npan, inputs=[rings2, nrm2, gamma, gprev, Vw, DTYPE(dt), DTYPE(RHO)],
+        wp.launch(lift_kernel, dim=npan, inputs=[rings2, nrm2, gamma, gprev, Vw, DTYPE(dt), DTYPE(RHO), ns],
                   outputs=[lift], device=device)
     Fz = lift.numpy()[0]
     lift.grad = wp.array(np.array([1.0]), dtype=DTYPE, device=device)
@@ -223,11 +229,14 @@ def verify_grad_step(nc=2, ns=3, eps=1e-6):
 @wp.kernel
 def lift_kj_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
                    gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),
-                   Vinf: V3, dt: DTYPE, rho: DTYPE, lift: wp.array(dtype=DTYPE)):
-    """KJ-only lift (no dΓ/dt added mass) — diagnostic to isolate the gprev/added-mass path."""
+                   Vinf: V3, dt: DTYPE, rho: DTYPE, ns: int, lift: wp.array(dtype=DTYPE)):
+    """KJ-only (circulatory) lift, no dΓ/dt added mass — net chordwise circulation Γ_p−Γ_upstream."""
     p = wp.tid()
+    gnet = gamma[0, p]
+    if p // ns > 0:
+        gnet = gamma[0, p] - gamma[0, p - ns]
     lb = rings[p, 1] - rings[p, 0]
-    Fkj = rho * gamma[0, p] * wp.cross(Vinf, lb)
+    Fkj = rho * gnet * wp.cross(Vinf, lb)
     wp.atomic_add(lift, 0, Fkj[2])
 
 
@@ -301,7 +310,7 @@ def unsteady_rollout_grad(corners_np, Vinf, dt, N, nc, ns, seed=None, free_wake=
         lk = lift_kernel if added_mass else lift_kj_kernel
         tape_b = wp.Tape()
         with tape_b:
-            wp.launch(lk, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, dtt, rhod],
+            wp.launch(lk, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, dtt, rhod, ns],
                       outputs=[lift], device=device)
             if nw > 0:
                 wp.launch(wcopy_kernel, dim=(nw, 4), inputs=[wr_in], outputs=[wcat], device=device)
@@ -359,7 +368,7 @@ def _step_fwd(geo, wr_in, wg_in, gprev, nw, free_wake, added_mass):
     lk = lift_kernel if added_mass else lift_kj_kernel
     tape_b = wp.Tape()
     with tape_b:
-        wp.launch(lk, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, dtt, rhod], outputs=[lift], device=dev)
+        wp.launch(lk, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, dtt, rhod, ns], outputs=[lift], device=dev)
         if nw > 0:
             wp.launch(wcopy_kernel, dim=(nw, 4), inputs=[wr_in], outputs=[wcat], device=dev)
             wp.launch(wgcopy_kernel, dim=nw, inputs=[wg_in], outputs=[wgcat], device=dev)
@@ -509,7 +518,7 @@ def verify_grad_ckpt(nc=2, ns=3, N=16, dt=0.03):
     return ok
 
 
-def unsteady_rollout_gpu(nc, ns, chord, span, aoa, Vinf, N, dt, device="cuda"):
+def unsteady_rollout_gpu(nc, ns, chord, span, aoa, Vinf, N, dt, added_mass=True, device="cuda"):
     npan = nc * ns; maxw = N * ns
     Cl = ref._lattice(nc, ns, chord, span, aoa)
     rings_np, col_np, nrm_np = ref._bound_rings(Cl, nc, ns)
@@ -529,8 +538,8 @@ def unsteady_rollout_gpu(nc, ns, chord, span, aoa, Vinf, N, dt, device="cuda"):
         wp.launch(rhs_kernel, dim=npan, inputs=[col, nrm, Vw, wr, wg, nw], outputs=[rhs], device=device)
         gamma = batched_dense_solve(AIC, rhs, device)
         lift = wp.zeros(1, dtype=DTYPE, device=device)
-        wp.launch(lift_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt), DTYPE(RHO)],
-                  outputs=[lift], device=device)
+        wp.launch(lift_kernel if added_mass else lift_kj_kernel, dim=npan,
+                  inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt), DTYPE(RHO), ns], outputs=[lift], device=device)
         lifts[step] = lift.numpy()[0]
         wp.launch(shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=device)
         nw += ns
