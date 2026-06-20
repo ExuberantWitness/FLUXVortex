@@ -107,46 +107,58 @@ class VLMGpu:
         z = lambda: wp.zeros(self.npan, dtype=V3, device=self.dev, requires_grad=rg)
         return z(), z(), z(), z()
 
-    def forward_grad(self, corners_np):
-        """Returns total force (np, 3) and the Jacobian ∂(total F)/∂corners (3, ncorner*3)."""
+    def forward(self, corners_np):
+        """Cache the geometry→AIC→γ→KJ chain; return per-panel force (npan,3). Pair with
+        backward(adj_Fpanel) for the VJP adj_corners=Jᵀ·adj_F used by the coupled rollout."""
         nc = (self.nx + 1) * (self.ny + 1)
-        corners = wp.array(np.asarray(corners_np, np.float64).reshape(nc, 3), dtype=V3,
-                           device=self.dev, requires_grad=True)
+        self._corners = wp.array(np.asarray(corners_np, np.float64).reshape(nc, 3), dtype=V3,
+                                 device=self.dev, requires_grad=True)
         qa, qb, col, nrm = self._alloc(True)
-        AIC = wp.zeros((1, self.npan, self.npan), dtype=DTYPE, device=self.dev, requires_grad=True)
-        rhs = wp.zeros((1, self.npan), dtype=DTYPE, device=self.dev, requires_grad=True)
-        # tape 1: corners -> geom -> AIC, rhs
-        tape1 = wp.Tape()
-        with tape1:
-            wp.launch(panel_geom, dim=self.npan, inputs=[corners, self.nx, self.ny],
+        self._AIC = wp.zeros((1, self.npan, self.npan), dtype=DTYPE, device=self.dev, requires_grad=True)
+        self._rhs = wp.zeros((1, self.npan), dtype=DTYPE, device=self.dev, requires_grad=True)
+        self._t1 = wp.Tape()
+        with self._t1:
+            wp.launch(panel_geom, dim=self.npan, inputs=[self._corners, self.nx, self.ny],
                       outputs=[qa, qb, col, nrm], device=self.dev)
             wp.launch(aic_kernel, dim=(self.npan, self.npan),
-                      inputs=[qa, qb, col, nrm, self.edir], outputs=[AIC], device=self.dev)
-            wp.launch(rhs_kernel, dim=self.npan, inputs=[nrm, self.Vinf], outputs=[rhs],
+                      inputs=[qa, qb, col, nrm, self.edir], outputs=[self._AIC], device=self.dev)
+            wp.launch(rhs_kernel, dim=self.npan, inputs=[nrm, self.Vinf], outputs=[self._rhs],
                       device=self.dev)
-        gamma = self.dds.forward(AIC, rhs)               # manual solve VJP
-        gamma.requires_grad = True
-        F = wp.zeros(self.npan, dtype=V3, device=self.dev, requires_grad=True)
+        self._gamma = self.dds.forward(self._AIC, self._rhs)
+        self._gamma.requires_grad = True
+        self._F = wp.zeros(self.npan, dtype=V3, device=self.dev, requires_grad=True)
         qa2, qb2, col2, nrm2 = self._alloc(True)
-        tape2 = wp.Tape()
-        with tape2:
-            wp.launch(panel_geom, dim=self.npan, inputs=[corners, self.nx, self.ny],
+        self._t2 = wp.Tape()
+        with self._t2:
+            wp.launch(panel_geom, dim=self.npan, inputs=[self._corners, self.nx, self.ny],
                       outputs=[qa2, qb2, col2, nrm2], device=self.dev)
-            wp.launch(kj_kernel, dim=self.npan, inputs=[qa2, qb2, gamma, self.Vinf,
-                      wp.float64(RHO)], outputs=[F], device=self.dev)
-        Ftot = F.numpy().sum(0)
-        # backward: build the Jacobian column-block by seeding each of the 3 total-force comps
+            wp.launch(kj_kernel, dim=self.npan, inputs=[qa2, qb2, self._gamma, self.Vinf,
+                      wp.float64(RHO)], outputs=[self._F], device=self.dev)
+        return self._F.numpy()
+
+    def backward(self, adj_Fpanel_np):
+        """VJP: adj_corners (ncorner,3) = Jᵀ·adj_Fpanel for the cached forward."""
+        self._corners.grad.zero_(); self._gamma.grad.zero_()
+        self._AIC.grad.zero_(); self._rhs.grad.zero_()
+        self._F.grad = wp.array(np.ascontiguousarray(adj_Fpanel_np, np.float64).reshape(self.npan, 3),
+                                dtype=V3, device=self.dev)
+        self._t2.backward()
+        adj_A, adj_b = self.dds.backward(self._gamma.grad)
+        self._AIC.grad = adj_A; self._rhs.grad = adj_b
+        self._t1.backward()
+        g = self._corners.grad.numpy().copy()
+        self._t1.zero(); self._t2.zero()
+        return g
+
+    def forward_grad(self, corners_np):
+        """Total force (np,3) + Jacobian ∂(total F)/∂corners (3, ncorner*3) — via forward/backward."""
+        nc = (self.nx + 1) * (self.ny + 1)
+        Fp = self.forward(corners_np)
+        Ftot = Fp.sum(0)
         Jac = np.zeros((3, nc * 3))
         for comp in range(3):
-            corners.grad.zero_(); gamma.grad.zero_(); AIC.grad.zero_(); rhs.grad.zero_()
-            seed = np.zeros((self.npan, 3)); seed[:, comp] = 1.0   # ∂(Σ F_comp)/∂F = e_comp
-            F.grad = wp.array(seed, dtype=V3, device=self.dev)
-            tape2.backward()                              # -> corners.grad (kj part) + gamma.grad
-            adj_A, adj_b = self.dds.backward(gamma.grad)  # -> adj AIC, rhs
-            AIC.grad = adj_A; rhs.grad = adj_b
-            tape1.backward()                              # accumulates into corners.grad (aic part)
-            Jac[comp] = corners.grad.numpy().reshape(-1)
-            tape1.zero(); tape2.zero()
+            seed = np.zeros((self.npan, 3)); seed[:, comp] = 1.0
+            Jac[comp] = self.backward(seed).reshape(-1)
         return Ftot, Jac
 
 
