@@ -191,12 +191,16 @@ def coupled_unsteady_forward_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
 
 
 def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
-                              Vinf=VINF, use_wake=False, cg_tol=1e-12):
+                              Vinf=VINF, use_wake=False, cg_tol=1e-12, control=None):
     """all-Warp coupled UNSTEADY FSI design gradient ∂L/∂(E,ρ). Chains: structure design adjoint
     (adj_E/adj_rho + membrane-K_t state chain) ⊗ unsteady aero VJP (UnsteadyAeroGpu: ∂F/∂corners,
     ∂F/∂V_body, ∂F/∂gprev) through the coupled recurrence. adj_q gets the aero ∂/∂corners (P^T) and
     the structure chain; adj_dq gets the moving-body ∂/∂V_body (P^T); the dΓ/dt coupling carries
-    adj_gprev → gamma_{t-1}. use_wake=False isolates this (no wake recurrence)."""
+    adj_gprev → gamma_{t-1}. use_wake=False isolates this (no wake recurrence).
+
+    control: optional (N, ndof) per-step actuation force added to the structural rhs (the SHAC
+    control input). Returns the extra gradient gC = ∂L/∂control (gC[t] = adj_rhs_t on free DOFs) —
+    exactly the policy-gradient signal ∂L/∂action_t a meta-RL policy backprops through."""
     dev = cfg.DEVICE; NP = cfg.NP_DTYPE; ndof = C.ndof
     npan = nx * ny; ncv = (nx + 1) * (ny + 1); maxw = N * ny
     Esw = wp.array(Es.astype(NP), dtype=DTYPE, device=dev)
@@ -216,7 +220,7 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
     q = q0.copy(); dq = dq0.copy(); nw = 0
     qs = []; dqs = []; araws = []; gammas = []; wake_snaps = []
     gprev_np = np.zeros((1, npan)); cur_wr = None; cur_wg = None
-    for _ in range(N):
+    for t in range(N):
         corners = (P @ q).reshape(ncv, 3); cvel = (P @ dq).reshape(ncv, 3)
         wake_snaps.append((None if nw == 0 else cur_wr.copy(), None if nw == 0 else cur_wg.copy(), nw))
         wr_t = wp.array(cur_wr, dtype=V3, device=dev, requires_grad=True) if nw > 0 else dummy_wr
@@ -226,7 +230,8 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         Fnodal = dist @ Fp.reshape(-1)
         Qmem, Qbend = dsg.design_internal_force(wa(q), C, Esw, dev)
         Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
-        a, _ = structural_cg(wa((Fnodal - Qint) * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0,
+        rhs_s = Fnodal - Qint + (control[t] if control is not None else 0.0)
+        a, _ = structural_cg(wa(rhs_s * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0,
                              ndof, tol=cg_tol, device=dev)
         a_np = a.numpy()[0]
         qs.append(q.copy()); dqs.append(dq.copy()); araws.append(a_np.copy()); gammas.append(gamma_np.copy())
@@ -238,6 +243,7 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
 
     # ---- backward ----
     gE = wp.zeros(C.ne, dtype=DTYPE, device=dev); gR = wp.zeros(C.ne, dtype=DTYPE, device=dev)
+    gC = np.zeros((N, ndof))                                    # ∂L/∂control_t (the policy-gradient signal)
     adj_q = w.copy(); adj_dq = np.zeros(ndof); adj_gamma_carry = None
     adj_wr_next = None; adj_wg_next = None
     for t in reversed(range(N)):
@@ -245,6 +251,7 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         adj_rhs_w, _ = structural_cg(wa(adj_a * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0,
                                      ndof, tol=cg_tol, device=dev)
         adj_rhs = adj_rhs_w.numpy()[0]
+        gC[t] = adj_rhs * C.free_np                             # control enters rhs linearly ⇒ ∂L/∂u_t = adj_rhs_t
         corners_t = (P @ qs[t]).reshape(ncv, 3); cvel_t = (P @ dqs[t]).reshape(ncv, 3)
         gprev_t = gammas[t - 1] if t > 0 else np.zeros((1, npan))
         wr_np, wg_np, nw_t = wake_snaps[t]
@@ -273,7 +280,7 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         adj_q = aq1 + adj_qK.numpy()[0] + adj_q_aero
         adj_dq = ad1 + adj_dq_aero
         adj_gamma_carry = adj_gprev                            # dΓ/dt coupling: adj_gprev → gamma_{t-1}
-    return L, gE.numpy(), gR.numpy()
+    return L, gE.numpy(), gR.numpy(), gC
 
 
 def verify(nx=3, ny=3, N=6, dt=1e-5, seed=0):
@@ -315,7 +322,7 @@ def verify_grad(nx=3, ny=3, N=6, dt=1e-5, seed=0, use_wake=False, elems=None):
     dq0 = np.zeros(ndof); dq0[free] = 1e-3 * rng.standard_normal(len(free))
     w = np.zeros(ndof); w[free] = rng.standard_normal(len(free))
     P, dist = dcu._index_maps(sh, nx, ny)
-    L, gE, gR = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny, use_wake=use_wake)
+    L, gE, gR, gC = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny, use_wake=use_wake)
     els = [0, ne // 2, ne - 1] if elems is None else elems
     gE_fd, gR_fd = dcu.design_grad_fd(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, elems=els, use_wake=use_wake)
     relE = max(abs(gE[e] - gE_fd[e]) for e in els) / (max(abs(gE_fd[e]) for e in els) + 1e-30)
@@ -329,8 +336,46 @@ def verify_grad(nx=3, ny=3, N=6, dt=1e-5, seed=0, use_wake=False, elems=None):
     return ok
 
 
+def verify_grad_control(nx=3, ny=3, N=5, dt=1e-5, seed=1, use_wake=True, eps=1e-2):
+    """fix3/Phase-E: validate the CONTROL gradient gC = ∂L/∂u_t (the SHAC policy-gradient signal)
+    through the full unsteady coupled FSI, vs FD of the numpy oracle."""
+    wp.init()
+    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    rng = np.random.default_rng(seed); ne = sh.ne
+    Es = np.exp(0.2 * rng.standard_normal(ne)); Rs = np.exp(0.2 * rng.standard_normal(ne))
+    sh.set_distribution(E_scale=Es, rho_scale=Rs)
+    ndof = sh.ndof
+    free = np.array(sorted(set(range(ndof)) - set(sh._bc_dofs)))
+    q0 = sh.q.copy(); q0[free] += 1e-4 * rng.standard_normal(len(free))
+    dq0 = np.zeros(ndof); dq0[free] = 1e-3 * rng.standard_normal(len(free))
+    w = np.zeros(ndof); w[free] = rng.standard_normal(len(free))
+    P, dist = dcu._index_maps(sh, nx, ny)
+    Mff = sh.M[np.ix_(free, free)].toarray()
+    u = np.zeros((N, ndof)); u[:, free] = 1e-2 * rng.standard_normal((N, len(free)))   # actuation
+    _, _, _, gC = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
+                                            use_wake=use_wake, control=u)
+
+    def Lc(uu):
+        return float(w @ dcu.coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny,
+                                                      use_wake=use_wake, control=uu))
+    probes = [(0, free[0]), (N // 2, free[len(free) // 2]), (N - 1, free[-1])]
+    rels = []
+    for (t, d) in probes:
+        up = u.copy(); up[t, d] += eps; um = u.copy(); um[t, d] -= eps
+        fd = (Lc(up) - Lc(um)) / (2 * eps)
+        rels.append(abs(gC[t, d] - fd) / (abs(fd) + 1e-30))
+    rel = max(rels); ok = rel < 1e-2
+    print(f"all-Warp coupled UNSTEADY FSI CONTROL gradient ∂L/∂u_t ({ne} elems, {N} steps, full wake):")
+    print(f"  adjoint vs FD at {len(probes)} (step,DOF) probes: rel={rel:.2e}")
+    print(f"  -> {'PASS' if ok else 'FAIL'}: the policy-gradient signal ∂L/∂action_t flows through "
+          f"the differentiable unsteady coupled FSI — the SHAC control-layer building block")
+    return ok
+
+
 if __name__ == "__main__":
     import sys as _s
+    if "--control" in _s.argv:
+        raise SystemExit(0 if verify_grad_control() else 1)
     if "--grad" in _s.argv:
         ok1 = verify_grad(use_wake=False)
         ok2 = verify_grad(use_wake=True)

@@ -97,18 +97,18 @@ def _aero_step(corners, cvel, wake, gamma_prev, nc, ns, Vinf, dt, free_wake=True
 
 
 def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf=VINF,
-                             free_wake=True, use_wake=True):
+                             free_wake=True, use_wake=True, control=None):
     q, dq = q0.copy(), dq0.copy()
     npan = nx * ny
     wake = []; gamma_prev = np.zeros(npan, q0.dtype)
-    for _ in range(N):
+    for t in range(N):
         corners = (P @ q).reshape(nx + 1, ny + 1, 3)
         cvel = (P @ dq).reshape(nx + 1, ny + 1, 3)
         Fp, gamma, wake_new = _aero_step(corners, cvel, wake, gamma_prev, nx, ny, Vinf, dt, free_wake)
         wake = wake_new if use_wake else []          # use_wake=False isolates the dΓ/dt coupling
         Fnodal = dist @ Fp.reshape(-1)
         Qint, _, _ = _assemble(sh, q)
-        rhs = Fnodal - Qint
+        rhs = Fnodal - Qint + (control[t] if control is not None else 0.0)
         a = np.zeros(sh.ndof, q0.dtype); a[free] = np.linalg.solve(Mff, rhs[free])
         dq = dq + dt * a; q = q + dt * dq
         gamma_prev = gamma
