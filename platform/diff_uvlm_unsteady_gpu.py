@@ -227,6 +227,50 @@ def verify_grad_step(nc=2, ns=3, eps=1e-6):
 
 
 @wp.kernel
+def colvel_kernel(cvel: wp.array(dtype=V3), nc: int, ns: int, vcol: wp.array(dtype=V3)):
+    """Collocation velocity from the corner velocity field (corners=P·q ⇒ V_corner=P·dq)."""
+    p = wp.tid()
+    i = p // ns; j = p % ns; s1 = ns + 1
+    c00 = cvel[i * s1 + j]; c10 = cvel[(i + 1) * s1 + j]
+    c01 = cvel[i * s1 + j + 1]; c11 = cvel[(i + 1) * s1 + j + 1]
+    vcol[p] = wp.float64(0.5) * (wp.float64(0.25) * c00 + wp.float64(0.75) * c10
+                                 + wp.float64(0.25) * c01 + wp.float64(0.75) * c11)
+
+
+@wp.kernel
+def rhs_moving_kernel(col: wp.array(dtype=V3), nrm: wp.array(dtype=V3), Vinf: V3,
+                      vcol: wp.array(dtype=V3), wr: wp.array(dtype=V3, ndim=2),
+                      wg: wp.array(dtype=DTYPE), nw: int, rhs: wp.array(dtype=DTYPE, ndim=2)):
+    """Moving-body BC: rhs_i = -(V∞ − V_body,i + Σ wake induction)·n_i. Scalar accumulation so the
+    nrm adjoint is clean (same Warp loop-variable fix as rhs_kernel)."""
+    i = wp.tid()
+    ci = col[i]; ni = nrm[i]
+    s = -wp.dot(Vinf - vcol[i], ni)
+    for k in range(nw):
+        s = s - wg[k] * wp.dot(ring_vel(ci, wr[k, 0], wr[k, 1], wr[k, 2], wr[k, 3]), ni)
+    rhs[0, i] = s
+
+
+@wp.kernel
+def panel_force_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
+                       gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),
+                       vcol: wp.array(dtype=V3), Vinf: V3, dt: DTYPE, rho: DTYPE, ns: int,
+                       Fp: wp.array(dtype=V3)):
+    """Per-panel 3-D unsteady force: ρ(Γ_p−Γ_up)(V_rel×l_b) + ρ dΓ/dt·A·n, V_rel = V∞ − V_body."""
+    p = wp.tid()
+    gnet = gamma[0, p]
+    if p // ns > 0:
+        gnet = gamma[0, p] - gamma[0, p - ns]
+    vrel = Vinf - vcol[p]
+    lb = rings[p, 1] - rings[p, 0]
+    Fkj = rho * gnet * wp.cross(vrel, lb)
+    cr = wp.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
+    area = wp.float64(0.5) * wp.sqrt(wp.dot(cr, cr) + wp.float64(1.0e-30))
+    dGdt = (gamma[0, p] - gprev[0, p]) / dt
+    Fp[p] = Fkj + rho * dGdt * area * nrm[p]
+
+
+@wp.kernel
 def lift_kj_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
                    gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),
                    Vinf: V3, dt: DTYPE, rho: DTYPE, ns: int, lift: wp.array(dtype=DTYPE)):
