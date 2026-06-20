@@ -21,6 +21,24 @@ from __future__ import annotations
 import numpy as np
 
 RHO = 1.225
+WAKE_CORE = 0.05          # regularized vortex-core fraction for free-wake self/near interactions
+
+
+def _vseg_core(P, A, B, delta=WAKE_CORE):
+    """Regularized (finite-core) Biot-Savart segment (van Garrel): δ²|r0|² in the cross-product
+    denominator so coincident/near corners stay bounded — used for the free-wake convection so
+    its self-induction is differentiable (sharp _vseg is kept for the bound AIC)."""
+    r1 = P - A; r2 = P - B; r0 = B - A
+    cr = np.cross(r1, r2)
+    cr2 = np.dot(cr, cr) + (delta * delta) * np.dot(r0, r0) + 1e-30
+    n1 = np.sqrt(np.dot(r1, r1) + 1e-20)
+    n2 = np.sqrt(np.dot(r2, r2) + 1e-20)
+    return (1.0 / (4.0 * np.pi)) * np.dot(r0, r1 / n1 - r2 / n2) / cr2 * cr
+
+
+def _ring_vel_core(P, ring, delta=WAKE_CORE):
+    return (_vseg_core(P, ring[0], ring[1], delta) + _vseg_core(P, ring[1], ring[2], delta)
+            + _vseg_core(P, ring[2], ring[3], delta) + _vseg_core(P, ring[3], ring[0], delta))
 
 
 def _vseg(P, A, B):
@@ -94,6 +112,65 @@ def single_step_lift(C, Vinf, dt, gprev, nc, ns):
     return Fz
 
 
+def unsteady_rollout_corners(C, Vinf, dt, N, nc, ns, free_wake=True):
+    """N-step unsteady free-wake rollout from a GIVEN corner lattice C ((nc+1,ns+1,3)); returns
+    per-step lift (N,). Complex-safe (C may be complex) — the gradient oracle for the Warp
+    wake-history adjoint (fix1-④). Same physics as unsteady_rollout, geometry fixed (rigid wing)."""
+    dtp = C.dtype
+    Vinf = np.asarray(Vinf, dtp)
+    rings, col, nrm = _bound_rings(C, nc, ns)
+    npan = nc * ns
+    AIC = np.zeros((npan, npan), dtp)
+    for i in range(npan):
+        for j in range(npan):
+            AIC[i, j] = np.dot(_ring_vel(col[i], rings[j]), nrm[i])
+    wake = []                                    # (ring(4,3), gamma)
+    gamma_prev = np.zeros(npan, dtp)
+    lift = np.zeros(N, dtp)
+    te = [(nc - 1) * ns + j for j in range(ns)]
+    for step in range(N):
+        rhs = np.zeros(npan, dtp)
+        for i in range(npan):
+            v = Vinf.copy()
+            for (wr, wg) in wake:
+                v = v + wg * _ring_vel(col[i], wr)
+            rhs[i] = -np.dot(v, nrm[i])
+        gamma = np.linalg.solve(AIC, rhs)
+        Fz = np.asarray(0.0, dtp)
+        for p in range(npan):
+            lb = rings[p, 1] - rings[p, 0]
+            Fkj = RHO * gamma[p] * np.cross(Vinf, lb)
+            cr = np.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
+            area = 0.5 * np.sqrt(np.dot(cr, cr) + 1e-30)
+            dGdt = (gamma[p] - gamma_prev[p]) / dt
+            Fz = Fz + Fkj[2] + RHO * dGdt * area * nrm[p, 2]
+        lift[step] = Fz
+        shed = []
+        for p in te:
+            wr = np.zeros((4, 3), dtp)
+            wr[0] = rings[p, 3]; wr[1] = rings[p, 2]
+            wr[2] = rings[p, 2] + Vinf * dt; wr[3] = rings[p, 3] + Vinf * dt
+            shed.append((wr, gamma[p]))
+        wcat = wake + shed
+        if free_wake and wcat:
+            allr = [rings[p] for p in range(npan)] + [w[0] for w in wcat]
+            allg = list(gamma) + [w[1] for w in wcat]
+            new = []
+            for (wr, wg) in wcat:
+                nwr = wr.copy()
+                for c in range(4):
+                    v = Vinf.copy()
+                    for rr, gg in zip(allr, allg):
+                        v = v + gg * _ring_vel_core(wr[c], rr)
+                    nwr[c] = wr[c] + v * dt
+                new.append((nwr, wg))
+            wake = new
+        else:
+            wake = [(wr + Vinf * dt, wg) for (wr, wg) in wcat]
+        gamma_prev = gamma
+    return lift
+
+
 def unsteady_rollout(nc, ns, chord, span, aoa, Vinf, N, dt, free_wake=True):
     """Run N unsteady steps; return per-step lift (N,) and the final wake. Ring VLM, shed wake."""
     dtp = np.asarray(Vinf).dtype if np.iscomplexobj(Vinf) or np.iscomplexobj([aoa]) else float
@@ -147,7 +224,7 @@ def unsteady_rollout(nc, ns, chord, span, aoa, Vinf, N, dt, free_wake=True):
                 for c in range(4):
                     v = Vinf.copy()
                     for rr, gg in zip(allrings, allg):
-                        v = v + gg * _ring_vel(wr[c], rr)
+                        v = v + gg * _ring_vel_core(wr[c], rr)
                     nwr[c] = wr[c] + v * dt
                 new.append((nwr, wg))
             wake = new
