@@ -102,7 +102,8 @@ def loss_and_grad_gpu(sh, C, vlm, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny, cg
     return L, gE.numpy(), gR.numpy()
 
 
-def verify(nx=3, ny=3, N=6, dt=1e-5, eps=1e-6):
+def verify(nx=3, ny=3, N=6, dt=1e-5, eps=1e-6, fd_elems=None, oracle=True):
+    import time
     wp.init()
     sh = _build(nx, ny); C = ANCFConstants(sh, device=cfg.DEVICE)
     vlm = VLMGpu(nx, ny, VINF)
@@ -115,32 +116,41 @@ def verify(nx=3, ny=3, N=6, dt=1e-5, eps=1e-6):
     dq0 = np.zeros(ndof); dq0[free] = 1e-3 * rng.standard_normal(len(free))
     w = np.zeros(ndof); w[free] = rng.standard_normal(len(free))
 
+    t0 = time.time()
     L, gE, gR = loss_and_grad_gpu(sh, C, vlm, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny)
+    t_grad = time.time() - t0
 
-    # FD of the GPU forward
     def Lonly(Es_, Rs_):
         return loss_and_grad_gpu(sh, C, vlm, P, dist, q0, dq0, N, dt, w, Es_, Rs_, nx, ny)[0]
-    gE_fd = np.zeros(ne); gR_fd = np.zeros(ne)
-    for e in range(ne):
+    els = list(range(ne)) if fd_elems is None else fd_elems     # FD spot-check at scale
+    dE, dR = [], []
+    for e in els:
         ep = Es.copy(); ep[e] += eps; em = Es.copy(); em[e] -= eps
-        gE_fd[e] = (Lonly(ep, Rs) - Lonly(em, Rs)) / (2 * eps)
+        dE.append(abs(gE[e] - (Lonly(ep, Rs) - Lonly(em, Rs)) / (2 * eps)))
         rp = Rs.copy(); rp[e] += eps; rm = Rs.copy(); rm[e] -= eps
-        gR_fd[e] = (Lonly(Es, rp) - Lonly(Es, rm)) / (2 * eps)
-    relE = np.max(np.abs(gE - gE_fd)) / (np.max(np.abs(gE_fd)) + 1e-30)
-    relR = np.max(np.abs(gR - gR_fd)) / (np.max(np.abs(gR_fd)) + 1e-30)
-    # cross-check vs the numpy oracle (full-K_t tangent -> ~membrane diff)
-    sh.set_distribution(E_scale=Es, rho_scale=Rs)
-    _, gE_np, gR_np = dc.loss_and_grad(sh, q0, dq0, N, dt, free, w, nx, ny)
-    rel_np = max(np.max(np.abs(gE - gE_np)) / (np.max(np.abs(gE_np)) + 1e-30),
-                 np.max(np.abs(gR - gR_np)) / (np.max(np.abs(gR_np)) + 1e-30))
+        dR.append(abs(gR[e] - (Lonly(Es, rp) - Lonly(Es, rm)) / (2 * eps)))
+    sE = np.max([abs(gE[e]) for e in els]) + 1e-30; sR = np.max([abs(gR[e]) for e in els]) + 1e-30
+    relE = max(dE) / sE; relR = max(dR) / sR
+    print(f"all-Warp COUPLED FSI design gradient ({ne} elems / {ndof} DOF, {N}-step rollout):")
+    print(f"  ∂L/∂E_scale (刚柔)  vs FD={relE:.2e}   ∂L/∂rho_scale(质量) vs FD={relR:.2e}"
+          f"  ({len(els)} elems FD-checked)")
+    print(f"  coupled-gradient time: {t_grad*1e3:.0f} ms/eval on this GPU")
+    if oracle:
+        sh.set_distribution(E_scale=Es, rho_scale=Rs)
+        _, gE_np, gR_np = dc.loss_and_grad(sh, q0, dq0, N, dt, free, w, nx, ny)
+        rel_np = max(np.max(np.abs(gE - gE_np)) / (np.max(np.abs(gE_np)) + 1e-30),
+                     np.max(np.abs(gR - gR_np)) / (np.max(np.abs(gR_np)) + 1e-30))
+        print(f"  cross-check vs numpy oracle (full vs membrane K_t): rel={rel_np:.2e}")
     ok = relE < 5e-2 and relR < 1e-3
-    print(f"all-Warp COUPLED FSI design gradient ({ne} elems, {N}-step coupled rollout):")
-    print(f"  ∂L/∂E_scale (刚柔)  vs FD={relE:.2e}   ∂L/∂rho_scale(质量) vs FD={relR:.2e}")
-    print(f"  cross-check vs numpy diff_coupled_fsi oracle (full vs membrane K_t): rel={rel_np:.2e}")
     print(f"  -> {'PASS' if ok else 'FAIL'}: structure (Warp design adjoint) ⊗ VLM (Warp) coupled "
           f"design gradient on GPU")
     return ok
 
 
 if __name__ == "__main__":
-    raise SystemExit(0 if verify() else 1)
+    import sys as _s
+    if "--scale" in _s.argv:                          # realistic HIT-Hawk-class mesh
+        ok = verify(nx=15, ny=10, N=6, dt=1e-5, fd_elems=[0, 40, 75, 110, 149], oracle=False)
+    else:
+        ok = verify()
+    raise SystemExit(0 if ok else 1)
