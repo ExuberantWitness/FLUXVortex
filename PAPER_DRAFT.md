@@ -20,9 +20,11 @@ independent NumPy/MATLAB reference. Its key novelty is an **end-to-end adjoint**
 flow through the *entire* coupled unsteady rollout — including the recurrent free-wake history — in a
 single backward pass. We validate every piece of this adjoint to machine precision against the exact
 complex-step gradient, and against finite differences of the coupled solver. We then drive a MAP-Elites
-+ differentiable-quality-diversity (DQD) search with this gradient to illuminate the
-(stiffness-distribution × mass-distribution) design space for gust rejection, on a single RTX 4090,
-and report a concrete co-design finding. We are explicit about the present limitations (single-fidelity
++ differentiable-quality-diversity (DQD) search with this gradient to **co-design the structure and the
+controller together** for **gust-load alleviation**, on a single RTX 4090, illuminating a diverse
+archive of (body × control) solutions and recovering the achievable (gust-deflection × control-effort)
+Pareto front — along which the optimal spanwise stiffness distribution shifts, demonstrating that
+structure and control must be designed jointly. We are explicit about the present limitations (single-fidelity
 attached-flow aerodynamics, explicit-integrator stability window, isotropic-plate constitutive law) and
 the infrastructure needed to lift them.
 
@@ -165,6 +167,23 @@ high-quality (body × control) archive with a concrete finding, affordably, on c
 coloured by log gust-deflection energy; right — representative co-designs, each a distinct spanwise
 stiffness (solid) and mass (dashed) profile with its own control gain.*
 
+### 4.1 Multi-objective: the gust-load-alleviation Pareto front
+
+Gust rejection is not free: it is bought with **control effort**. For every illuminated elite we
+recover its actuation energy `E_ctrl = Σ_t ‖u_t‖² dt` from the velocity trajectory of the coupled
+unsteady rollout, giving a second objective. The (gust-deflection, control-effort) scatter of the 141
+co-designed elites traces a clear **achievable Pareto front** (15 non-dominated designs): at one
+extreme, *passive* designs (k→0, zero actuation) leave ≈1.6e-2 deflection energy; spending control
+effort walks the front down to ≈2.6e-3 — a ≈6× gust-load reduction — and the **morphology shifts along
+the front** (stiffness taper ≈1.8 at the low-effort/passive end vs ≈1.3 at the low-deflection/active
+end). This is the aeroservoelastic co-design statement: *the structure and the controller must be
+designed together*, because the best deflection-vs-effort trade-off is reached by particular
+combinations of spanwise stiffness and feedback gain, not by either alone (Fig. 2).
+
+*Figure 2 (`qd_pareto.png`): the achievable gust-load-alleviation Pareto front — control effort vs gust
+deflection over all co-designed elites, coloured by stiffness taper; the front (black) is the set of
+non-dominated structure+control co-designs.*
+
 ---
 
 ## 5. Limitations and next steps (stated honestly)
@@ -181,10 +200,12 @@ stiffness (solid) and mass (dashed) profile with its own control gain.*
   enabled the (stiffness × control) archive of §4. The control law is still a single global
   velocity-feedback gain; a full state-feedback / RL² meta-policy net (the gradient machinery for which
   is already validated) and higher gains (needing an implicit integrator) are the next step.
-- **Single-fidelity attached-flow aerodynamics.** The UVLM is valid in the attached regime; leading-edge
-  vortex / dynamic-stall and a viscous-drag (sectional polar) correction are pluggable hooks, not yet
-  enabled. Efficiency (COT) therefore awaits the viscous correction, so the present objective is
-  single (gust rejection) rather than the intended (gust × efficiency) multi-objective.
+- **Objectives.** The two objectives here are gust deflection and control effort (a complete, classic
+  aeroservoelastic gust-load-alleviation trade-off, §4.1). A *propulsive-efficiency / cost-of-transport*
+  objective additionally needs a viscous sectional-drag (polar) correction on top of the inviscid UVLM
+  (a pluggable hook, not yet enabled), since the inviscid wake gives only induced drag; that is the path
+  to the intended (gust × cruise-efficiency) frontier. Leading-edge-vortex / dynamic-stall models are
+  likewise pluggable hooks for beyond-attached-flow regimes.
 - **Scale.** Results are at a deliberately small mesh so a full archive fits in minutes on one 4090; the
   solver is validated to 150 elements and the architecture is batched, but large-mesh multi-environment
   co-design awaits more compute.
