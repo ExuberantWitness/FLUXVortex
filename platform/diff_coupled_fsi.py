@@ -72,9 +72,10 @@ def _forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, alpha=0.0, nsub=1):
         Qint, _, _ = _assemble(sh, q)
         rhs = _aero_nodal(q, P, dist, nx, ny) - Qint
         a = np.zeros(sh.ndof); a[free] = np.linalg.solve(Mff, rhs[free])
-        a = a - alpha * dq                                       # mass-proportional damping
+        as_.append(a.copy())                # store the UNDAMPED M⁻¹·rhs (for the mass adjoint;
+        a = a - alpha * dq                  # the α·dq damping has no ρ-dependence)
         dq = dq + sdt * a; q = q + sdt * dq
-        qs.append(q.copy()); as_.append(a.copy())
+        qs.append(q.copy())
     return qs, as_
 
 
