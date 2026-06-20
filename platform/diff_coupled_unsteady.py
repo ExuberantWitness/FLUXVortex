@@ -96,14 +96,16 @@ def _aero_step(corners, cvel, wake, gamma_prev, nc, ns, Vinf, dt, free_wake=True
     return Fp, gamma, wcat
 
 
-def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf=VINF, free_wake=True):
+def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf=VINF,
+                             free_wake=True, use_wake=True):
     q, dq = q0.copy(), dq0.copy()
     npan = nx * ny
     wake = []; gamma_prev = np.zeros(npan, q0.dtype)
     for _ in range(N):
         corners = (P @ q).reshape(nx + 1, ny + 1, 3)
         cvel = (P @ dq).reshape(nx + 1, ny + 1, 3)
-        Fp, gamma, wake = _aero_step(corners, cvel, wake, gamma_prev, nx, ny, Vinf, dt, free_wake)
+        Fp, gamma, wake_new = _aero_step(corners, cvel, wake, gamma_prev, nx, ny, Vinf, dt, free_wake)
+        wake = wake_new if use_wake else []          # use_wake=False isolates the dΓ/dt coupling
         Fnodal = dist @ Fp.reshape(-1)
         Qint, _, _ = _assemble(sh, q)
         rhs = Fnodal - Qint
@@ -113,26 +115,26 @@ def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vin
     return q
 
 
-def loss_only(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, Vinf=VINF):
+def loss_only(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, Vinf=VINF, use_wake=True):
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
     P, dist = _index_maps(sh, nx, ny)
     Mff = sh.M[np.ix_(free, free)].toarray()
-    q = coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf)
+    q = coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf, use_wake=use_wake)
     return float(np.real(w @ q))
 
 
-def design_grad_fd(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, eps=1e-6, elems=None):
+def design_grad_fd(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, eps=1e-6, elems=None, use_wake=True):
     """Central-FD design gradient ∂L/∂(E,ρ) of the coupled unsteady forward — the oracle."""
     ne = sh.ne
     els = range(ne) if elems is None else elems
     gE = np.zeros(ne); gR = np.zeros(ne)
     for e in els:
         ep = Es.copy(); ep[e] += eps; em = Es.copy(); em[e] -= eps
-        gE[e] = (loss_only(sh, ep, Rs, q0, dq0, N, dt, free, w, nx, ny)
-                 - loss_only(sh, em, Rs, q0, dq0, N, dt, free, w, nx, ny)) / (2 * eps)
+        gE[e] = (loss_only(sh, ep, Rs, q0, dq0, N, dt, free, w, nx, ny, use_wake=use_wake)
+                 - loss_only(sh, em, Rs, q0, dq0, N, dt, free, w, nx, ny, use_wake=use_wake)) / (2 * eps)
         rp = Rs.copy(); rp[e] += eps; rm = Rs.copy(); rm[e] -= eps
-        gR[e] = (loss_only(sh, Es, rp, q0, dq0, N, dt, free, w, nx, ny)
-                 - loss_only(sh, Es, rm, q0, dq0, N, dt, free, w, nx, ny)) / (2 * eps)
+        gR[e] = (loss_only(sh, Es, rp, q0, dq0, N, dt, free, w, nx, ny, use_wake=use_wake)
+                 - loss_only(sh, Es, rm, q0, dq0, N, dt, free, w, nx, ny, use_wake=use_wake)) / (2 * eps)
     return gE, gR
 
 
