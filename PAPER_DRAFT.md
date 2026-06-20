@@ -122,7 +122,7 @@ against the exact complex-step gradient and/or finite differences of the *same* 
 | **Coupled *unsteady* FSI forward** (GPU) | final state vs numpy oracle | **2.5e-11** |
 | **Coupled *unsteady* design adjoint** (full wake) | ∂E / ∂ρ vs finite differences | **1.0e-4 / 1.2e-6** |
 | Control gradient ∂L/∂u_t | vs finite differences | 2.4e-9 |
-| Closed-loop policy gradient dL/dk | vs finite differences | 1.2e-5 |
+| Closed-loop policy gradient dL/dk (position-DOF feedback) | vs finite differences | 2.7e-6 |
 
 The NumPy/complex-step references are retained permanently as oracles; the production path is entirely
 Warp/GPU.
@@ -131,30 +131,39 @@ Warp/GPU.
 
 ## 4. Co-design results
 
-We illuminate the behaviour space (spanwise **stiffness taper** `E_tip/E_root` × spanwise **mass taper**
-`ρ_tip/ρ_root`) with MAP-Elites; quality is gust-rejection, `−‖q_N − q_ref‖²` (the deflection energy a
-gust IC leaves in the wing after the coupled unsteady rollout — lower is better). Cheap forward
-evaluations fill cells by mutation; a DQD gradient-arborescence emitter uses the *exact validated design
-gradient* (gE, gR) through the spline chain rule to sharpen quality within reachable cells.
+We co-design the **structure *and* the control together**. The genotype is a 7-D vector — spanwise
+stiffness and mass spline control points (root/mid/tip for `E` and `ρ`) plus a closed-loop control gain
+`k` (position-DOF velocity feedback `u = −k·q̇`). Quality is gust-rejection, `−‖q_N − q_ref‖²` (the
+deflection energy a gust IC leaves in the wing after the coupled unsteady rollout — lower is better).
+The behaviour space, following a 翼面 (wing) axis × 动力系统 (dynamics/control) axis design rationale,
+is **spanwise stiffness taper `E_tip/E_root` × control gain `k`**, with the mass distribution
+co-optimised *within* each cell. Cheap forward evaluations fill cells by mutation; a DQD
+gradient-arborescence emitter uses the **exact validated design+control gradient** (gE, gR, dL/dk — all
+checked against finite differences, §3) through the spline chain rule to sharpen quality.
 
-On **one RTX 4090 (fp64)**, 476/532 stable evaluations in **408 s**:
+On **one RTX 4090 (fp64)**, 469/537 stable evaluations in **541 s**:
 
-- **137 / 196 niches** illuminated (70 % coverage); the gust-deflection quality varies by **orders of
+- **141 / 196 niches** illuminated (72 % coverage); gust-deflection quality varies by **orders of
   magnitude** across designs (the design genuinely matters).
-- **Finding:** among the high-quality (best gust-rejecting) niches, the **stiffness taper spans a wide
-  range (≈3.7 wide) while the mass taper is tightly constrained (≈0.95 wide)** — the spanwise stiffness
-  distribution is a flexible lever for gust rejection, whereas the mass distribution is far more
-  constrained (too-light outboard mass also drives the explicit integrator unstable, i.e. the feasible
-  region itself is bounded in the mass axis). Each illuminated cell is a *distinct full spanwise
-  stiffness and mass distribution* (Fig. 1).
+- Adding the closed-loop control axis improves the best achievable gust rejection by ≈4× over the
+  structure-only archive (best quality −2.6e-3 vs −1.1e-2) — a real structure–control interaction.
+- **Finding (the MAP-Elites phenomenon):** the high-quality (best gust-rejecting) niches span **both a
+  wide stiffness taper (≈3.3 wide) and a wide control gain (≈5 of the 0–9 range)** — i.e. there are
+  *many distinct (body × control) co-designs that are each excellent gust rejectors*, not a single
+  optimum. Each illuminated cell carries a distinct full spanwise stiffness **and** mass distribution
+  **and** its own control gain (Fig. 1).
 
-This is iteration-1 (single gust-rejection objective, spanwise spline design, no control axis); it
-demonstrates that the differentiable co-design pipeline produces a diverse, high-quality archive with a
-concrete physical finding, affordably, on commodity hardware.
+A separate structure-only archive (stiffness taper × mass taper, no control) gives the complementary
+result: high-quality niches span a wide stiffness taper but a *narrow* mass taper (≈0.95 wide) —
+outboard mass is constrained both by performance and by the explicit-integrator feasibility boundary.
 
-*Figure 1 (`qd_unsteady_hero.png`): left — the illuminated (stiffness × mass) archive coloured by log
-gust-deflection energy; right — representative co-designs, each a distinct spanwise stiffness (solid)
-and mass (dashed) profile.*
+This is iteration-1 (single gust-rejection objective, spanwise spline design, global position-DOF
+feedback control); it demonstrates that the differentiable co-design pipeline produces a diverse,
+high-quality (body × control) archive with a concrete finding, affordably, on commodity hardware.
+
+*Figure 1 (`qd_unsteady_hero.png`): left — the illuminated (stiffness taper × control gain) archive
+coloured by log gust-deflection energy; right — representative co-designs, each a distinct spanwise
+stiffness (solid) and mass (dashed) profile with its own control gain.*
 
 ---
 
@@ -166,9 +175,12 @@ and mass (dashed) profile.*
   many oscillation periods, but the current **explicit symplectic integrator is stable only over short
   windows** at the required step size. Both are infrastructure items (orthotropic shell + implicit /
   sub-stepped integrator); we report them rather than tune a number to 137 m/s.
-- **Control co-design axis — gradient validated, forward deferred.** The closed-loop policy gradient is
-  validated (§3), but global velocity feedback applied to the tiny-inertia ANCF slope DOFs destabilises
-  the explicit integrator; a physical position-DOF actuator and an implicit integrator are the fix.
+- **Control co-design axis — in, but a single global gain.** Actuating the *position* DOFs (not the
+  tiny-inertia ANCF slope DOFs, which destabilise the explicit integrator) makes the closed-loop control
+  stable for gains up to k≈10 and keeps the policy gradient exact (dL/dk vs FD = 2.7e-6); this is what
+  enabled the (stiffness × control) archive of §4. The control law is still a single global
+  velocity-feedback gain; a full state-feedback / RL² meta-policy net (the gradient machinery for which
+  is already validated) and higher gains (needing an implicit integrator) are the next step.
 - **Single-fidelity attached-flow aerodynamics.** The UVLM is valid in the attached regime; leading-edge
   vortex / dynamic-stall and a viscous-drag (sectional polar) correction are pluggable hooks, not yet
   enabled. Efficiency (COT) therefore awaits the viscous correction, so the present objective is

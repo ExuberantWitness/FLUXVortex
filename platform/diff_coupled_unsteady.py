@@ -100,7 +100,8 @@ def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vin
                              free_wake=True, use_wake=True, control=None, fb_gain=None):
     q, dq = q0.copy(), dq0.copy()
     npan = nx * ny
-    fmask = np.zeros(sh.ndof); fmask[free] = 1.0
+    pmask = np.zeros(sh.ndof)
+    pmask[free] = 1.0; pmask *= (np.arange(sh.ndof) % 9 < 3)    # POSITION DOFs only (actuation)
     wake = []; gamma_prev = np.zeros(npan, q0.dtype)
     for t in range(N):
         corners = (P @ q).reshape(nx + 1, ny + 1, 3)
@@ -111,7 +112,7 @@ def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vin
         Qint, _, _ = _assemble(sh, q)
         ctrl = (control[t] if control is not None else 0.0)
         if fb_gain is not None:
-            ctrl = ctrl - fb_gain * dq * fmask       # closed-loop state feedback u_t = -k·dq_t
+            ctrl = ctrl - fb_gain * dq * pmask       # closed-loop state feedback u_t = -k·dq_t (position DOFs)
         rhs = Fnodal - Qint + ctrl
         a = np.zeros(sh.ndof, q0.dtype); a[free] = np.linalg.solve(Mff, rhs[free])
         dq = dq + dt * a; q = q + dt * dq

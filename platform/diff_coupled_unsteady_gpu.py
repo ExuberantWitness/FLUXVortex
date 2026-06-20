@@ -36,6 +36,17 @@ V3 = wp.vec3d
 VINF = dcu.VINF
 
 
+def _pos_mask(C):
+    """Free POSITION DOFs (translational: dof%9 ∈ {0,1,2}) — actuation acts here, not on the
+    tiny-inertia ANCF slope DOFs (which make explicit closed-loop feedback blow up)."""
+    m = getattr(C, "_pos_mask_cache", None)
+    if m is None:
+        nd = C.ndof
+        m = C.free_np * (np.arange(nd) % 9 < 3).astype(C.free_np.dtype)
+        C._pos_mask_cache = m
+    return m
+
+
 class UnsteadyAeroGpu:
     """Per-step unsteady free-wake aero VJP on the moving/deforming wing. forward caches the
     geometry→AIC→γ→panel-force chain (tape1 up to the solve, manual DiffDenseSolve, tape2 for the
@@ -178,7 +189,7 @@ def coupled_unsteady_forward_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
         Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
         ctrl_t = (control[t] if control is not None else 0.0)
         if fb_gain is not None:
-            ctrl_t = ctrl_t - fb_gain * dq * C.free_np         # closed-loop feedback in the forward
+            ctrl_t = ctrl_t - fb_gain * dq * _pos_mask(C)       # actuate POSITION DOFs only (slope-DOF actuation is unstable)
         rhs_s = (Fnodal - Qint + ctrl_t) * C.free_np
         a, _ = structural_cg(wa(rhs_s), Mscaled, Kblk0, C.edofs, C.free, 0.0, ndof, tol=cg_tol, device=dev)
         a_np = a.numpy()[0]
@@ -234,8 +245,8 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         Qmem, Qbend = dsg.design_internal_force(wa(q), C, Esw, dev)
         Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
         ctrl_t = (control[t] if control is not None else 0.0)
-        if fb_gain is not None:                                # closed-loop state feedback u_t=-k·dq_t
-            ctrl_t = ctrl_t - fb_gain * dq * C.free_np
+        if fb_gain is not None:                                # closed-loop state feedback u_t=-k·dq_t (position DOFs)
+            ctrl_t = ctrl_t - fb_gain * dq * _pos_mask(C)
         rhs_s = Fnodal - Qint + ctrl_t
         a, _ = structural_cg(wa(rhs_s * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0,
                              ndof, tol=cg_tol, device=dev)
@@ -285,9 +296,10 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         adj_qK = zc()
         apply_MK(wa(adj_Qint * C.free_np), adj_qK, C.Me, Kblk, C.edofs, C.free, 0.0, 1.0, dev)
         adj_dq_policy = 0.0
-        if fb_gain is not None:                                # closed-loop feedback u_t=-k·dq_t in the loop
-            dL_dk += -float(np.dot(adj_rhs, dqs[t]))           # ∂u_t/∂k = -dq_t  (adj_u_t = adj_rhs)
-            adj_dq_policy = -fb_gain * adj_rhs                 # ∂u_t/∂dq_t = -k  → feeds the state adjoint
+        if fb_gain is not None:                                # closed-loop feedback u_t=-k·dq_t·pos in the loop
+            pm = _pos_mask(C)
+            dL_dk += -float(np.dot(adj_rhs * pm, dqs[t]))      # ∂u_t/∂k = -dq_t·pos
+            adj_dq_policy = -fb_gain * adj_rhs * pm            # ∂u_t/∂dq_t = -k·pos → feeds the state adjoint
         adj_q = aq1 + adj_qK.numpy()[0] + adj_q_aero
         adj_dq = ad1 + adj_dq_aero + adj_dq_policy
         adj_gamma_carry = adj_gprev                            # dΓ/dt coupling: adj_gprev → gamma_{t-1}

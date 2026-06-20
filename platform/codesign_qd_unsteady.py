@@ -39,8 +39,9 @@ from diff_struct_design import _build_shell                     # noqa: E402
 
 NX, NY, NSTEP, DT = 6, 4, 40, 1e-5
 CG_TOL = 1e-4                       # QD eval tolerance (validation used 1e-12; quality ranking needs far less)
+K_LO, K_HI = 0.0, 9.0              # closed-loop control gain (position-DOF velocity feedback; stable ≤~10)
 B1_LO, B1_HI = 0.30, 3.30          # E_tip/E_root  stiffness taper (翼面 axis)
-B2_LO, B2_HI = 0.30, 3.30          # ρ_tip/ρ_root  mass taper      (动力系统/inertia axis)
+B2_LO, B2_HI = K_LO, K_HI          # control gain k                (动力系统 axis)
 NB1, NB2 = 14, 14                  # archive grid
 
 
@@ -74,13 +75,13 @@ class Env:
 
 
 def _fields(env, theta):
-    E = np.exp(env.B @ theta[0:3]); R = np.exp(env.B @ theta[3:6])
-    return E, R
+    E = np.exp(env.B @ theta[0:3]); R = np.exp(env.B @ theta[3:6]); k = float(theta[6])
+    return E, R, k
 
 
 def descriptors(env, theta):
-    b1 = float(np.exp(theta[2] - theta[0]))            # E_tip/E_root  (stiffness taper)
-    b2 = float(np.exp(theta[5] - theta[3]))            # ρ_tip/ρ_root  (mass taper)
+    b1 = float(np.exp(theta[2] - theta[0]))            # E_tip/E_root  (stiffness taper, 翼面 axis)
+    b2 = float(theta[6])                               # control gain k (动力系统 axis)
     return b1, b2
 
 
@@ -88,10 +89,10 @@ PENALTY = -1e9                                         # unstable/infeasible des
 
 
 def eval_forward(env, theta):
-    E, R = _fields(env, theta)
+    E, R, k = _fields(env, theta)
     try:
         qN, _ = cg.coupled_unsteady_forward_gpu(env.sh, env.C, env.P, env.dist, env.q0, env.dq0,
-                                                NSTEP, DT, E, R, env.nx, env.ny, use_wake=True, cg_tol=CG_TOL)
+                                                NSTEP, DT, E, R, env.nx, env.ny, use_wake=True, fb_gain=k, cg_tol=CG_TOL)
     except Exception:                                  # any solver/Warp failure ⇒ infeasible design
         return PENALTY, np.inf, None
     if (not np.all(np.isfinite(qN))) or np.max(np.abs(qN)) > 1e3:
@@ -102,23 +103,24 @@ def eval_forward(env, theta):
 
 
 def eval_grad(env, theta):
-    """∂(quality)/∂θ via the EXACT coupled-unsteady DESIGN gradient (gE,gR) + spline chain rule.
+    """∂(quality)/∂θ via the EXACT coupled-unsteady DESIGN+CONTROL gradient (gE,gR,dL/dk) + chain rule.
     Returns None for unstable designs (the DQD step is skipped)."""
-    E, R = _fields(env, theta)
+    E, R, k = _fields(env, theta)
     try:
         qN, _ = cg.coupled_unsteady_forward_gpu(env.sh, env.C, env.P, env.dist, env.q0, env.dq0,
-                                                NSTEP, DT, E, R, env.nx, env.ny, use_wake=True, cg_tol=CG_TOL)
+                                                NSTEP, DT, E, R, env.nx, env.ny, use_wake=True, fb_gain=k, cg_tol=CG_TOL)
         if (not np.all(np.isfinite(qN))) or np.max(np.abs(qN)) > 1e3:
             return None
         w = 2.0 * (qN - env.qref) * env.fmask           # ∂J/∂q_N for J=‖(q_N−q_ref)(free)‖²
-        _, gE, gR, _, _ = cg.coupled_unsteady_grad_gpu(
+        _, gE, gR, _, dL_dk = cg.coupled_unsteady_grad_gpu(
             env.sh, env.C, env.P, env.dist, env.q0, env.dq0, NSTEP, DT, w, E, R, env.nx, env.ny,
-            use_wake=True, cg_tol=CG_TOL)
+            use_wake=True, fb_gain=k, cg_tol=CG_TOL)
     except Exception:
         return None
-    g = np.zeros(6)
+    g = np.zeros(7)
     g[0:3] = env.B.T @ (E * gE)                         # ∂J/∂θ_E (chain through exp + spline)
     g[3:6] = env.B.T @ (R * gR)                         # ∂J/∂θ_ρ
+    g[6] = dL_dk                                        # ∂J/∂k   (closed-loop control gain)
     if not np.all(np.isfinite(g)):
         return None
     return -g                                           # quality = -J
@@ -156,11 +158,13 @@ def _clamp(th):
     th = th.copy()
     th[0:3] = np.clip(th[0:3], -LOG_E, LOG_E)
     th[3:6] = np.clip(th[3:6], -LOG_R, LOG_R)
+    th[6] = np.clip(th[6], K_LO, K_HI)
     return th
 
 
 def rand_theta(rng):
-    return _clamp(np.array([*(0.8 * rng.standard_normal(3)), *(0.5 * rng.standard_normal(3))]))
+    return _clamp(np.array([*(0.8 * rng.standard_normal(3)), *(0.5 * rng.standard_normal(3)),
+                            rng.uniform(K_LO, K_HI)]))
 
 
 def run(n_init=40, n_iter=450, n_dqd=100, dqd_lr=0.15, seed=0, log=print):
@@ -182,9 +186,9 @@ def run(n_init=40, n_iter=450, n_dqd=100, dqd_lr=0.15, seed=0, log=print):
             if g is not None:
                 th = _clamp(th + dqd_lr * g / (np.linalg.norm(g) + 1e-9))
             else:
-                th = _clamp(th + 0.30 * rng.standard_normal(6))
+                th = _clamp(th + 0.30 * rng.standard_normal(7) * np.array([1, 1, 1, 1, 1, 1, 5.0]))
         else:                                          # iso+line random mutation
-            th = _clamp(th + 0.30 * rng.standard_normal(6))
+            th = _clamp(th + 0.30 * rng.standard_normal(7) * np.array([1, 1, 1, 1, 1, 1, 5.0]))
         q, _, _ = eval_forward(env, th); nev += 1
         if q > PENALTY:
             b1, b2 = descriptors(env, th); arch.add(th, q, b1, b2); nstable += 1
@@ -210,6 +214,6 @@ if __name__ == "__main__":
     top = sorted(cells, key=lambda d: d["qual"], reverse=True)[:max(1, len(cells) // 5)]
     tb1 = np.array([c["b1"] for c in top]); tb2 = np.array([c["b2"] for c in top])
     print(f"\n  PHENOMENON CHECK ({len(cells)} niches):")
-    print(f"    stiffness taper spans {b1s.min():.2f}..{b1s.max():.2f}; mass taper spans {b2s.min():.2f}..{b2s.max():.2f}")
-    print(f"    top-20% niches: stiffness taper {np.ptp(tb1):.2f} wide, mass taper {np.ptp(tb2):.2f} wide "
-          f"-> {'DIVERSE 刚柔 AND 质量 across high-quality niches' if (np.ptp(tb1) > 0.4 and np.ptp(tb2) > 0.4) else 'concentrated (report honestly)'}")
+    print(f"    stiffness taper spans {b1s.min():.2f}..{b1s.max():.2f}; control gain k spans {b2s.min():.2f}..{b2s.max():.2f}")
+    print(f"    top-20% niches: stiffness taper {np.ptp(tb1):.2f} wide, control gain {np.ptp(tb2):.2f} wide "
+          f"-> {'DIVERSE 本体 AND control across high-quality niches' if (np.ptp(tb1) > 0.4 and np.ptp(tb2) > 1.0) else 'concentrated (report honestly)'}")

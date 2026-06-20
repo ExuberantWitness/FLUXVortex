@@ -46,10 +46,10 @@ def main(npz=os.path.join(HERE, "qd_unsteady_archive.npz"), out=os.path.join(HER
     im = axH.imshow(grid.T, origin="lower", aspect="auto", cmap="viridis_r",
                     extent=[b1e[0], b1e[-1], b2e[0], b2e[-1]])
     axH.set_xlabel("翼面 axis — spanwise stiffness taper  $E_{tip}/E_{root}$")
-    axH.set_ylabel("动力系统 axis — spanwise mass taper  $\\rho_{tip}/\\rho_{root}$")
-    axH.set_title(f"MAP-Elites 刚柔×质量 co-design on the differentiable UNSTEADY coupled FSI\n"
+    axH.set_ylabel("动力系统 axis — closed-loop control gain  $k$")
+    axH.set_title(f"MAP-Elites 刚柔/质量 × control co-design on the differentiable UNSTEADY coupled FSI\n"
                   f"{int(np.isfinite(grid).sum())}/{NB1*NB2} niches illuminated  ·  "
-                  f"quality = gust-deflection energy ‖q_N−q_ref‖²  ·  ~7 min on one RTX 4090 (fp64)", fontsize=10.5)
+                  f"quality = gust-deflection energy ‖q_N−q_ref‖²  ·  single RTX 4090 (fp64)", fontsize=10.5)
     plt.colorbar(im, ax=axH, label="$\\log_{10}$ gust-deflection energy  (lower = better)")
 
     # representative niches: top quality cells spread across the (taper × gain) space
@@ -69,7 +69,7 @@ def main(npz=os.path.join(HERE, "qd_unsteady_archive.npz"), out=os.path.join(HER
         E = np.exp(B @ th[0:3])[::NX]; R = np.exp(B @ th[3:6])[::NX]   # spanwise profiles
         axH.plot(b1[idx], b2[idx], "o", ms=9, mfc="none", mec=cmap[c], mew=2.2)
         axN.plot(span, E, "-o", color=cmap[c], ms=4,
-                 label=f"$E_t/E_r$={b1[idx]:.2f}, $\\rho_t/\\rho_r$={b2[idx]:.2f}  (q={qual[idx]:.1e})")
+                 label=f"$E_t/E_r$={b1[idx]:.2f}, $k$={b2[idx]:.1f}  (q={qual[idx]:.1e})")
         axN.plot(span, R, "--", color=cmap[c], lw=1, alpha=0.6)
     axN.set_xlabel("span fraction (root → tip)")
     axN.set_ylabel("scale along span — $E$ (solid), $\\rho$ (dashed)")
