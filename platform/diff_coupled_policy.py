@@ -34,8 +34,10 @@ def _ctrl_dof(sh, nx, ny):
 
 
 def rollout(sh, q0, dq0, theta, ref, ctx, N=12, dt=4e-5, nx=3, ny=3,
-            alpha=6.0, nsub=4, lam_u=2e-2, mu=2e-3):
-    """Coupled+policy forward; returns J and (gE, gR, gtheta) by the dual adjoint."""
+            alpha=6.0, nsub=4, lam_u=2e-2, mu=2e-3, want_grad=True):
+    """Coupled+policy rollout. want_grad=True returns J and the dual gradient (gE,gR,gtheta);
+    want_grad=False is forward-only (fast — no per-step complex-step Jacobian), returns J and
+    Nones (the cheap evaluation MAP-Elites uses for the bulk of candidates)."""
     free, cdof, zt = ctx
     kp, kd = float(theta[0]), float(theta[1])
     P, dist = dc._index_maps(sh, nx, ny)
@@ -45,19 +47,25 @@ def rollout(sh, q0, dq0, theta, ref, ctx, N=12, dt=4e-5, nx=3, ny=3,
     # forward (store pre-update q_t, dq_t, control u_t, and the raw M⁻¹·rhs = a_raw)
     q, dq = q0.copy(), dq0.copy()
     qs, dqs, us, araw = [], [], [], []
+    u2 = 0.0
     for _ in range(N * nsub):
-        qs.append(q.copy()); dqs.append(dq.copy())
+        if want_grad:
+            qs.append(q.copy()); dqs.append(dq.copy())
         Qint, _, _ = dc._assemble(sh, q)
         u = -kp * (q[cdof] - zt) - kd * dq[cdof]
-        us.append(u)
+        u2 += u * u
+        if want_grad:
+            us.append(u)
         rhs = dc._aero_nodal(q, P, dist, nx, ny) - Qint
         rhs[cdof] += u
         a = np.zeros(ndof); a[free] = np.linalg.solve(Mff, rhs[free])
-        araw.append(a.copy())                       # undamped M⁻¹·rhs (for the mass adjoint)
+        if want_grad:
+            araw.append(a.copy())                   # undamped M⁻¹·rhs (for the mass adjoint)
         a = a - alpha * dq
         dq = dq + sdt * a; q = q + sdt * dq
-    J = 0.5 * float((q - ref) @ (q - ref)) + lam_u * float(np.sum(np.array(us) ** 2)) \
-        + mu * float(np.sum(sh.rho_scale_e))
+    J = 0.5 * float((q - ref) @ (q - ref)) + lam_u * u2 + mu * float(np.sum(sh.rho_scale_e))
+    if not want_grad:
+        return J, None, None, None
     # backward (dual: design + policy)
     gE = np.zeros(sh.ne); gR = np.zeros(sh.ne); gkp = 0.0; gkd = 0.0
     Mu = [dc._elem_mass_unit(sh, e) for e in range(sh.ne)]
