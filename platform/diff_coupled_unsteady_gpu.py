@@ -48,8 +48,10 @@ class UnsteadyAeroGpu:
         self.Vw = V3(*[float(v) for v in np.asarray(Vinf, float)])
         self.dtt = DTYPE(dt); self.rhod = DTYPE(ug.RHO)
         self.dds = DiffDenseSolve(device)
+        self.te = wp.array(np.array([(nx - 1) * ny + j for j in range(ny)], np.int32),
+                           dtype=wp.int32, device=device)
 
-    def forward(self, corners_np, cvel_np, wr, wg, nw, gprev_np):
+    def forward(self, corners_np, cvel_np, wr, wg, nw, gprev_np, use_wake=False):
         dev = self.dev; npan = self.npan; nx, ny = self.nx, self.ny
         self.cw = wp.array(corners_np.reshape(self.ncv, 3), dtype=V3, device=dev, requires_grad=True)
         self.vw = wp.array(cvel_np.reshape(self.ncv, 3), dtype=V3, device=dev, requires_grad=True)
@@ -81,14 +83,44 @@ class UnsteadyAeroGpu:
             wp.launch(ug.panel_force_kernel, dim=npan, inputs=[rings2, nrm2, self.gamma, self.gprev, vcol2,
                       self.Vw, self.dtt, self.rhod, ny], outputs=[self.Fp], device=dev)
         self.rings_fwd = rings2                                  # bound rings (for the wake shed/convect)
+        # --- tape3: wake update (shed TE ring + free convection) -> wake_{t+1} = (wr_next, wgcat) ---
+        self.use_wake = use_wake
+        if use_wake:
+            nwn = nw + ny
+            self.wcat = wp.zeros((nwn, 4), dtype=V3, device=dev, requires_grad=True)
+            self.wgcat = wp.zeros(nwn, dtype=DTYPE, device=dev, requires_grad=True)
+            self.wr_next = wp.zeros((nwn, 4), dtype=V3, device=dev, requires_grad=True)
+            rings3 = wp.zeros((npan, 4), dtype=V3, device=dev, requires_grad=True)
+            col3 = wp.zeros(npan, dtype=V3, device=dev, requires_grad=True)
+            nrm3 = wp.zeros(npan, dtype=V3, device=dev, requires_grad=True)
+            self.t3 = wp.Tape()
+            with self.t3:
+                wp.launch(ug.bound_rings_kernel, dim=npan, inputs=[self.cw, nx, ny], outputs=[rings3, col3, nrm3], device=dev)
+                if nw > 0:
+                    wp.launch(ug.wcopy_kernel, dim=(nw, 4), inputs=[self.wr], outputs=[self.wcat], device=dev)
+                    wp.launch(ug.wgcopy_kernel, dim=nw, inputs=[self.wg], outputs=[self.wgcat], device=dev)
+                wp.launch(ug.shed_kernel, dim=ny, inputs=[rings3, self.gamma, self.te, self.Vw, self.dtt, nw],
+                          outputs=[self.wcat, self.wgcat], device=dev)
+                wp.launch(ug.convect_kernel, dim=(nwn, 4), inputs=[rings3, self.gamma, npan, self.wcat,
+                          self.wgcat, nwn, self.Vw, self.dtt], outputs=[self.wr_next], device=dev)
         return self.Fp.numpy()
 
-    def backward(self, adj_Fp_np, adj_gamma_extra=None):
+    def backward(self, adj_Fp_np, adj_gamma_extra=None, adj_wr_next=None, adj_wg_next=None):
         dev = self.dev; npan = self.npan
         for a in (self.cw, self.vw, self.gprev, self.gamma, self.AIC, self.rhs):
             a.grad.zero_()
         if self.nw > 0:
             self.wr.grad.zero_(); self.wg.grad.zero_()
+        # tape3 (wake update) first: seeds the wake_{t+1} adjoint -> gamma, corners(rings3), wake_in
+        if self.use_wake:
+            if adj_wr_next is None:                              # last step: wake_{t+1} unused downstream
+                self.wr_next.grad = wp.zeros_like(self.wr_next)
+                self.wgcat.grad = wp.zeros_like(self.wgcat)
+            else:
+                self.wr_next.grad = wp.array(np.ascontiguousarray(adj_wr_next, np.float64).reshape(-1, 4, 3),
+                                             dtype=V3, device=dev)
+                self.wgcat.grad = wp.array(np.ascontiguousarray(adj_wg_next, np.float64), dtype=DTYPE, device=dev)
+            self.t3.backward()
         self.Fp.grad = wp.array(np.ascontiguousarray(adj_Fp_np, np.float64).reshape(npan, 3),
                                 dtype=V3, device=dev)
         self.t2.backward()
@@ -102,7 +134,9 @@ class UnsteadyAeroGpu:
         adj_wg = self.wg.grad.numpy().copy() if self.nw > 0 else None
         out = (self.cw.grad.numpy().copy(), self.vw.grad.numpy().copy(),
                self.gprev.grad.numpy().copy(), adj_wr, adj_wg)
-        self.t1.zero(); self.t2.zero()                          # zero AFTER reading (zero() clears grads)
+        self.t1.zero(); self.t2.zero()
+        if self.use_wake:
+            self.t3.zero()
         return out
 
 
@@ -179,16 +213,15 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
     dummy_wg = wp.zeros(1, dtype=DTYPE, device=dev, requires_grad=True)
 
     # ---- forward with storage ----
-    wr = wp.zeros((maxw, 4), dtype=V3, device=dev, requires_grad=True)
-    wr_new = wp.zeros((maxw, 4), dtype=V3, device=dev)
-    wg = wp.zeros(maxw, dtype=DTYPE, device=dev, requires_grad=True)
     q = q0.copy(); dq = dq0.copy(); nw = 0
     qs = []; dqs = []; araws = []; gammas = []; wake_snaps = []
-    gprev_np = np.zeros((1, npan))
+    gprev_np = np.zeros((1, npan)); cur_wr = None; cur_wg = None
     for _ in range(N):
         corners = (P @ q).reshape(ncv, 3); cvel = (P @ dq).reshape(ncv, 3)
-        wake_snaps.append((wr.numpy().copy(), wg.numpy().copy(), nw))
-        Fp = aero.forward(corners, cvel, wr if nw > 0 else dummy_wr, wg if nw > 0 else dummy_wg, nw, gprev_np)
+        wake_snaps.append((None if nw == 0 else cur_wr.copy(), None if nw == 0 else cur_wg.copy(), nw))
+        wr_t = wp.array(cur_wr, dtype=V3, device=dev, requires_grad=True) if nw > 0 else dummy_wr
+        wg_t = wp.array(cur_wg, dtype=DTYPE, device=dev, requires_grad=True) if nw > 0 else dummy_wg
+        Fp = aero.forward(corners, cvel, wr_t, wg_t, nw, gprev_np, use_wake=use_wake)
         gamma_np = aero.gamma.numpy()
         Fnodal = dist @ Fp.reshape(-1)
         Qmem, Qbend = dsg.design_internal_force(wa(q), C, Esw, dev)
@@ -199,18 +232,14 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         qs.append(q.copy()); dqs.append(dq.copy()); araws.append(a_np.copy()); gammas.append(gamma_np.copy())
         dq = dq + dt * a_np; q = q + dt * dq
         if use_wake:
-            wp.launch(ug.shed_kernel, dim=ny, inputs=[aero.rings_fwd, aero.gamma, te, Vw, DTYPE(dt), nw],
-                      outputs=[wr, wg], device=dev)
-            nw += ny
-            wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[aero.rings_fwd, aero.gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
-                      outputs=[wr_new], device=dev)
-            wp.copy(wr, wr_new, count=nw * 4)
+            cur_wr = aero.wr_next.numpy().copy(); cur_wg = aero.wgcat.numpy().copy(); nw += ny
         gprev_np = gamma_np
     L = float(w @ q)
 
     # ---- backward ----
     gE = wp.zeros(C.ne, dtype=DTYPE, device=dev); gR = wp.zeros(C.ne, dtype=DTYPE, device=dev)
     adj_q = w.copy(); adj_dq = np.zeros(ndof); adj_gamma_carry = None
+    adj_wr_next = None; adj_wg_next = None
     for t in reversed(range(N)):
         aq1 = adj_q; ad1 = adj_dq + dt * aq1; adj_a = dt * ad1
         adj_rhs_w, _ = structural_cg(wa(adj_a * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0,
@@ -221,9 +250,11 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         wr_np, wg_np, nw_t = wake_snaps[t]
         wr_t = wp.array(wr_np, dtype=V3, device=dev, requires_grad=True) if nw_t > 0 else dummy_wr
         wg_t = wp.array(wg_np, dtype=DTYPE, device=dev, requires_grad=True) if nw_t > 0 else dummy_wg
-        aero.forward(corners_t, cvel_t, wr_t, wg_t, nw_t, gprev_t)
+        aero.forward(corners_t, cvel_t, wr_t, wg_t, nw_t, gprev_t, use_wake=use_wake)
         adj_Fp = (dist.T @ adj_rhs).reshape(npan, 3)
-        adj_corners, adj_cvel, adj_gprev, adj_wr, adj_wg = aero.backward(adj_Fp, adj_gamma_carry)
+        adj_corners, adj_cvel, adj_gprev, adj_wr, adj_wg = aero.backward(
+            adj_Fp, adj_gamma_carry, adj_wr_next, adj_wg_next)
+        adj_wr_next = adj_wr; adj_wg_next = adj_wg              # chain wake adj to step t-1's wake output
         adj_q_aero = P.T @ adj_corners.reshape(-1)
         adj_dq_aero = P.T @ adj_cvel.reshape(-1)
         # structure design adjoint + membrane-K_t state chain (as diff_coupled_gpu)
@@ -301,5 +332,7 @@ def verify_grad(nx=3, ny=3, N=6, dt=1e-5, seed=0, use_wake=False, elems=None):
 if __name__ == "__main__":
     import sys as _s
     if "--grad" in _s.argv:
-        raise SystemExit(0 if verify_grad(use_wake="--wake" in _s.argv) else 1)
+        ok1 = verify_grad(use_wake=False)
+        ok2 = verify_grad(use_wake=True)
+        raise SystemExit(0 if (ok1 and ok2) else 1)
     raise SystemExit(0 if verify() else 1)
