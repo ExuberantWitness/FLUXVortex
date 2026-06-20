@@ -71,6 +71,29 @@ def _bound_rings(C, nc, ns):
     return rings, col, nrm
 
 
+def single_step_lift(C, Vinf, dt, gprev, nc, ns):
+    """One unsteady step from corner lattice C (empty wake, given gprev) -> total lift Fz.
+    Complex-safe (corners may be complex) — the gradient oracle for the Warp single-step adjoint."""
+    dtp = C.dtype
+    rings, col, nrm = _bound_rings(C, nc, ns)
+    npan = nc * ns
+    AIC = np.zeros((npan, npan), dtp)
+    for i in range(npan):
+        for j in range(npan):
+            AIC[i, j] = np.dot(_ring_vel(col[i], rings[j]), nrm[i])
+    rhs = np.array([-np.dot(np.asarray(Vinf, dtp), nrm[i]) for i in range(npan)], dtp)
+    gamma = np.linalg.solve(AIC, rhs)
+    Fz = np.asarray(0.0, dtp)
+    for p in range(npan):
+        lb = rings[p, 1] - rings[p, 0]
+        Fkj = RHO * gamma[p] * np.cross(np.asarray(Vinf, dtp), lb)
+        cr = np.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
+        area = 0.5 * np.sqrt(np.dot(cr, cr) + 1e-30)
+        dGdt = (gamma[p] - gprev[p]) / dt
+        Fz = Fz + Fkj[2] + RHO * dGdt * area * nrm[p, 2]
+    return Fz
+
+
 def unsteady_rollout(nc, ns, chord, span, aoa, Vinf, N, dt, free_wake=True):
     """Run N unsteady steps; return per-step lift (N,) and the final wake. Ring VLM, shed wake."""
     dtp = np.asarray(Vinf).dtype if np.iscomplexobj(Vinf) or np.iscomplexobj([aoa]) else float

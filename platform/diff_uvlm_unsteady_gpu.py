@@ -20,6 +20,7 @@ for p in (os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")),
         sys.path.insert(0, p)
 
 import warp as wp                                                # noqa: E402
+from fluxvortex.warp_fsi import config as cfg                   # noqa: E402
 from fluxvortex.warp_fsi.config import DTYPE                    # noqa: E402
 from fluxvortex.warp_fsi.batched_solver import batched_dense_solve  # noqa: E402
 import diff_uvlm_unsteady as ref                                # noqa: E402 (numpy oracle)
@@ -102,6 +103,95 @@ def convect_kernel(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYP
     for m in range(nw):
         v = v + wg[m] * ring_vel(P, wr[m, 0], wr[m, 1], wr[m, 2], wr[m, 3])
     wr_new[k, c] = P + v * dt
+
+
+@wp.kernel
+def bound_rings_kernel(corners: wp.array(dtype=V3), nc: int, ns: int,
+                       rings: wp.array(dtype=V3, ndim=2), col: wp.array(dtype=V3),
+                       nrm: wp.array(dtype=V3)):
+    """corners (flat (nc+1)(ns+1)) -> per-panel ring (1/4-chord), collocation, normal.
+    Branch on the int chord index (not a differentiable var) -> adjoint-safe."""
+    p = wp.tid()
+    i = p // ns; j = p % ns
+    s1 = ns + 1
+    c00 = corners[i * s1 + j]; c10 = corners[(i + 1) * s1 + j]
+    c01 = corners[i * s1 + j + 1]; c11 = corners[(i + 1) * s1 + j + 1]
+    qfl = wp.float64(0.75) * c00 + wp.float64(0.25) * c10
+    qfr = wp.float64(0.75) * c01 + wp.float64(0.25) * c11
+    if i < nc - 1:
+        cn1 = corners[(i + 2) * s1 + j]; cn1b = corners[(i + 2) * s1 + j + 1]
+        qbl = wp.float64(0.75) * c10 + wp.float64(0.25) * cn1
+        qbr = wp.float64(0.75) * c11 + wp.float64(0.25) * cn1b
+    else:
+        qbl = c10 + wp.float64(0.25) * (c10 - c00)
+        qbr = c11 + wp.float64(0.25) * (c11 - c01)
+    rings[p, 0] = qfl; rings[p, 1] = qfr; rings[p, 2] = qbr; rings[p, 3] = qbl
+    col[p] = wp.float64(0.5) * (wp.float64(0.25) * c00 + wp.float64(0.75) * c10
+                                + wp.float64(0.25) * c01 + wp.float64(0.75) * c11)
+    n = wp.cross(c11 - c00, c01 - c10)
+    nrm[p] = n / wp.sqrt(wp.dot(n, n) + wp.float64(1.0e-20))
+
+
+def single_step_grad(corners_np, Vinf, dt, gprev_np, nc, ns, device="cuda"):
+    """One unsteady step (empty wake): lift Fz and ∂Fz/∂corners via Warp tape + DiffDenseSolve."""
+    from diff_solve import DiffDenseSolve
+    npan = nc * ns; ncv = (nc + 1) * (ns + 1)
+    Vw = V3(*[float(v) for v in np.asarray(Vinf, float)])
+    corners = wp.array(corners_np.reshape(ncv, 3), dtype=V3, device=device, requires_grad=True)
+    gprev = wp.array(gprev_np.astype(cfg.NP_DTYPE), dtype=DTYPE, device=device)
+    dds = DiffDenseSolve(device)
+    rings = wp.zeros((npan, 4), dtype=V3, device=device, requires_grad=True)
+    col = wp.zeros(npan, dtype=V3, device=device, requires_grad=True)
+    nrm = wp.zeros(npan, dtype=V3, device=device, requires_grad=True)
+    AIC = wp.zeros((1, npan, npan), dtype=DTYPE, device=device, requires_grad=True)
+    rhs = wp.zeros((1, npan), dtype=DTYPE, device=device, requires_grad=True)
+    wr0 = wp.zeros((1, 4), dtype=V3, device=device); wg0 = wp.zeros(1, dtype=DTYPE, device=device)
+    t1 = wp.Tape()
+    with t1:
+        wp.launch(bound_rings_kernel, dim=npan, inputs=[corners, nc, ns], outputs=[rings, col, nrm], device=device)
+        wp.launch(aic_kernel, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=device)
+        wp.launch(rhs_kernel, dim=npan, inputs=[col, nrm, Vw, wr0, wg0, 0], outputs=[rhs], device=device)
+    gamma = dds.forward(AIC, rhs); gamma.requires_grad = True
+    rings2 = wp.zeros((npan, 4), dtype=V3, device=device, requires_grad=True)
+    col2 = wp.zeros(npan, dtype=V3, device=device, requires_grad=True)
+    nrm2 = wp.zeros(npan, dtype=V3, device=device, requires_grad=True)
+    lift = wp.zeros(1, dtype=DTYPE, device=device, requires_grad=True)
+    t2 = wp.Tape()
+    with t2:
+        wp.launch(bound_rings_kernel, dim=npan, inputs=[corners, nc, ns], outputs=[rings2, col2, nrm2], device=device)
+        wp.launch(lift_kernel, dim=npan, inputs=[rings2, nrm2, gamma, gprev, Vw, DTYPE(dt), DTYPE(RHO)],
+                  outputs=[lift], device=device)
+    Fz = lift.numpy()[0]
+    lift.grad = wp.array(np.array([1.0]), dtype=DTYPE, device=device)
+    t2.backward()
+    adj_A, adj_b = dds.backward(gamma.grad)
+    AIC.grad = adj_A; rhs.grad = adj_b
+    t1.backward()
+    g = corners.grad.numpy().copy()
+    return Fz, g
+
+
+def verify_grad_step(nc=2, ns=3, eps=1e-6):
+    wp.init()
+    chord, span = 0.3, 0.8
+    Vinf = np.array([10.0, 0.0, 0.0]); aoa = np.deg2rad(5.0)
+    C = ref._lattice(nc, ns, chord, span, aoa)
+    gprev = np.zeros(nc * ns)
+    Fz, g = single_step_grad(C.reshape(-1, 3), Vinf, 0.03, gprev, nc, ns)
+    # complex-step oracle ∂Fz/∂corners
+    flat = C.reshape(-1)
+    g_cs = np.zeros(flat.size)
+    for k in range(flat.size):
+        cp = flat.astype(np.complex128).copy(); cp[k] += 1j * 1e-30
+        g_cs[k] = np.imag(ref.single_step_lift(cp.reshape(C.shape), Vinf.astype(complex), 0.03,
+                                               gprev.astype(complex), nc, ns)) / 1e-30
+    rel = np.max(np.abs(g.reshape(-1) - g_cs)) / (np.max(np.abs(g_cs)) + 1e-30)
+    ok = rel < 1e-6
+    print(f"Warp differentiable single unsteady step ({nc}x{ns} panels):")
+    print(f"  lift Fz={Fz:+.3f} N; ∂Fz/∂corners Warp adjoint vs complex-step: rel={rel:.2e}")
+    print(f"  -> {'PASS' if ok else 'FAIL'}: the unsteady step (ring AIC + dΓ/dt + DiffDenseSolve) "
+          f"is Warp-differentiable — the per-step building block for the wake-history adjoint")
+    return ok
 
 
 def unsteady_rollout_gpu(nc, ns, chord, span, aoa, Vinf, N, dt, device="cuda"):
