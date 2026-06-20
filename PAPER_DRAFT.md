@@ -129,6 +129,24 @@ against the exact complex-step gradient and/or finite differences of the *same* 
 The NumPy/complex-step references are retained permanently as oracles; the production path is entirely
 Warp/GPU.
 
+### 3.1 Throughput
+
+A full design+control gradient of the coupled unsteady FSI (forward rollout + the entire end-to-end
+adjoint, with the free wake) on one RTX 4090 (fp64), versus mesh size:
+
+| mesh | elements | panels | DOF | grad eval |
+|---|---|---|---|---|
+| 3×3 | 9 | 9 | 144 | 0.13 s |
+| 6×4 | 24 | 24 | 315 | 0.31 s |
+| 10×6 | 60 | 60 | 693 | 0.64 s |
+| 15×10 | 150 | 150 | 1584 | 3.64 s |
+
+The adjoint costs roughly the same as a forward solve, so quality-diversity co-design with hundreds–
+thousands of *gradient* evaluations is affordable on a single consumer GPU (the §4 archives are
+≈500 evaluations in ≈9 min). The architecture is batched for multi-environment evaluation; the present
+bottleneck at small mesh is the per-step host↔device synchronisation of the partitioned transfer, not
+the GPU kernels.
+
 ---
 
 ## 4. Co-design results
@@ -158,6 +176,12 @@ On **one RTX 4090 (fp64)**, 469/537 stable evaluations in **541 s**:
 A separate structure-only archive (stiffness taper × mass taper, no control) gives the complementary
 result: high-quality niches span a wide stiffness taper but a *narrow* mass taper (≈0.95 wide) —
 outboard mass is constrained both by performance and by the explicit-integrator feasibility boundary.
+
+**Robustness.** Repeating the (stiffness × control) co-design with an independent random seed (different
+initial population and gust realisation) reproduces the result — 143 vs 141 niches, 73 % vs 72 %
+coverage, best quality −2.35e-3 vs −2.6e-3, and the same wide top-quality spread in both stiffness
+taper (3.1 vs 3.3) and control gain (4.0 vs 5.1) — so the diverse (body × control) phenomenon is a
+property of the landscape, not of a particular seed.
 
 This is iteration-1 (single gust-rejection objective, spanwise spline design, global position-DOF
 feedback control); it demonstrates that the differentiable co-design pipeline produces a diverse,
