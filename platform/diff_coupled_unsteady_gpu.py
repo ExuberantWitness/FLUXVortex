@@ -191,7 +191,7 @@ def coupled_unsteady_forward_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
 
 
 def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
-                              Vinf=VINF, use_wake=False, cg_tol=1e-12, control=None):
+                              Vinf=VINF, use_wake=False, cg_tol=1e-12, control=None, fb_gain=None):
     """all-Warp coupled UNSTEADY FSI design gradient ∂L/∂(E,ρ). Chains: structure design adjoint
     (adj_E/adj_rho + membrane-K_t state chain) ⊗ unsteady aero VJP (UnsteadyAeroGpu: ∂F/∂corners,
     ∂F/∂V_body, ∂F/∂gprev) through the coupled recurrence. adj_q gets the aero ∂/∂corners (P^T) and
@@ -230,7 +230,10 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         Fnodal = dist @ Fp.reshape(-1)
         Qmem, Qbend = dsg.design_internal_force(wa(q), C, Esw, dev)
         Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
-        rhs_s = Fnodal - Qint + (control[t] if control is not None else 0.0)
+        ctrl_t = (control[t] if control is not None else 0.0)
+        if fb_gain is not None:                                # closed-loop state feedback u_t=-k·dq_t
+            ctrl_t = ctrl_t - fb_gain * dq * C.free_np
+        rhs_s = Fnodal - Qint + ctrl_t
         a, _ = structural_cg(wa(rhs_s * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0,
                              ndof, tol=cg_tol, device=dev)
         a_np = a.numpy()[0]
@@ -244,6 +247,7 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
     # ---- backward ----
     gE = wp.zeros(C.ne, dtype=DTYPE, device=dev); gR = wp.zeros(C.ne, dtype=DTYPE, device=dev)
     gC = np.zeros((N, ndof))                                    # ∂L/∂control_t (the policy-gradient signal)
+    dL_dk = 0.0                                                 # closed-loop feedback gain gradient
     adj_q = w.copy(); adj_dq = np.zeros(ndof); adj_gamma_carry = None
     adj_wr_next = None; adj_wg_next = None
     for t in reversed(range(N)):
@@ -277,10 +281,14 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
         wp.launch(dsg._scale_kblk, dim=(1, C.ne, 36, 36), inputs=[Kblk, Esw], device=dev)
         adj_qK = zc()
         apply_MK(wa(adj_Qint * C.free_np), adj_qK, C.Me, Kblk, C.edofs, C.free, 0.0, 1.0, dev)
+        adj_dq_policy = 0.0
+        if fb_gain is not None:                                # closed-loop feedback u_t=-k·dq_t in the loop
+            dL_dk += -float(np.dot(adj_rhs, dqs[t]))           # ∂u_t/∂k = -dq_t  (adj_u_t = adj_rhs)
+            adj_dq_policy = -fb_gain * adj_rhs                 # ∂u_t/∂dq_t = -k  → feeds the state adjoint
         adj_q = aq1 + adj_qK.numpy()[0] + adj_q_aero
-        adj_dq = ad1 + adj_dq_aero
+        adj_dq = ad1 + adj_dq_aero + adj_dq_policy
         adj_gamma_carry = adj_gprev                            # dΓ/dt coupling: adj_gprev → gamma_{t-1}
-    return L, gE.numpy(), gR.numpy(), gC
+    return L, gE.numpy(), gR.numpy(), gC, dL_dk
 
 
 def verify(nx=3, ny=3, N=6, dt=1e-5, seed=0):
@@ -322,7 +330,7 @@ def verify_grad(nx=3, ny=3, N=6, dt=1e-5, seed=0, use_wake=False, elems=None):
     dq0 = np.zeros(ndof); dq0[free] = 1e-3 * rng.standard_normal(len(free))
     w = np.zeros(ndof); w[free] = rng.standard_normal(len(free))
     P, dist = dcu._index_maps(sh, nx, ny)
-    L, gE, gR, gC = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny, use_wake=use_wake)
+    L, gE, gR, gC, _ = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny, use_wake=use_wake)
     els = [0, ne // 2, ne - 1] if elems is None else elems
     gE_fd, gR_fd = dcu.design_grad_fd(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, elems=els, use_wake=use_wake)
     relE = max(abs(gE[e] - gE_fd[e]) for e in els) / (max(abs(gE_fd[e]) for e in els) + 1e-30)
@@ -352,8 +360,8 @@ def verify_grad_control(nx=3, ny=3, N=5, dt=1e-5, seed=1, use_wake=True, eps=1e-
     P, dist = dcu._index_maps(sh, nx, ny)
     Mff = sh.M[np.ix_(free, free)].toarray()
     u = np.zeros((N, ndof)); u[:, free] = 1e-2 * rng.standard_normal((N, len(free)))   # actuation
-    _, _, _, gC = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
-                                            use_wake=use_wake, control=u)
+    _, _, _, gC, _ = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
+                                               use_wake=use_wake, control=u)
 
     def Lc(uu):
         return float(w @ dcu.coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny,
@@ -369,6 +377,36 @@ def verify_grad_control(nx=3, ny=3, N=5, dt=1e-5, seed=1, use_wake=True, eps=1e-
     print(f"  adjoint vs FD at {len(probes)} (step,DOF) probes: rel={rel:.2e}")
     print(f"  -> {'PASS' if ok else 'FAIL'}: the policy-gradient signal ∂L/∂action_t flows through "
           f"the differentiable unsteady coupled FSI — the SHAC control-layer building block")
+    return ok
+
+
+def verify_policy_grad(nx=3, ny=3, N=5, dt=1e-5, seed=3, use_wake=True, k0=8.0, eps=1e-4):
+    """Phase-E closed-loop: the policy is IN the loop (u_t = -k·dq_t state feedback), so the rollout
+    depends on the gain k through the feedback. Validate the closed-loop policy gradient dL/dk
+    (accumulated through the differentiated rollout, incl. the ∂u/∂dq feedback term that feeds the
+    state adjoint) vs FD of the numpy oracle — true closed-loop SHAC, not an open-loop schedule."""
+    wp.init()
+    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    rng = np.random.default_rng(seed); ne = sh.ne; ndof = sh.ndof
+    Es = np.exp(0.1 * rng.standard_normal(ne)); Rs = np.exp(0.1 * rng.standard_normal(ne))
+    sh.set_distribution(E_scale=Es, rho_scale=Rs)
+    free = np.array(sorted(set(range(ndof)) - set(sh._bc_dofs)))
+    q0 = sh.q.copy(); q0[free] += 1e-3 * rng.standard_normal(len(free))
+    dq0 = np.zeros(ndof); dq0[free] = 1e-2 * rng.standard_normal(len(free))
+    w = np.zeros(ndof); w[free] = rng.standard_normal(len(free))
+    P, dist = dcu._index_maps(sh, nx, ny); Mff = sh.M[np.ix_(free, free)].toarray()
+    _, _, _, _, dL_dk = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
+                                                  use_wake=use_wake, fb_gain=k0)
+
+    def Lk(k):
+        return float(w @ dcu.coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny,
+                                                      use_wake=use_wake, fb_gain=k))
+    fd = (Lk(k0 + eps) - Lk(k0 - eps)) / (2 * eps)
+    rel = abs(dL_dk - fd) / (abs(fd) + 1e-30); ok = rel < 1e-4
+    print(f"all-Warp coupled UNSTEADY FSI CLOSED-LOOP policy gradient dL/dk ({ne} elems, {N} steps, full wake):")
+    print(f"  state-feedback u_t=-k·dq_t (k={k0}); dL/dk adjoint={dL_dk:+.4e} vs FD={fd:+.4e}  rel={rel:.2e}")
+    print(f"  -> {'PASS' if ok else 'FAIL'}: the policy-in-the-loop (closed-loop SHAC) gradient is "
+          f"correct — a learnable feedback controller can train through the differentiable FSI")
     return ok
 
 
@@ -396,8 +434,8 @@ def demo_joint_descent(nx=3, ny=3, N=5, dt=1e-5, iters=15, use_wake=True, seed=2
                                                  use_wake=use_wake, control=u)
             w = qN * fmask                                       # ∂J/∂q_N for J = ½‖q_N(free)‖²
             J = 0.5 * float(w @ qN); traj.append(J)
-            _, gE, gR, gC = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
-                                                      use_wake=use_wake, control=u)
+            _, gE, gR, gC, _ = coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
+                                                         use_wake=use_wake, control=u)
             if opt_design:
                 Es = np.clip(Es - lrE * gE / (np.abs(gE).max() + 1e-30), 0.3, 3.0)
                 Rs = np.clip(Rs - lrR * gR / (np.abs(gR).max() + 1e-30), 0.3, 3.0)
@@ -421,6 +459,8 @@ if __name__ == "__main__":
     import sys as _s
     if "--demo" in _s.argv:
         raise SystemExit(0 if demo_joint_descent() else 1)
+    if "--policy" in _s.argv:
+        raise SystemExit(0 if verify_policy_grad() else 1)
     if "--control" in _s.argv:
         raise SystemExit(0 if verify_grad_control() else 1)
     if "--grad" in _s.argv:
