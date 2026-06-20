@@ -338,6 +338,132 @@ def _acc3(src: wp.array(dtype=DTYPE, ndim=3), dst: wp.array(dtype=DTYPE, ndim=3)
     dst[e, i, j] = dst[e, i, j] + src[e, i, j]
 
 
+def _step_fwd(geo, wr_in, wg_in, gprev, nw, free_wake, added_mass):
+    """One unsteady step with tapes: returns the step's tapes/arrays + (wr_next, wgcat). The
+    differentiable building block shared by the all-store and gradient-checkpointed drivers."""
+    from diff_solve import DiffDenseSolve
+    npan, ns, dev = geo["npan"], geo["ns"], geo["device"]
+    rings, col, nrm, AIC = geo["rings"], geo["col"], geo["nrm"], geo["AIC"]
+    Vw, dtt, rhod, te = geo["Vw"], geo["dtt"], geo["rhod"], geo["te"]
+    nwn = nw + ns
+    rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev, requires_grad=True)
+    tape_a = wp.Tape()
+    with tape_a:
+        wp.launch(rhs_kernel, dim=npan, inputs=[col, nrm, Vw, wr_in, wg_in, nw], outputs=[rhs], device=dev)
+    dds = DiffDenseSolve(dev)
+    gamma = dds.forward(AIC, rhs); gamma.requires_grad = True
+    lift = wp.zeros(1, dtype=DTYPE, device=dev, requires_grad=True)
+    wcat = wp.zeros((nwn, 4), dtype=V3, device=dev, requires_grad=True)
+    wgcat = wp.zeros(nwn, dtype=DTYPE, device=dev, requires_grad=True)
+    wr_next = wp.zeros((nwn, 4), dtype=V3, device=dev, requires_grad=True)
+    lk = lift_kernel if added_mass else lift_kj_kernel
+    tape_b = wp.Tape()
+    with tape_b:
+        wp.launch(lk, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, dtt, rhod], outputs=[lift], device=dev)
+        if nw > 0:
+            wp.launch(wcopy_kernel, dim=(nw, 4), inputs=[wr_in], outputs=[wcat], device=dev)
+            wp.launch(wgcopy_kernel, dim=nw, inputs=[wg_in], outputs=[wgcat], device=dev)
+        wp.launch(shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, dtt, nw], outputs=[wcat, wgcat], device=dev)
+        if free_wake:
+            wp.launch(convect_kernel, dim=(nwn, 4), inputs=[rings, gamma, npan, wcat, wgcat, nwn, Vw, dtt],
+                      outputs=[wr_next], device=dev)
+        else:
+            wp.launch(convect_free_kernel, dim=(nwn, 4), inputs=[wcat, nwn, Vw, dtt], outputs=[wr_next], device=dev)
+    return dict(tape_a=tape_a, tape_b=tape_b, rhs=rhs, gamma=gamma, lift=lift, dds=dds,
+                wr_in=wr_in, wg_in=wg_in, gprev=gprev, wr_next=wr_next, wgcat=wgcat)
+
+
+def unsteady_rollout_grad_ckpt(corners_np, Vinf, dt, N, nc, ns, seed=None, ckpt=None,
+                               free_wake=True, added_mass=True, device="cuda"):
+    """Gradient-checkpointed wake-history adjoint: identical math to unsteady_rollout_grad but
+    stores per-step tapes for only ONE segment at a time (length ~√N). The forward pass keeps just
+    the wake STATE (wr,wg,gprev) at √N checkpoints; backward recomputes each segment's tapes from
+    its checkpoint, walks it in reverse, and carries (adj_wake, adj_gprev) across segment boundaries.
+    Memory O(√N) tapes instead of O(N) → makes the long real-FSI rollout differentiable on GPU."""
+    npan = nc * ns; ncv = (nc + 1) * (ns + 1)
+    Vw = V3(*[float(v) for v in np.asarray(Vinf, float)])
+    dtt = DTYPE(dt); rhod = DTYPE(RHO)
+    te = wp.array(np.array([(nc - 1) * ns + j for j in range(ns)], np.int32), dtype=wp.int32, device=device)
+    corners = wp.array(corners_np.reshape(ncv, 3), dtype=V3, device=device, requires_grad=True)
+    rings = wp.zeros((npan, 4), dtype=V3, device=device, requires_grad=True)
+    col = wp.zeros(npan, dtype=V3, device=device, requires_grad=True)
+    nrm = wp.zeros(npan, dtype=V3, device=device, requires_grad=True)
+    AIC = wp.zeros((1, npan, npan), dtype=DTYPE, device=device, requires_grad=True)
+    tape_geo = wp.Tape()
+    with tape_geo:
+        wp.launch(bound_rings_kernel, dim=npan, inputs=[corners, nc, ns], outputs=[rings, col, nrm], device=device)
+        wp.launch(aic_kernel, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=device)
+    geo = dict(npan=npan, ns=ns, device=device, rings=rings, col=col, nrm=nrm, AIC=AIC,
+               Vw=Vw, dtt=dtt, rhod=rhod, te=te)
+    K = ckpt or max(1, int(round(N ** 0.5)))
+    bounds = list(range(0, N, K)) + [N]                     # segment starts + final
+    mkleaf = lambda a: wp.array(a, dtype=V3, device=device, requires_grad=True)
+    mkleafg = lambda a: wp.array(a, dtype=DTYPE, device=device, requires_grad=True)
+
+    # ---- forward: keep only wake STATE at each segment start (numpy) + lifts ----
+    ckpts = {}
+    wr_np = np.zeros((1, 4, 3)); wg_np = np.zeros(1); gprev_np = np.zeros((1, npan))
+    lifts = np.zeros(N)
+    for t in range(N):
+        if t in bounds:
+            ckpts[t] = (wr_np.copy(), wg_np.copy(), gprev_np.copy())
+        nw = t * ns
+        wr_in = mkleaf(wr_np if nw > 0 else np.zeros((1, 4, 3)))
+        wg_in = mkleafg(wg_np if nw > 0 else np.zeros(1))
+        gprev = mkleafg(gprev_np)
+        st = _step_fwd(geo, wr_in, wg_in, gprev, nw, free_wake, added_mass)
+        lifts[t] = st["lift"].numpy()[0]
+        wr_np = st["wr_next"].numpy(); wg_np = st["wgcat"].numpy(); gprev_np = st["gamma"].numpy()
+
+    sd = np.ones(N) if seed is None else np.asarray(seed, float)
+    total = float(sd @ lifts)
+
+    # ---- backward by segments, in reverse; carry (adj_wake, adj_gprev) across boundaries ----
+    adj_AIC = wp.zeros((1, npan, npan), dtype=DTYPE, device=device)
+    seg_starts = list(range(0, N, K))
+    adj_wr_e = None; adj_wg_e = None                        # adj on wake state at segment end
+    adj_gprev_e = np.zeros((1, npan))                       # adj on gamma_{e-1} (gprev of next seg)
+    for s in reversed(seg_starts):
+        e = min(s + K, N)
+        wr0, wg0, gp0 = ckpts[s]
+        wr_in = mkleaf(wr0 if s > 0 else np.zeros((1, 4, 3)))
+        wg_in = mkleafg(wg0 if s > 0 else np.zeros(1))
+        gprev0 = mkleafg(gp0)
+        # recompute the segment's tapes
+        seg = []
+        wr_c, wg_c, gp_c = wr_in, wg_in, gprev0
+        for t in range(s, e):
+            st = _step_fwd(geo, wr_c, wg_c, gp_c, t * ns, free_wake, added_mass)
+            seg.append(st)
+            wr_c, wg_c, gp_c = st["wr_next"], st["wgcat"], st["gamma"]
+        # backward over the segment
+        for idx in reversed(range(len(seg))):
+            t = s + idx; st = seg[idx]
+            st["lift"].grad = wp.array(np.array([sd[t]]), dtype=DTYPE, device=device)
+            if idx == len(seg) - 1 and adj_wr_e is not None:        # carry wake adj from next seg
+                st["wr_next"].grad = adj_wr_e; st["wgcat"].grad = adj_wg_e
+            st["tape_b"].backward()
+            if idx == len(seg) - 1:                                  # carry gprev adj (→ gamma_{e-1})
+                wp.launch(_acc2, dim=(1, npan), inputs=[wp.array(adj_gprev_e, dtype=DTYPE, device=device)],
+                          outputs=[st["gamma"].grad], device=device)
+            adj_A, adj_b = st["dds"].backward(st["gamma"].grad)
+            wp.launch(_acc3, dim=(1, npan, npan), inputs=[adj_A], outputs=[adj_AIC], device=device)
+            st["rhs"].grad = adj_b
+            st["tape_a"].backward()
+        # carry the segment-start adjoints to the previous segment
+        adj_wr_e = wp.clone(seg[0]["wr_in"].grad); adj_wg_e = wp.clone(seg[0]["wg_in"].grad)
+        adj_gprev_e = seg[0]["gprev"].grad.numpy().copy()
+    AIC.grad = adj_AIC
+    tape_geo.backward()
+    return lifts, total, corners.grad.numpy().copy()
+
+
+@wp.kernel
+def _acc2(src: wp.array(dtype=DTYPE, ndim=2), dst: wp.array(dtype=DTYPE, ndim=2)):
+    e, i = wp.tid()
+    dst[e, i] = dst[e, i] + src[e, i]
+
+
 def verify_grad_rollout(nc=2, ns=3, N=12, dt=0.03):
     wp.init()
     chord, span = 0.3, 0.8
@@ -361,6 +487,25 @@ def verify_grad_rollout(nc=2, ns=3, N=12, dt=0.03):
           f"dΓ/dt) is end-to-end differentiable on GPU — fix1-④ CORE\n"
           f"     (regularized vortex core δ={WAKE_CORE} desingularizes the self-induction adjoint; "
           f"bound AIC stays sharp)")
+    return ok
+
+
+def verify_grad_ckpt(nc=2, ns=3, N=16, dt=0.03):
+    wp.init()
+    chord, span = 0.3, 0.8
+    Vinf = np.array([10.0, 0.0, 0.0]); aoa = np.deg2rad(5.0)
+    C = ref._lattice(nc, ns, chord, span, aoa)
+    _, tot0, g0 = unsteady_rollout_grad(C.reshape(-1, 3), Vinf, dt, N, nc, ns)       # all-store ref
+    K = max(1, int(round(N ** 0.5)))
+    _, tot1, g1 = unsteady_rollout_grad_ckpt(C.reshape(-1, 3), Vinf, dt, N, nc, ns, ckpt=K)
+    rel = np.max(np.abs(g1 - g0)) / (np.max(np.abs(g0)) + 1e-30)
+    nseg = (N + K - 1) // K
+    ok = rel < 1e-12 and abs(tot1 - tot0) < 1e-9
+    print(f"Gradient checkpointing for the wake-history adjoint ({nc}x{ns}, {N} steps):")
+    print(f"  segment length K={K} → {nseg} segments; O(√N) tapes resident vs O(N) all-store")
+    print(f"  ∂(Σlift)/∂corners  checkpointed vs all-store: rel={rel:.2e}")
+    print(f"  -> {'PASS' if ok else 'FAIL'}: identical gradient at √N memory — the long real-FSI "
+          f"rollout is differentiable on GPU within bounded memory")
     return ok
 
 
