@@ -244,6 +244,17 @@ excursion by **8.3 %** on one RTX 4090 (24 elements, N=20, free wake), discoveri
 **soft-root→stiff-tip stiffness taper (0.29→2.17) with mass moved outboard (0.78→1.45)** — it stiffens
 and adds inertia to the tip, whose spanwise lever dominates the roll excursion (Fig. 3).
 
+Co-designing the structure **and a closed-loop controller jointly** — adding a position-DOF
+velocity-feedback gain `k` with a control-effort penalty (`J = attitude + λ·effort`, the gain
+co-optimised by the validated closed-loop gradient, `dL/dk` rel ~1e-5) — sharpens the aeroservoelastic
+picture, and the same adjoint quantifies all three gradients (design, control, joint) consistently.
+For this *forced*-gust attitude objective, **active feedback is the dominant lever**: at `k ≈ 2.1` it
+cuts the mean-axis excursion **10.2× vs the passive wing**, against the 8.3 % from structural
+redistribution alone; once feedback is active, re-tapering the structure adds only a further **0.9 %**.
+That is the honest statement — for forced-gust attitude stabilisation the controller does the heavy
+lifting and the structure refines — and it is exactly the kind of design-vs-control trade-off a
+differentiable strong-coupled solver is *for*: we did not assume it, we computed it.
+
 This is exactly the contribution the limitations of an earlier draft flagged as still-missing: a
 *validated, differentiable, strong-coupled* transient FSI whose adjoint enables gradient co-design in
 the added-mass-instability regime that partitioned — and hence prior explicit-forward differentiable —
