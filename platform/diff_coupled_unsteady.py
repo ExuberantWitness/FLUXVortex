@@ -251,6 +251,34 @@ def design_grad_fd(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, eps=1e-6, elems=
     return gE, gR
 
 
+def loss_only_pc(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, Vinf=VINF, use_wake=True,
+                 control=None, fb_gain=None, pc_it=40, pc_tol=1e-12, tangent="membrane"):
+    """Scalar loss w·q_N of the STRONG-coupled (predictor-corrector) forward — the FD oracle target."""
+    sh.set_distribution(E_scale=Es, rho_scale=Rs)
+    P, dist = _index_maps(sh, nx, ny)
+    Mff = sh.M[np.ix_(free, free)].toarray()
+    q = coupled_unsteady_forward_pc(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf,
+                                    use_wake=use_wake, control=control, fb_gain=fb_gain,
+                                    pc_it=pc_it, pc_tol=pc_tol, tangent=tangent)
+    return float(np.real(w @ q))
+
+
+def design_grad_fd_pc(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, eps=1e-6, elems=None,
+                      use_wake=True, control=None, fb_gain=None, pc_it=40, pc_tol=1e-12, tangent="membrane"):
+    """Central-FD design gradient ∂L/∂(E,ρ) of the PC forward — the oracle for the differentiable PC adjoint."""
+    ne = sh.ne; els = range(ne) if elems is None else elems
+    gE = np.zeros(ne); gR = np.zeros(ne)
+    kw = dict(use_wake=use_wake, control=control, fb_gain=fb_gain, pc_it=pc_it, pc_tol=pc_tol, tangent=tangent)
+    for e in els:
+        ep = Es.copy(); ep[e] += eps; em = Es.copy(); em[e] -= eps
+        gE[e] = (loss_only_pc(sh, ep, Rs, q0, dq0, N, dt, free, w, nx, ny, **kw)
+                 - loss_only_pc(sh, em, Rs, q0, dq0, N, dt, free, w, nx, ny, **kw)) / (2 * eps)
+        rp = Rs.copy(); rp[e] += eps; rm = Rs.copy(); rm[e] -= eps
+        gR[e] = (loss_only_pc(sh, Es, rp, q0, dq0, N, dt, free, w, nx, ny, **kw)
+                 - loss_only_pc(sh, Es, rm, q0, dq0, N, dt, free, w, nx, ny, **kw)) / (2 * eps)
+    return gE, gR
+
+
 def verify(nx=3, ny=3, N=6, dt=1e-5, seed=0):
     sh = _build_shell(nx=nx, ny=ny)
     rng = np.random.default_rng(seed); ne = sh.ne
