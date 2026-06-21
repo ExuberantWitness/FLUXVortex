@@ -440,7 +440,7 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
                                  Vinf=VINF, use_wake=False, cg_tol=1e-11, control=None, fb_gain=None,
                                  beta=0.25, gamma=0.5, wake_max=80, pc_it=30, pc_tol=1e-9,
                                  omega0=0.3, adj_it=80, adj_tol=1e-11,
-                                 dLdq=None, dLddq=None, dLda=None, gust=None):
+                                 dLdq=None, dLddq=None, dLda=None, gust=None, loss_fn=None):
     """Differentiable adjoint of the STRONG-coupled (predictor-corrector) unsteady FSI forward via the
     IMPLICIT FUNCTION THEOREM. The forward converges a per-step fixed point a* = A⁻¹(Fnodal(a*)−Qint+c);
     its exact reverse-mode gradient differentiates the CONVERGED fixed point, NOT the Aitken iteration
@@ -543,6 +543,9 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
                 nw = nw_new; cur_wr = wr.numpy()[:nw_new].copy(); cur_wg = wg.numpy()[:nw_new].copy()
         gprev_np = gam_np
     L = float(w @ q)
+    if loss_fn is not None:                                   # general trajectory functional on the
+        # GUSTED trajectory the adjoint differentiates: returns (L, dLdq, dLddq, dLda), each (N+1,ndof)
+        L, dLdq, dLddq, dLda = loss_fn(np.array(q_outs), np.array(dq_outs), np.array(a_stars), q0, dq0)
 
     # ---- backward (IFT adjoint of the PC fixed point) ----
     gE = wp.zeros(C.ne, dtype=DTYPE, device=dev); gR = wp.zeros(C.ne, dtype=DTYPE, device=dev)
