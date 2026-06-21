@@ -120,6 +120,48 @@ def coupled_unsteady_forward(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vin
     return q
 
 
+def coupled_unsteady_forward_impl(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf=VINF,
+                                  use_wake=True, control=None, fb_gain=None, beta=0.25, gamma=0.5,
+                                  wake_max=80, return_traj=False):
+    """Linearly-implicit Newmark structural step (β=¼,γ=½; A=M+β·dt²·K_t SPD) IMEX-coupled to the
+    lagged free wake, with WAKE TRUNCATION (keep the most-recent `wake_max` rings). The implicit
+    structure lets dt be set by the SLOW structural mode (∼ms), not the fast mode (∼µs), and wake
+    truncation bounds the O(N²) wake — so a full multi-period gust response is affordable. K_t is the
+    consistent tangent at the predictor; A is solved each step (well-conditioned, eig_min>0)."""
+    npan = nx * ny
+    pmask = np.zeros(sh.ndof); pmask[free] = 1.0; pmask *= (np.arange(sh.ndof) % 9 < 3)
+    q, dq = q0.copy(), dq0.copy()
+    Q0, _, _ = _assemble(sh, q)
+    a = np.zeros(sh.ndof); a[free] = np.linalg.solve(Mff, (-Q0)[free])
+    wake = []; gamma_prev = np.zeros(npan); traj = [q.copy()]
+    for t in range(N):
+        q_pred = q + dt * dq + dt * dt * (0.5 - beta) * a
+        v_pred = dq + dt * (1.0 - gamma) * a
+        corners = (P @ q).reshape(nx + 1, ny + 1, 3)
+        cvel = (P @ dq).reshape(nx + 1, ny + 1, 3)
+        Fp, gam, wake = _aero_step(corners, cvel, wake, gamma_prev, nx, ny, Vinf, dt, True)
+        if use_wake:
+            if len(wake) > wake_max:
+                wake = wake[-wake_max:]                          # drop the oldest (far-downstream) rings
+        else:
+            wake = []
+        Fnodal = dist @ Fp.reshape(-1)
+        Qint, Kt, _ = _assemble(sh, q_pred)
+        ctrl = (control[t] if control is not None else 0.0)
+        if fb_gain is not None:
+            ctrl = ctrl - fb_gain * dq * pmask
+        rhs = Fnodal - Qint + ctrl
+        A = Mff + beta * dt * dt * Kt[np.ix_(free, free)]
+        a_new = np.zeros(sh.ndof); a_new[free] = np.linalg.solve(A, rhs[free])
+        q = q_pred + beta * dt * dt * a_new
+        dq = v_pred + gamma * dt * a_new
+        a = a_new; gamma_prev = gam
+        if not np.all(np.isfinite(q)):
+            return (q, np.array(traj)) if return_traj else q
+        traj.append(q.copy())
+    return (q, np.array(traj)) if return_traj else q
+
+
 def loss_only(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, Vinf=VINF, use_wake=True):
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
     P, dist = _index_maps(sh, nx, ny)

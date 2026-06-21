@@ -212,17 +212,21 @@ non-dominated structure+control co-designs.*
 
 ## 5. Limitations and next steps (stated honestly)
 
-- **Regime: short-transient (quasi-static) gust load, not the full dynamic response.** A modal analysis
-  of the soft test wing gives a fundamental frequency ≈0.2 Hz (period ≈4 s) and a highest mode ≈0.7–1.3
-  kHz; the explicit symplectic integrator is therefore stable up to dt≈250–670 µs (we run dt=1e-5,
-  comfortably inside this), and the co-design rollouts (N=40) span ≈4×10⁻⁴ s — a small fraction of the
-  fundamental period. The objective is thus the *initial* gust-load deflection (a legitimate, design-
-  sensitive aeroservoelastic quantity — the deflection-energy landscape varies ~30 % across designs),
-  not a full multi-period dynamic response. The integrator stability is **not** the obstacle to longer
-  rollouts; the obstacle is that the *free wake grows unboundedly* with rollout length (O(N²) cost), so
-  reaching the seconds-long structural timescale needs **wake truncation / far-field lumping plus
-  gradient checkpointing** — a scalability item, not a stability one. (This corrects an earlier
-  mis-attribution to integrator stability.)
+- **Regime of the differentiable archive vs the reachable dynamic regime.** A modal analysis of the
+  soft test wing gives a fundamental frequency ≈0.2 Hz (period ≈4 s) and a highest mode ≈0.7–1.3 kHz, so
+  the explicit symplectic step is bounded by the *fast* mode (dt_crit≈250–670 µs) and needs O(10³–10⁴)
+  steps to traverse one fundamental period — the differentiable archive of §4 therefore runs at dt=1e-5
+  over ≈4×10⁻⁴ s, capturing the *initial* gust-load deflection (a legitimate, design-sensitive
+  aeroservoelastic quantity, ~30 % landscape spread) rather than a multi-period response. We have
+  separately implemented and verified a **linearly-implicit Newmark forward (β=¼,γ=½) with wake
+  truncation**: because it is unconditionally stable for the structure, dt is set by the *slow* mode, and
+  it is stable (IMEX, lagged wake) up to dt≈10⁻³ — at which the aeroelastic bending fully develops
+  (deflection energy grows from ~10⁻² to O(1), a far richer and more design-sensitive regime), at
+  affordable step counts with a bounded wake. So the dynamic regime is reachable; the remaining work is
+  the **adjoint of the implicit+truncated scheme** (the M+β·dt²·K_t solve VJP, the K_t(q_pred) and
+  wake-truncation adjoints) to drive the gradient-based co-design there, plus a predictor–corrector pass
+  for the largest steps. (This supersedes an earlier mis-attribution of the short window to integrator
+  stability.)
 - **Goland flutter benchmark — not yet reproduced on this stack.** (i) An isotropic ANCF plate has
   bending/torsion ratio EI/GJ ≈ (1+ν)/2 ≈ 0.65, whereas the Goland wing needs ≈ 9.9, so matching it
   requires an **orthotropic** constitutive calibration; (ii) flutter must be tracked over many
