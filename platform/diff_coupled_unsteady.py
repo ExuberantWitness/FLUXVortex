@@ -29,6 +29,26 @@ RHO = uv.RHO
 VINF = np.array([12.0, 0.0, 1.2])     # freestream with small AoA so the aero load is nonzero
 
 
+def _assemble_tan(shell, q, tangent="full"):
+    """Global FULL internal force Qint and the chosen A-tangent for the linearly-implicit-Newmark
+    operator A = M + β·dt²·tangent. tangent='full' = membrane+bending consistent tangent (the
+    physical oracle); tangent='membrane' = membrane-only K_mem — which is exactly what the GPU
+    assemble_kmem_blocks builds (the established Warp tangent convention), so the membrane variant is
+    the bit-for-bit oracle for the GPU PC forward. Qint is the full internal force in BOTH cases;
+    only the linearization point in A changes (a within-step linearization, not the physics)."""
+    if tangent == "full":
+        Qint, Kt, _ = _assemble(shell, q)
+        return Qint, Kt
+    ndof = shell.ndof
+    Qint = np.zeros(ndof, q.dtype); Kt = np.zeros((ndof, ndof), float)
+    for e in range(shell.ne):
+        Qm, Qb, _, Kmem = shell._elem_forces_separated(e, q)
+        dofs = shell._elem_dofs(e)
+        Qint[dofs] += (Qm + Qb)                       # full internal force (membrane + bending)
+        Kt[np.ix_(dofs, dofs)] += Kmem                # membrane-only tangent (matches GPU K_mem)
+    return Qint, Kt
+
+
 def _collocation_field(field):
     """col_p = ½(¼c00+¾c10+¼c01+¾c11) on any corner field (positions OR velocities)."""
     nc1, ns1 = field.shape[0], field.shape[1]
@@ -164,7 +184,8 @@ def coupled_unsteady_forward_impl(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny
 
 def coupled_unsteady_forward_pc(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf=VINF,
                                 use_wake=True, control=None, fb_gain=None, beta=0.25, gamma=0.5,
-                                wake_max=80, pc_it=12, pc_tol=1e-6, omega0=0.3, return_traj=False):
+                                wake_max=80, pc_it=12, pc_tol=1e-6, omega0=0.3, return_traj=False,
+                                tangent="full"):
     """STRONG-coupled (predictor-corrector) implicit-Newmark unsteady FSI. Each step solves the
     coupled fixed point on a_{n+1}: the aero force is RE-EVALUATED on the current structural iterate
     (not lagged), with Aitken dynamic relaxation — the standard cure for the fluid added-mass
@@ -178,7 +199,7 @@ def coupled_unsteady_forward_pc(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, 
     for t in range(N):
         q_pred = q + dt * dq + dt * dt * (0.5 - beta) * a
         v_pred = dq + dt * (1.0 - gamma) * a
-        Qint, Kt, _ = _assemble(sh, q_pred); A = Mff + beta * dt * dt * Kt[np.ix_(free, free)]
+        Qint, Kt = _assemble_tan(sh, q_pred, tangent); A = Mff + beta * dt * dt * Kt[np.ix_(free, free)]
         ctrl = (control[t] if control is not None else 0.0)
         a_it = a.copy(); omega = omega0; r_prev = None; wk_out = wake; gam_out = gamma_prev
         for it in range(pc_it):                              # within-step strong-coupling iteration

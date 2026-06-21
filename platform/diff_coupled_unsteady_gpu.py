@@ -204,6 +204,119 @@ def coupled_unsteady_forward_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
     return q, qs
 
 
+def coupled_unsteady_forward_pc_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
+                                    Vinf=VINF, cg_tol=1e-11, use_wake=True, control=None, fb_gain=None,
+                                    beta=0.25, gamma=0.5, wake_max=80, pc_it=20, pc_tol=1e-8,
+                                    omega0=0.3, return_traj=False):
+    """all-Warp STRONG-coupled (predictor-corrector) unsteady FSI forward — the GPU production version
+    of dcu.coupled_unsteady_forward_pc. Each step solves the coupled fixed point on a_{n+1}: the
+    linearly-implicit-Newmark operator A = M(ρ) + β·dt²·K_mem(q_pred;E) (matrix-free batched CG,
+    membrane tangent = the GPU K_t convention) is solved against the aero force RE-EVALUATED on the
+    current structural iterate q_it = q_pred + β·dt²·a_it, with Aitken Δ² dynamic relaxation. This is
+    the cure for the fluid added-mass instability that diverges loose/explicit coupling for light
+    wings. The aero (bound rings → AIC → γ → unsteady KJ + dΓ/dt) reuses the validated Warp kernels;
+    the wake (shed TE + free convection) is advanced ONCE per step on the converged geometry and
+    truncated to the most-recent `wake_max` rings. Returns the converged final state (and the
+    trajectory + per-step iteration counts if return_traj). The reference is dcu.…_pc(tangent=
+    'membrane'), which this matches to ~pc_tol; the differentiable PC adjoint (next) differentiates
+    this converged fixed point via the implicit function theorem."""
+    dev = cfg.DEVICE; NP = cfg.NP_DTYPE; ndof = C.ndof
+    npan = nx * ny; ncv = (nx + 1) * (ny + 1)
+    maxw = (min(N * ny, wake_max) + ny) if use_wake else ny
+    Esw = wp.array(Es.astype(NP), dtype=DTYPE, device=dev)
+    Mscaled = wp.zeros((C.ne, 36, 36), dtype=DTYPE, device=dev)
+    wp.launch(dsg._scaled_mass, dim=(C.ne, 36, 36),
+              inputs=[C.Me, wp.array(Rs.astype(NP), dtype=DTYPE, device=dev)], outputs=[Mscaled], device=dev)
+    Kblk0 = wp.zeros((1, C.ne, 36, 36), dtype=DTYPE, device=dev)
+    wa = lambda v: wp.array(v[None].astype(NP), dtype=DTYPE, device=dev)
+    Vw = V3(*[float(v) for v in np.asarray(Vinf, float)])
+    te = wp.array(np.array([(nx - 1) * ny + j for j in range(ny)], np.int32), dtype=wp.int32, device=dev)
+    pm = _pos_mask(C); coef = beta * dt * dt
+    wr = wp.zeros((maxw, 4), dtype=V3, device=dev); wr_new = wp.zeros((maxw, 4), dtype=V3, device=dev)
+    wg = wp.zeros(maxw, dtype=DTYPE, device=dev)
+    gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev)
+
+    def _aero_Fp(q_it, dq_it):
+        """Bound solve on the current iterate geometry → (Fp_np, rings, gamma) for the residual; the
+        wake (wr,wg,nw) and gprev are held fixed during the within-step iteration."""
+        corners = (P @ q_it).reshape(ncv, 3); cvel = (P @ dq_it).reshape(ncv, 3)
+        cw = wp.array(corners.astype(NP), dtype=V3, device=dev)
+        vw = wp.array(cvel.astype(NP), dtype=V3, device=dev)
+        rings = wp.zeros((npan, 4), dtype=V3, device=dev); col = wp.zeros(npan, dtype=V3, device=dev)
+        nrm = wp.zeros(npan, dtype=V3, device=dev); vcol = wp.zeros(npan, dtype=V3, device=dev)
+        wp.launch(ug.bound_rings_kernel, dim=npan, inputs=[cw, nx, ny], outputs=[rings, col, nrm], device=dev)
+        wp.launch(ug.colvel_kernel, dim=npan, inputs=[vw, nx, ny], outputs=[vcol], device=dev)
+        AIC = wp.zeros((1, npan, npan), dtype=DTYPE, device=dev)
+        wp.launch(ug.aic_kernel, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=dev)
+        rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev)
+        wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
+        gam = batched_dense_solve(AIC, rhs, dev)
+        Fp = wp.zeros(npan, dtype=V3, device=dev)
+        wp.launch(ug.panel_force_kernel, dim=npan, inputs=[rings, nrm, gam, gprev, vcol, Vw,
+                  DTYPE(dt), DTYPE(ug.RHO), ny], outputs=[Fp], device=dev)
+        return dist @ Fp.numpy().reshape(-1), rings, gam
+
+    q = q0.copy(); dq = dq0.copy(); nw = 0
+    # initial accel a0 = M⁻¹(−Qint(q0)) (explicit, consistent with the numpy oracle predictor)
+    Qmem, Qbend = dsg.design_internal_force(wa(q), C, Esw, dev)
+    Qint0 = Qmem.numpy()[0] + Qbend.numpy()[0]
+    a, _ = structural_cg(wa((-Qint0) * C.free_np), Mscaled, Kblk0, C.edofs, C.free, 0.0, ndof, tol=cg_tol, device=dev)
+    a = a.numpy()[0]
+    qs = [q.copy()]; itc = []
+    for t in range(N):
+        q_pred = q + dt * dq + dt * dt * (0.5 - beta) * a
+        v_pred = dq + dt * (1.0 - gamma) * a
+        qpw = wa(q_pred)
+        Qmem, Qbend = dsg.design_internal_force(qpw, C, Esw, dev)
+        Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
+        Kblk = assemble_kmem_blocks(qpw, C, dev)
+        wp.launch(dsg._scale_kblk, dim=(1, C.ne, 36, 36), inputs=[Kblk, Esw], device=dev)
+        ctrl_t = (control[t] if control is not None else 0.0)
+        a_it = a.copy(); omega = omega0; r_prev = None; rings_c = None; gam_c = None
+        it = 0
+        for it in range(pc_it):
+            q_it = q_pred + coef * a_it; dq_it = v_pred + gamma * dt * a_it
+            Fnodal, rings_c, gam_c = _aero_Fp(q_it, dq_it)
+            c = ctrl_t - fb_gain * dq_it * pm if fb_gain is not None else ctrl_t
+            rhs_s = (Fnodal - Qint + c) * C.free_np
+            a_solve_w, _ = structural_cg(wa(rhs_s), Mscaled, Kblk, C.edofs, C.free, coef, ndof,
+                                         tol=cg_tol, device=dev)
+            a_solve = a_solve_w.numpy()[0]
+            r = a_solve - a_it
+            if np.linalg.norm(r[C.free_np > 0]) < pc_tol * (np.linalg.norm(a_solve[C.free_np > 0]) + 1e-30):
+                a_it = a_solve; break
+            if r_prev is not None:                                   # Aitken Δ² dynamic relaxation
+                dr = (r - r_prev)[C.free_np > 0]
+                omega = -omega * float(np.dot(r_prev[C.free_np > 0], dr)) / (float(np.dot(dr, dr)) + 1e-30)
+                omega = float(np.clip(omega, 0.05, 1.0))
+            a_it = a_it + omega * r; r_prev = r
+        itc.append(it + 1)
+        a = a_it; q = q_pred + coef * a; dq = v_pred + gamma * dt * a
+        qs.append(q.copy())
+        if not np.all(np.isfinite(q)):
+            return (q, np.array(qs), itc) if return_traj else q
+        if use_wake:                                                 # advance wake ONCE on converged geometry
+            wp.launch(ug.shed_kernel, dim=ny, inputs=[rings_c, gam_c, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
+            nw_new = nw + ny
+            wp.launch(ug.convect_kernel, dim=(nw_new, 4), inputs=[rings_c, gam_c, npan, wr, wg, nw_new, Vw, DTYPE(dt)],
+                      outputs=[wr_new], device=dev)
+            wp.copy(wr, wr_new, count=nw_new * 4)
+            if nw_new > wake_max:                                    # keep the most-recent wake_max rings
+                off = nw_new - wake_max
+                wr_h = wr.numpy(); wg_h = wg.numpy()
+                wr = wp.array(np.ascontiguousarray(wr_h[off:nw_new]), dtype=V3, device=dev)
+                wg = wp.array(np.ascontiguousarray(wg_h[off:nw_new]), dtype=DTYPE, device=dev)
+                wr_new = wp.zeros((maxw, 4), dtype=V3, device=dev)
+                # repad to capacity so subsequent shed has room
+                wr_full = wp.zeros((maxw, 4), dtype=V3, device=dev); wp.copy(wr_full, wr, count=wake_max * 4)
+                wg_full = wp.zeros(maxw, dtype=DTYPE, device=dev); wp.copy(wg_full, wg, count=wake_max)
+                wr = wr_full; wg = wg_full; nw = wake_max
+            else:
+                nw = nw_new
+        gprev = wp.array(gam_c.numpy(), dtype=DTYPE, device=dev)
+    return (q, np.array(qs), itc) if return_traj else q
+
+
 def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
                               Vinf=VINF, use_wake=False, cg_tol=1e-12, control=None, fb_gain=None):
     """all-Warp coupled UNSTEADY FSI design gradient ∂L/∂(E,ρ). Chains: structure design adjoint
@@ -328,6 +441,45 @@ def verify(nx=3, ny=3, N=6, dt=1e-5, seed=0):
     print(f"  final-state q match (rel to displacement): {rel:.2e}")
     print(f"  -> {'PASS' if ok else 'FAIL'}: structure (Warp design force + CG) ⊗ unsteady free-wake "
           f"(Warp, deforming+moving wing + wake history) coupled forward on GPU — fix3 forward")
+    return ok
+
+
+def verify_pc(nx=3, ny=3, N=8, dt=1e-4, seed=0, use_wake=True, pc_tol=1e-9, pc_it=30):
+    """Validate the all-Warp STRONG-coupled (predictor-corrector) unsteady FSI forward vs the numpy
+    oracle dcu.coupled_unsteady_forward_pc(tangent='membrane') — same linearly-implicit-Newmark fixed
+    point, same membrane tangent. Also reports the PHYSICAL full-vs-membrane tangent difference, the
+    per-step Aitken iteration count (GPU vs numpy), and the GPU forward wall time."""
+    import time
+    wp.init()
+    sh = _build_shell(nx=nx, ny=ny); sh.set_bc([i for i in range(nx + 1)]); C = ANCFConstants(sh, device=cfg.DEVICE)
+    rng = np.random.default_rng(seed); ne = sh.ne
+    Es = np.exp(0.2 * rng.standard_normal(ne)); Rs = np.exp(0.2 * rng.standard_normal(ne))
+    sh.set_distribution(E_scale=Es, rho_scale=Rs)
+    ndof = sh.ndof
+    free = np.array(sorted(set(range(ndof)) - set(sh._bc_dofs)))
+    q0 = sh.q.copy(); q0[free] += 1e-4 * rng.standard_normal(len(free))
+    dq0 = np.zeros(ndof); dq0[free] = 1e-3 * rng.standard_normal(len(free))
+    P, dist = dcu._index_maps(sh, nx, ny); Mff = sh.M[np.ix_(free, free)].toarray()
+    q_mem, _, itc_np = dcu.coupled_unsteady_forward_pc(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny,
+                          use_wake=use_wake, pc_tol=pc_tol, pc_it=pc_it, tangent="membrane", return_traj=True)
+    q_full = dcu.coupled_unsteady_forward_pc(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny,
+                          use_wake=use_wake, pc_tol=pc_tol, pc_it=pc_it, tangent="full")
+    t0 = time.time()
+    q_gpu, _, itc_gpu = coupled_unsteady_forward_pc_gpu(sh, C, P, dist, q0, dq0, N, dt, Es, Rs, nx, ny,
+                          use_wake=use_wake, pc_tol=pc_tol, pc_it=pc_it, cg_tol=1e-11, return_traj=True)
+    wp.synchronize(); twall = time.time() - t0
+    disp = np.max(np.abs(q_mem - q0)) + 1e-30
+    rel = np.max(np.abs(q_gpu - q_mem)) / disp
+    tan_diff = np.max(np.abs(q_full - q_mem)) / disp
+    ok = rel < 1e-5
+    print(f"all-Warp STRONG-coupled (predictor-corrector) UNSTEADY FSI forward ({ne} elems, {N} steps, "
+          f"dt={dt:g}, {'wake' if use_wake else 'no-wake'}):")
+    print(f"  GPU PC vs numpy PC (membrane tangent): rel={rel:.2e}   (tol 1e-5; fixed point defined to pc_tol={pc_tol:g})")
+    print(f"  numpy full-vs-membrane tangent diff (physical linearization, NOT a GPU error): {tan_diff:.2e} of displacement")
+    print(f"  Aitken iters/step: GPU avg={np.mean(itc_gpu):.2f} (max {max(itc_gpu)})   numpy avg={np.mean(itc_np):.2f}")
+    print(f"  GPU PC forward wall time: {twall * 1e3:.0f} ms total ({twall / N * 1e3:.1f} ms/step)")
+    print(f"  -> {'PASS' if ok else 'FAIL'}: the GPU strong-coupling PC forward matches the oracle's "
+          f"converged fixed point — the production forward the differentiable PC adjoint differentiates")
     return ok
 
 
@@ -478,6 +630,9 @@ if __name__ == "__main__":
         raise SystemExit(0 if verify_policy_grad() else 1)
     if "--control" in _s.argv:
         raise SystemExit(0 if verify_grad_control() else 1)
+    if "--pc" in _s.argv:
+        ok1 = verify_pc(use_wake=False); ok2 = verify_pc(use_wake=True)
+        raise SystemExit(0 if (ok1 and ok2) else 1)
     if "--grad" in _s.argv:
         ok1 = verify_grad(use_wake=False)
         ok2 = verify_grad(use_wake=True)
