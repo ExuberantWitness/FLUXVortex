@@ -439,7 +439,8 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
 def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
                                  Vinf=VINF, use_wake=False, cg_tol=1e-11, control=None, fb_gain=None,
                                  beta=0.25, gamma=0.5, wake_max=80, pc_it=30, pc_tol=1e-9,
-                                 omega0=0.3, adj_it=80, adj_tol=1e-11):
+                                 omega0=0.3, adj_it=80, adj_tol=1e-11,
+                                 dLdq=None, dLddq=None, dLda=None, gust=None):
     """Differentiable adjoint of the STRONG-coupled (predictor-corrector) unsteady FSI forward via the
     IMPLICIT FUNCTION THEOREM. The forward converges a per-step fixed point a* = A⁻¹(Fnodal(a*)−Qint+c);
     its exact reverse-mode gradient differentiates the CONVERGED fixed point, NOT the Aitken iteration
@@ -462,6 +463,8 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
     wa = lambda v: wp.array(v[None].astype(NP), dtype=DTYPE, device=dev)
     zc = lambda: wp.zeros((1, ndof), dtype=DTYPE, device=dev)
     Vw = V3(*[float(v) for v in np.asarray(Vinf, float)])
+    Vinf0 = np.asarray(Vinf, float)
+    Vw_of = lambda tt: V3(*[float(v) for v in (Vinf0 + (gust[tt] if gust is not None else 0.0))])  # 1-cos gust per step
     te = wp.array(np.array([(nx - 1) * ny + j for j in range(ny)], np.int32), dtype=wp.int32, device=dev)
     pm = _pos_mask(C); coef = beta * dt * dt
     aero = UnsteadyAeroGpu(nx, ny, Vinf, dt, dev)
@@ -485,6 +488,7 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
     gammas = []; gprev_list = []; wake_snaps = []
     gprev_np = np.zeros((1, npan)); cur_wr = None; cur_wg = None
     for t in range(N):
+        Vw = Vw_of(t); aero.Vw = Vw                          # per-step gusted freestream
         q_pred = q + dt * dq + dt * dt * (0.5 - beta) * a
         v_pred = dq + dt * (1.0 - gamma) * a
         qpw = wa(q_pred)
@@ -547,8 +551,11 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
     adj_gamma_carry = None; adj_wr_next = None; adj_wg_next = None
     PT = P.T; DT = dist.T
     for t in reversed(range(N)):
+        if dLdq is not None: adj_q = adj_q + dLdq[t + 1]     # general per-step loss: explicit ∂L/∂q_{t+1}
+        if dLddq is not None: adj_dq = adj_dq + dLddq[t + 1]  # explicit ∂L/∂dq_{t+1}
         q_pred = q_preds[t]; v_pred = v_preds[t]; a_star = a_stars[t]
         q_out = q_outs[t]; dq_out = dq_outs[t]; gprev_t = gprev_list[t]
+        aero.Vw = Vw_of(t)                                   # match the forward's per-step gusted freestream
         wr_np, wg_np, nw_t = wake_snaps[t]
         qpw = wa(q_pred)
         Kblk = assemble_kmem_blocks(qpw, C, dev)
@@ -563,8 +570,9 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
             adj_Fp = (DT @ uvec).reshape(npan, 3) if uvec is not None else np.zeros((npan, 3))
             return aero.backward(adj_Fp, agamma, awr, awg)   # -> adj_corners, adj_cvel, adj_gprev, adj_wr, adj_wg
 
-        # STEP A: seed g = ∂L/∂a*  (downstream q/dq/a + aero OUTPUT-path a*-sensitivity)
+        # STEP A: seed g = ∂L/∂a*  (downstream q/dq/a + explicit per-step ∂L/∂a* + aero OUTPUT path)
         g = beta * dt * dt * adj_q + gamma * dt * adj_dq + adj_a
+        if dLda is not None: g = g + dLda[t + 1]
         out_gprev = None; out_wr = None; out_wg = None
         out_qpred = np.zeros(ndof); out_vpred = np.zeros(ndof)
         if (adj_gamma_carry is not None) or (adj_wr_next is not None):
