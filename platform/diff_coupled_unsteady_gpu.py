@@ -308,7 +308,7 @@ def coupled_unsteady_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, ny,
 
 def verify(nx=3, ny=3, N=6, dt=1e-5, seed=0):
     wp.init()
-    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    sh = _build_shell(nx=nx, ny=ny); sh.set_bc([i for i in range(nx + 1)]); C = ANCFConstants(sh, device=cfg.DEVICE)  # clamped cantilever root
     rng = np.random.default_rng(seed); ne = sh.ne
     Es = np.exp(0.2 * rng.standard_normal(ne)); Rs = np.exp(0.2 * rng.standard_normal(ne))
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
@@ -335,7 +335,7 @@ def verify_grad(nx=3, ny=3, N=6, dt=1e-5, seed=0, use_wake=False, elems=None):
     """fix3 adjoint vs FD oracle. use_wake=False = sub-step 1 (structure design + moving-body aero
     + dΓ/dt coupling, no wake recurrence); use_wake=True = sub-step 2 (full wake history)."""
     wp.init()
-    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    sh = _build_shell(nx=nx, ny=ny); sh.set_bc([i for i in range(nx + 1)]); C = ANCFConstants(sh, device=cfg.DEVICE)  # clamped cantilever root
     rng = np.random.default_rng(seed); ne = sh.ne
     Es = np.exp(0.2 * rng.standard_normal(ne)); Rs = np.exp(0.2 * rng.standard_normal(ne))
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
@@ -363,7 +363,7 @@ def verify_grad_control(nx=3, ny=3, N=5, dt=1e-5, seed=1, use_wake=True, eps=1e-
     """fix3/Phase-E: validate the CONTROL gradient gC = ∂L/∂u_t (the SHAC policy-gradient signal)
     through the full unsteady coupled FSI, vs FD of the numpy oracle."""
     wp.init()
-    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    sh = _build_shell(nx=nx, ny=ny); sh.set_bc([i for i in range(nx + 1)]); C = ANCFConstants(sh, device=cfg.DEVICE)  # clamped cantilever root
     rng = np.random.default_rng(seed); ne = sh.ne
     Es = np.exp(0.2 * rng.standard_normal(ne)); Rs = np.exp(0.2 * rng.standard_normal(ne))
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
@@ -401,7 +401,7 @@ def verify_policy_grad(nx=3, ny=3, N=5, dt=1e-5, seed=3, use_wake=True, k0=8.0, 
     (accumulated through the differentiated rollout, incl. the ∂u/∂dq feedback term that feeds the
     state adjoint) vs FD of the numpy oracle — true closed-loop SHAC, not an open-loop schedule."""
     wp.init()
-    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    sh = _build_shell(nx=nx, ny=ny); sh.set_bc([i for i in range(nx + 1)]); C = ANCFConstants(sh, device=cfg.DEVICE)  # clamped cantilever root
     rng = np.random.default_rng(seed); ne = sh.ne; ndof = sh.ndof
     Es = np.exp(0.1 * rng.standard_normal(ne)); Rs = np.exp(0.1 * rng.standard_normal(ne))
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
@@ -432,7 +432,7 @@ def demo_joint_descent(nx=3, ny=3, N=5, dt=1e-5, iters=15, use_wake=True, seed=2
     i.e. the validated joint gradient is usable for optimisation. Small toy; the real co-design
     archive (Phase F) needs A100-scale compute."""
     wp.init()
-    sh = _build_shell(nx=nx, ny=ny); C = ANCFConstants(sh, device=cfg.DEVICE)
+    sh = _build_shell(nx=nx, ny=ny); sh.set_bc([i for i in range(nx + 1)]); C = ANCFConstants(sh, device=cfg.DEVICE)  # clamped cantilever root
     rng = np.random.default_rng(seed); ne = sh.ne; ndof = sh.ndof
     free = np.array(sorted(set(range(ndof)) - set(sh._bc_dofs)))
     fmask = np.zeros(ndof); fmask[free] = 1.0

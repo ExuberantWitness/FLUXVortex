@@ -57,10 +57,17 @@ def _basis(nx, ny):
     return B
 
 
+def clamp_root(sh, nx):
+    """Clamp the span-root edge (j=0: nodes 0..nx) → a proper cantilever wing. _build_shell ships
+    with NO BCs (free-floating); a clamped root is the correct aeroelastic boundary condition."""
+    sh.set_bc([i for i in range(nx + 1)])
+    return sh
+
+
 class Env:
     def __init__(self, nx=NX, ny=NY, seed=0):
         self.nx, self.ny = nx, ny
-        self.sh = _build_shell(nx=nx, ny=ny)
+        self.sh = clamp_root(_build_shell(nx=nx, ny=ny), nx)    # cantilever (root clamped)
         self.C = ANCFConstants(self.sh, device=cfg.DEVICE)
         self.ne = self.sh.ne; self.ndof = self.sh.ndof
         self.B = _basis(nx, ny)

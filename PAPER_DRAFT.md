@@ -62,12 +62,13 @@ Our specific contributions:
 
 ### 2.1 Structure — ANCF shell with a differentiable design field
 
-The wing is an ANCF thin-shell (9 DOF/node, 36 DOF/element). The internal force is *linear in a
-per-element stiffness scale* `E_scale[e]` and the element mass block is *linear in a per-element
-density scale* `ρ_scale[e]`; these per-element scales are the structural design variables. A low-
-dimensional design is obtained by mapping a small set of spanwise spline control points through a fixed
-basis, `E_scale = exp(B·θ_E)`, so the design stays smooth and the gradient is exact through the chain
-rule. The membrane tangent stiffness `K_t` is assembled for the adjoint state-transition.
+The wing is an ANCF thin-shell (9 DOF/node, 36 DOF/element) **clamped at the span root** (a cantilever
+wing — the standard aeroelastic boundary condition). The internal force is *linear in a per-element
+stiffness scale* `E_scale[e]` and the element mass block is *linear in a per-element density scale*
+`ρ_scale[e]`; these per-element scales are the structural design variables. A low-dimensional design is
+obtained by mapping a small set of spanwise spline control points through a fixed basis,
+`E_scale = exp(B·θ_E)`, so the design stays smooth and the gradient is exact through the chain rule.
+The tangent stiffness `K_t` is assembled for the adjoint state-transition.
 
 ### 2.2 Aerodynamics — unsteady free-wake ring-UVLM
 
@@ -161,14 +162,14 @@ co-optimised *within* each cell. Cheap forward evaluations fill cells by mutatio
 gradient-arborescence emitter uses the **exact validated design+control gradient** (gE, gR, dL/dk — all
 checked against finite differences, §3) through the spline chain rule to sharpen quality.
 
-On **one RTX 4090 (fp64)**, 469/537 stable evaluations in **541 s**:
+On **one RTX 4090 (fp64)**, 480/517 stable evaluations in **420 s**:
 
-- **141 / 196 niches** illuminated (72 % coverage); gust-deflection quality varies by **orders of
+- **162 / 196 niches** illuminated (83 % coverage); gust-deflection quality varies by **orders of
   magnitude** across designs (the design genuinely matters).
-- Adding the closed-loop control axis improves the best achievable gust rejection by ≈4× over the
-  structure-only archive (best quality −2.6e-3 vs −1.1e-2) — a real structure–control interaction.
+- Adding the closed-loop control axis improves the best achievable gust rejection severalfold over the
+  structure-only archive (best quality −2.4e-3) — a real structure–control interaction.
 - **Finding (the MAP-Elites phenomenon):** the high-quality (best gust-rejecting) niches span **both a
-  wide stiffness taper (≈3.3 wide) and a wide control gain (≈5 of the 0–9 range)** — i.e. there are
+  wide stiffness taper (≈3.0 wide) and a wide control gain (≈5 of the 0–9 range)** — i.e. there are
   *many distinct (body × control) co-designs that are each excellent gust rejectors*, not a single
   optimum. Each illuminated cell carries a distinct full spanwise stiffness **and** mass distribution
   **and** its own control gain (Fig. 1).
@@ -178,10 +179,10 @@ result: high-quality niches span a wide stiffness taper but a *narrow* mass tape
 outboard mass is constrained both by performance and by the explicit-integrator feasibility boundary.
 
 **Robustness.** Repeating the (stiffness × control) co-design with an independent random seed (different
-initial population and gust realisation) reproduces the result — 143 vs 141 niches, 73 % vs 72 %
-coverage, best quality −2.35e-3 vs −2.6e-3, and the same wide top-quality spread in both stiffness
-taper (3.1 vs 3.3) and control gain (4.0 vs 5.1) — so the diverse (body × control) phenomenon is a
-property of the landscape, not of a particular seed.
+initial population and gust realisation) reproduces the result — 143 vs 162 niches, 73 % vs 83 %
+coverage, and the same wide top-quality spread in stiffness taper (2.9 vs 3.0) and control gain (3.2 vs
+5.2) — so the diverse (body × control) phenomenon is a property of the landscape, not of a particular
+seed.
 
 This is iteration-1 (single gust-rejection objective, spanwise spline design, global position-DOF
 feedback control); it demonstrates that the differentiable co-design pipeline produces a diverse,
@@ -195,11 +196,11 @@ stiffness (solid) and mass (dashed) profile with its own control gain.*
 
 Gust rejection is not free: it is bought with **control effort**. For every illuminated elite we
 recover its actuation energy `E_ctrl = Σ_t ‖u_t‖² dt` from the velocity trajectory of the coupled
-unsteady rollout, giving a second objective. The (gust-deflection, control-effort) scatter of the 141
-co-designed elites traces a clear **achievable Pareto front** (15 non-dominated designs): at one
-extreme, *passive* designs (k→0, zero actuation) leave ≈1.6e-2 deflection energy; spending control
-effort walks the front down to ≈2.6e-3 — a ≈6× gust-load reduction — and the **morphology shifts along
-the front** (stiffness taper ≈1.8 at the low-effort/passive end vs ≈1.3 at the low-deflection/active
+unsteady rollout, giving a second objective. The (gust-deflection, control-effort) scatter of the 162
+co-designed elites traces a clear **achievable Pareto front** (16 non-dominated designs): at one
+extreme, *passive* designs (k→0, zero actuation) leave ≈2.5e-2 deflection energy; spending control
+effort walks the front down to ≈2.1e-3 — a ≈12× gust-load reduction — and the **morphology shifts along
+the front** (stiffness taper ≈2.0 at the low-effort/passive end vs ≈0.9 at the low-deflection/active
 end). This is the aeroservoelastic co-design statement: *the structure and the controller must be
 designed together*, because the best deflection-vs-effort trade-off is reached by particular
 combinations of spanwise stiffness and feedback gain, not by either alone (Fig. 2).
@@ -212,21 +213,26 @@ non-dominated structure+control co-designs.*
 
 ## 5. Limitations and next steps (stated honestly)
 
-- **Regime of the differentiable archive vs the reachable dynamic regime.** A modal analysis of the
-  soft test wing gives a fundamental frequency ≈0.2 Hz (period ≈4 s) and a highest mode ≈0.7–1.3 kHz, so
-  the explicit symplectic step is bounded by the *fast* mode (dt_crit≈250–670 µs) and needs O(10³–10⁴)
-  steps to traverse one fundamental period — the differentiable archive of §4 therefore runs at dt=1e-5
-  over ≈4×10⁻⁴ s, capturing the *initial* gust-load deflection (a legitimate, design-sensitive
-  aeroservoelastic quantity, ~30 % landscape spread) rather than a multi-period response. We have
-  separately implemented and verified a **linearly-implicit Newmark forward (β=¼,γ=½) with wake
-  truncation**: because it is unconditionally stable for the structure, dt is set by the *slow* mode, and
-  it is stable (IMEX, lagged wake) up to dt≈10⁻³ — at which the aeroelastic bending fully develops
-  (deflection energy grows from ~10⁻² to O(1), a far richer and more design-sensitive regime), at
-  affordable step counts with a bounded wake. So the dynamic regime is reachable; the remaining work is
-  the **adjoint of the implicit+truncated scheme** (the M+β·dt²·K_t solve VJP, the K_t(q_pred) and
-  wake-truncation adjoints) to drive the gradient-based co-design there, plus a predictor–corrector pass
-  for the largest steps. (This supersedes an earlier mis-attribution of the short window to integrator
-  stability.)
+- **Regime of the differentiable archive, and what the *dynamic* regime requires.** The differentiable
+  archive of §4 runs at dt=1e-5 over ≈4×10⁻⁴ s — the *initial* gust-load deflection (a legitimate,
+  design-sensitive aeroservoelastic quantity, ~30 % landscape spread), not a multi-period response. A
+  careful investigation of how to reach the full dynamic response produced two findings we report as the
+  honest path forward. (i) A **linearly-implicit Newmark forward with wake truncation** lets dt be set by
+  the slow structural mode (not the fast one): on the soft wing the aeroelastic bending then fully
+  develops (deflection energy ~10⁻²→O(1)) at affordable step counts with a bounded wake. (ii) On a
+  realistic stiffer/lighter (Pazy-class) cantilever, however, the partitioned (lagged-wake) coupling
+  exhibits the classic **fluid added-mass instability** — it diverges *unconditionally* in dt and
+  independently of numerical damping (verified: γ∈{0.6,0.8,1.0} all diverge). This is the textbook
+  signature requiring **strong (predictor–corrector) coupling**. The fully differentiable *dynamic*
+  co-design therefore needs the adjoint of an implicit-structure + strong-coupling + wake-truncation
+  solver; the present contribution is the validated differentiable transient stack and the co-design it
+  enables. (An earlier draft mis-attributed the short window to explicit-integrator stability; the modal
+  analysis and the added-mass diagnosis above correct that.)
+- **A boundary-condition correction.** The shell builder shipped without boundary conditions, so an
+  earlier version of the archive ran an unconstrained (free-floating) wing — harmless over the very short
+  quasi-static rollout but incorrect in principle. The results in §4 use the proper **clamped cantilever**
+  root; this both fixes the physics and, being far better conditioned than the near-singular free
+  system, improves coverage (162 vs 141 niches, 83 % vs 72 %).
 - **Goland flutter benchmark — not yet reproduced on this stack.** (i) An isotropic ANCF plate has
   bending/torsion ratio EI/GJ ≈ (1+ν)/2 ≈ 0.65, whereas the Goland wing needs ≈ 9.9, so matching it
   requires an **orthotropic** constitutive calibration; (ii) flutter must be tracked over many
