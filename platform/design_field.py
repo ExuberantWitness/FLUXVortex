@@ -140,6 +140,84 @@ def cruise_efficiency(field):
     return 22.0 + 2.2 * (a["s_root"] - 0.5) - pen
 
 
+class MassField:
+    """Spanwise MASS-scale field ρ(ξ), ξ∈[0,1] (root→tip), from K control points — the co-design's
+    SECOND structural distribution (mass), complementary to StiffnessField. Maps to (a) the per-element
+    ρ-scale on the real ANCF wing (ANCFShell.set_distribution) and (b) reduced aggregates that drive the
+    fast flight dynamics, grounded in the validated coupled-FSI mechanism (route-A attitude finding):
+    TIP mass adds INERTIA that resists the spanwise-lever-weighted gust excursion (passive gust
+    resistance), but at a WEIGHT cost (efficiency) and a control-sluggishness cost (roll inertia).
+    A UNIFORM field ρ=1 is the nominal wing (no change). Physics:
+      m_total   = mean mass scale            -> weight (lift/power requirement; efficiency cost)
+      m_gust    = load-weighted (tip-biased) inertia ∫w·ρ/∫w -> passive gust resistance (route-A)
+      I_roll    = spanwise 2nd moment ∫ξ²·ρ   -> roll inertia (control sluggishness)
+    """
+
+    def __init__(self, ctrl, xi=None):
+        self.ctrl = np.asarray(ctrl, float)
+        K = len(self.ctrl)
+        self.xi_ctrl = np.linspace(0.0, 1.0, K) if xi is None else np.asarray(xi, float)
+        self._xg = np.linspace(0.0, 1.0, _NG)
+        self._rg = self.value(self._xg)
+        self._wg = self._xg * _chord(self._xg)                      # same aero-load weight as stiffness
+
+    @classmethod
+    def uniform(cls, r=1.0, K=4):
+        return cls(np.full(K, float(r)))
+
+    @classmethod
+    def from_root_tip(cls, root, tip, K=4):
+        return cls(np.linspace(float(root), float(tip), K))
+
+    @classmethod
+    def sample(cls, rng, K=4, lo=0.5, hi=1.8):
+        return cls(np.exp(rng.uniform(np.log(lo), np.log(hi), size=K)))
+
+    def value(self, xi):
+        return np.interp(np.clip(xi, 0.0, 1.0), self.xi_ctrl, self.ctrl)
+
+    def per_element(self, centers_y, span, root_y=0.0):
+        xi = (np.abs(np.asarray(centers_y, float)) - root_y) / (span - root_y + 1e-9)
+        return self.value(xi)
+
+    def m_total(self):
+        return float(self._rg.mean())
+
+    def m_gust(self):
+        """Tip-biased (load-weighted) inertia -> passive gust resistance (uniform -> 1)."""
+        return float(_trapz(self._wg * self._rg, self._xg) / _trapz(self._wg, self._xg))
+
+    def I_roll(self):
+        """Spanwise 2nd moment of mass -> roll inertia (uniform -> ∫ξ² = 1/3)."""
+        return float(_trapz(self._xg ** 2 * self._rg, self._xg))
+
+    def aggregates(self):
+        return dict(m_total=self.m_total(), m_gust=self.m_gust(), I_roll=self.I_roll(),
+                    m_mean=float(self._rg.mean()))
+
+
+def combined_gust_factor(sf, mf):
+    """Gust transmissibility from BOTH tip-compliance washout (stiffness) AND tip-inertia resistance
+    (mass). Lower = better gust rejection. Reduces to gust_factor(sf) when mass is uniform (m_gust=1)."""
+    base = gust_factor(sf)                                   # stiffness washout in (0.5,1)
+    mg = mf.m_gust() if not np.isscalar(mf) else 1.0
+    return float(base / (1.0 + 0.35 * (mg - 1.0)))          # tip inertia attenuates further (mg>1 -> lower)
+
+
+def combined_efficiency(sf, mf):
+    """Cruise L/D: root-stiffness shape retention − over-flex penalty − WEIGHT cost of total mass."""
+    eff = cruise_efficiency(sf)
+    mt = mf.m_total() if not np.isscalar(mf) else float(mf)
+    return float(eff - 3.0 * max(0.0, mt - 1.0))            # weight above nominal costs L/D-equiv
+
+
+def control_authority(sf, mf):
+    """Design-dependent control authority: stiffness ctrl_factor reduced by roll inertia (sluggishness)."""
+    ca = ctrl_factor(sf)
+    Ir = mf.I_roll() if not np.isscalar(mf) else (1.0 / 3.0)
+    return float(ca / (1.0 + 1.5 * max(0.0, Ir - 1.0 / 3.0)))
+
+
 def as_field(design, K=4):
     """Coerce a design (scalar / (K,) ctrl array / StiffnessField) to a StiffnessField."""
     if isinstance(design, StiffnessField):
@@ -184,5 +262,35 @@ def _selfcheck():
     return ok
 
 
+def _mass_selfcheck():
+    """Mass field: uniform reduces to nominal (no change), and a tip-mass distribution buys passive gust
+    resistance at a weight/control cost — a real co-design trade-off complementary to stiffness."""
+    print("mass-field self-check: uniform mass == nominal (backward-compatible)")
+    sf = StiffnessField.uniform(1.2)
+    mu = MassField.uniform(1.0)
+    ok = (abs(mu.m_gust() - 1.0) < 1e-9 and abs(mu.m_total() - 1.0) < 1e-9 and abs(mu.I_roll() - 1.0 / 3.0) < 1e-3
+          and abs(combined_gust_factor(sf, mu) - gust_factor(sf)) < 1e-9
+          and abs(combined_efficiency(sf, mu) - cruise_efficiency(sf)) < 1e-9)
+    print(f"  uniform-recovery {'PASS' if ok else 'FAIL'} (m_gust={mu.m_gust():.3f} m_total={mu.m_total():.3f} I_roll={mu.I_roll():.3f})")
+    print("mass distribution trade-off (same stiff-root/flex-tip wing, equal mean mass=1.1):")
+    for name, mf in [("uniform   ", MassField.uniform(1.1)),
+                     ("mass→tip  ", MassField.from_root_tip(0.5, 1.7)),
+                     ("mass→root ", MassField.from_root_tip(1.7, 0.5))]:
+        a = mf.aggregates()
+        gf = combined_gust_factor(sf, mf); eff = combined_efficiency(sf, mf); ca = control_authority(sf, mf)
+        print(f"  {name} m_mean={a['m_mean']:.2f} m_gust={a['m_gust']:.2f} I_roll={a['I_roll']:.2f} "
+              f"-> gust_factor={gf:.3f} (lower=better) L/D={eff:.2f} ctrl_auth={ca:.3f}")
+    # tip-mass should LOWER the gust factor (passive resistance) vs root-mass at equal mean mass
+    g_tip = combined_gust_factor(sf, MassField.from_root_tip(0.5, 1.7))
+    g_root = combined_gust_factor(sf, MassField.from_root_tip(1.7, 0.5))
+    payoff = g_tip < g_root
+    print(f"  tip-mass gust resistance: gust_factor(tip)={g_tip:.3f} < (root)={g_root:.3f}: "
+          f"{'YES — passive gust resistance from tip inertia (route-A mechanism)' if payoff else 'no'}")
+    return ok and payoff
+
+
 if __name__ == "__main__":
-    raise SystemExit(0 if _selfcheck() else 1)
+    import sys
+    if "--mass" in sys.argv:
+        raise SystemExit(0 if _mass_selfcheck() else 1)
+    raise SystemExit(0 if (_selfcheck() and _mass_selfcheck()) else 1)
