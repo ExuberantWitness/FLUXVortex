@@ -440,7 +440,8 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
                                  Vinf=VINF, use_wake=False, cg_tol=1e-11, control=None, fb_gain=None,
                                  beta=0.25, gamma=0.5, wake_max=80, pc_it=30, pc_tol=1e-9,
                                  omega0=0.3, adj_it=80, adj_tol=1e-11,
-                                 dLdq=None, dLddq=None, dLda=None, gust=None, loss_fn=None):
+                                 dLdq=None, dLddq=None, dLda=None, gust=None, loss_fn=None,
+                                 use_graph_cg=False, cg_niter=160):
     """Differentiable adjoint of the STRONG-coupled (predictor-corrector) unsteady FSI forward via the
     IMPLICIT FUNCTION THEOREM. The forward converges a per-step fixed point a* = A⁻¹(Fnodal(a*)−Qint+c);
     its exact reverse-mode gradient differentiates the CONVERGED fixed point, NOT the Aitken iteration
@@ -473,7 +474,14 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
     wr = wp.zeros((maxw, 4), dtype=V3, device=dev); wr_new = wp.zeros((maxw, 4), dtype=V3, device=dev)
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev)
 
+    gcg = None
+    if use_graph_cg:                                         # CUDA-graph fixed-iteration CG (3-4.5× at scale)
+        from cg_graph import GraphCG
+        gcg = GraphCG(Mscaled, C.edofs, C.free, coef, ndof, C.ne, niter=cg_niter, device=dev)
+
     def Ainv(vfree, Kblk):                                    # A⁻¹ v  on free DOFs, A = M + coef·K_mem
+        if gcg is not None:                                  # A=M+coef·K set per step via gcg.set_A(Kblk)
+            return gcg.solve(wa(vfree * C.free_np)).numpy()[0]
         x, _ = structural_cg(wa(vfree * C.free_np), Mscaled, Kblk, C.edofs, C.free, coef, ndof,
                              tol=cg_tol, device=dev)
         return x.numpy()[0]
@@ -496,6 +504,7 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
         Qint = Qmem.numpy()[0] + Qbend.numpy()[0]
         Kblk = assemble_kmem_blocks(qpw, C, dev)
         wp.launch(dsg._scale_kblk, dim=(1, C.ne, 36, 36), inputs=[Kblk, Esw], device=dev)
+        if gcg is not None: gcg.set_A(Kblk)                  # A for this step's PC inner solves (forward)
         ctrl_t = (control[t] if control is not None else 0.0)
         wr_t = wp.array(cur_wr, dtype=V3, device=dev) if nw > 0 else dummy_wr
         wg_t = wp.array(cur_wg, dtype=DTYPE, device=dev) if nw > 0 else dummy_wg
@@ -566,6 +575,7 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
         qpw = wa(q_pred)
         Kblk = assemble_kmem_blocks(qpw, C, dev)
         wp.launch(dsg._scale_kblk, dim=(1, C.ne, 36, 36), inputs=[Kblk, Esw], device=dev)
+        if gcg is not None: gcg.set_A(Kblk)                  # A for this step's adjoint inner solves
         # aero linearization at the converged geometry (q_out, dq_out), with this step's input wake/gprev
         wr_t = wp.array(wr_np, dtype=V3, device=dev, requires_grad=True) if nw_t > 0 else dummy_wr
         wg_t = wp.array(wg_np, dtype=DTYPE, device=dev, requires_grad=True) if nw_t > 0 else dummy_wg
