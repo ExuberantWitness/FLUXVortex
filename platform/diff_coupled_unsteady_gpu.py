@@ -542,10 +542,13 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
             else:
                 nw = nw_new; cur_wr = wr.numpy()[:nw_new].copy(); cur_wg = wg.numpy()[:nw_new].copy()
         gprev_np = gam_np
-    L = float(w @ q)
+    L = float(w @ q); dLdk_extra = 0.0
     if loss_fn is not None:                                   # general trajectory functional on the
-        # GUSTED trajectory the adjoint differentiates: returns (L, dLdq, dLddq, dLda), each (N+1,ndof)
-        L, dLdq, dLddq, dLda = loss_fn(np.array(q_outs), np.array(dq_outs), np.array(a_stars), q0, dq0)
+        # GUSTED trajectory the adjoint differentiates: returns (L, dLdq, dLddq, dLda[, dLdk_extra]),
+        # the (N+1,ndof) per-step seeds plus an optional EXPLICIT ∂L/∂k (e.g. a control-effort ½k²‖·‖² term)
+        _r = loss_fn(np.array(q_outs), np.array(dq_outs), np.array(a_stars), q0, dq0)
+        L, dLdq, dLddq, dLda = _r[:4]
+        if len(_r) > 4 and _r[4] is not None: dLdk_extra = float(_r[4])
 
     # ---- backward (IFT adjoint of the PC fixed point) ----
     gE = wp.zeros(C.ne, dtype=DTYPE, device=dev); gR = wp.zeros(C.ne, dtype=DTYPE, device=dev)
@@ -653,7 +656,7 @@ def coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, w, Es, Rs, nx, 
               outputs=[gE], device=dev)
     wp.launch(dsg.adj_rho_kernel, dim=(1, C.ne), inputs=[C.Me, C.edofs, wa(u0 * C.free_np), wa(a0)],
               outputs=[gR], device=dev)
-    return L, gE.numpy(), gR.numpy(), gC, dL_dk
+    return L, gE.numpy(), gR.numpy(), gC, dL_dk + dLdk_extra   # closed-loop chain + explicit loss ∂/∂k
 
 
 def verify_pc_grad(nx=3, ny=3, N=6, dt=1e-4, seed=0, use_wake=False, elems=None, pc_it=40, pc_tol=1e-12):

@@ -104,17 +104,27 @@ def attitude_weights(sh):
     return phi_p / s, phi_r / s
 
 
-def make_loss_fn(phi_p, phi_r, q_ref):
-    """Attitude gust-load-alleviation loss J = Σ_t ½[(φ_p·u_t)²+(φ_r·u_t)²], u_t=q_t−q_ref."""
+def make_loss_fn(phi_p, phi_r, q_ref, pos=None, k=0.0, lam=0.0, dt=1.0):
+    """Gust-load-alleviation loss
+        J = Σ_t ½[(φ_p·u_t)²+(φ_r·u_t)²]              (attitude excursion, u_t=q_t−q_ref)
+            + ½·λ·k²·Σ_t ‖dq_t⊙pos‖²·dt              (control effort / power of u_t=−k·dq_t⊙pos)
+    Returns (L, dLdq, dLddq, dLda, dLdk_extra): the attitude term seeds q (dLdq), the effort term
+    seeds the velocity (dLddq) and contributes an EXPLICIT ∂L/∂k (the closed-loop chain ∂L/∂k via the
+    trajectory is handled by the adjoint's dL_dk)."""
     def loss_fn(q_outs, dq_outs, a_stars, q0_, dq0_):
         Nn, ndof = q_outs.shape
-        dLdq = np.zeros((Nn + 1, ndof)); L = 0.0
+        dLdq = np.zeros((Nn + 1, ndof)); dLddq = np.zeros((Nn + 1, ndof)); L = 0.0; dLdk = 0.0
         for t in range(Nn):
             u = q_outs[t] - q_ref
             tp = float(phi_p @ u); tr = float(phi_r @ u)
             L += 0.5 * (tp * tp + tr * tr)
             dLdq[t + 1] = tp * phi_p + tr * phi_r
-        return L, dLdq, None, None
+            if pos is not None and lam > 0.0:
+                up = dq_outs[t] * pos
+                L += 0.5 * lam * k * k * float(up @ up) * dt
+                dLddq[t + 1] = lam * k * k * up * dt          # pos²=pos (binary mask)
+                dLdk += lam * k * float(up @ up) * dt          # explicit ∂(½λk²‖·‖²dt)/∂k
+        return L, dLdq, dLddq if (pos is not None and lam > 0.0) else None, None, dLdk
     return loss_fn
 
 
@@ -214,6 +224,95 @@ def optimize(nx=6, ny=4, N=24, dt=2e-4, nctrl=3, iters=40, lr=0.08, w0=3.0,
     if verbose:
         print(f"  final J={L_final:.4e}  reduction {100 * (1 - L_final / L0):.1f}%  vs uniform baseline")
     return dict(hist=hist, thetaE=thetaE, thetaR=thetaR, B=B, ys=ys, L0=L0, Lf=L_final, ne=ne, nctrl=nctrl)
+
+
+def optimize_joint(nx=6, ny=4, N=20, dt=2e-4, nctrl=4, iters=16, lr=0.12, lr_k=0.4, w0=3.0,
+                   k_init=2.0, lam=3e-3, k_hi=12.0, use_wake=True, pc_it=22, pc_tol=1e-8,
+                   cg_tol=1e-6, seed=0, verbose=True):
+    """JOINT structure + control co-design: Adam on the spanwise (E,ρ) taper (fixed material+mass
+    budget, redistribution) AND a closed-loop feedback gain k, minimising J = attitude excursion +
+    λ·control effort under a 1-cosine gust — all gradients through the differentiable strong-coupled
+    FSI adjoint (dL/dk = closed-loop chain + explicit effort ∂/∂k). Returns history + optimal design."""
+    wp.init()
+    sh = build_wing(nx, ny); C = ANCFConstants(sh, device=cfg.DEVICE); ndof = sh.ndof; ne = sh.ne
+    free = np.array(sorted(set(range(ndof)) - set(sh._bc_dofs)))
+    q0 = sh.q.copy(); dq0 = np.zeros(ndof)
+    P, dist = dcu._index_maps(sh, nx, ny)
+    B, ys = spanwise_basis(sh, nx, ny, nctrl)
+    phi_p, phi_r = attitude_weights(sh); pos = dcg._pos_mask(C)
+    gust = gust_1cos(N, dt, w0=w0); volw = np.ones(ne) / ne
+
+    def _renorm(th): return th - float(np.log(np.mean(np.exp(B @ th))))
+
+    def eval_grad(thE, thR, k):
+        Es, Rs = theta_to_scales(thE, thR, B); sh.set_distribution(E_scale=Es, rho_scale=Rs)
+        lf = make_loss_fn(phi_p, phi_r, q0, pos=pos, k=k, lam=lam, dt=dt)
+        L, gE, gR, _, gk = dcg.coupled_unsteady_pc_grad_gpu(
+            sh, C, P, dist, q0, dq0, N, dt, np.zeros(ndof), Es, Rs, nx, ny, use_wake=use_wake,
+            fb_gain=k, cg_tol=cg_tol, pc_it=pc_it, pc_tol=pc_tol, gust=gust, loss_fn=lf)
+        gthE = B.T @ (gE * Es); gthR = B.T @ (gR * Rs)
+        dE = B.T @ (volw * Es); dR = B.T @ (volw * Rs)
+        gthE -= (gthE @ dE) / (dE @ dE + 1e-30) * dE; gthR -= (gthR @ dR) / (dR @ dR + 1e-30) * dR
+        return L, gthE, gthR, gk
+
+    thE = np.zeros(nctrl); thR = np.zeros(nctrl); k = float(k_init)
+    mE = np.zeros(nctrl); vE = np.zeros(nctrl); mR = np.zeros(nctrl); vR = np.zeros(nctrl); mk = 0.0; vk = 0.0
+    b1, b2, eps = 0.9, 0.999, 1e-8
+    LO_E, HI_E, LO_R, HI_R = -1.5, 1.5, -0.8, 0.8
+    hist = []; L0 = None
+    for it in range(1, iters + 1):
+        L, gE, gR, gk = eval_grad(thE, thR, k)
+        if L0 is None: L0 = L
+        hist.append((it, L, thE.copy(), thR.copy(), k))
+        if verbose:
+            print(f"  it {it:3d}  J={L:.4e} (J/J0={L / L0:.3f})  k={k:.3f}  θE={np.round(thE, 2)}", flush=True)
+        for (th, g, m, v, lo, hi) in [(thE, gE, mE, vE, LO_E, HI_E), (thR, gR, mR, vR, LO_R, HI_R)]:
+            m[:] = b1 * m + (1 - b1) * g; v[:] = b2 * v + (1 - b2) * g * g
+            th -= lr * (m / (1 - b1 ** it)) / (np.sqrt(v / (1 - b2 ** it)) + eps); np.clip(th, lo, hi, out=th)
+        thE[:] = _renorm(thE); thR[:] = _renorm(thR)
+        mk = b1 * mk + (1 - b1) * gk; vk = b2 * vk + (1 - b2) * gk * gk
+        k -= lr_k * (mk / (1 - b1 ** it)) / (np.sqrt(vk / (1 - b2 ** it)) + eps)
+        k = float(np.clip(k, 0.0, k_hi))
+    Lf, _, _, _ = eval_grad(thE, thR, k)
+    if verbose:
+        print(f"  final J={Lf:.4e}  reduction {100 * (1 - Lf / L0):.1f}%  k*={k:.3f}", flush=True)
+    return dict(hist=hist, thetaE=thE, thetaR=thR, k=k, B=B, ys=ys, L0=L0, Lf=Lf, ne=ne, nctrl=nctrl, lam=lam)
+
+
+def verify_joint_grad(nx=4, ny=3, N=6, dt=2e-4, k0=4.0, lam=5e-3, seed=0):
+    """Self-FD validation of the JOINT structure+control gradient (attitude + control-effort loss,
+    closed-loop gain k): ∂J/∂E and ∂J/∂k vs central-FD of the adjoint's own deterministic loss."""
+    wp.init()
+    sh = build_wing(nx, ny); C = ANCFConstants(sh, device=cfg.DEVICE); ndof = sh.ndof; ne = sh.ne
+    rng = np.random.default_rng(seed)
+    Es = np.exp(0.1 * rng.standard_normal(ne)); Rs = np.exp(0.1 * rng.standard_normal(ne))
+    sh.set_distribution(E_scale=Es, rho_scale=Rs)
+    free = np.array(sorted(set(range(ndof)) - set(sh._bc_dofs)))
+    q0 = sh.q.copy(); dq0 = np.zeros(ndof)
+    for n in range(ndof // 9):
+        if (9 * n + 2) in free: dq0[9 * n + 2] = 2.0           # gust impulse → non-trivial design sensitivity
+    P, dist = dcu._index_maps(sh, nx, ny)
+    phi_p, phi_r = attitude_weights(sh); pos = dcg._pos_mask(C)
+    gust = gust_1cos(N, dt, w0=4.0)
+
+    def run(E_, R_, k_):
+        sh.set_distribution(E_scale=E_, rho_scale=R_)
+        lf = make_loss_fn(phi_p, phi_r, q0, pos=pos, k=k_, lam=lam, dt=dt)
+        return dcg.coupled_unsteady_pc_grad_gpu(sh, C, P, dist, q0, dq0, N, dt, np.zeros(ndof), E_, R_,
+                  nx, ny, use_wake=False, fb_gain=k_, pc_it=30, pc_tol=1e-11, cg_tol=1e-11, gust=gust, loss_fn=lf)
+    L, gE, gR, _, gk = run(Es, Rs, k0)
+    ek = 1e-5; Lp = run(Es, Rs, k0 + ek)[0]; Lm = run(Es, Rs, k0 - ek)[0]; fdk = (Lp - Lm) / (2 * ek)
+    e = int(np.argmax(np.abs(gE)))                            # the max-sensitivity element (avoid 0/0 FD noise)
+    ee = 1e-6; ep = Es.copy(); ep[e] += ee; em = Es.copy(); em[e] -= ee
+    fdE = (run(ep, Rs, k0)[0] - run(em, Rs, k0)[0]) / (2 * ee)
+    relk = abs(gk - fdk) / (abs(fdk) + 1e-30); relE = abs(gE[e] - fdE) / (abs(fdE) + 1e-30)
+    ok = relk < 2e-3 and relE < 5e-2
+    print(f"JOINT structure+control gradient (attitude + control-effort, k={k0}, λ={lam}, {ne} elems):")
+    print(f"  ∂J/∂k (closed-loop chain + explicit) adj={gk:+.4e} fd={fdk:+.4e}  rel={relk:.2e}")
+    print(f"  ∂J/∂E (design)                       adj={gE[e]:+.4e} fd={fdE:+.4e}  rel={relE:.2e}")
+    print(f"  -> {'PASS' if ok else 'FAIL'}: joint design+control gradient flows through the "
+          f"differentiable STRONG-coupled FSI — structure & closed-loop controller co-optimise together")
+    return ok
 
 
 def figure(result, path=None):

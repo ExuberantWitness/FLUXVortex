@@ -209,6 +209,49 @@ combinations of spanwise stiffness and feedback gain, not by either alone (Fig. 
 deflection over all co-designed elites, coloured by stiffness taper; the front (black) is the set of
 non-dominated structure+control co-designs.*
 
+### 4.2 Reaching the *dynamic* regime — a differentiable strong-coupled adjoint, and gradient co-design under the added-mass instability
+
+The archive of §4 lives in the short, quasi-static gust-load window because its forward is an **explicit
+(partitioned)** coupling. On a realistic light/flexible (Pazy-class) wing the dynamic regime is barred
+by the **fluid added-mass instability**: with the *same* wing, gust and rollout, the partitioned
+(lagged-wake) coupling diverges (peak deflection → NaN), while a **strong (predictor–corrector)**
+coupling stays bounded (3.5 % span). Strong coupling is therefore *mandatory* here, and gradient
+co-design needs the adjoint of that strong-coupled solver.
+
+We built and validated it. The forward is a linearly-implicit-Newmark structural step
+(`A = M(ρ) + β·dt²·K_mem(q;E)`, matrix-free batched CG) strong-coupled to the unsteady free wake by an
+**Aitken-Δ² predictor–corrector** fixed point — the aero force re-evaluated on the current structural
+iterate (~13 coupling iterations/step), the textbook cure for the added-mass instability. The GPU
+forward matches the converged fixed point of a numpy oracle to **8×10⁻¹²–3×10⁻¹¹** (machine precision)
+across dt and with/without the wake. The adjoint differentiates the *converged* fixed point by the
+**implicit function theorem**: the per-step adjoint is itself a fixed point, solved by the *same* Aitken
+relaxation, so the relaxation ω drops out of the gradient (it depends only on the fixed-point Jacobian,
+not the iteration path). Every gradient is validated against finite differences of the strong-coupled
+oracle — design **∂E/∂ρ** (rel 1e-6–1e-4), the **control** gradient ∂L/∂u_t (rel ~1e-3), and the
+**closed-loop policy** gradient dL/dk (rel ~1e-5) — each both with and without the full wake history.
+(Two subtle errors were caught *only* by these FD checks and are documented: the aero output path feeds
+the predictor state, not just the fixed-point seed; and the adjoint fixed-point must use the forward's
+Aitken relaxation, else it diverges under strong feedback exactly where plain Picard would.)
+
+With this adjoint we run **gradient-driven dynamic gust-load alleviation**. A 1-cosine vertical gust
+deforms the wing; the deformation drives a mean-axis attitude excursion that — by conservation of
+angular momentum — tilts a gimbal/IMU-carrying fuselage, so we minimise
+`J = Σ_t ½[(φ_pitch·u_t)² + (φ_roll·u_t)²]` (nominal-inertia-weighted lever functionals of the vertical
+deformation — the canonical body-attitude / root-load gust-alleviation objective). Co-designing the
+spanwise stiffness and mass taper under a **fixed material+mass budget** (a genuine redistribution, via
+budget-conserving gradient projection), Adam through the strong-coupled adjoint cuts the attitude
+excursion by **8.3 %** on one RTX 4090 (24 elements, N=20, free wake), discovering a
+**soft-root→stiff-tip stiffness taper (0.29→2.17) with mass moved outboard (0.78→1.45)** — it stiffens
+and adds inertia to the tip, whose spanwise lever dominates the roll excursion (Fig. 3).
+
+This is exactly the contribution the limitations of an earlier draft flagged as still-missing: a
+*validated, differentiable, strong-coupled* transient FSI whose adjoint enables gradient co-design in
+the added-mass-instability regime that partitioned — and hence prior explicit-forward differentiable —
+co-design cannot enter.
+
+*Figure 3 (`codesign_attitude_gust.png`): left — J/J0 convergence of the dynamic gradient co-design;
+right — the discovered spanwise stiffness and mass taper (soft-root→stiff-tip, mass outboard).*
+
 ---
 
 ## 5. Limitations and next steps (stated honestly)
@@ -225,9 +268,13 @@ non-dominated structure+control co-designs.*
   independently of numerical damping (verified: γ∈{0.6,0.8,1.0} all diverge). This is the textbook
   signature requiring **strong (predictor–corrector) coupling**. The fully differentiable *dynamic*
   co-design therefore needs the adjoint of an implicit-structure + strong-coupling + wake-truncation
-  solver; the present contribution is the validated differentiable transient stack and the co-design it
-  enables. (An earlier draft mis-attributed the short window to explicit-integrator stability; the modal
-  analysis and the added-mass diagnosis above correct that.)
+  solver — **which §4.2 now supplies and validates**: an implicit-function-theorem adjoint of the
+  Aitken predictor–corrector fixed point, with design/control/closed-loop gradients all checked against
+  finite differences, used for gradient co-design *in* the added-mass-instability regime. What remains
+  open is scale (larger meshes, multi-period rollouts with far-field wake merging) and the multi-objective
+  dynamic Pareto, not the differentiable strong-coupled machinery itself. (An earlier draft mis-attributed
+  the short window to explicit-integrator stability; the modal analysis and the added-mass diagnosis above
+  correct that.)
 - **A boundary-condition correction.** The shell builder shipped without boundary conditions, so an
   earlier version of the archive ran an unconstrained (free-floating) wing — harmless over the very short
   quasi-static rollout but incorrect in principle. The results in §4 use the proper **clamped cantilever**
