@@ -162,6 +162,51 @@ def coupled_unsteady_forward_impl(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny
     return (q, np.array(traj)) if return_traj else q
 
 
+def coupled_unsteady_forward_pc(sh, q0, dq0, N, dt, free, Mff, P, dist, nx, ny, Vinf=VINF,
+                                use_wake=True, control=None, fb_gain=None, beta=0.25, gamma=0.5,
+                                wake_max=80, pc_it=12, pc_tol=1e-6, omega0=0.3, return_traj=False):
+    """STRONG-coupled (predictor-corrector) implicit-Newmark unsteady FSI. Each step solves the
+    coupled fixed point on a_{n+1}: the aero force is RE-EVALUATED on the current structural iterate
+    (not lagged), with Aitken dynamic relaxation — the standard cure for the fluid added-mass
+    instability that makes loose/lagged coupling diverge for light wings. K_t implicit (A=M+β·dt²·K_t).
+    Returns the converged trajectory; this is the forward the differentiable PC adjoint will use."""
+    npan = nx * ny
+    pmask = np.zeros(sh.ndof); pmask[free] = 1.0; pmask *= (np.arange(sh.ndof) % 9 < 3)
+    q, dq = q0.copy(), dq0.copy()
+    Q0, _, _ = _assemble(sh, q); a = np.zeros(sh.ndof); a[free] = np.linalg.solve(Mff, (-Q0)[free])
+    wake = []; gamma_prev = np.zeros(npan); traj = [q.copy()]; itc = []
+    for t in range(N):
+        q_pred = q + dt * dq + dt * dt * (0.5 - beta) * a
+        v_pred = dq + dt * (1.0 - gamma) * a
+        Qint, Kt, _ = _assemble(sh, q_pred); A = Mff + beta * dt * dt * Kt[np.ix_(free, free)]
+        ctrl = (control[t] if control is not None else 0.0)
+        a_it = a.copy(); omega = omega0; r_prev = None; wk_out = wake; gam_out = gamma_prev
+        for it in range(pc_it):                              # within-step strong-coupling iteration
+            q_it = q_pred + beta * dt * dt * a_it
+            dq_it = v_pred + gamma * dt * a_it
+            corners = (P @ q_it).reshape(nx + 1, ny + 1, 3); cvel = (P @ dq_it).reshape(nx + 1, ny + 1, 3)
+            Fp, gam_out, wk_out = _aero_step(corners, cvel, wake, gamma_prev, nx, ny, Vinf, dt, True)
+            Fnodal = dist @ Fp.reshape(-1)
+            c = ctrl - fb_gain * dq_it * pmask if fb_gain is not None else ctrl
+            a_solve = np.zeros(sh.ndof); a_solve[free] = np.linalg.solve(A, (Fnodal - Qint + c)[free])
+            r = a_solve - a_it                               # fixed-point residual
+            if np.linalg.norm(r[free]) < pc_tol * (np.linalg.norm(a_solve[free]) + 1e-30):
+                a_it = a_solve; break
+            if r_prev is not None:                           # Aitken Δ² dynamic relaxation
+                dr = (r - r_prev)[free]
+                omega = -omega * float(np.dot(r_prev[free], dr)) / (float(np.dot(dr, dr)) + 1e-30)
+                omega = float(np.clip(omega, 0.05, 1.0))
+            a_it = a_it + omega * r; r_prev = r
+        itc.append(it + 1)
+        a = a_it; q = q_pred + beta * dt * dt * a; dq = v_pred + gamma * dt * a
+        wake = wk_out[-wake_max:] if (use_wake and len(wk_out) > wake_max) else (wk_out if use_wake else [])
+        gamma_prev = gam_out
+        if not np.all(np.isfinite(q)):
+            return (q, np.array(traj), itc) if return_traj else q
+        traj.append(q.copy())
+    return (q, np.array(traj), itc) if return_traj else q
+
+
 def loss_only(sh, Es, Rs, q0, dq0, N, dt, free, w, nx, ny, Vinf=VINF, use_wake=True):
     sh.set_distribution(E_scale=Es, rho_scale=Rs)
     P, dist = _index_maps(sh, nx, ny)
