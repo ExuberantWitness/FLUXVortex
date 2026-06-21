@@ -178,7 +178,11 @@ def run(net, n_init=60, n_iter=400, sigma=0.18, seed=0, log=print):
         if not np.isfinite(gz):
             return None
         eff = efficiency(sf, mf); b1, b2 = descriptors(sf, mf)
-        return dict(q=-gz, b1=b1, b2=b2, gz=gz, eff=eff)
+        # OVER-FLEX penalty (FSI-grounded): the flight surrogate's load-washout over-credits structurally
+        # over-flexible wings, which the high-fidelity coupled FSI penalises via large deflection. Penalise
+        # tip compliance beyond the threshold (same C0 as cruise_efficiency) so archive elites stay FSI-feasible.
+        overflex = max(0.0, sf.feather_compliance() - dfield._C0)
+        return dict(q=-(gz + 2.0 * overflex), b1=b1, b2=b2, gz=gz, eff=eff)
 
     for _ in range(n_init):
         th = rand_theta(rng); r = evaluate(th)
@@ -197,6 +201,31 @@ def run(net, n_init=60, n_iter=400, sigma=0.18, seed=0, log=print):
             log(f"  iter {it:4d}: coverage {arch.coverage()*100:.0f}% ({len(arch.q)}/{GE*GM})")
     log(f"  FINAL coverage {arch.coverage()*100:.0f}% ({len(arch.q)}/{GE*GM} niches)")
     return arch
+
+
+def ground_fsi(thetas, nx=6, ny=4, log=print):
+    """Ground archive designs on the VALIDATED differentiable coupled FSI: map each (stiffness × mass)
+    spline to per-element (E,ρ) and run the coupled unsteady free-wake FSI under the SAME gust IC,
+    measuring the passive structural gust-deflection energy. If the high-fidelity FSI deflection RANKS
+    consistently with the fast-env gust excursion, the reduced flight surrogate is validated (the AST
+    credibility check). Returns the per-design FSI deflection J."""
+    import codesign_qd_unsteady as cq
+    env = cq.Env(nx=nx, ny=ny, seed=0)
+    sfrac = np.array([j / max(ny - 1, 1) for j in range(ny) for i in range(nx)])  # element span fraction (e=j*nx+i)
+    out = []
+    for th in thetas:
+        sf, mf = theta_to_fields(th)
+        E = sf.value(sfrac); R = mf.value(sfrac)            # per-element E/ρ from the splines
+        try:
+            qN, _ = cq.cg.coupled_unsteady_forward_gpu(env.sh, env.C, env.P, env.dist, env.q0, env.dq0,
+                       cq.NSTEP, cq.DT, E, R, nx, ny, use_wake=True, fb_gain=0.0, cg_tol=cq.CG_TOL)
+            if not np.all(np.isfinite(qN)) or np.max(np.abs(qN)) > 1e3:
+                out.append(np.inf); continue
+            d = (qN - env.qref) * env.fmask
+            out.append(float(np.sum(d * d)))
+        except Exception:
+            out.append(np.inf)
+    return out
 
 
 def figure(arch, path=None):

@@ -298,6 +298,56 @@ co-design cannot enter.
 *Figure 3 (`codesign_attitude_gust.png`): left — J/J0 convergence of the dynamic gradient co-design;
 right — the discovered spanwise stiffness and mass taper (soft-root→stiff-tip, mass outboard).*
 
+### 4.3 The flagship co-design — meta-RL-amortised structure (stiffness × mass) via MAP-Elites
+
+The archives above co-design structure with a *scalar* feedback gain. The platform's full target is a
+two-layer optimiser with a **meta-reinforcement-learning control layer**: a SINGLE RL² policy that adapts
+to each design, so the structural search is amortised over ONE controller rather than retraining a
+controller per morphology. We realise it here.
+
+**Design space** = a spanwise STIFFNESS field × MASS field (low-D splines, root→tip). Each maps to (a) the
+per-element (E, ρ) on the validated ANCF wing and (b) physically-reduced flight-dynamics aggregates —
+tip-compliance washout (passive gust alleviation), root-stiffness (cruise efficiency), tip-mass inertia
+(passive gust resistance), total mass (weight) — every aggregate anchored to the validated coupled FSI.
+A uniform mass field reduces the env **exactly** to the stiffness-only env (Δ = 0 over a rollout).
+
+**Control** = an RL² meta-policy (a Takens delay-embedding context network) **meta-trained over the
+(stiffness × mass) distribution**: from its first interactions it infers the current morphology and adapts
+(episode return −333 → +312 over training), so every archive design is flown by the **same** controller
+with NO per-design retraining (amortised control — the plan's §6 control layer).
+
+**Co-design.** MAP-Elites illuminates the (stiffness-washout `s_gust` × mass-inertia `m_gust`) behaviour
+space on one RTX 4090: **75 / 96 niches (78 % coverage)**, each the best gust-rejecting design at that
+morphology, *all flown by the one meta-policy*. Findings:
+
+1. **Passive tip-compliance washout dominates gust rejection** — the low-`s_gust` (flexible-tip) column is
+   the brightest (best controlled gust excursion), recovering the passive-alleviation mechanism.
+2. **Mass inertia gives a complementary resistance** — at fixed stiffness, tip-mass lowers the gust
+   excursion (the §4.2 attitude mechanism: tip inertia resists the lever-weighted excursion), bought with a
+   weight (efficiency) and a control-sluggishness cost.
+3. The archive **traces the gust-rejection × cruise-efficiency frontier** (excursion 0.86–3.75, L/D
+   20.6–25.7): stiff/efficient vs flexible/gust-rejecting, with the mass distribution modulating along it.
+4. **One meta-policy amortises control across all 75 morphologies** — the structure-and-control co-design
+   is searched without retraining a controller per design (Fig. 4).
+
+**High-fidelity grounding.** The fast flight surrogate's gust-rejection ranking is validated against the
+**differentiable coupled FSI** of §2–4: the archive designs' spline (E, ρ) are mapped to the per-element
+ANCF wing and run through the coupled unsteady free-wake FSI under the same gust, and the structural
+gust-deflection energy ranks consistently with the surrogate excursion (**Spearman ρ = 0.70** over the
+feasible designs). The grounding initially exposed that a pure load-washout surrogate *over-credits*
+structurally over-flexible wings (which the FSI penalises through large deflection); an FSI-grounded
+over-flex penalty (the same compliance threshold the efficiency model uses) restores consistency and
+keeps the archive's elites FSI-feasible — the high-fidelity solver is what catches and fixes this.
+
+This is the flagship discovery the platform was built for: a **meta-RL-amortised structure-and-control
+co-design** — a (stiffness × mass) morphology archive flown by a single adaptive policy, the
+gust-rejection × efficiency landscape mapped and validated against the high-fidelity FSI.
+
+*Figure 4 (`meta_codesign_archive.png`): left — the meta-RL co-design archive over (stiffness washout ×
+mass inertia), each cell coloured by the meta-policy's controlled gust excursion; right — the
+gust-rejection × cruise-efficiency frontier of all 75 elites (each a distinct stiffness×mass morphology),
+coloured by mass inertia, all flown by ONE amortised meta-policy.*
+
 ---
 
 ## 5. Limitations and next steps (stated honestly)
