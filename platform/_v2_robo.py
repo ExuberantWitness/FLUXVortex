@@ -104,7 +104,8 @@ def _shed_te_traj(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE
 def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=-90.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
-                  swept_axis=False, lev=False, K_v=2.5, lev_onset_deg=15.0, lev_ds_deg=33.0):
+                  swept_axis=False, lev=False, K_v=2.5, lev_onset_deg=15.0, lev_ds_deg=33.0,
+                  induced_drag=False):
     """Twisted flapping UVLM (same validated kernels as flap_flight_validate.gpu_run).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -139,8 +140,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
         Fp = wp.zeros(npan, dtype=V3, device=dev)
-        wp.launch(ug.panel_force_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, vcol, Vw,
-                  DTYPE(dt), DTYPE(ug.RHO), ns], outputs=[Fp], device=dev)
+        if induced_drag:   # add wake-induced velocity in the force -> induced drag (cancels inviscid thrust)
+            wp.launch(ug.panel_force_ind_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, vcol, Vw,
+                      DTYPE(dt), DTYPE(ug.RHO), ns, wr, wg, nw], outputs=[Fp], device=dev)
+        else:
+            wp.launch(ug.panel_force_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, vcol, Vw,
+                      DTYPE(dt), DTYPE(ug.RHO), ns], outputs=[Fp], device=dev)
         Fpn = Fp.numpy(); vcn = vcol.numpy()
         Lh[t] = np.sum(Fpn[:, 2]); Xh[t] = np.sum(Fpn[:, 0]); Ph[t] = -np.sum(np.einsum('pi,pi->p', Fpn, vcn))
         if lev:   # dynamic-stall LEV (Polhamus LE-suction analogy), on-GPU
