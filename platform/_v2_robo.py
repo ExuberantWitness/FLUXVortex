@@ -14,11 +14,106 @@ from fluxvortex.warp_fsi import config as cfg
 from fluxvortex.warp_fsi.config import DTYPE
 from fluxvortex.warp_fsi.batched_solver import batched_dense_solve
 import diff_uvlm_unsteady_gpu as ug
+from diff_uvlm_unsteady_gpu import ring_vel_core, ring_vel   # @wp.func reused for particle advect + image wing
 import flap_flight_validate as ffv
 import _v2_robogeom as rg                       # real RoboEagle planform + swept flap/twist axis
 
 V3 = wp.vec3d
 RHO = 1.225
+WAKE_CORE = ug.WAKE_CORE                          # regularized core for bound/wake induction on particles
+
+
+@wp.func
+def mirror_y(c: V3) -> V3:                        # reflect a point across the y=0 root symmetry plane
+    return V3(c[0], -c[1], c[2])
+
+
+@wp.kernel
+def aic_sym_kernel(rings: wp.array(dtype=V3, ndim=2), col: wp.array(dtype=V3),
+                   nrm: wp.array(dtype=V3), AIC: wp.array(dtype=DTYPE, ndim=3)):
+    """AIC WITH a root symmetry plane (the OTHER wing). Each ring j induces at colloc i directly AND via
+    its mirror image across y=0. The image ring is reflected (y->-y) and traversed in REVERSED winding
+    (c0,c3,c2,c1) so the spanwise lifting line stays continuous (same circulation sense) across the root
+    -> root loading is restored (peak at root) instead of collapsing like a free tip."""
+    i, j = wp.tid(); ci = col[i]
+    v = ring_vel(ci, rings[j, 0], rings[j, 1], rings[j, 2], rings[j, 3])
+    m0 = mirror_y(rings[j, 0]); m1 = mirror_y(rings[j, 1]); m2 = mirror_y(rings[j, 2]); m3 = mirror_y(rings[j, 3])
+    v = v + ring_vel(ci, m0, m3, m2, m1)         # image wing (reversed winding = symmetric continuation)
+    AIC[0, i, j] = wp.dot(v, nrm[i])
+
+
+@wp.func
+def part_vel(P: V3, X: V3, alpha: V3, sigma: DTYPE) -> V3:
+    """Velocity induced at P by ONE vortex particle (pos X, vortex moment alpha=Gamma*L_vec, core sigma).
+    Gaussian-erf regularization, identical to the validated warp_vpm.particle_bs_kernel."""
+    dx = P - X
+    r = wp.sqrt(wp.dot(dx, dx) + wp.float64(1.0e-20))
+    if r < wp.float64(1.0e-9):
+        return V3(wp.float64(0.0), wp.float64(0.0), wp.float64(0.0))
+    rb = r / sigma
+    g = wp.erf(rb * wp.float64(0.7071067811865476)) - wp.float64(0.7978845608028654) * rb * wp.exp(wp.float64(-0.5) * rb * rb)
+    coeff = wp.float64(-0.07957747154594767) * g / (r * r * r)   # -1/(4pi) * g / r^3
+    return coeff * wp.cross(dx, alpha)
+
+
+@wp.kernel
+def col_particle_vel_kernel(col: wp.array(dtype=V3), pp: wp.array(dtype=V3), pa: wp.array(dtype=V3),
+                            ps: wp.array(dtype=DTYPE), np_part: int, Vp: wp.array(dtype=V3)):
+    """Particle-field induced velocity VECTOR at every collocation point (feeds BOTH the solve RHS and
+    the unsteady-Bernoulli Vcol — the SAME snapshot, so the bound solve and the force stay consistent)."""
+    i = wp.tid(); ci = col[i]
+    v = V3(wp.float64(0.0), wp.float64(0.0), wp.float64(0.0))
+    for k in range(np_part):
+        v = v + part_vel(ci, pp[k], pa[k], ps[k])
+    Vp[i] = v
+
+
+@wp.kernel
+def shed_lev_particles_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
+                              vcol: wp.array(dtype=V3), gamma: wp.array(dtype=DTYPE, ndim=2),
+                              Vinf: V3, ns: int, np0: int, sin_crit: DTYPE, klev: DTYPE,
+                              sig0: DTYPE, pcore: DTYPE, pp: wp.array(dtype=V3),
+                              pa: wp.array(dtype=V3), ps: wp.array(dtype=DTYPE)):
+    """Shed ONE leading-edge vortex PARTICLE per strip at the LE surface (vs the old isolated ring).
+    Strength/criterion byte-identical to _shed_lev_kernel (LESP excess, delayed-Kutta gprev). The
+    particle is a spanwise vortex moment alpha=Gamma*(LE edge vector); it then advects in the FULL
+    local field and rolls up by mutual induction (the missing ingredient in the ring version)."""
+    j = wp.tid(); p = j; idx = np0 + j
+    n = nrm[p]
+    vr = Vinf - vcol[p]; vmag = wp.length(vr) + wp.float64(1.0e-9)
+    sa = wp.abs(wp.dot(vr, n) / vmag)
+    s_vec = rings[p, 1] - rings[p, 0]                                  # LE edge vector (spanwise, full length)
+    le_mid = wp.float64(0.5) * (rings[p, 0] + rings[p, 1])            # LE midpoint
+    chord_v = rings[p, 2] - rings[p, 0]; clen = wp.length(chord_v) + wp.float64(1.0e-12)
+    pp[idx] = le_mid + n * (wp.float64(0.08) * clen)                  # born AT the LE, 0.08c onto suction side
+    ps[idx] = wp.max(sig0, pcore * clen)                             # core >= 0.10c -> regularize near-LE
+    if sa > sin_crit:
+        gmag = -klev * gamma[0, p] * (wp.float64(1.0) - sin_crit / sa)  # SAME formula as the ring kernel
+        pa[idx] = gmag * s_vec                                        # alpha = Gamma * (full LE edge vector)
+    else:
+        pa[idx] = V3(wp.float64(0.0), wp.float64(0.0), wp.float64(0.0))
+
+
+@wp.kernel
+def advect_particle_kernel(pp: wp.array(dtype=V3), pa: wp.array(dtype=V3), ps: wp.array(dtype=DTYPE),
+                           np_part: int, rings: wp.array(dtype=V3, ndim=2),
+                           gamma: wp.array(dtype=DTYPE, ndim=2), npan: int,
+                           wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE), nw: int,
+                           Vinf: V3, dt: DTYPE, pp_new: wp.array(dtype=V3)):
+    """Advect each LEV particle in the FULL local velocity = freestream + bound rings + TEV ring wake
+    + OTHER particles (mutual induction). The mutual-induction term is exactly what rolls them up into
+    a coherent core. (No vortex stretching yet — increment 1; rollup works from induced advection.)"""
+    k = wp.tid(); P = pp[k]
+    dl = DTYPE(WAKE_CORE)
+    v = Vinf
+    for q in range(npan):                                            # bound-ring induction
+        v = v + gamma[0, q] * ring_vel_core(P, rings[q, 0], rings[q, 1], rings[q, 2], rings[q, 3], dl)
+    for m in range(nw):                                              # TEV ring-wake induction
+        v = v + wg[m] * ring_vel_core(P, wr[m, 0], wr[m, 1], wr[m, 2], wr[m, 3], dl)
+    for jj in range(np_part):                                        # mutual particle induction -> ROLLUP
+        if jj != k:
+            v = v + part_vel(P, pp[jj], pa[jj], ps[jj])
+    pp_new[k] = P + v * dt
 
 
 def twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis=False):
@@ -111,7 +206,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
-                  frames_out=None, frame_skip=3):
+                  part_lev=False, sym=False, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -136,6 +231,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     tpl = wp.zeros(ns, dtype=V3, device=dev); tpr = wp.zeros(ns, dtype=V3, device=dev)   # prev TE corners
     tcl = wp.zeros(ns, dtype=V3, device=dev); tcr = wp.zeros(ns, dtype=V3, device=dev)   # cur TE corners
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev); gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev); nw = 0
+    # --- LEV vortex-particle field (parallel to the TEV ring wake; vec3d vortex moment, NOT scalar) ---
+    pmax = N * ns + ns; np_part = 0                  # one particle per strip per step + slack
+    pp = wp.zeros(pmax, dtype=V3, device=dev); pa = wp.zeros(pmax, dtype=V3, device=dev)
+    ps = wp.zeros(pmax, dtype=DTYPE, device=dev); pp_new = wp.zeros(pmax, dtype=V3, device=dev)
+    SIG0 = DTYPE(0.5 * U * dt); PCORE = DTYPE(0.10)   # base core (swept vol/2); floor 0.10c regularizes LE
+    sin_crit_p = DTYPE(np.sin(np.radians(lesp_crit_deg)))
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
@@ -151,7 +252,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(ug.bound_rings_kernel, dim=npan, inputs=[cw, nc, ns], outputs=[rings, col, nrm], device=dev)
         wp.launch(ug.colvel_kernel, dim=npan, inputs=[vw, nc, ns], outputs=[vcol], device=dev)
         AIC = wp.zeros((1, npan, npan), dtype=DTYPE, device=dev)
-        wp.launch(ug.aic_kernel, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=dev)
+        aick = aic_sym_kernel if sym else ug.aic_kernel   # sym=True -> root symmetry plane (the other wing)
+        wp.launch(aick, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=dev)
         rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev)
         wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
@@ -239,6 +341,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 wr=(wr.numpy()[:nw].copy() if nw > 0 else np.zeros((0, 4, 3))),
                 wg=(wg.numpy()[:nw].copy() if nw > 0 else np.zeros(0)),
                 wtype=np.array(wtype[:nw], dtype=int) if nw > 0 else np.zeros(0, int),
+                pp=(pp.numpy()[:np_part].copy() if np_part > 0 else np.zeros((0, 3))),        # LEV particles
+                pa=(pa.numpy()[:np_part].copy() if np_part > 0 else np.zeros((0, 3))),        # vortex moments
                 sep=(np.abs(sina) > np.sin(np.radians(lesp_crit_deg))), nc=nc, ns=ns))
         if te_traj:   # shed along the TE trajectory (continuous sheet for the plunging TE)
             wp.launch(_shed_te_traj, dim=ns, inputs=[rings, gamma, te, tpl, tpr, Vw, DTYPE(dt), nw],
@@ -249,6 +353,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         if real_lev:   # REAL leading-edge vortex: shed discrete LEV rings at the LE (after the TEV block)
             wp.launch(_shed_lev_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, nw + ns,
                       DTYPE(np.sin(np.radians(lesp_crit_deg))), DTYPE(lev_klev)], outputs=[wr, wg], device=dev)
+        if part_lev:   # PARTICLE leading-edge vortex: shed one spanwise particle/strip at the LE (delayed-Kutta gprev)
+            wp.launch(shed_lev_particles_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, np_part,
+                      sin_crit_p, DTYPE(lev_klev), SIG0, PCORE], outputs=[pp, pa, ps], device=dev)
+            np_part += ns
         nw_new = nw + shed_per
         wtype.extend([0] * ns + ([1] * ns if real_lev else []))   # TEV then LEV (matches shed order)
         if nw > 0:   # convect OLD wake only; freshly-shed ring STAYS attached at the TE (Katz&Plotkin
@@ -267,6 +375,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wtype = wtype[off:]                        # drop oldest rings' type tags too
         else:
             nw = nw_new
+        if part_lev and np_part > 0:   # advect LEV particles in the FULL local field (bound+TEV+mutual) -> rollup
+            wp.launch(advect_particle_kernel, dim=np_part, inputs=[pp, pa, ps, np_part, rings, gamma, npan,
+                      wr, wg, nw, Vw, DTYPE(dt)], outputs=[pp_new], device=dev)
+            wp.copy(pp, pp_new, count=np_part)
         gprev = wp.array(gamma.numpy(), dtype=DTYPE, device=dev)
     last = slice((n_cycle - 1) * steps_per_cycle, N)
     L = 2.0 * np.mean(Lh[last]); Fx = 2.0 * np.mean(Xh[last]); P = 2.0 * np.mean(np.abs(Ph[last]))
