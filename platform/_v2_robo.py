@@ -110,6 +110,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=-90.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
+                  visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
                   frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
@@ -137,6 +138,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev); gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev); nw = 0
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
+    Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
+    Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
+    NU_AIR = 1.5e-5; FORM_FF = 1.0 + 2.0 * tc_thick + 60.0 * tc_thick ** 4   # air kin. visc; Hoerner form factor
     wtype = []                                        # CPU bookkeeping: 0=TEV, 1=LEV per wake ring (for viz)
     for t in range(N):
         corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span, swept_axis=swept_axis)
@@ -186,6 +190,43 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         dp = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy + dGdt)
         Fb = dp[:, None] * area[:, None] * nrm.numpy()
         Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
+        # ---- DeLaurier (1993) first-principles VISCOUS friction drag (strip theory). The inviscid
+        # Bernoulli force has NO friction -> over-predicts net thrust. Skin friction drags each panel
+        # DOWNSTREAM along the local tangential flow: dDf = 1/2 rho V_tan^2 Cdf dA, Cdf = 2*Cf*FF
+        # (both surfaces x Hoerner thickness form factor), Cf = 1.328/sqrt(Re) laminar Blasius,
+        # Re = V_tan * c_local / nu. Affects mostly drag (thrust), slightly lift (V_tan has small z). ----
+        if visc:
+            nn = nrm.numpy()
+            Vtan = Vcol - (np.sum(Vcol * nn, axis=1)[:, None]) * nn       # tangential flow over surface
+            Vtm = np.linalg.norm(Vtan, axis=1) + 1e-12
+            c_loc = np.broadcast_to(tcn.reshape(nc, ns).sum(0), (nc, ns)).reshape(-1)  # local chord per column
+            Re_loc = np.maximum(Vtm * c_loc / NU_AIR, 1.0e2)             # local chord Reynolds number
+            Cf = 1.328 / np.sqrt(Re_loc)                                 # laminar flat-plate (Blasius), one side
+            Cdf = 2.0 * Cf * FORM_FF                                     # both surfaces x thickness form factor
+            Df = 0.5 * ug.RHO * Cdf[:, None] * area[:, None] * Vtm[:, None] * Vtan  # drags wing downstream
+            Lh_vis[t] = float(np.sum(Df[:, 2])); Xh_vis[t] = float(np.sum(Df[:, 0]))
+        # ---- LEADING-EDGE SUCTION thrust (Garrick / DeLaurier dTs = 2pi eta_s alpha_eff^2 (1/2 rho U V) c dy).
+        # A flat-panel normal-pressure (Bernoulli) force structurally MISSES the leading-edge singular suction
+        # (the sqrt(x) edge force) -> captures induced drag but NOT the forward LE-suction thrust. This is the
+        # dominant flapping-thrust mechanism ("thrust is all leading-edge suction"), forward along -chord,
+        # applied on ATTACHED strips (LEV not shed; shed-strip suction goes into the LEV captured by Bernoulli). ----
+        if les_suction:
+            nn2 = nrm.numpy(); iLE = np.arange(ns)            # leading-edge panel row (i=0)
+            Vle = Vcol[iLE]; nle = nn2[iLE]; tcle = tc[iLE]
+            Vle_m = np.linalg.norm(Vle, axis=1) + 1e-12
+            sa = np.sum(Vle * nle, axis=1) / Vle_m            # sin(alpha_eff) at the LE strip
+            aeff = np.arcsin(np.clip(sa, -0.999, 0.999))
+            # LESP criterion (Ramesh 2014): realizable LE suction CAPS at the critical leading-edge angle -
+            # beyond alpha_crit the excess loading sheds into the LEV (already shed for lift), so the attached
+            # LE-suction saturates. First-principles separation onset, NOT an empirical efficiency fit.
+            a_crit = np.radians(lesp_crit_deg)
+            aeff_s = np.clip(aeff, -a_crit, a_crit)            # suction-relevant angle, capped at LESP-crit
+            c_le = tcn.reshape(nc, ns).sum(0)                 # local chord per strip
+            dy_le = tsn.reshape(nc, ns)[0]                    # strip spanwise width (LE row)
+            Uc = abs(float(Vinf[0]))
+            dTs = 2.0 * np.pi * les_eta * aeff_s ** 2 * (0.5 * ug.RHO * Uc * Vle_m) * c_le * dy_le
+            Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
+            Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
         lkj = wp.zeros(1, dtype=DTYPE, device=dev)        # DIAG: Vinf-only KJ lift (no plunge tilt)
         wp.launch(ug.lift_kj_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt),
                   DTYPE(ug.RHO), ns], outputs=[lkj], device=dev)
@@ -230,9 +271,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     last = slice((n_cycle - 1) * steps_per_cycle, N)
     L = 2.0 * np.mean(Lh[last]); Fx = 2.0 * np.mean(Xh[last]); P = 2.0 * np.mean(np.abs(Ph[last]))
     L_bern = 2.0 * np.mean(Lh_imp[last]); Fx_bern = 2.0 * np.mean(Xh_imp[last])
+    L_vis = 2.0 * np.mean(Lh_vis[last]); Fx_vis = 2.0 * np.mean(Xh_vis[last])   # friction (downstream, +x drag)
+    L_les = 2.0 * np.mean(Lh_les[last]); Fx_les = 2.0 * np.mean(Xh_les[last])   # LE suction (forward, -x thrust)
     Lkj = 2.0 * np.mean(Lkjh[last])
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj,
-                L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp)   # Bernoulli force (captures LEV)
+                L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
+                L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
+                L_net=L_bern + L_les - L_vis,                                     # lift incl. LE-suction vertical comp.
+                T_net=-(Fx_bern + Fx_vis + Fx_les))                              # Bernoulli + friction + LE suction
 
 
 if __name__ == "__main__":
