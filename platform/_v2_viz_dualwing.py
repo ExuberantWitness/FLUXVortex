@@ -10,12 +10,13 @@ from matplotlib.animation import FuncAnimation
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _v2_robo as R
 
-FREQ = 2.0; U = 8.0; SPC = 90
+FREQ = 2.0; U = 8.0; SPC = 90; TWIST = 22.5; ROFF = 0.05
 frames = []
-res = R.gpu_run_twist(nc=4, ns=12, U=U, aoa_deg=5.0, flap_amp_deg=45.0, twist_amp_deg=0.0,
-                      freq=FREQ, n_cycle=3, steps_per_cycle=SPC, wake_rows=55, swept_axis=True,
-                      real_geom=True, sym=True, frames_out=frames, frame_skip=2)
-print(f"recorded {len(frames)} frames; sym L_bern={res['L_bern']:.2f}N (both wings)", flush=True)
+res = R.gpu_run_twist(nc=4, ns=12, U=U, aoa_deg=5.0, flap_amp_deg=45.0, twist_amp_deg=TWIST,
+                      twist_phase_deg=-90.0, freq=FREQ, n_cycle=3, steps_per_cycle=SPC, wake_rows=55,
+                      swept_axis=True, real_geom=True, sym=True, root_off=ROFF,
+                      frames_out=frames, frame_skip=2)
+print(f"recorded {len(frames)} frames; sym+twist L_bern={res['L_bern']:.2f}N (both wings)", flush=True)
 
 
 def smooth(a, w=7):
@@ -24,9 +25,8 @@ LhB = smooth(2 * res["Lh_bern"]); dt = (1.0 / FREQ) / SPC
 
 fig = plt.figure(figsize=(15, 6.4), facecolor="white")
 ax = fig.add_subplot(121, projection="3d"); axh = fig.add_subplot(122)
-allw = np.concatenate([f["wr"].reshape(-1, 3) for f in frames if len(f["wr"])] + [frames[0]["bound"].reshape(-1, 3)])
-xr = [allw[:, 0].min() - 0.05, allw[:, 0].max() + 0.05]
-zr = [min(-0.65, allw[:, 2].min() - 0.05), max(0.65, allw[:, 2].max() + 0.05)]
+xr = [-0.1, 1.0]                                  # zoom on the wings + near wake (the twist is here)
+zr = [-0.75, 0.75]
 
 
 def mirror(a):                                   # reflect across y=0 root symmetry plane
@@ -49,9 +49,9 @@ def update(fi):
         ax.add_collection3d(Line3DCollection(seg, colors=lc, linewidths=0.4))
     ax.set_xlim(xr); ax.set_ylim(-0.85, 0.85); ax.set_zlim(zr)
     ax.set_xlabel("x (chord, flow →)"); ax.set_ylabel("y (span, both wings)"); ax.set_zlabel("z (flap)")
-    ax.set_title(f"RoboEagle TWO-WING symmetric flapping (root symmetry plane)  t={f['t']:.3f}s\n"
-                 f"blue=solved wing / orange=mirror wing — both flap ±45° together", fontsize=10)
-    ax.view_init(elev=16, azim=-72)
+    ax.set_title(f"RoboEagle TWO-WING flapping + {TWIST:.0f}° twist, {2*ROFF*100:.0f}cm root gap  t={f['t']:.3f}s\n"
+                 f"blue=solved / orange=mirror — flap ±45° together, sections feather (twist)", fontsize=10)
+    ax.view_init(elev=22, azim=-78)
     tt = np.arange(len(LhB)) * dt; cur = f["t"]
     axh.plot(tt, LhB, "b-", lw=0.8, alpha=0.35)
     m = tt <= cur
@@ -60,7 +60,7 @@ def update(fi):
     axh.axvline(cur, color="r", ls="--", lw=0.8); axh.axhline(0, color="gray", lw=0.5)
     axh.set_xlim(dt * SPC * 0.4, tt[-1]); axh.set_ylim(-12, 24)
     axh.set_xlabel("time (s)"); axh.set_ylabel("lift (N)"); axh.legend(fontsize=9, loc="upper right")
-    axh.set_title(f"lift ({U:.0f} m/s, {FREQ} Hz, ±45° flap, no twist, sym plane ON)", fontsize=10)
+    axh.set_title(f"lift ({U:.0f} m/s, {FREQ} Hz, ±45° flap, {TWIST:.0f}° twist, sym plane ON)", fontsize=10)
     axh.grid(alpha=0.3)
     return []
 

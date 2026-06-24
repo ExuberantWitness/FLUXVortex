@@ -37,19 +37,22 @@ def naca_camber(xc, m=0.02, p=0.40):
                     m / (1 - p) ** 2 * ((1 - 2 * p) + 2 * p * xc - xc ** 2))
 
 
-def robowing_real(nc, ns, half_span=HALF_SPAN, camber_m=0.02, camber_p=0.40, cosine_chord=True):
+def robowing_real(nc, ns, half_span=HALF_SPAN, camber_m=0.02, camber_p=0.40, cosine_chord=True,
+                  root_off=0.0):
     """Lattice corners (nc+1, ns+1, 3): real planform (LE straight x=0, raked TE chord(y)) + NACA2406
-    camber. Drop-in for ffv.flat_wing(nc, ns, chord, half_span) — chord arg ignored (uses measured)."""
-    ys = np.linspace(0.0, half_span, ns + 1)
-    cy = chord_at(ys)
+    camber. Drop-in for ffv.flat_wing(nc, ns, chord, half_span) — chord arg ignored (uses measured).
+    root_off: spanwise offset (m) of the wing ROOT outboard of the y=0 flap axis (the central support-plate
+    gap; the two wings do NOT meet at the centerline). Wing-local chord uses y-root_off; stored y is assembly."""
+    yl = np.linspace(0.0, half_span, ns + 1)     # wing-local span (root=0 -> tip), for chord/camber
+    cy = chord_at(yl)
     xf = (0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, nc + 1))) if cosine_chord
           else np.linspace(0.0, 1.0, nc + 1))
     zc = naca_camber(xf, camber_m, camber_p)
     C = np.zeros((nc + 1, ns + 1, 3))
-    for j, y in enumerate(ys):
+    for j in range(ns + 1):
         c = max(cy[j], 1e-4)
         for i, f in enumerate(xf):
-            C[i, j] = [f * c, y, zc[i] * c]      # LE at x=0, TE at x=c (chord in +x = flow dir)
+            C[i, j] = [f * c, yl[j] + root_off, zc[i] * c]   # assembly y = wing-local + root offset
     return C
 
 

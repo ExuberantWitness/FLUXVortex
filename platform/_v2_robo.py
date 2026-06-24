@@ -116,29 +116,32 @@ def advect_particle_kernel(pp: wp.array(dtype=V3), pa: wp.array(dtype=V3), ps: w
     pp_new[k] = P + v * dt
 
 
-def twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis=False):
+def twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis=False, root_off=0.0):
     """Flat wing -> flap (rotate about root x-axis by θ=A_f sin Ωt) + spanwise-linear twist
     (pitch each section about the y-axis at x_ea by ψ(y)=A_t (y/span) sin(Ωt+phi)).
     swept_axis=True: real RoboEagle twist axis swept 33.8%c(root)->LE(tip) (_v2_robogeom.axis_x),
-    not a constant x_ea — matches the paper's measured flap/twist hinge."""
+    not a constant x_ea — matches the paper's measured flap/twist hinge.
+    root_off: wing root offset outboard of the y=0 flap axis. Twist/chord use the wing-LOCAL span
+    (y-root_off); the flap (dihedral) rotates about y=0 using the ASSEMBLY y (so the offset root swings)."""
     th = A_f * np.sin(Om * t)
     ct, st = np.cos(th), np.sin(th)
-    x = C0[..., 0]; y = C0[..., 1]; z0 = C0[..., 2]    # z0 = NACA-2406 camber surface (was discarded!)
-    xe = rg.axis_x(y, span) if swept_axis else x_ea    # swept twist axis (per spanwise y) or constant
-    psi = A_t * (y / span) * np.sin(Om * t + phi)
+    x = C0[..., 0]; y = C0[..., 1]; z0 = C0[..., 2]    # y = assembly span; z0 = NACA-2406 camber surface
+    yl = y - root_off                                  # wing-local span (root=0) for twist axis/amplitude
+    xe = rg.axis_x(yl, span) if swept_axis else x_ea   # swept twist axis (per wing-local y) or constant
+    psi = A_t * (yl / span) * np.sin(Om * t + phi)
     cp, sp = np.cos(psi), np.sin(psi)
     xr = xe + (x - xe) * cp - z0 * sp                  # twist pitches (x-xe, z0) about y at the axis
     zr = (x - xe) * sp + z0 * cp                       # carry the camber through the rotation
-    xf = xr                            # flap: rotate (y,z) about x by θ
+    xf = xr                            # flap: rotate (y,z) about x by θ, about y=0 with ASSEMBLY y
     yf = y * ct - zr * st
     zf = y * st + zr * ct
     return np.stack([xf, yf, zf], axis=-1)
 
 
-def twisted_state(C0, t, A_f, A_t, Om, phi, x_ea, span, dlt=1e-6, swept_axis=False):
-    corners = twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis)
-    cp = twisted_corners(C0, t + dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis)
-    cm = twisted_corners(C0, t - dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis)
+def twisted_state(C0, t, A_f, A_t, Om, phi, x_ea, span, dlt=1e-6, swept_axis=False, root_off=0.0):
+    corners = twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off)
+    cp = twisted_corners(C0, t + dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off)
+    cm = twisted_corners(C0, t - dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off)
     vel = (cp - cm) / (2 * dlt)
     return corners, vel
 
@@ -206,7 +209,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
-                  part_lev=False, sym=False, frames_out=None, frame_skip=3):
+                  part_lev=False, sym=False, root_off=0.0, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -217,7 +220,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     dev = cfg.DEVICE; NP = cfg.NP_DTYPE
     # real_geom=True -> REAL RoboEagle planform (raked TE, measured chord(y)) + NACA-2406 camber, LE at
     # x=0 / TE at x=+c (chord in +x = flow dir, Vinf=+x flows LE->TE). Else flat rectangular wing.
-    C0 = (rg.robowing_real(nc, ns, half_span) if real_geom
+    C0 = (rg.robowing_real(nc, ns, half_span, root_off=root_off) if real_geom
           else ffv.flat_wing(nc, ns, chord, half_span)); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
     A_f = np.radians(flap_amp_deg); A_t = np.radians(twist_amp_deg); phi = np.radians(twist_phase_deg)
     Om = 2.0 * np.pi * freq; x_ea = 0.25 * chord
@@ -244,7 +247,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     NU_AIR = 1.5e-5; FORM_FF = 1.0 + 2.0 * tc_thick + 60.0 * tc_thick ** 4   # air kin. visc; Hoerner form factor
     wtype = []                                        # CPU bookkeeping: 0=TEV, 1=LEV per wake ring (for viz)
     for t in range(N):
-        corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span, swept_axis=swept_axis)
+        corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span,
+                                      swept_axis=swept_axis, root_off=root_off)
         cw = wp.array(corners.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
         vw = wp.array(cvel.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
         rings = wp.zeros((npan, 4), dtype=V3, device=dev); col = wp.zeros(npan, dtype=V3, device=dev)
