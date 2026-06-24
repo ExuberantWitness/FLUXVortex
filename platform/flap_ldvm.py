@@ -53,15 +53,13 @@ class FlapLDVM:
 
     def __init__(self, U=1.0, c=1.0, n=80, dt=None, rho=1.225,
                  lesp_crit=0.20, alpha_lev_deg=None, max_wake=300, lev_shed=True,
-                 camber_m=0.0, camber_p=0.40, dynamic_stall=False, kv=1.0):
+                 camber_m=0.0, camber_p=0.40):
         self.U, self.c, self.n = float(U), float(c), int(n)
         self.dt = dt if dt else c / U / 50.0
         self.rho = rho
         self.lesp_crit = lesp_crit                       # LESP threshold: suction saturates here; if
         self.lev_shed = lev_shed                         # lev_shed -> also shed discrete LEV particles
         self.alpha_lev = np.radians(alpha_lev_deg) if alpha_lev_deg else None
-        self.dynamic_stall = dynamic_stall               # Polhamus LE-suction-recovery dynamic-stall lift
-        self.kv = kv                                     # vortex-lift gain (1.0 = exact suction recovery)
         self.max_wake = int(max_wake)
         self.dl = self.c / self.n
         self.pvor = (np.arange(self.n) + 0.25) * self.dl     # 1/4-panel bound vortices
@@ -193,20 +191,9 @@ class FlapLDVM:
         thrust = Fs * ca + N * sa
         Fx = -thrust
 
-        # ---- dynamic-stall LIFT (Polhamus leading-edge-suction recovery), stable, no discrete LEV ----
-        # Beyond A0_crit the flow separates: the attached circulatory lift caps at the stall-onset value,
-        # and the LE suction lost above A0_crit reappears as a vortex NORMAL force (Polhamus analogy):
-        #   N_vortex = kv * pi*rho*U^2*c * (A0^2 - A0_crit^2),  one-sided (only |A0|>A0_crit).
-        # Consistent with the validated F_s, and it is THE mechanism making cycle-mean lift RISE with flap
-        # frequency: A0 swings harder at higher reduced freq -> stronger one-sided LEV. (Attached lift_p
-        # alone only DECLINES with freq -- Theodorsen.)
-        if self.dynamic_stall and abs(lesp) > self.lesp_crit:
-            att_cap = self.lesp_crit / abs(lesp)             # attached circulation caps at stall onset
-            vloc2 = U * U + hdot * hdot                       # LOCAL dynamic pressure (rises with flap freq)
-            Nv = self.kv * np.pi * self.rho * vloc2 * c * (lesp * lesp - self.lesp_crit ** 2)
-            lift_ds = Fz * att_cap + Nv * ca * np.sign(lesp)
-        else:
-            lift_ds = Fz
+        # (The empirical Polhamus dynamic-stall LIFT recovery was REMOVED on 2026-06-24 — first-principles
+        # only. The real dynamic-stall lift comes from the discrete LEV particles, lev_shed=True.)
+        lift_ds = Fz
 
         # convect the wakes (induced-only; airfoil already recedes), then form the TOTAL x-impulse LIFT
         # rho*d/dt(sum_all Gamma*x) over bound+LEV+TEV (sum Gamma=0 -> frame-clean; captures the LEV's own

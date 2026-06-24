@@ -270,34 +270,10 @@ def panel_force_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3
     Fp[p] = Fkj + rho * dGdt * area * nrm[p]
 
 
-@wp.kernel
-def panel_force_ind_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
-                           gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),
-                           vcol: wp.array(dtype=V3), Vinf: V3, dt: DTYPE, rho: DTYPE, ns: int,
-                           wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE), nw: int,
-                           Fp: wp.array(dtype=V3)):
-    """panel_force_kernel + the WAKE-induced velocity at the leading bound segment, so the KJ force
-    tilts back into INDUCED DRAG. V_local = V∞ − V_body + Σ_wake induced; the streamwise component is
-    the induced drag the V_rel-only kernel omits (which otherwise leaves the inviscid Knoller-Betz
-    flapping thrust uncancelled -> grossly over-positive thrust)."""
-    p = wp.tid()
-    gnet = gamma[0, p]
-    if p // ns > 0:
-        gnet = gamma[0, p] - gamma[0, p - ns]
-    lb = rings[p, 1] - rings[p, 0]
-    mid = wp.float64(0.5) * (rings[p, 0] + rings[p, 1])
-    vx = wp.float64(0.0); vy = wp.float64(0.0); vz = wp.float64(0.0)   # scalar accum (clean adjoint)
-    for k in range(nw):
-        vv = wg[k] * ring_vel(mid, wr[k, 0], wr[k, 1], wr[k, 2], wr[k, 3])
-        vx = vx + vv[0]; vy = vy + vv[1]; vz = vz + vv[2]
-    vrel = Vinf - vcol[p] + V3(vx, vy, vz)
-    Fkj = rho * gnet * wp.cross(vrel, lb)
-    cr = wp.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
-    area = wp.float64(0.5) * wp.sqrt(wp.dot(cr, cr) + wp.float64(1.0e-30))
-    dGdt = (gamma[0, p] - gprev[0, p]) / dt
-    Fp[p] = Fkj + rho * dGdt * area * nrm[p]
-
-
+# NOTE: panel_force_ind_kernel (wake-induced-velocity induced-drag attempt) and thrust_sep_cap_kernel
+# (empirical separation cap) were REMOVED on 2026-06-24 (snapshot: platform/old/polhamus_removed_snapshot.py).
+# The flapping thrust gap was shown to be attached VISCOUS drag, not induced drag/a cap -> first-principles
+# viscous term replaces them. Production force = panel_force_kernel (circulation + added-mass) + real LEV.
 @wp.kernel
 def lift_kj_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
                    gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),

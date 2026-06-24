@@ -196,13 +196,11 @@ if __name__ == "__main__":
             print(f"  {k[1]:>6}: mean model/meas ratio = {s/n:.3f}  (n={n})")
     elif len(sys.argv) > 1 and sys.argv[1] == "--run":
         import json
-        # twist_phase_deg=270 (data-consistent) is now the flapping_wing default; dynamic_stall=True + kv
-        # (Polhamus LE-suction recovery w/ local dyn-pressure) restores the freq-rise + twist-rise.
-        kv = float(sys.argv[2]) if len(sys.argv) > 2 else 1.5
-        SET = dict(ns=6, nc=30, steps_per_cycle=120, max_wake=200, n_cycle=4, dynamic_stall=True, kv=kv)
+        # first-principles strip (lift_p attached pressure + Garrick LE suction; no empirical Polhamus).
+        SET = dict(ns=6, nc=30, steps_per_cycle=120, max_wake=200, n_cycle=4)
         rows = full_sweep(blocks, SET, nproc=14)
         json.dump(dict(settings=SET, C3D=C3D, rows=rows), open(os.path.join(HERE, "_v2_validation.json"), "w"), indent=0)
-        print(f"ran {len({(_cond_of(b,x)) for b in blocks for (x,_) in b['points']})} unique conds, {len(rows)} rows (kv={kv}) -> _v2_validation.json")
+        print(f"ran {len({(_cond_of(b,x)) for b in blocks for (x,_) in b['points']})} unique conds, {len(rows)} rows -> _v2_validation.json")
     elif len(sys.argv) > 1 and sys.argv[1] == "--list":
         nL = nT = 0
         for b in blocks:

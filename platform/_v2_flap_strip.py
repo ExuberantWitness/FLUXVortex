@@ -27,7 +27,7 @@ def flapping_wing(U=8.0, aoa_deg=5.0, flap_amp_deg=45.0, twist_amp_deg=0.0, twis
                   freq=2.0, half_span=0.80, chord=0.287, ns=6, nc=40, n_cycle=4,
                   steps_per_cycle=60, lesp_crit=0.20, max_wake=120, dihedral_project=True,
                   dihedral_aoa=False, lev_shed=False, camber_m=0.02, camber_p=0.40, cd0=0.0,
-                  dynamic_stall=False, kv=1.0):
+                  ):
     Om = 2 * np.pi * freq
     A_f = np.radians(flap_amp_deg); A_t = np.radians(twist_amp_deg); phi = np.radians(twist_phase_deg)
     a_b = np.radians(aoa_deg)
@@ -38,9 +38,9 @@ def flapping_wing(U=8.0, aoa_deg=5.0, flap_amp_deg=45.0, twist_amp_deg=0.0, twis
     chords = np.array([chord_at(y, chord, half_span) for y in ys])
     ldvms = [FlapLDVM(U=U, c=max(chords[k], 1e-3), n=nc, dt=dt, rho=1.225,
                       lesp_crit=lesp_crit, max_wake=max_wake, lev_shed=lev_shed,
-                      camber_m=camber_m, camber_p=camber_p, dynamic_stall=dynamic_stall, kv=kv)
+                      camber_m=camber_m, camber_p=camber_p)
              for k in range(ns)]
-    lift_key = "lift_ds" if dynamic_stall else "lift_p"
+    lift_key = "lift_p"      # first-principles attached pressure lift (real LEV via lev_shed if enabled)
     Lh = []; Th = []
     for it in range(n_cycle * steps_per_cycle):
         t = it * dt

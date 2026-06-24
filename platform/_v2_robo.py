@@ -56,29 +56,27 @@ def _wake_avg(wa: wp.array(dtype=V3, ndim=2), wb: wp.array(dtype=V3, ndim=2),
     wout[k, c] = wp.float64(0.5) * (wa[k, c] + wb[k, c])
 
 
+# NOTE: the Polhamus dynamic-stall LEV kernel (_lev_kernel, empirical C_Nv=K_v sin^2 a) was REMOVED
+# (isolated to old/polhamus_removed_snapshot.py) on 2026-06-24 — the model is now first-principles only:
+# standard unsteady UVLM + REAL discrete leading-edge vortex shedding (_shed_lev_kernel below).
 @wp.kernel
-def _lev_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3), vcol: wp.array(dtype=V3),
-                Vinf: V3, rho: DTYPE, K_v: DTYPE, sin_onset: DTYPE, sin_ds: DTYPE,
-                out: wp.array(dtype=DTYPE)):
-    """Dynamic-stall LEV (Polhamus): per-panel vortex normal force C_Nv=K_v*sin^2(a_eff) (signed) at the
-    LOCAL dynamic pressure when |sin a_eff|>sin_onset, SATURATED beyond the deep-stall angle (sin_ds): the
-    LEV detaches so its contribution caps (matches the measured lift plateau at high AoA, not unbounded)."""
-    p = wp.tid()
-    vr = Vinf - vcol[p]
-    vmag = wp.length(vr) + wp.float64(1.0e-9)
-    n = nrm[p]
-    sina = wp.dot(vr, n) / vmag
-    sa = wp.abs(sina)
-    if sa > sin_onset:
-        sc = wp.min(sa, sin_ds)              # cap magnitude at deep stall (LEV detaches beyond)
-        sgn = wp.float64(1.0)
-        if sina < wp.float64(0.0):
-            sgn = wp.float64(-1.0)
-        cr = wp.cross(rings[p, 2] - rings[p, 0], rings[p, 3] - rings[p, 1])
-        area = wp.float64(0.5) * wp.length(cr)
-        dN = K_v * sgn * sc * sc * wp.float64(0.5) * rho * vmag * vmag * area
-        wp.atomic_add(out, 0, dN * n[2])     # vertical (lift), dihedral-projected
-        wp.atomic_add(out, 1, dN * n[0])     # streamwise (LE suction -> thrust)
+def _shed_lev_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3), vcol: wp.array(dtype=V3),
+                     gamma: wp.array(dtype=DTYPE, ndim=2), Vinf: V3, ns: int, nw: int,
+                     sin_crit: DTYPE, klev: DTYPE, wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE)):
+    """REAL leading-edge vortex (3D LDVM, not Polhamus): shed a DISCRETE vortex ring at the leading edge
+    of each leading strip (chordwise idx 0, panel p=j) where |sin a_eff|>sin_crit. The ring is placed at
+    the LE edge offset onto the suction side (+n) and dropped into the wake array, so it convects + induces
+    freely (reverse machinery as the TEV). Strength = excess LE circulation above the critical (LESP cap)."""
+    j = wp.tid(); p = j; idx = nw + j
+    vr = Vinf - vcol[p]; vmag = wp.length(vr) + wp.float64(1.0e-9)
+    sina = wp.dot(vr, nrm[p]) / vmag; sa = wp.abs(sina)
+    n = nrm[p]; eps = wp.float64(0.04)
+    wr[idx, 0] = rings[p, 0]; wr[idx, 1] = rings[p, 1]            # LE edge of the leading ring
+    wr[idx, 2] = rings[p, 1] + n * eps; wr[idx, 3] = rings[p, 0] + n * eps   # rolled onto the suction side
+    if sa > sin_crit:
+        wg[idx] = klev * gamma[0, p] * (wp.float64(1.0) - sin_crit / sa)
+    else:
+        wg[idx] = wp.float64(0.0)
 
 
 @wp.kernel
@@ -104,28 +102,34 @@ def _shed_te_traj(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE
 def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=-90.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
-                  swept_axis=False, lev=False, K_v=2.5, lev_onset_deg=15.0, lev_ds_deg=33.0,
-                  induced_drag=False):
-    """Twisted flapping UVLM (same validated kernels as flap_flight_validate.gpu_run).
+                  swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
+                  frames_out=None, frame_skip=3):
+    """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
-    lev=True -> add the DYNAMIC-STALL LEV via the Polhamus leading-edge-suction analogy: when a panel's
-    effective AoA exceeds lev_onset, the lost LE suction reappears as a vortex normal force C_Nv=K_v*sin^2a
-    (signed), evaluated at the LOCAL dynamic pressure (incl. flap velocity -> rises with frequency)."""
+    real_geom=True -> real raked planform + NACA-2406 camber.
+    real_lev=True -> REAL discrete leading-edge vortex: a vortex ring is shed at the leading edge of each
+      strip whose |sin a_eff| exceeds lesp_crit_deg (the LESP criterion), then convects + induces freely
+      like the TEV wake. lev_klev scales the shed strength. (Viscous term added separately, Re-based.)"""
     dev = cfg.DEVICE; NP = cfg.NP_DTYPE
-    C0 = ffv.flat_wing(nc, ns, chord, half_span); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
+    # real_geom=True -> REAL RoboEagle planform (raked TE, measured chord(y)) + NACA-2406 camber, LE at
+    # x=0 / TE at x=+c (chord in +x = flow dir, Vinf=+x flows LE->TE). Else flat rectangular wing.
+    C0 = (rg.robowing_real(nc, ns, half_span) if real_geom
+          else ffv.flat_wing(nc, ns, chord, half_span)); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
     A_f = np.radians(flap_amp_deg); A_t = np.radians(twist_amp_deg); phi = np.radians(twist_phase_deg)
     Om = 2.0 * np.pi * freq; x_ea = 0.25 * chord
     Vinf = np.array([U, 0.0, U * np.tan(np.radians(aoa_deg))]); Vw = V3(*[float(v) for v in Vinf])
     T = 1.0 / freq; dt = T / steps_per_cycle; N = n_cycle * steps_per_cycle
     te = wp.array(np.array([(nc - 1) * ns + j for j in range(ns)], np.int32), dtype=wp.int32, device=dev)
-    wake_max = wake_rows * ns; maxw = min(N * ns, wake_max) + ns
+    shed_per = ns * (2 if real_lev else 1)            # TEV (+ LEV ring if real_lev) shed per step
+    wake_max = wake_rows * shed_per; maxw = min(N * shed_per, wake_max) + shed_per
     wr = wp.zeros((maxw, 4), dtype=V3, device=dev); wr_new = wp.zeros((maxw, 4), dtype=V3, device=dev)
     wr_m2 = wp.zeros((maxw, 4), dtype=V3, device=dev) if rk2 else None   # RK2 second-Euler buffer
     tpl = wp.zeros(ns, dtype=V3, device=dev); tpr = wp.zeros(ns, dtype=V3, device=dev)   # prev TE corners
     tcl = wp.zeros(ns, dtype=V3, device=dev); tcr = wp.zeros(ns, dtype=V3, device=dev)   # cur TE corners
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev); gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev); nw = 0
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
+    wtype = []                                        # CPU bookkeeping: 0=TEV, 1=LEV per wake ring (for viz)
     for t in range(N):
         corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span, swept_axis=swept_axis)
         cw = wp.array(corners.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
@@ -139,32 +143,38 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev)
         wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
+        # First-principles unsteady panel force: circulation (Kutta-Joukowski) + added-mass (rho dGamma/dt).
+        # The REAL LEV (real_lev) acts through the wake it sheds (induction on the bound + its own impulse);
+        # no empirical Polhamus/cap terms. Viscous term to be added (first-principles, Re-based) next.
         Fp = wp.zeros(npan, dtype=V3, device=dev)
-        if induced_drag:   # add wake-induced velocity in the force -> induced drag (cancels inviscid thrust)
-            wp.launch(ug.panel_force_ind_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, vcol, Vw,
-                      DTYPE(dt), DTYPE(ug.RHO), ns, wr, wg, nw], outputs=[Fp], device=dev)
-        else:
-            wp.launch(ug.panel_force_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, vcol, Vw,
-                      DTYPE(dt), DTYPE(ug.RHO), ns], outputs=[Fp], device=dev)
+        wp.launch(ug.panel_force_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, vcol, Vw,
+                  DTYPE(dt), DTYPE(ug.RHO), ns], outputs=[Fp], device=dev)
         Fpn = Fp.numpy(); vcn = vcol.numpy()
         Lh[t] = np.sum(Fpn[:, 2]); Xh[t] = np.sum(Fpn[:, 0]); Ph[t] = -np.sum(np.einsum('pi,pi->p', Fpn, vcn))
-        if lev:   # dynamic-stall LEV (Polhamus LE-suction analogy), on-GPU
-            levout = wp.zeros(2, dtype=DTYPE, device=dev)
-            wp.launch(_lev_kernel, dim=npan, inputs=[rings, nrm, vcol, Vw, DTYPE(ug.RHO), DTYPE(K_v),
-                      DTYPE(np.sin(np.radians(lev_onset_deg))), DTYPE(np.sin(np.radians(lev_ds_deg)))],
-                      outputs=[levout], device=dev)
-            lo = levout.numpy(); Lh[t] += float(lo[0]); Xh[t] += float(lo[1])
         lkj = wp.zeros(1, dtype=DTYPE, device=dev)        # DIAG: Vinf-only KJ lift (no plunge tilt)
         wp.launch(ug.lift_kj_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt),
                   DTYPE(ug.RHO), ns], outputs=[lkj], device=dev)
         Lkjh[t] = float(lkj.numpy()[0])
+        if frames_out is not None and t % frame_skip == 0:   # snapshot for wake/lattice visualization
+            vcn = vcol.numpy(); nrn = nrm.numpy(); vr = np.asarray(Vinf) - vcn
+            sina = np.sum(vr * nrn, axis=1) / (np.linalg.norm(vr, axis=1) + 1e-9)
+            frames_out.append(dict(
+                t=t * dt, bound=rings.numpy().copy(), gam=gamma.numpy().reshape(-1).copy(),
+                wr=(wr.numpy()[:nw].copy() if nw > 0 else np.zeros((0, 4, 3))),
+                wg=(wg.numpy()[:nw].copy() if nw > 0 else np.zeros(0)),
+                wtype=np.array(wtype[:nw], dtype=int) if nw > 0 else np.zeros(0, int),
+                sep=(np.abs(sina) > np.sin(np.radians(lesp_crit_deg))), nc=nc, ns=ns))
         if te_traj:   # shed along the TE trajectory (continuous sheet for the plunging TE)
             wp.launch(_shed_te_traj, dim=ns, inputs=[rings, gamma, te, tpl, tpr, Vw, DTYPE(dt), nw],
                       outputs=[wr, wg, tcl, tcr], device=dev)
             wp.copy(tpl, tcl); wp.copy(tpr, tcr)        # current TE becomes next step's "previous"
         else:
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
-        nw_new = nw + ns
+        if real_lev:   # REAL leading-edge vortex: shed discrete LEV rings at the LE (after the TEV block)
+            wp.launch(_shed_lev_kernel, dim=ns, inputs=[rings, nrm, vcol, gamma, Vw, ns, nw + ns,
+                      DTYPE(np.sin(np.radians(lesp_crit_deg))), DTYPE(lev_klev)], outputs=[wr, wg], device=dev)
+        nw_new = nw + shed_per
+        wtype.extend([0] * ns + ([1] * ns if real_lev else []))   # TEV then LEV (matches shed order)
         if nw > 0:   # convect OLD wake only; freshly-shed ring STAYS attached at the TE (Katz&Plotkin
             wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
                       outputs=[wr_new], device=dev)   # order) so it cancels the trailing bound segment
@@ -178,6 +188,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             tw = np.zeros((maxw, 4, 3)); tw[:wake_max] = wrh[off:nw_new]; tg = np.zeros(maxw); tg[:wake_max] = wgh[off:nw_new]
             wr = wp.array(tw, dtype=V3, device=dev); wg = wp.array(tg, dtype=DTYPE, device=dev)
             wr_new = wp.zeros((maxw, 4), dtype=V3, device=dev); nw = wake_max
+            wtype = wtype[off:]                        # drop oldest rings' type tags too
         else:
             nw = nw_new
         gprev = wp.array(gamma.numpy(), dtype=DTYPE, device=dev)
