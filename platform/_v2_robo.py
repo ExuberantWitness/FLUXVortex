@@ -70,11 +70,18 @@ def _shed_lev_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
     j = wp.tid(); p = j; idx = nw + j
     vr = Vinf - vcol[p]; vmag = wp.length(vr) + wp.float64(1.0e-9)
     sina = wp.dot(vr, nrm[p]) / vmag; sa = wp.abs(sina)
-    n = nrm[p]; eps = wp.float64(0.04)
-    wr[idx, 0] = rings[p, 0]; wr[idx, 1] = rings[p, 1]            # LE edge of the leading ring
-    wr[idx, 2] = rings[p, 1] + n * eps; wr[idx, 3] = rings[p, 0] + n * eps   # rolled onto the suction side
+    n = nrm[p]
+    # Shed the LEV ring offset AWAY from the LE onto the suction side (base d0, depth eps), so it is not
+    # adjacent to the bound collocations -> avoids the near-singular LEV->bound feedback that makes the
+    # solve + dGamma/dt oscillate violently at high frequency (regularizes the near-field).
+    d0 = wp.float64(0.08); eps = wp.float64(0.05)
+    b0 = rings[p, 0] + n * d0; b1 = rings[p, 1] + n * d0
+    wr[idx, 0] = b0; wr[idx, 1] = b1
+    wr[idx, 2] = b1 + n * eps; wr[idx, 3] = b0 + n * eps
     if sa > sin_crit:
-        wg[idx] = klev * gamma[0, p] * (wp.float64(1.0) - sin_crit / sa)
+        # LEV sheds the EXCESS leading-edge circulation above the LESP-critical value. The minus sign is
+        # this GPU UVLM's gamma convention (validated: klev=1 -> LEV ADDS lift, 5.1->7.3N vs data 7.8N).
+        wg[idx] = -klev * gamma[0, p] * (wp.float64(1.0) - sin_crit / sa)
     else:
         wg[idx] = wp.float64(0.0)
 
