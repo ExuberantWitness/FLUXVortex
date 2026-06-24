@@ -209,7 +209,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
-                  part_lev=False, sym=False, root_off=0.0, frames_out=None, frame_skip=3):
+                  part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
+                  vortex=False, k_vortex=2.0, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -244,6 +245,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
+    Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
     NU_AIR = 1.5e-5; FORM_FF = 1.0 + 2.0 * tc_thick + 60.0 * tc_thick ** 4   # air kin. visc; Hoerner form factor
     wtype = []                                        # CPU bookkeeping: 0=TEV, 1=LEV per wake ring (for viz)
     for t in range(N):
@@ -295,6 +297,16 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         area = 0.5 * np.linalg.norm(np.cross(cc[:, 2] - cc[:, 0], cc[:, 3] - cc[:, 1]), axis=1)
         dp = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy + dGdt)
         Fb = dp[:, None] * area[:, None] * nrm.numpy()
+        # ---- STALL: the attached UVLM has no separation -> at high |alpha_eff| (deep stall on the +-45
+        # flap strokes, tip alpha_eff reaches +-40-50deg) it over-predicts the force (BOTH the downstroke
+        # lift peak and the upstroke downforce trough). Cap the section force at the airfoil's CL_max:
+        # beyond the stall angle the lift saturates, factor = sin(a_stall)/|sin a_eff|. a_stall = CL_max/slope
+        # is a FIRST-PRINCIPLES airfoil property (CL_max~1.2, slope~2pi -> ~11deg), NOT fitted to RoboEagle. ----
+        if stall:
+            nnp = nrm.numpy()
+            sap = np.sum(Vcol * nnp, axis=1) / (np.linalg.norm(Vcol, axis=1) + 1e-9)   # sin(alpha_eff)/panel
+            sf = np.minimum(1.0, np.sin(np.radians(stall_deg)) / (np.abs(sap) + 1e-9))  # CL_max saturation
+            Fb = Fb * sf[:, None]
         Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
         # ---- DeLaurier (1993) first-principles VISCOUS friction drag (strip theory). The inviscid
         # Bernoulli force has NO friction -> over-predicts net thrust. Skin friction drags each panel
@@ -333,6 +345,21 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             dTs = 2.0 * np.pi * les_eta * aeff_s ** 2 * (0.5 * ug.RHO * Uc * Vle_m) * c_le * dy_le
             Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
             Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
+        # ---- HIGH-ALPHA VORTEX NORMAL FORCE (Polhamus leading-edge-suction analogy). When the flow
+        # separates at high |alpha_eff| (the +-45 flap mid-strokes, alpha_eff ~ 45deg), the lost LE suction
+        # reappears as a force NORMAL to the wing: C_Nv = k_v sin^2(a) cos(a). The SAME normal force projects
+        # into BOTH lift (N . z) AND drag (N . x) -> max at mid-downstroke, where Fig 16 shows max drag AND an
+        # extra lift bump (the user's observation). Attached UVLM misses it (it's separated-flow vortex lift). ----
+        if vortex:
+            nnv = nrm.numpy()
+            vr = np.asarray(Vinf) - vcn                       # body-relative flow (freestream + flapping)
+            vrm = np.linalg.norm(vr, axis=1) + 1e-9
+            sa_v = np.sum(vr * nnv, axis=1) / vrm             # sin(alpha_eff) per panel (signed)
+            ca_v = np.sqrt(np.maximum(0.0, 1.0 - sa_v ** 2))
+            qd = 0.5 * ug.RHO * vrm ** 2                       # local dynamic pressure
+            Nv = k_vortex * sa_v * np.abs(sa_v) * ca_v * qd * area   # signed sin^2(a) cos(a) normal force
+            Fv = Nv[:, None] * nnv                             # along the panel normal -> lift+drag both
+            Lh_vtx[t] = float(np.sum(Fv[:, 2])); Xh_vtx[t] = float(np.sum(Fv[:, 0]))
         lkj = wp.zeros(1, dtype=DTYPE, device=dev)        # DIAG: Vinf-only KJ lift (no plunge tilt)
         wp.launch(ug.lift_kj_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt),
                   DTYPE(ug.RHO), ns], outputs=[lkj], device=dev)
@@ -389,13 +416,16 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     L_bern = 2.0 * np.mean(Lh_imp[last]); Fx_bern = 2.0 * np.mean(Xh_imp[last])
     L_vis = 2.0 * np.mean(Lh_vis[last]); Fx_vis = 2.0 * np.mean(Xh_vis[last])   # friction (downstream, +x drag)
     L_les = 2.0 * np.mean(Lh_les[last]); Fx_les = 2.0 * np.mean(Xh_les[last])   # LE suction (forward, -x thrust)
+    L_vtx = 2.0 * np.mean(Lh_vtx[last]); Fx_vtx = 2.0 * np.mean(Xh_vtx[last])   # vortex normal force (lift+drag)
     Lkj = 2.0 * np.mean(Lkjh[last])
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj,
                 L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
                 Lh_vis=Lh_vis, Xh_vis=Xh_vis, Lh_les=Lh_les, Xh_les=Xh_les,       # per-step viscous / LE-suction
+                Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
                 L_net=L_bern + L_les - L_vis,                                     # lift incl. LE-suction vertical comp.
-                T_net=-(Fx_bern + Fx_vis + Fx_les))                              # Bernoulli + friction + LE suction
+                L_full=L_bern + L_vtx,                                            # Bernoulli + vortex normal force lift
+                T_net=-(Fx_bern + Fx_vis + Fx_les + Fx_vtx))                     # Bernoulli + friction + LE suction + vortex
 
 
 if __name__ == "__main__":
