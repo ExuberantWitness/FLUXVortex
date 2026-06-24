@@ -275,6 +275,21 @@ def panel_force_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3
 # The flapping thrust gap was shown to be attached VISCOUS drag, not induced drag/a cap -> first-principles
 # viscous term replaces them. Production force = panel_force_kernel (circulation + added-mass) + real LEV.
 @wp.kernel
+def col_wake_vel_kernel(col: wp.array(dtype=V3), wr: wp.array(dtype=V3, ndim=2),
+                        wg: wp.array(dtype=DTYPE), nw: int, Vw: wp.array(dtype=V3)):
+    """Full wake-induced velocity VECTOR at each collocation point (incl. the LEV rings). Needed for the
+    unsteady-Bernoulli surface-pressure force, whose V_colloc.tau term is how the LEV's induced flow at
+    the wing surface enters the force (the bound-only KJ omits it -> misses the LEV's lift)."""
+    i = wp.tid()
+    ci = col[i]
+    vx = wp.float64(0.0); vy = wp.float64(0.0); vz = wp.float64(0.0)
+    for k in range(nw):
+        vv = wg[k] * ring_vel(ci, wr[k, 0], wr[k, 1], wr[k, 2], wr[k, 3])
+        vx = vx + vv[0]; vy = vy + vv[1]; vz = vz + vv[2]
+    Vw[i] = V3(vx, vy, vz)
+
+
+@wp.kernel
 def lift_kj_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
                    gamma: wp.array(dtype=DTYPE, ndim=2), gprev: wp.array(dtype=DTYPE, ndim=2),
                    Vinf: V3, dt: DTYPE, rho: DTYPE, ns: int, lift: wp.array(dtype=DTYPE)):

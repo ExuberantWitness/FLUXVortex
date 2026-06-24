@@ -129,6 +129,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     tcl = wp.zeros(ns, dtype=V3, device=dev); tcr = wp.zeros(ns, dtype=V3, device=dev)   # cur TE corners
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev); gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev); nw = 0
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
+    Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     wtype = []                                        # CPU bookkeeping: 0=TEV, 1=LEV per wake ring (for viz)
     for t in range(N):
         corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span, swept_axis=swept_axis)
@@ -151,6 +152,33 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   DTYPE(dt), DTYPE(ug.RHO), ns], outputs=[Fp], device=dev)
         Fpn = Fp.numpy(); vcn = vcol.numpy()
         Lh[t] = np.sum(Fpn[:, 2]); Xh[t] = np.sum(Fpn[:, 0]); Ph[t] = -np.sum(np.einsum('pi,pi->p', Fpn, vcn))
+        # ---- unsteady-Bernoulli SURFACE-PRESSURE force (Katz&Plotkin): dp = rho(V_colloc.tau_x dG/dx
+        # + V_colloc.tau_y dG/dy + dG/dt). V_colloc = V_inf - V_body + WAKE+LEV induced velocity at the
+        # panel -> the LEV's induced flow on the wing SURFACE enters the force (bound-only KJ omits it,
+        # missing the LEV lift). Frame-clean in the fixed-wing frame -> the correct first-principles force. ----
+        Vwk = wp.zeros(npan, dtype=V3, device=dev)
+        wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, wr, wg, nw], outputs=[Vwk], device=dev)
+        cc = rings.numpy(); g = gamma.numpy().reshape(-1); gp = gprev.numpy().reshape(-1)
+        Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
+        # THIS GPU UVLM's ring corners: c0,c1 = LE edge; c2,c3 = TE edge (shed_kernel uses c2,c3 for the
+        # TE wake). So chordwise (LE->TE) = mean(c2-c0, c3-c1); spanwise (along LE/TE edge) = mean(c1-c0, c2-c3).
+        tcr = 0.5 * ((cc[:, 2] - cc[:, 0]) + (cc[:, 3] - cc[:, 1]))     # chordwise tangent (LE->TE)
+        tsr = 0.5 * ((cc[:, 1] - cc[:, 0]) + (cc[:, 2] - cc[:, 3]))     # spanwise tangent
+        tcn = np.linalg.norm(tcr, axis=1) + 1e-15; tsn = np.linalg.norm(tsr, axis=1) + 1e-15
+        tc = tcr / tcn[:, None]; ts = tsr / tsn[:, None]               # unit chordwise / spanwise
+        gm = g.reshape(nc, ns); tcnm = tcn.reshape(nc, ns); tsnm = tsn.reshape(nc, ns)
+        dGdx = np.empty((nc, ns)); dGdx[0] = gm[0] / tcnm[0]           # chordwise dGamma/dx (i=chordwise)
+        if nc > 1:
+            dGdx[1:] = (gm[1:] - gm[:-1]) / tcnm[1:]                    # backward diff (Katz&Plotkin)
+        dGdy = np.zeros((nc, ns))                                       # spanwise dGamma/dy (j=spanwise)
+        if ns > 1:
+            dGdy[:, 0] = gm[:, 0] / tsnm[:, 0]; dGdy[:, -1] = -gm[:, -1] / tsnm[:, -1]
+            dGdy[:, 1:-1] = (gm[:, 2:] - gm[:, :-2]) / (2 * tsnm[:, 1:-1])
+        dGdx = dGdx.reshape(-1); dGdy = dGdy.reshape(-1); dGdt = (g - gp) / max(dt, 1e-15)
+        area = 0.5 * np.linalg.norm(np.cross(cc[:, 2] - cc[:, 0], cc[:, 3] - cc[:, 1]), axis=1)
+        dp = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy + dGdt)
+        Fb = dp[:, None] * area[:, None] * nrm.numpy()
+        Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
         lkj = wp.zeros(1, dtype=DTYPE, device=dev)        # DIAG: Vinf-only KJ lift (no plunge tilt)
         wp.launch(ug.lift_kj_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt),
                   DTYPE(ug.RHO), ns], outputs=[lkj], device=dev)
@@ -194,8 +222,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         gprev = wp.array(gamma.numpy(), dtype=DTYPE, device=dev)
     last = slice((n_cycle - 1) * steps_per_cycle, N)
     L = 2.0 * np.mean(Lh[last]); Fx = 2.0 * np.mean(Xh[last]); P = 2.0 * np.mean(np.abs(Ph[last]))
+    L_bern = 2.0 * np.mean(Lh_imp[last]); Fx_bern = 2.0 * np.mean(Xh_imp[last])
     Lkj = 2.0 * np.mean(Lkjh[last])
-    return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj)   # Lkj = Vinf-only KJ lift (no plunge tilt)
+    return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj,
+                L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp)   # Bernoulli force (captures LEV)
 
 
 if __name__ == "__main__":
