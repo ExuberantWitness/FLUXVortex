@@ -1,0 +1,23 @@
+STEADY lift (N, both wings) at 0deg and 5deg, building the wing up in order:
+  (data anchor: 0deg flapping ~2.9N, 5deg steady ~6-7N; camber should give lift at 0deg)
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.88 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.92 ms  (cached)
+  1 flat plate uniform        : L(0deg)=+0.00N   L(5deg)=+4.99N
+  2 +rounded tip              : L(0deg)=+0.00N   L(5deg)=+4.89N
+  3 +NACA2406 camber          : L(0deg)=+1.97N   L(5deg)=+6.88N
+  4 +cosine chord (PROPER)    : L(0deg)=+1.96N   L(5deg)=+6.87N
+
+chordwise nc-convergence on the PROPER wing (rounded+NACA2406+cosine), 5deg:
+  (flat-plate uniform DIVERGED: nc 2->8 gave 0.41->0.21x; does proper wing converge?)
+  nc= 2: L(5deg)=6.11N
+  nc= 4: L(5deg)=6.60N
+  nc= 8: L(5deg)=6.87N
+  nc=12: L(5deg)=6.95N
+DONE

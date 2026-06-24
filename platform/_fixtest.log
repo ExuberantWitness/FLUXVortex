@@ -1,0 +1,6 @@
+baseline vs fixes (divergence shows by ~win 18):
+  baseline (added_mass=OFF, ss=16)          : DIVERGE@19 (max|z_wing|=3.70e+03)
+  FIX added_mass=ON, ss=16                  : DIVERGE@23 (max|z_wing|=2.63e+00)
+  finer dt added_mass=OFF, ss=64            : OK 30w  max|z_wing|=0.0852  lift_std=714.5N  z=31.6
+  FIX added_mass=ON, ss=32                  : DIVERGE@22 (max|z_wing|=6.00e-01)
+DONE

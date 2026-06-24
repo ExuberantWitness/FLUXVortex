@@ -1,0 +1,40 @@
+STEP 1: calibrated trim/force-balance at the spec point (validated rigid flapping UVLM + tail)
+--- sweep cruise speed to find the trim point (L=W) at 1.7 kg ---
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 2.02 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 1.10 ms  (cached)
+  spec: m=1.7kg W=16.7N  V=8.0m/s  body_aoa=45.0deg  wing_feather=6.0deg  flap 2.5Hz ±25.0deg
+  wing area=0.493m^2  tail area=0.148m^2 (30% wing)
+  L_wing=3.13N  L_tail=5.80N  L_total=8.93N  (W=16.7N, L/W=0.54)
+  tail lift fraction = 65%  (researched 20-40%)
+  wing mech power=23.4W (published band 40-82W)
+  -> NOT TRIMMED; tail fraction OFF
+
+  spec: m=1.7kg W=16.7N  V=10.0m/s  body_aoa=45.0deg  wing_feather=6.0deg  flap 2.5Hz ±25.0deg
+  wing area=0.493m^2  tail area=0.148m^2 (30% wing)
+  L_wing=4.76N  L_tail=9.06N  L_total=13.82N  (W=16.7N, L/W=0.83)
+  tail lift fraction = 66%  (researched 20-40%)
+  wing mech power=28.1W (published band 40-82W)
+  -> NOT TRIMMED; tail fraction OFF
+
+  spec: m=1.7kg W=16.7N  V=12.0m/s  body_aoa=45.0deg  wing_feather=6.0deg  flap 2.5Hz ±25.0deg
+  wing area=0.493m^2  tail area=0.148m^2 (30% wing)
+  L_wing=6.73N  L_tail=13.04N  L_total=19.78N  (W=16.7N, L/W=1.19)
+  tail lift fraction = 66%  (researched 20-40%)
+  wing mech power=32.9W (published band 40-82W)
+  -> TRIM OK; tail fraction OFF
+
+--- 2.0 kg at V=11 ---
+  spec: m=2.0kg W=19.6N  V=11.0m/s  body_aoa=45.0deg  wing_feather=6.0deg  flap 2.5Hz ±25.0deg
+  wing area=0.493m^2  tail area=0.148m^2 (30% wing)
+  L_wing=5.71N  L_tail=10.96N  L_total=16.67N  (W=19.6N, L/W=0.85)
+  tail lift fraction = 66%  (researched 20-40%)
+  wing mech power=30.5W (published band 40-82W)
+  -> NOT TRIMMED; tail fraction OFF
+DONE

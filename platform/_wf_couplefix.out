@@ -1,0 +1,4 @@
+==============================================================================
+(c) COUPLING-SCHEME fixes (the oracle's cure). substeps=16 unless noted.
+==============================================================================
+  baseline (iter=1, two-pass)               : surv=False div@ 23 lift_std=439405443854357312.0N max_defl=9.78e+04m (24w)

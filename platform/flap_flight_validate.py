@@ -138,9 +138,10 @@ def gpu_run(nc=4, ns=10, chord=0.29, half_span=0.80, mass=0.52, U=8.0, aoa_deg=1
         Lh[t] = np.sum(Fpn[:, 2]); Th[t] = -np.sum(Fpn[:, 0]); Ph[t] = -np.sum(np.einsum('pi,pi->p', Fpn, vcn))
         wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
         nw_new = nw + ns
-        wp.launch(ug.convect_kernel, dim=(nw_new, 4), inputs=[rings, gamma, npan, wr, wg, nw_new, Vw, DTYPE(dt)],
-                  outputs=[wr_new], device=dev)
-        wp.copy(wr, wr_new, count=nw_new * 4)
+        if nw > 0:   # convect OLD wake only; freshly-shed ring STAYS attached at the TE (Katz&Plotkin
+            wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
+                      outputs=[wr_new], device=dev)   # order) so it cancels the trailing bound segment
+            wp.copy(wr, wr_new, count=nw * 4)
         if nw_new > wake_max:
             off = nw_new - wake_max; wrh = wr.numpy(); wgh = wg.numpy()
             tw = np.zeros((maxw, 4, 3)); tw[:wake_max] = wrh[off:nw_new]; tg = np.zeros(maxw); tg[:wake_max] = wgh[off:nw_new]

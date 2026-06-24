@@ -1,0 +1,147 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+parsed 50 datasets from data.md
+
+===== Figure 18b  (LIFT) — 3 conditions =====
+  cond '6m/s' (sweep=freq, U=6.0 aoa=5.0 freq=2.0 twist0=0.0):
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 2.06 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.96 ms  (cached)
+     freq=   1.4: paper= +3.81N  mine= +1.02N  ratio=+0.27
+     freq=   1.7: paper= +3.87N  mine= +1.02N  ratio=+0.26
+     freq=   2.3: paper= +3.92N  mine= +1.03N  ratio=+0.26
+     freq=   2.6: paper= +3.87N  mine= +1.03N  ratio=+0.27
+  cond '8m/s' (sweep=freq, U=8.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= +6.14N  mine= +1.83N  ratio=+0.30
+     freq=   1.7: paper= +6.77N  mine= +1.82N  ratio=+0.27
+     freq=   2.3: paper= +7.79N  mine= +1.82N  ratio=+0.23
+     freq=   2.6: paper= +7.73N  mine= +1.82N  ratio=+0.24
+  cond '10m/s' (sweep=freq, U=10.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= +8.64N  mine= +2.86N  ratio=+0.33
+     freq=   1.7: paper= +9.38N  mine= +2.86N  ratio=+0.30
+     freq=   2.3: paper=+10.92N  mine= +2.85N  ratio=+0.26
+     freq=   2.6: paper=+11.37N  mine= +2.84N  ratio=+0.25
+
+===== Figure 19b  (LIFT) — 4 conditions =====
+  cond '0度' (sweep=freq, U=8.0 aoa=0.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= +2.88N  mine= +0.57N  ratio=+0.20
+     freq=   1.7: paper= +2.88N  mine= +0.57N  ratio=+0.20
+     freq=   2.3: paper= +2.90N  mine= +0.56N  ratio=+0.19
+     freq=   2.6: paper= +2.95N  mine= +0.56N  ratio=+0.19
+  cond '5度' (sweep=freq, U=8.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= +6.15N  mine= +1.83N  ratio=+0.30
+     freq=   1.7: paper= +6.78N  mine= +1.82N  ratio=+0.27
+     freq=   2.3: paper= +7.80N  mine= +1.82N  ratio=+0.23
+     freq=   2.6: paper= +7.82N  mine= +1.82N  ratio=+0.23
+  cond '10度' (sweep=freq, U=8.0 aoa=10.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper=+10.53N  mine= +3.11N  ratio=+0.29
+     freq=   1.7: paper=+11.16N  mine= +3.10N  ratio=+0.28
+     freq=   2.3: paper=+12.11N  mine= +3.09N  ratio=+0.26
+     freq=   2.6: paper=+12.37N  mine= +3.09N  ratio=+0.25
+  cond '15度' (sweep=freq, U=8.0 aoa=15.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper=+12.88N  mine= +4.43N  ratio=+0.34
+     freq=   1.7: paper=+13.41N  mine= +4.42N  ratio=+0.33
+     freq=   2.3: paper=+14.27N  mine= +4.41N  ratio=+0.31
+     freq=   2.6: paper=+15.15N  mine= +4.41N  ratio=+0.29
+
+===== Figure 17b  (LIFT) — 5 conditions =====
+  cond '1.4HZ' (sweep=twist, U=8.0 aoa=5.0 freq=1.4 twist0=0.0):
+     twist=   0.0: paper= +7.43N  mine= +1.83N  ratio=+0.25
+     twist=  15.0: paper= +7.67N  mine= +1.80N  ratio=+0.23
+     twist=  27.6: paper= +6.27N  mine= +1.76N  ratio=+0.28
+     twist=  45.0: paper= +5.80N  mine= +1.67N  ratio=+0.29
+  cond '1.7HZ' (sweep=twist, U=8.0 aoa=5.0 freq=1.7 twist0=0.0):
+     twist=   0.0: paper= +7.52N  mine= +1.82N  ratio=+0.24
+     twist=  15.0: paper= +8.03N  mine= +1.79N  ratio=+0.22
+     twist=  27.6: paper= +6.78N  mine= +1.75N  ratio=+0.26
+     twist=  45.0: paper= +5.83N  mine= +1.66N  ratio=+0.28
+  cond '2.0HZ' (sweep=twist, U=8.0 aoa=5.0 freq=2.0 twist0=0.0):
+     twist=   0.0: paper= +7.58N  mine= +1.82N  ratio=+0.24
+     twist=  15.0: paper= +8.38N  mine= +1.79N  ratio=+0.21
+     twist=  27.4: paper= +7.28N  mine= +1.74N  ratio=+0.24
+     twist=  45.0: paper= +5.92N  mine= +1.65N  ratio=+0.28
+  cond '2.3HZ' (sweep=twist, U=8.0 aoa=5.0 freq=2.3 twist0=0.0):
+     twist=   0.0: paper= +7.64N  mine= +1.82N  ratio=+0.24
+     twist=  15.0: paper= +8.68N  mine= +1.78N  ratio=+0.21
+     twist=  27.4: paper= +7.85N  mine= +1.74N  ratio=+0.22
+     twist=  45.0: paper= +6.06N  mine= +1.64N  ratio=+0.27
+  cond '2.6HZ' (sweep=twist, U=8.0 aoa=5.0 freq=2.6 twist0=0.0):
+     twist=   0.0: paper= +7.70N  mine= +1.82N  ratio=+0.24
+     twist=  15.0: paper= +8.80N  mine= +1.78N  ratio=+0.20
+     twist=  27.6: paper= +7.97N  mine= +1.74N  ratio=+0.22
+     twist=  45.0: paper= +7.08N  mine= +1.65N  ratio=+0.23
+
+===== Figure 18a  (THRUST) — 3 conditions =====
+  cond '6m/s' (sweep=freq, U=6.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -3.17N  mine= +1.07N  ratio=-0.34
+     freq=   1.7: paper= -2.99N  mine= +1.53N  ratio=-0.51
+     freq=   2.3: paper= -2.28N  mine= +2.64N  ratio=-1.16
+     freq=   2.6: paper= -1.80N  mine= +3.32N  ratio=-1.85
+  cond '8m/s' (sweep=freq, U=8.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -2.28N  mine= +1.16N  ratio=-0.51
+     freq=   1.7: paper= -1.92N  mine= +1.62N  ratio=-0.85
+     freq=   2.3: paper= -1.08N  mine= +2.78N  ratio=-2.57
+     freq=   2.6: paper= -0.54N  mine= +3.48N  ratio=-6.41
+  cond '10m/s' (sweep=freq, U=10.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -1.14N  mine= +1.25N  ratio=-1.10
+     freq=   1.7: paper= -0.75N  mine= +1.72N  ratio=-2.29
+     freq=   2.3: paper= +0.20N  mine= +2.91N  ratio=+14.23
+     freq=   2.6: paper= +0.74N  mine= +3.62N  ratio=+4.88
+
+===== Figure 19a  (THRUST) — 4 conditions =====
+  cond '15度' (sweep=freq, U=8.0 aoa=15.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -3.79N  mine= +2.19N  ratio=-0.58
+     freq=   1.7: paper= -3.64N  mine= +2.65N  ratio=-0.73
+     freq=   2.3: paper= -3.15N  mine= +3.81N  ratio=-1.21
+     freq=   2.6: paper= -2.93N  mine= +4.51N  ratio=-1.54
+  cond '10度' (sweep=freq, U=8.0 aoa=10.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -2.94N  mine= +1.55N  ratio=-0.53
+     freq=   1.7: paper= -2.79N  mine= +2.01N  ratio=-0.72
+     freq=   2.3: paper= -2.10N  mine= +3.17N  ratio=-1.51
+     freq=   2.6: paper= -1.65N  mine= +3.87N  ratio=-2.35
+  cond '5度' (sweep=freq, U=8.0 aoa=5.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -2.29N  mine= +1.16N  ratio=-0.51
+     freq=   1.7: paper= -1.92N  mine= +1.62N  ratio=-0.84
+     freq=   2.3: paper= -1.07N  mine= +2.78N  ratio=-2.60
+     freq=   2.6: paper= -0.55N  mine= +3.48N  ratio=-6.31
+  cond '0度' (sweep=freq, U=8.0 aoa=0.0 freq=2.0 twist0=0.0):
+     freq=   1.4: paper= -1.41N  mine= +1.00N  ratio=-0.71
+     freq=   1.7: paper= -1.00N  mine= +1.46N  ratio=-1.47
+     freq=   2.3: paper= -0.05N  mine= +2.63N  ratio=-48.52
+     freq=   2.6: paper= +0.51N  mine= +3.32N  ratio=+6.45
+
+===== Figure 17a  (THRUST) — 5 conditions =====
+  cond '1.4HZ' (sweep=twist, U=8.0 aoa=5.0 freq=1.4 twist0=0.0):
+     twist=   0.0: paper= -2.04N  mine= +1.16N  ratio=-0.57
+     twist=  15.0: paper= -2.16N  mine= +1.48N  ratio=-0.69
+     twist=  27.4: paper= -2.66N  mine= +1.72N  ratio=-0.64
+     twist=  44.8: paper= -3.10N  mine= +1.97N  ratio=-0.63
+  cond '1.7HZ' (sweep=twist, U=8.0 aoa=5.0 freq=1.7 twist0=0.0):
+     twist=   0.0: paper= -1.98N  mine= +1.62N  ratio=-0.82
+     twist=  15.0: paper= -1.91N  mine= +2.00N  ratio=-1.05
+     twist=  27.4: paper= -2.30N  mine= +2.27N  ratio=-0.99
+     twist=  44.8: paper= -2.97N  mine= +2.56N  ratio=-0.86
+  cond '2.0HZ' (sweep=twist, U=8.0 aoa=5.0 freq=2.0 twist0=0.0):
+     twist=   0.0: paper= -1.93N  mine= +2.16N  ratio=-1.12
+     twist=  15.0: paper= -1.57N  mine= +2.59N  ratio=-1.66
+     twist=  27.4: paper= -1.89N  mine= +2.89N  ratio=-1.53
+     twist=  45.0: paper= -2.81N  mine= +3.20N  ratio=-1.14
+  cond '2.3HZ' (sweep=twist, U=8.0 aoa=5.0 freq=2.3 twist0=0.0):
+     twist=   0.0: paper= -1.81N  mine= +2.78N  ratio=-1.54
+     twist=  15.0: paper= -1.16N  mine= +3.26N  ratio=-2.82
+     twist=  27.6: paper= -1.41N  mine= +3.59N  ratio=-2.54
+     twist=  45.0: paper= -2.47N  mine= +3.90N  ratio=-1.58
+  cond '2.6HZ' (sweep=twist, U=8.0 aoa=5.0 freq=2.6 twist0=0.0):
+     twist=   0.0: paper= -1.64N  mine= +3.48N  ratio=-2.13
+     twist=  15.0: paper= -0.76N  mine= +3.99N  ratio=-5.23
+     twist=  27.4: paper= -0.85N  mine= +4.33N  ratio=-5.10
+     twist=  45.0: paper= -1.75N  mine= +4.66N  ratio=-2.65
+
+===== SUMMARY =====
+  LIFT: 48 pts, mean ratio mine/paper = +0.25 (range +0.19..+0.34)
+  THRUST: 48 pts, mean ratio mine/paper = -1.13 (range -48.52..+14.23)
+DONE

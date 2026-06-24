@@ -298,55 +298,73 @@ co-design cannot enter.
 *Figure 3 (`codesign_attitude_gust.png`): left — J/J0 convergence of the dynamic gradient co-design;
 right — the discovered spanwise stiffness and mass taper (soft-root→stiff-tip, mass outboard).*
 
-### 4.3 The flagship co-design — meta-RL-amortised structure (stiffness × mass) via MAP-Elites
+### 4.3 The flagship co-design — amortised control over (stiffness × mass) on the full coupled UVLM FSI
 
-The archives above co-design structure with a *scalar* feedback gain. The platform's full target is a
-two-layer optimiser with a **meta-reinforcement-learning control layer**: a SINGLE RL² policy that adapts
-to each design, so the structural search is amortised over ONE controller rather than retraining a
-controller per morphology. We realise it here.
+The archives above co-design structure with a *scalar* feedback gain searched per niche. The platform's
+full target is a two-layer optimiser whose **control layer is amortised**: a single design-conditioned
+policy supplies each morphology's controller, so the structural search is paid once over ONE policy rather
+than re-optimising a controller per design. We realise it here **directly on the full nonlinear unsteady
+free-wake UVLM ⊗ ANCF FSI — no reduced flight surrogate** — which the differentiable strong-coupled adjoint
+of §4.2 makes tractable.
 
-**Design space** = a spanwise STIFFNESS field × MASS field (low-D splines, root→tip). Each maps to (a) the
-per-element (E, ρ) on the validated ANCF wing and (b) physically-reduced flight-dynamics aggregates —
-tip-compliance washout (passive gust alleviation), root-stiffness (cruise efficiency), tip-mass inertia
-(passive gust resistance), total mass (weight) — every aggregate anchored to the validated coupled FSI.
-A uniform mass field reduces the env **exactly** to the stiffness-only env (Δ = 0 over a rollout).
+**A stepped full-FSI control environment.** We wrap the coupled solver as a step-by-step environment
+(`FSIControlEnv`) that holds the FSI state (q, q̇, the free wake, γ_{n−1}) and advances ONE coupled UVLM
+step under a per-step action. Stepped with a constant action it reproduces the validated batch forward
+bit-exact. A naïve **explicit** step is, however, limited by the fluid added-mass / feedback CFL bound: a
+position-feedback gain k ≳ 3 diverges at the production step (the same instability that motivates §4.2).
+We therefore default the environment to the **strong-coupled predictor–corrector step**, and verify it
+reproduces the strong-coupled batch forward **bit-exact (rel ≈ 1×10⁻¹¹) at k = 2, 4, 8** — i.e. stably
+exactly where the explicit step blows up. High-gain controllers can now act inside the full-fidelity loop.
 
-**Control** = an RL² meta-policy (a Takens delay-embedding context network) **meta-trained over the
-(stiffness × mass) distribution**: from its first interactions it infers the current morphology and adapts
-(episode return −333 → +312 over training), so every archive design is flown by the **same** controller
-with NO per-design retraining (amortised control — the plan's §6 control layer).
+**Amortised, design-conditioned control trained by the EXACT FSI gradient.** The control layer is a policy
+π(θ) that maps the design descriptor θ = (θ_E, θ_R) — the SAME spanwise stiffness/mass spline control
+points the archive searches — to the gust-rejection feedback gain k = K·σ(w·[θ,1]). It is trained by
+gradient descent on a gust-excursion-plus-control-effort objective, whose gradient
+∂L/∂w = (∂L/∂k)(∂k/∂w) uses the **closed-loop policy gradient ∂L/∂k from the strong-coupled PC adjoint**.
+We first gate the gradient: the analytic ∂L/∂w matches finite differences of the adjoint's own loss to
+**max-rel 7.1×10⁻⁴** through the full coupled UVLM FSI — so the controller trains by an *exact* gradient
+through the nonlinear unsteady model, with no new adjoint and no surrogate. Over training the mean
+gust-excursion-plus-effort loss falls from **18.3 to 3.5** (epoch 0→29). On six **HELD-OUT** designs the
+amortised π reduces the gust loss **32.7 % versus no control** and reproduces the per-design grid-optimal
+gain to within one (coarse, ΔK = 1) grid cell on **6/6** designs, within **19.1 %** of the per-design
+optimum loss — one policy supplies near-optimal control for designs it never saw, without re-optimising
+(the amortisation payoff). We report this honestly as a working DEV-scale proof: the optimal feedback
+gains in this short gust-load window are small (≲ 1, the control-effort weight setting their scale), and
+the linear policy slightly *under*-predicts their magnitude; the full-scale archive is an A100 job.
 
-**Co-design.** MAP-Elites illuminates the (stiffness-washout `s_gust` × mass-inertia `m_gust`) behaviour
-space on one RTX 4090: **75 / 96 niches (78 % coverage)**, each the best gust-rejecting design at that
-morphology, *all flown by the one meta-policy*. Findings:
+**Co-design.** MAP-Elites then illuminates the two STRUCTURAL distributions — **spanwise stiffness taper
+(E_tip/E_root) × mass taper (ρ_tip/ρ_root)** — on the full coupled UVLM FSI, each cell's design flown by
+its amortised controller k = π(θ). The DQD emitter uses the **exact design gradient through the
+strong-coupled FSI, including the controller response** ∂J/∂θ = ∂J/∂θ|_k + (∂J/∂k)(∂π/∂θ) — which we gate
+against finite differences before the search (analytic vs FD ‖g‖ 1.52 vs 1.48, max-rel 4 %). Quality is the
+real coupled-FSI gust excursion J = ‖(q_N − q_ref)·free‖² (not a surrogate). The search fills **72 of 144
+niches (50 % coverage)** in ≈19 min on one RTX 4090, with **182/182 evaluations stable** — the
+strong-coupled PC forward and the amortised controller keep *every* sampled morphology non-divergent, which
+is what makes a gradient QD search over the full transient FSI feasible at all. Across the archive the gust
+excursion J spans **0.151–1.76** (a >10× spread — the morphology genuinely matters) and the recorded cruise
+L/D spans **19.2–26.5**, tracing the gust-rejection × efficiency frontier. The best gust rejector is a
+**flexible tip** (stiffness taper E_tip/E_root = 0.13) with a **tip-light mass** distribution
+(ρ_tip/ρ_root = 0.71), flown at amortised gain k = π = 2.67 — recovering the passive load-alleviation
+physics (a compliant, light tip washes out the gust) now *discovered* by the co-design on the high-fidelity
+solver rather than assumed (Fig. 4).
 
-1. **Passive tip-compliance washout dominates gust rejection** — the low-`s_gust` (flexible-tip) column is
-   the brightest (best controlled gust excursion), recovering the passive-alleviation mechanism.
-2. **Mass inertia gives a complementary resistance** — at fixed stiffness, tip-mass lowers the gust
-   excursion (the §4.2 attitude mechanism: tip inertia resists the lever-weighted excursion), bought with a
-   weight (efficiency) and a control-sluggishness cost.
-3. The archive **traces the gust-rejection × cruise-efficiency frontier** (excursion 0.86–3.75, L/D
-   20.6–25.7): stiff/efficient vs flexible/gust-rejecting, with the mass distribution modulating along it.
-4. **One meta-policy amortises control across all 75 morphologies** — the structure-and-control co-design
-   is searched without retraining a controller per design (Fig. 4).
+**Robustness.** Repeating the co-design with an independent random seed reproduces the result without
+tuning: identical coverage (72/144 niches), again **100 % stable** (181/181 evaluations), the same J range
+(0.18–1.97) and L/D range (18.9–26.5), and — most importantly — the **same physical optimum**: the best
+gust rejector is again a flexible tip with a tip-light mass distribution (E_tip/E_root = 0.27,
+ρ_tip/ρ_root = 0.62, k = π = 2.39 vs 0.13 / 0.71 / 2.67 at the first seed). The flexible-tip + tip-light
+mechanism is therefore a property of the coupled-FSI co-design, not of a particular search trajectory.
 
-**High-fidelity grounding.** The fast flight surrogate's gust-rejection ranking is validated against the
-**differentiable coupled FSI** of §2–4: the archive designs' spline (E, ρ) are mapped to the per-element
-ANCF wing and run through the coupled unsteady free-wake FSI under the same gust, and the structural
-gust-deflection energy ranks consistently with the surrogate excursion (**Spearman ρ = 0.70** over the
-feasible designs). The grounding initially exposed that a pure load-washout surrogate *over-credits*
-structurally over-flexible wings (which the FSI penalises through large deflection); an FSI-grounded
-over-flex penalty (the same compliance threshold the efficiency model uses) restores consistency and
-keeps the archive's elites FSI-feasible — the high-fidelity solver is what catches and fixes this.
+This is the flagship the platform was built for, now on the high-fidelity model end to end: a
+**structure-and-control co-design on the full nonlinear unsteady free-wake UVLM FSI** — a (stiffness ×
+mass) morphology archive, each flown by an amortised controller trained through the *exact* differentiable
+strong-coupled FSI gradient, with every quality evaluated on the coupled solver itself rather than a
+reduced model.
 
-This is the flagship discovery the platform was built for: a **meta-RL-amortised structure-and-control
-co-design** — a (stiffness × mass) morphology archive flown by a single adaptive policy, the
-gust-rejection × efficiency landscape mapped and validated against the high-fidelity FSI.
-
-*Figure 4 (`meta_codesign_archive.png`): left — the meta-RL co-design archive over (stiffness washout ×
-mass inertia), each cell coloured by the meta-policy's controlled gust excursion; right — the
-gust-rejection × cruise-efficiency frontier of all 75 elites (each a distinct stiffness×mass morphology),
-coloured by mass inertia, all flown by ONE amortised meta-policy.*
+*Figure 4 (`fsi_codesign_qd_archive.png`): left — the co-design archive over (stiffness taper × mass
+taper), each cell coloured by the coupled-FSI gust excursion J; right — the amortised controller gain
+k = π(θ) over the same morphology space. Figure 4b (`fsi_shac_controller.png`): the SHAC training curve and
+the held-out generalisation of π(θ) against the per-design grid-optimal gain.*
 
 ---
 

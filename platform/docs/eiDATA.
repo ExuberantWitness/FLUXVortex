@@ -1,0 +1,93 @@
+刚柔分布不能瞎编，目前刚柔分布如下所示：
+
+
+2.4. Flapping Wing Design
+Research [42,43] shows that spanwise twist deformation significantly affects flapping wing thrust. This deformation features progressively increasing twist angles along the span. Wing surface deformation bends ribs and spars, stretching the membrane. Resistance to twist deformation depends on spar/rib configuration, rib count, and membrane material, quantified as wing stiffness. Consequently, the wing’s resistance to spanwise twist is defined by its chordwise bending stiffness EI (E = elastic modulus, I = wing cross-section moment of inertia). Measuring chordwise stiffness at the carbon rod location assesses this stiffness and quantifies the wing’s flexible twist deformation capability [44].
+To investigate the impact of active twist, it is essential to minimize the influence of the wing’s inherent twist deformation. In this study, the stiffness of the wing is enhanced by increasing the number of ribs and optimizing the configuration of the wing spars and ribs. A comparison between the RoboEagle’s wing and the newly designed wing is illustrated in Figure 11a,b.
+Drones 09 00535 g011
+Figure 11. (a) RoboEagle’s flapping wing. (b) Optimized flapping wing configuration. (The loading point position is marked with a red circle).
+Calculating chordwise stiffness assumes linear elasticity. The wing membrane, carbon ribs, and spars exhibit linear elastic behavior: deformation relates linearly to applied force, and the wing restores its shape upon force removal. Satisfying this assumption enables calculating chordwise stiffness using the cantilever beam method (point load at free end) per material mechanics.
+Static stiffness k is defined as the slope of the force-displacement curve:
+��=Δ��Δ��
+(8)
+In Equation (8), ΔF represents the change in external force, and ΔD represents the change in displacement, thus the chordwise stiffness EI can be calculated as follows:
+����=����33
+(9)
+In Equation (9), L is the effective length. For instance, applying force at the trailing edge sets L equal to the local chord length at that point. Analysis shows that membrane deformation transfers to the carbon ribs and spars. Hence, the endpoint of the outer wing section’s trailing-edge second rib (refer to Figure 12) is selected as the stiffness measurement point. The stiffness calculated here defines the flapping wing’s chordwise stiffness.
+Drones 09 00535 g012
+Figure 12. Schematic diagram of the wing chordwise stiffness measurement device.
+To conduct the stiffness measurement process, a chordwise stiffness measurement device is designed for the flapping wing, as illustrated in Figure 12. It comprises an optical table; a z-axis translation stage (accuracy: 0.01 mm) for precise vertical loading point positioning; a wing clamp; a support rod (8 mm diameter carbon rod); and an analytical balance (Zhuojing BSM1.2 kg, accuracy: 0.01 g) measuring the applied load. The translation stage vertically adjusts the loading point for force application. The support rod transfers force: its top contacts the wing, its bottom rests via a base on the balance platform. The balance connects to a computer via serial port for continuous data acquisition.
+Chordwise stiffness measurement used 5 mm displacement steps until wing deflection exceeded 15% of the effective length. Each load state lasted 30 s; averages were computed from multiple measurements. Linear fitting of deformation data yielded the slope (static stiffness k). Chordwise stiffness EI was then calculated using Equation (9). The final chordwise stiffness EI of the two wings is presented in Figure 13 (EI (Figure 11a)/EI (Figure 11b) = 3.98), which indicates a significant improvement in stiffness.
+Drones 09 00535 g013
+Figure 13. Comparison of chordwise stiffness test results between Figure 11a,b.
+
+
+测量点
+展向位置/mm                      弦向位置/mm（翼根前缘点为[0,0]）
+ 5.88595271210014e+002   -2.73508547008547e+002
+
+
+其他翼面后缘点位置如下
+
+展向位置/mm                      弦向位置/mm（翼根前缘点为[0,0]）
+ 8.00000000000000e+002   -1.59444444444444e+001
+ 8.00000000000000e+002   -2.57564102564103e+001
+ 8.00000000000000e+002   -4.29273504273504e+001
+ 7.97774687065369e+002   -5.88717948717949e+001
+ 7.94436717663421e+002   -7.72692307692308e+001
+ 7.89986091794158e+002   -9.81196581196581e+001
+ 7.78859527121001e+002   -1.22649572649573e+002
+ 7.65507649513213e+002   -1.48405982905983e+002
+ 7.57719054242003e+002   -1.59444444444444e+002
+ 7.41029207232267e+002   -1.81521367521368e+002
+ 7.16550764951321e+002   -2.07277777777778e+002
+ 6.88734353268428e+002   -2.28128205128205e+002
+ 6.68706536856745e+002   -2.41619658119658e+002
+ 6.34214186369958e+002   -2.57564102564103e+002
+ 6.13073713490960e+002   -2.67376068376068e+002
+ 5.65229485396384e+002   -2.79641025641026e+002
+ 5.26286509040334e+002   -2.85773504273504e+002
+ 4.99582753824757e+002   -2.88226495726496e+002
+ 4.35048678720445e+002   -2.87000000000000e+002
+ 4.08344923504868e+002   -2.87000000000000e+002
+ 3.56050069541029e+002   -2.87000000000000e+002
+ 3.05980528511822e+002   -2.87000000000000e+002
+ 2.40333796940195e+002   -2.87000000000000e+002
+ 1.93602225312935e+002   -2.85773504273504e+002
+ 1.19054242002782e+002   -2.85773504273504e+002
+ 1.33518776077886e+001   -2.88226495726496e+002
+
+
+
+
+Figure 13. Comparison of chordwise stiffness test results between Figure 11a,b.中的数据如下
+针对Figure 11b的刚度质量分布
+Displayment/mm                 Loading force/N
+ 0.00000000000000e+000    1.48809523809524e-002
+ 4.99405469678954e+000    2.08333333333333e-001
+ 9.98810939357907e+000    4.01785714285714e-001
+ 1.50535077288942e+001    5.50595238095238e-001
+ 2.00475624256837e+001    6.99404761904762e-001
+ 2.50416171224732e+001    9.07738095238095e-001
+ 3.00356718192628e+001    1.10119047619048e+000
+ 3.50297265160523e+001    1.27976190476190e+000
+ 4.00237812128419e+001    1.48809523809524e+000
+ 4.50178359096314e+001    1.83035714285714e+000
+ 5.00118906064209e+001    2.02380952380952e+000
+ 5.50059453032105e+001    2.33630952380952e+000
+
+
+针对Figure 11b的刚度质量分布
+Displayment/mm                 Loading force/N
+ 0.00000000000000e+000    0.00000000000000e+000
+ 4.92271105826397e+000    1.07142857142857e+000
+ 9.98810939357907e+000    1.50297619047619e+000
+ 1.49821640903686e+001    2.21726190476190e+000
+ 1.99762187871581e+001    3.08035714285714e+000
+ 2.50416171224732e+001    4.10714285714286e+000
+ 2.99643281807372e+001    4.83630952380952e+000
+ 3.49583828775268e+001    6.01190476190476e+000
+ 4.00237812128419e+001    6.65178571428571e+000
+ 4.49464922711058e+001    7.50000000000000e+000
+ 5.00118906064209e+001    8.11011904761905e+000
+ 5.50059453032105e+001    9.25595238095238e+000

@@ -1,0 +1,22 @@
+AITKEN under-relaxation test (physical light wing):
+/home/exuber/anaconda3/lib/python3.11/site-packages/numpy/linalg/_linalg.py:2768: RuntimeWarning: overflow encountered in dot
+  sqnorm = x.dot(x)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:583: RuntimeWarning: overflow encountered in multiply
+  Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:583: RuntimeWarning: invalid value encountered in add
+  Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:583: RuntimeWarning: overflow encountered in add
+  Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:620: RuntimeWarning: invalid value encountered in add
+  Q_mem[dofs] += Qm_e
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:852: MatrixRankWarning: Matrix is exactly singular
+  A1_inv_A2Xn = spsolve(A1, A2Xn)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:853: MatrixRankWarning: Matrix is exactly singular
+  X_p1_free = A1_inv_A2Xn + dt * spsolve(A1, rhs0)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:869: MatrixRankWarning: Matrix is exactly singular
+  X_new_free = A1_inv_A2Xn + dt * spsolve(A1, rhs1)
+  Picard strong (no aitken)           : DIVERGE@2 (max|z_w|=3.22e+00)
+  AITKEN relaxed                      : DIVERGE@8 (max|z_w|=1.01e+00)
+  AITKEN relaxed E=30G                : DIVERGE@2 (max|z_w|=1.46e+00)
+  AITKEN no-addedmass                 : DIVERGE@2 (max|z_w|=3.23e+00)
+DONE

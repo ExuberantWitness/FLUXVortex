@@ -1,0 +1,24 @@
+  flap +-45.0deg @ 2.0Hz: tip flap speed 7.9 m/s vs U 8.0 -> eff-AoA swing +-45deg
+
+PAPER (twist 0, 8 m/s, 2 Hz, 5deg, both wings): lift = 6.65 N
+  flap-amplitude sweep (attached UVLM, no twist):
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.95 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.93 ms  (cached)
+   flap +- 0.0deg: lift= +2.62N  thrust= +0.23N  (paper 6.65N, ratio 0.39)
+   flap +- 5.0deg: lift= +2.60N  thrust= +0.28N  (paper 6.65N, ratio 0.39)
+   flap +-10.0deg: lift= +2.57N  thrust= +0.44N  (paper 6.65N, ratio 0.39)
+   flap +-20.0deg: lift= +2.45N  thrust= +1.08N  (paper 6.65N, ratio 0.37)
+   flap +-30.0deg: lift= +2.26N  thrust= +2.15N  (paper 6.65N, ratio 0.34)
+   flap +-45.0deg: lift= +1.89N  thrust= +4.53N  (paper 6.65N, ratio 0.28)
+  mesh sweep at flap +-45deg (is it under-resolution?):
+   nc=4 ns=10: lift= +1.89N  (paper 6.65N, ratio 0.28)
+   nc=8 ns=16: lift= +1.32N  (paper 6.65N, ratio 0.20)
+   nc=12 ns=24: lift= +1.06N  (paper 6.65N, ratio 0.16)
+DONE

@@ -1,0 +1,28 @@
+Speed check — does the wing trim to weight at the real cruise (10-11 m/s)?
+  anchors: E-Flap 6.9N, HIT-Hawk 11.3N.  RoboEagle geom, flap ±45°, 2 Hz, both wings
+
+  U=10.0 m/s:  AoA -> lift(N)  thrust(N)  power(W)
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.94 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.97 ms  (cached)
+    8.0:   +4.64    +4.94     45.3
+   10.0:   +5.82    +5.31     45.4
+   12.0:   +7.02    +5.77     45.6
+   15.0:   +8.84    +6.64     46.0
+   -> trims to E-Flap 700g (6.9N) at AoA 11.7°
+   -> max lift 8.84N < HIT-Hawk 1.15kg 11.3N
+
+  U=11.0 m/s:  AoA -> lift(N)  thrust(N)  power(W)
+    8.0:   +5.57    +5.05     49.3
+   10.0:   +6.99    +5.49     49.5
+   12.0:   +8.43    +6.05     49.7
+   15.0:  +10.62    +7.09     50.2
+   -> trims to E-Flap 700g (6.9N) at AoA 9.8°
+   -> max lift 10.62N < HIT-Hawk 1.15kg 11.3N
+DONE

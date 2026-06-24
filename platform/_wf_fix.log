@@ -1,0 +1,19 @@
+FIX test (strong coupling + implicit added mass):
+  baseline (loose, no addedmass)        : DIVERGE@19 (max|z_wing|=3.70e+03)
+/home/exuber/anaconda3/lib/python3.11/site-packages/numpy/linalg/_linalg.py:2768: RuntimeWarning: overflow encountered in dot
+  sqnorm = x.dot(x)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:583: RuntimeWarning: overflow encountered in multiply
+  Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:583: RuntimeWarning: invalid value encountered in add
+  Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:852: MatrixRankWarning: Matrix is exactly singular
+  A1_inv_A2Xn = spsolve(A1, A2Xn)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:853: MatrixRankWarning: Matrix is exactly singular
+  X_p1_free = A1_inv_A2Xn + dt * spsolve(A1, rhs0)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:869: MatrixRankWarning: Matrix is exactly singular
+  X_new_free = A1_inv_A2Xn + dt * spsolve(A1, rhs1)
+  FIX strong+addedmass iters=10         : DIVERGE@21 (max|z_wing|=5.73e-01)
+/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/src/fluxvortex/ancf_shell.py:583: RuntimeWarning: overflow encountered in add
+  Q_mem_e += w * (deps0 * Dm_eps[0] + deps1 * Dm_eps[1] + deps2 * Dm_eps[2])
+  FIX strong+addedmass iters=6          : DIVERGE@20 (max|z_wing|=4.24e-01)
+DONE

@@ -1,0 +1,17 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+full wing: span 1.6m chord 0.287m area 0.459 AR 5.57
+analytic finite-wing: CLa=4.62/rad -> CL@5.0deg = 0.404  -> L = 7.26N
+
+STEADY no-wake VLM (lift should = analytic if correct):
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.88 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.92 ms  (cached)
+  nc= 4 ns=10:  half-wing x2  CL=0.127 (L=2.29N)   |   FULL wing  CL=0.138 (L=2.49N)   [analytic CL=0.404]
+  nc= 8 ns=20:  half-wing x2  CL=0.091 (L=1.64N)   |   FULL wing  CL=0.099 (L=1.79N)   [analytic CL=0.404]
+  nc=12 ns=30:  half-wing x2  CL=0.075 (L=1.35N)   |   FULL wing  CL=0.082 (L=1.47N)   [analytic CL=0.404]
+DONE

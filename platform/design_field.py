@@ -211,11 +211,15 @@ def combined_efficiency(sf, mf):
     return float(eff - 3.0 * max(0.0, mt - 1.0))            # weight above nominal costs L/D-equiv
 
 
+_I_ROLL_UNIFORM = float(_trapz(np.linspace(0.0, 1.0, _NG) ** 2, np.linspace(0.0, 1.0, _NG)))  # trapz ∫ξ² (≈1/3)
+
+
 def control_authority(sf, mf):
-    """Design-dependent control authority: stiffness ctrl_factor reduced by roll inertia (sluggishness)."""
+    """Design-dependent control authority: stiffness ctrl_factor reduced by roll inertia (sluggishness).
+    The uniform-mass baseline is the SAME trapezoid ∫ξ² as I_roll(), so uniform mass ⇒ no penalty exactly."""
     ca = ctrl_factor(sf)
-    Ir = mf.I_roll() if not np.isscalar(mf) else (1.0 / 3.0)
-    return float(ca / (1.0 + 1.5 * max(0.0, Ir - 1.0 / 3.0)))
+    Ir = mf.I_roll() if not np.isscalar(mf) else _I_ROLL_UNIFORM
+    return float(ca / (1.0 + 1.5 * max(0.0, Ir - _I_ROLL_UNIFORM)))
 
 
 def as_field(design, K=4):

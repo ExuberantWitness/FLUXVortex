@@ -1,0 +1,22 @@
+Absolute LIFT trim — RoboEagle geometry (chord 0.287, half-span 0.80), flap ±45°, 8 m/s, 2 Hz
+(no twist = lift baseline; twist trades lift for thrust). Both wings.
+  weight anchors: E-Flap 700g -> 6.9N ;  HIT-Hawk 1.15kg -> 11.3N
+  AoA :  lift(N)  thrust(N)  power(W)
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.95 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.93 ms  (cached)
+   0.0:   -0.00    +4.37     37.4
+   5.0:   +1.89    +4.53     37.4
+   8.0:   +3.04    +4.79     37.4
+  10.0:   +3.81    +5.03     37.5
+  12.0:   +4.59    +5.32     37.6
+  15.0:   +5.77    +5.88     37.7
+
+  -> does NOT reach 6.9N within 0-15° (max lift 5.77N at 15°)
+DONE

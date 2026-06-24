@@ -1,0 +1,20 @@
+high-AR wing: chord 0.1 span 4.0 AR 40  -> analytic CL@5=0.522 (2D 2pi*a=0.548)
+chordwise(nc) convergence, STEADY (flap 0), ns=20:
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu af78067 load on device 'cuda:0' took 1847.13 ms  (compiled)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.92 ms  (cached)
+  nc=1: CL=0.283  (analytic 0.522, ratio 0.54)
+  nc=2: CL=0.212  (analytic 0.522, ratio 0.41)
+  nc=4: CL=0.153  (analytic 0.522, ratio 0.29)
+  nc=8: CL=0.109  (analytic 0.522, ratio 0.21)
+spanwise(ns) convergence at nc=4:
+  ns=10: CL=0.154  (ratio 0.29)
+  ns=20: CL=0.153  (ratio 0.29)
+  ns=40: CL=0.152  (ratio 0.29)
+DONE

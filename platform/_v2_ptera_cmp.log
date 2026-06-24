@@ -1,0 +1,13 @@
+PteraSoftware geom: AR=4.0  analytic CL@5=0.366  L_analytic=89.6N
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.89 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.92 ms  (cached)
+  my standalone UVLM nc=5 ns=10: L=30.2N  CL=0.123  (analytic 0.366, ratio 0.34)
+  my standalone UVLM nc=8 ns=16: L=23.6N  CL=0.096  (analytic 0.366, ratio 0.26)
+DONE

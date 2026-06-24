@@ -1,0 +1,25 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Traceback (most recent call last):
+  File "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/platform/_v2_geomtest.py", line 15, in <module>
+    rs = ffv.gpu_run(nc=8,ns=16,chord=chord,half_span=hs,mass=0.7,U=U,aoa_deg=5.0,flap_amp_deg=0.0,freq=1.0,n_cycle=6,steps_per_cycle=40,verbose=False)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/platform/flap_flight_validate.py", line 110, in gpu_run
+    C0 = flat_wing(nc, ns, chord, half_span); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/platform/_v2_geomtest.py", line 7, in <lambda>
+    'rectangular uniform': lambda nc,ns,c,h: ffv.flat_wing(nc,ns,c,h),
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/platform/_v2_geomtest.py", line 7, in <lambda>
+    'rectangular uniform': lambda nc,ns,c,h: ffv.flat_wing(nc,ns,c,h),
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV/platform/_v2_geomtest.py", line 7, in <lambda>
+    'rectangular uniform': lambda nc,ns,c,h: ffv.flat_wing(nc,ns,c,h),
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^
+  [Previous line repeated 995 more times]
+RecursionError: maximum recursion depth exceeded

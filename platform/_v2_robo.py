@@ -206,7 +206,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         else:
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
         if real_lev:   # REAL leading-edge vortex: shed discrete LEV rings at the LE (after the TEV block)
-            wp.launch(_shed_lev_kernel, dim=ns, inputs=[rings, nrm, vcol, gamma, Vw, ns, nw + ns,
+            wp.launch(_shed_lev_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, nw + ns,
                       DTYPE(np.sin(np.radians(lesp_crit_deg))), DTYPE(lev_klev)], outputs=[wr, wg], device=dev)
         nw_new = nw + shed_per
         wtype.extend([0] * ns + ([1] * ns if real_lev else []))   # TEV then LEV (matches shed order)

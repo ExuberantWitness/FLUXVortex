@@ -1,0 +1,23 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+RoboEagle aero validation (half-span 0.80m, chord 0.287m, ±45° flap, 8 m/s, 5° AoA, 2 Hz):
+paper anchors: max L/D 6.8; optimal twist 22.5° -> +47% thrust, +7.8% lift vs untwisted
+
+  --- twist phase -90° ---
+Module diff_uvlm_unsteady_gpu 6b6a8ca load on device 'cuda:0' took 1.96 ms  (cached)
+Module fluxvortex.warp_fsi.batched_solver 8b4b566 load on device 'cuda:0' took 0.94 ms  (cached)
+  twist  0.0°: L=+1.89N T=+4.53N P=37.4W  ΔT=+0% ΔL=+0%  L/D(induced)=nan
+  twist 22.5°: L=+1.86N T=+2.77N P=21.8W  ΔT=-39% ΔL=-2%  L/D(induced)=nan
+  twist 45.0°: L=+1.77N T=+0.98N P=8.1W  ΔT=-78% ΔL=-6%  L/D(induced)=nan
+
+  --- twist phase +90° ---
+  twist  0.0°: L=+1.89N T=+4.53N P=37.4W  ΔT=+0% ΔL=+0%  L/D(induced)=nan
+  twist 22.5°: L=+1.84N T=+6.14N P=51.9W  ΔT=+36% ΔL=-3%  L/D(induced)=nan
+  twist 45.0°: L=+1.69N T=+7.58N P=65.8W  ΔT=+67% ΔL=-11%  L/D(induced)=nan
+
+DONE
