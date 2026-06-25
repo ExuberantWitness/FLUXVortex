@@ -295,9 +295,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(aick, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=dev)
         rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev)
         wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
-        if lev_merge:   # coherent-LEV-core induction into the solve (uses last step's core -> 1-step delay)
+        if lev_merge:   # coherent-LEV-core induced velocity at collocations (for the Bernoulli force ONLY -
+            # NOT folded into the solve: coupling it reduces the bound circulation and the bound-reduction
+            # dominates the LEV's own lift -> net DROP. Force-only -> the LEV's suction ADDS lift (overshoot).
             wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, lev_rw, lev_gw, ns], outputs=[Vlev], device=dev)
-            wp.launch(rhs_add_lev_kernel, dim=npan, inputs=[nrm, Vlev], outputs=[rhs], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
         # First-principles unsteady panel force: circulation (Kutta-Joukowski) + added-mass (rho dGamma/dt).
         # The REAL LEV (real_lev) acts through the wake it sheds (induction on the bound + its own impulse);
@@ -433,22 +434,26 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.copy(tpl, tcl); wp.copy(tpr, tcr)        # current TE becomes next step's "previous"
         else:
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
-        if lev_merge:   # N-LEV MERGING: update the ONE coherent LEV core per strip (no wake shedding)
+        if lev_merge:   # N-LEV MERGING: ONE coherent LEV core per strip (no wake shedding), LESP-saturated
             nns = nrm.numpy(); cc_le = rings.numpy(); vrl = (np.asarray(Vinf) - vcn)[:ns]; nl = nns[:ns]
             vrl_m = np.linalg.norm(vrl, axis=1) + 1e-9
-            sa_l = np.sum(vrl * nl, axis=1) / vrl_m
+            sa_l = np.sum(vrl * nl, axis=1) / vrl_m                  # sin(alpha_eff) per strip
             cst = tcn.reshape(nc, ns).sum(0); scr = np.sin(np.radians(lesp_crit_deg))
-            dG = lev_klev * U * cst * np.maximum(np.abs(sa_l) - scr, 0.0) * np.sign(sa_l)   # kinematic increment (LEV adds lift)
-            le_mid = 0.5 * (cc_le[:ns, 0] + cc_le[:ns, 1]) + nl * (0.08 * cst)[:, None]      # LE shed position
-            lev_cen = lev_cen + np.asarray(Vinf) * dt                # convect the core with the freestream
-            gtot = lev_gam + dG; nz = np.abs(gtot) > 1e-9            # MERGE the increment (circulation-weighted)
-            lev_cen[nz] = (lev_gam[nz, None] * lev_cen[nz] + dG[nz, None] * le_mid[nz]) / gtot[nz, None]
-            lev_gam = gtot * max(0.0, 1.0 - dt / lev_tau)           # decay = the LEV convecting/shedding
+            # Position the core OVER the suction surface (strip mid-chord, 0.10c above), FIXED relative to the
+            # wing -> the induction depends only on the (capped) circulation, NOT on a convecting position
+            # (which made the increment grow with frequency). The dynamic-stall LEV sits on the suction side.
+            te_idx = (nc - 1) * ns + np.arange(ns)
+            le_mid = 0.5 * (cc_le[:ns, 0] + cc_le[:ns, 1]); te_mid = 0.5 * (cc_le[te_idx, 2] + cc_le[te_idx, 3])
+            lev_cen = 0.5 * (le_mid + te_mid) + nl * (0.10 * cst)[:, None]
+            # LESP SATURATION: relax the core circulation toward +/-cap when STALLED (|sin a|>sin_crit), toward
+            # 0 when attached. cap = klev*U*c*sin_crit is the Garrick LE-suction at A0_crit -> FREQUENCY-
+            # INDEPENDENT increment (~pi rho U^2 c A0_crit^2), matching the measured ~constant ~3N. lev_tau =
+            # build/shed time. The core is at the cap WHENEVER stalled (not proportional to the excess).
+            cap = lev_klev * U * cst * scr
+            target = np.where(np.abs(sa_l) > scr, -cap * np.sign(sa_l), 0.0)   # sign: LEV core ADDS lift (overshoot)
+            lev_gam = lev_gam + (target - lev_gam) * (dt / lev_tau)
             swe = cc_le[:ns, 1] - cc_le[:ns, 0]                     # spanwise edge (the LEV vortex carrier)
-            # HORSESHOE return: the far edge goes ~10c DOWNSTREAM (not a thin 0.05c ring whose 2 edges cancel
-            # as a dipole). The near spanwise edge then induces a real vertical velocity -> lift, while the
-            # far edge (10c away) and the chordwise trailing legs (sidewash only) contribute negligibly.
-            dn = (np.asarray(Vinf) / (np.linalg.norm(Vinf) + 1e-9)) * (10.0 * float(cst.mean()))
+            dn = (np.asarray(Vinf) / (np.linalg.norm(Vinf) + 1e-9)) * (10.0 * float(cst.mean()))   # horseshoe return
             lr = np.zeros((ns, 4, 3))
             lr[:, 0] = lev_cen - 0.5 * swe; lr[:, 1] = lev_cen + 0.5 * swe; lr[:, 2] = lr[:, 1] + dn; lr[:, 3] = lr[:, 0] + dn
             lev_rw = wp.array(lr.astype(NP), dtype=V3, device=dev); lev_gw = wp.array(lev_gam.astype(NP), dtype=DTYPE, device=dev)
