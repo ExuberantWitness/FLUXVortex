@@ -210,7 +210,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
                   part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
-                  vortex=False, k_vortex=2.0, frames_out=None, frame_skip=3):
+                  vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
+                  ds_delay=18, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -246,6 +247,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
     Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
+    Lh_ds = np.zeros(N)                                 # dynamic-stall LEV lift (sustains the downstroke plateau)
+    Glev_ds = np.zeros(ns); aeff_ds_prev = np.zeros(ns)  # per-strip LEV circulation state + prev alpha_eff
     NU_AIR = 1.5e-5; FORM_FF = 1.0 + 2.0 * tc_thick + 60.0 * tc_thick ** 4   # air kin. visc; Hoerner form factor
     wtype = []                                        # CPU bookkeeping: 0=TEV, 1=LEV per wake ring (for viz)
     for t in range(N):
@@ -360,6 +363,20 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Nv = k_vortex * sa_v * np.abs(sa_v) * ca_v * qd * area   # signed sin^2(a) cos(a) normal force
             Fv = Nv[:, None] * nnv                             # along the panel normal -> lift+drag both
             Lh_vtx[t] = float(np.sum(Fv[:, 2])); Xh_vtx[t] = float(np.sum(Fv[:, 0]))
+        # ---- DYNAMIC-STALL LEV (L-B style, per strip): on the downstroke alpha_eff rises past the static
+        # stall angle and a leading-edge vortex forms, SUSTAINING extra lift (the measured ~13.7N plateau)
+        # until it convects/sheds. State Glev_ds (LEV circulation) FEEDS while |alpha_eff|>crit AND growing,
+        # then DECAYS with time const ds_tv -> build, sustain (plateau), drop. First-principles LESP gate. ----
+        if dstall:
+            nnd = nrm.numpy()
+            vrle = (np.asarray(Vinf) - vcn)[:ns]              # LE-row (i=0) body-relative flow
+            nle = nnd[:ns]; vrm = np.linalg.norm(vrle, axis=1) + 1e-9
+            aeff = np.arcsin(np.clip(np.sum(vrle * nle, axis=1) / vrm, -0.999, 0.999))   # alpha_eff per strip
+            ac = np.radians(ds_crit_deg); dy_st = tsn.reshape(nc, ns)[0]
+            feed = np.where(aeff > ac, (aeff - ac) * vrm, 0.0)   # feed the WHOLE high-alpha downstroke (alpha>crit)
+            Glev_ds[:] = Glev_ds * max(0.0, 1.0 - dt / ds_tv) + ds_k * feed * dt   # build + decay/shed
+            Lh_ds[t] = float(np.sum(ug.RHO * vrm * Glev_ds * dy_st * nle[:, 2]))    # rho V Gamma, vertical comp
+            aeff_ds_prev = aeff.copy()
         lkj = wp.zeros(1, dtype=DTYPE, device=dev)        # DIAG: Vinf-only KJ lift (no plunge tilt)
         wp.launch(ug.lift_kj_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt),
                   DTYPE(ug.RHO), ns], outputs=[lkj], device=dev)
@@ -411,6 +428,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                       wr, wg, nw, Vw, DTYPE(dt)], outputs=[pp_new], device=dev)
             wp.copy(pp, pp_new, count=np_part)
         gprev = wp.array(gamma.numpy(), dtype=DTYPE, device=dev)
+    if dstall and ds_delay > 0:
+        Lh_ds = np.roll(Lh_ds, ds_delay)   # convection delay: LEV lift lags as the vortex traverses the chord
     last = slice((n_cycle - 1) * steps_per_cycle, N)
     L = 2.0 * np.mean(Lh[last]); Fx = 2.0 * np.mean(Xh[last]); P = 2.0 * np.mean(np.abs(Ph[last]))
     L_bern = 2.0 * np.mean(Lh_imp[last]); Fx_bern = 2.0 * np.mean(Xh_imp[last])
@@ -423,6 +442,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
                 Lh_vis=Lh_vis, Xh_vis=Xh_vis, Lh_les=Lh_les, Xh_les=Xh_les,       # per-step viscous / LE-suction
                 Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
+                Lh_ds=Lh_ds, L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),       # dynamic-stall: per-step + mean(bern+LEV)
                 L_net=L_bern + L_les - L_vis,                                     # lift incl. LE-suction vertical comp.
                 L_full=L_bern + L_vtx,                                            # Bernoulli + vortex normal force lift
                 T_net=-(Fx_bern + Fx_vis + Fx_les + Fx_vtx))                     # Bernoulli + friction + LE suction + vortex
