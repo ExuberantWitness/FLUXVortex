@@ -185,6 +185,21 @@ def _shed_lev_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
 
 
 @wp.kernel
+def _shed_lev_sat_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3), ns: int, nw: int,
+                         lev_str: wp.array(dtype=DTYPE), wr: wp.array(dtype=V3, ndim=2),
+                         wg: wp.array(dtype=DTYPE)):
+    """MESH-INDEPENDENT, LESP-SATURATED LEV shedding (Path B). The shed strength lev_str[j] is computed on
+    the CPU from KINEMATIC strip quantities (U, chord, alpha_eff) — NOT the per-panel gamma — so it does not
+    drift with mesh resolution (the root cause of the old ring-LEV artifact). The Bernoulli force captures
+    its lift via col_wake_vel. This kernel just PLACES the ring (offset onto the suction side) + assigns it."""
+    j = wp.tid(); p = j; idx = nw + j; n = nrm[p]
+    d0 = wp.float64(0.08); eps = wp.float64(0.05)
+    b0 = rings[p, 0] + n * d0; b1 = rings[p, 1] + n * d0
+    wr[idx, 0] = b0; wr[idx, 1] = b1; wr[idx, 2] = b1 + n * eps; wr[idx, 3] = b0 + n * eps
+    wg[idx] = lev_str[j]
+
+
+@wp.kernel
 def _shed_te_traj(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE, ndim=2),
                   te: wp.array(dtype=wp.int32), tpl: wp.array(dtype=V3), tpr: wp.array(dtype=V3),
                   Vinf: V3, dt: DTYPE, nw: int, wr: wp.array(dtype=V3, ndim=2),
@@ -207,7 +222,7 @@ def _shed_te_traj(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE
 def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=-90.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
-                  swept_axis=False, real_geom=False, real_lev=False, lesp_crit_deg=15.0, lev_klev=1.0,
+                  swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
                   part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
@@ -398,7 +413,19 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.copy(tpl, tcl); wp.copy(tpr, tcr)        # current TE becomes next step's "previous"
         else:
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
-        if real_lev:   # REAL leading-edge vortex: shed discrete LEV rings at the LE (after the TEV block)
+        if real_lev and lev_sat:   # PATH B: mesh-independent, LESP-saturated LEV (kinematic strength, CPU)
+            nns = nrm.numpy(); vrl = (np.asarray(Vinf) - vcn)[:ns]; nl = nns[:ns]
+            vrl_m = np.linalg.norm(vrl, axis=1) + 1e-9
+            sa_l = np.sum(vrl * nl, axis=1) / vrl_m                  # sin(alpha_eff) per strip (signed)
+            cst = tcn.reshape(nc, ns).sum(0)                        # strip chord (mesh-independent)
+            scr = np.sin(np.radians(lesp_crit_deg))
+            # kinematic shed strength: ~ U*c*(|sin a| - sin_crit) above critical, signed; NO per-panel gamma.
+            exc = np.maximum(np.abs(sa_l) - scr, 0.0)
+            lev_str = (-lev_klev * U * cst * exc * np.sign(sa_l)).astype(NP)
+            lev_str_w = wp.array(lev_str, dtype=DTYPE, device=dev)
+            wp.launch(_shed_lev_sat_kernel, dim=ns, inputs=[rings, nrm, ns, nw + ns, lev_str_w],
+                      outputs=[wr, wg], device=dev)
+        elif real_lev:   # original (mesh-dependent) ring LEV
             wp.launch(_shed_lev_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, nw + ns,
                       DTYPE(np.sin(np.radians(lesp_crit_deg))), DTYPE(lev_klev)], outputs=[wr, wg], device=dev)
         if part_lev:   # PARTICLE leading-edge vortex: shed one spanwise particle/strip at the LE (delayed-Kutta gprev)
