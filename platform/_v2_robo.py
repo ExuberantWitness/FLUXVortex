@@ -185,6 +185,16 @@ def _shed_lev_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
 
 
 @wp.kernel
+def rhs_add_lev_kernel(nrm: wp.array(dtype=V3), Vlev: wp.array(dtype=V3),
+                       rhs: wp.array(dtype=DTYPE, ndim=2)):
+    """Fold the coherent-LEV-core induced velocity into the solve RHS (-V_lev . n), scalar form for a
+    clean nrm adjoint. The coherent core is ONE merged smooth ring per strip -> no near-singular fresh-ring
+    feedback -> the dGamma/dt oscillation that blew up the per-step ring LEV at 2.0Hz is removed."""
+    i = wp.tid()
+    rhs[0, i] = rhs[0, i] - wp.dot(Vlev[i], nrm[i])
+
+
+@wp.kernel
 def _shed_lev_sat_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3), ns: int, nw: int,
                          lev_str: wp.array(dtype=DTYPE), wr: wp.array(dtype=V3, ndim=2),
                          wg: wp.array(dtype=DTYPE)):
@@ -222,7 +232,8 @@ def _shed_te_traj(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE
 def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=-90.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
-                  swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lesp_crit_deg=15.0, lev_klev=1.0,
+                  swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lev_merge=False, lev_tau=0.20,
+                  lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
                   part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
@@ -257,6 +268,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     ps = wp.zeros(pmax, dtype=DTYPE, device=dev); pp_new = wp.zeros(pmax, dtype=V3, device=dev)
     SIG0 = DTYPE(0.5 * U * dt); PCORE = DTYPE(0.10)   # base core (swept vol/2); floor 0.10c regularizes LE
     sin_crit_p = DTYPE(np.sin(np.radians(lesp_crit_deg)))
+    # --- coherent-core LEV (N-LEV merging, N=1 per strip): ONE smooth merged ring/strip (CPU state) ---
+    lev_cen = np.zeros((ns, 3)); lev_gam = np.zeros(ns)
+    lev_rw = wp.zeros((ns, 4), dtype=V3, device=dev); lev_gw = wp.zeros(ns, dtype=DTYPE, device=dev)
+    Vlev = wp.zeros(npan, dtype=V3, device=dev)
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
@@ -280,6 +295,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(aick, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=dev)
         rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev)
         wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
+        if lev_merge:   # coherent-LEV-core induction into the solve (uses last step's core -> 1-step delay)
+            wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, lev_rw, lev_gw, ns], outputs=[Vlev], device=dev)
+            wp.launch(rhs_add_lev_kernel, dim=npan, inputs=[nrm, Vlev], outputs=[rhs], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
         # First-principles unsteady panel force: circulation (Kutta-Joukowski) + added-mass (rho dGamma/dt).
         # The REAL LEV (real_lev) acts through the wake it sheds (induction on the bound + its own impulse);
@@ -297,6 +315,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, wr, wg, nw], outputs=[Vwk], device=dev)
         cc = rings.numpy(); g = gamma.numpy().reshape(-1); gp = gprev.numpy().reshape(-1)
         Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
+        if lev_merge:
+            Vcol = Vcol + Vlev.numpy()                                  # coherent LEV core induction (Bernoulli)
         # THIS GPU UVLM's ring corners: c0,c1 = LE edge; c2,c3 = TE edge (shed_kernel uses c2,c3 for the
         # TE wake). So chordwise (LE->TE) = mean(c2-c0, c3-c1); spanwise (along LE/TE edge) = mean(c1-c0, c2-c3).
         tcr = 0.5 * ((cc[:, 2] - cc[:, 0]) + (cc[:, 3] - cc[:, 1]))     # chordwise tangent (LE->TE)
@@ -413,7 +433,22 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.copy(tpl, tcl); wp.copy(tpr, tcr)        # current TE becomes next step's "previous"
         else:
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
-        if real_lev and lev_sat:   # PATH B: mesh-independent, LESP-saturated LEV (kinematic strength, CPU)
+        if lev_merge:   # N-LEV MERGING: update the ONE coherent LEV core per strip (no wake shedding)
+            nns = nrm.numpy(); cc_le = rings.numpy(); vrl = (np.asarray(Vinf) - vcn)[:ns]; nl = nns[:ns]
+            vrl_m = np.linalg.norm(vrl, axis=1) + 1e-9
+            sa_l = np.sum(vrl * nl, axis=1) / vrl_m
+            cst = tcn.reshape(nc, ns).sum(0); scr = np.sin(np.radians(lesp_crit_deg))
+            dG = -lev_klev * U * cst * np.maximum(np.abs(sa_l) - scr, 0.0) * np.sign(sa_l)   # kinematic increment
+            le_mid = 0.5 * (cc_le[:ns, 0] + cc_le[:ns, 1]) + nl * (0.08 * cst)[:, None]      # LE shed position
+            lev_cen = lev_cen + np.asarray(Vinf) * dt                # convect the core with the freestream
+            gtot = lev_gam + dG; nz = np.abs(gtot) > 1e-9            # MERGE the increment (circulation-weighted)
+            lev_cen[nz] = (lev_gam[nz, None] * lev_cen[nz] + dG[nz, None] * le_mid[nz]) / gtot[nz, None]
+            lev_gam = gtot * max(0.0, 1.0 - dt / lev_tau)           # decay = the LEV convecting/shedding
+            swe = cc_le[:ns, 1] - cc_le[:ns, 0]; epsn = nl * (0.05 * cst)[:, None]   # rebuild the coherent ring
+            lr = np.zeros((ns, 4, 3))
+            lr[:, 0] = lev_cen - 0.5 * swe; lr[:, 1] = lev_cen + 0.5 * swe; lr[:, 2] = lr[:, 1] + epsn; lr[:, 3] = lr[:, 0] + epsn
+            lev_rw = wp.array(lr.astype(NP), dtype=V3, device=dev); lev_gw = wp.array(lev_gam.astype(NP), dtype=DTYPE, device=dev)
+        elif real_lev and lev_sat:   # PATH B: mesh-independent, LESP-saturated LEV (kinematic strength, CPU)
             nns = nrm.numpy(); vrl = (np.asarray(Vinf) - vcn)[:ns]; nl = nns[:ns]
             vrl_m = np.linalg.norm(vrl, axis=1) + 1e-9
             sa_l = np.sum(vrl * nl, axis=1) / vrl_m                  # sin(alpha_eff) per strip (signed)
