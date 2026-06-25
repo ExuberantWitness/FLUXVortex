@@ -438,15 +438,19 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             vrl_m = np.linalg.norm(vrl, axis=1) + 1e-9
             sa_l = np.sum(vrl * nl, axis=1) / vrl_m
             cst = tcn.reshape(nc, ns).sum(0); scr = np.sin(np.radians(lesp_crit_deg))
-            dG = -lev_klev * U * cst * np.maximum(np.abs(sa_l) - scr, 0.0) * np.sign(sa_l)   # kinematic increment
+            dG = lev_klev * U * cst * np.maximum(np.abs(sa_l) - scr, 0.0) * np.sign(sa_l)   # kinematic increment (LEV adds lift)
             le_mid = 0.5 * (cc_le[:ns, 0] + cc_le[:ns, 1]) + nl * (0.08 * cst)[:, None]      # LE shed position
             lev_cen = lev_cen + np.asarray(Vinf) * dt                # convect the core with the freestream
             gtot = lev_gam + dG; nz = np.abs(gtot) > 1e-9            # MERGE the increment (circulation-weighted)
             lev_cen[nz] = (lev_gam[nz, None] * lev_cen[nz] + dG[nz, None] * le_mid[nz]) / gtot[nz, None]
             lev_gam = gtot * max(0.0, 1.0 - dt / lev_tau)           # decay = the LEV convecting/shedding
-            swe = cc_le[:ns, 1] - cc_le[:ns, 0]; epsn = nl * (0.05 * cst)[:, None]   # rebuild the coherent ring
+            swe = cc_le[:ns, 1] - cc_le[:ns, 0]                     # spanwise edge (the LEV vortex carrier)
+            # HORSESHOE return: the far edge goes ~10c DOWNSTREAM (not a thin 0.05c ring whose 2 edges cancel
+            # as a dipole). The near spanwise edge then induces a real vertical velocity -> lift, while the
+            # far edge (10c away) and the chordwise trailing legs (sidewash only) contribute negligibly.
+            dn = (np.asarray(Vinf) / (np.linalg.norm(Vinf) + 1e-9)) * (10.0 * float(cst.mean()))
             lr = np.zeros((ns, 4, 3))
-            lr[:, 0] = lev_cen - 0.5 * swe; lr[:, 1] = lev_cen + 0.5 * swe; lr[:, 2] = lr[:, 1] + epsn; lr[:, 3] = lr[:, 0] + epsn
+            lr[:, 0] = lev_cen - 0.5 * swe; lr[:, 1] = lev_cen + 0.5 * swe; lr[:, 2] = lr[:, 1] + dn; lr[:, 3] = lr[:, 0] + dn
             lev_rw = wp.array(lr.astype(NP), dtype=V3, device=dev); lev_gw = wp.array(lev_gam.astype(NP), dtype=DTYPE, device=dev)
         elif real_lev and lev_sat:   # PATH B: mesh-independent, LESP-saturated LEV (kinematic strength, CPU)
             nns = nrm.numpy(); vrl = (np.asarray(Vinf) - vcn)[:ns]; nl = nns[:ns]
