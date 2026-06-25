@@ -269,7 +269,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     SIG0 = DTYPE(0.5 * U * dt); PCORE = DTYPE(0.10)   # base core (swept vol/2); floor 0.10c regularizes LE
     sin_crit_p = DTYPE(np.sin(np.radians(lesp_crit_deg)))
     # --- coherent-core LEV (N-LEV merging, N=1 per strip): ONE smooth merged ring/strip (CPU state) ---
-    lev_cen = np.zeros((ns, 3)); lev_gam = np.zeros(ns)
+    lev_cen = np.zeros((ns, 3)); lev_gam = np.zeros(ns); lev_gam_raw = np.zeros(ns)
     lev_rw = wp.zeros((ns, 4), dtype=V3, device=dev); lev_gw = wp.zeros(ns, dtype=DTYPE, device=dev)
     Vlev = wp.zeros(npan, dtype=V3, device=dev)
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
@@ -451,7 +451,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # build/shed time. The core is at the cap WHENEVER stalled (not proportional to the excess).
             cap = lev_klev * U * cst * scr
             target = np.where(np.abs(sa_l) > scr, -cap * np.sign(sa_l), 0.0)   # sign: LEV core ADDS lift (overshoot)
-            lev_gam = lev_gam + (target - lev_gam) * (dt / lev_tau)
+            # 2nd-order lag = CONVECTION DELAY: the stall feeds lev_gam_raw, whose response lev_gam LAGS ->
+            # the LEV lift peaks AFTER the attached peak (the vortex convects over the chord) = the plateau,
+            # not a boost of the instantaneous peak.
+            lev_gam_raw = lev_gam_raw + (target - lev_gam_raw) * (dt / lev_tau)
+            lev_gam = lev_gam + (lev_gam_raw - lev_gam) * (dt / lev_tau)
             swe = cc_le[:ns, 1] - cc_le[:ns, 0]                     # spanwise edge (the LEV vortex carrier)
             dn = (np.asarray(Vinf) / (np.linalg.norm(Vinf) + 1e-9)) * (10.0 * float(cst.mean()))   # horseshoe return
             lr = np.zeros((ns, 4, 3))
