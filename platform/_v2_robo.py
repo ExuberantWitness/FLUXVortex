@@ -234,7 +234,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lev_merge=False, lev_tau=0.20,
                   lesp_crit_deg=15.0, lev_klev=1.0,
-                  visc=False, tc_thick=0.06, les_suction=False, les_eta=1.0,
+                  visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
                   part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3):
@@ -275,6 +275,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
+    Lh_pd = np.zeros(N); Xh_pd = np.zeros(N)           # separated-flow form/pressure drag (high-alpha, viscous-origin)
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
     Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
     Lh_ds = np.zeros(N)                                 # dynamic-stall LEV lift (sustains the downstroke plateau)
@@ -362,6 +363,22 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Cdf = 2.0 * Cf * FORM_FF                                     # both surfaces x thickness form factor
             Df = 0.5 * ug.RHO * Cdf[:, None] * area[:, None] * Vtm[:, None] * Vtan  # drags wing downstream
             Lh_vis[t] = float(np.sum(Df[:, 2])); Xh_vis[t] = float(np.sum(Df[:, 0]))
+        # ---- SEPARATED-FLOW FORM/PRESSURE DRAG (viscous-origin). Blasius friction (above) is only ~0.15N;
+        # the BIG viscous drag is the pressure drag from boundary-layer SEPARATION at high alpha_eff (the
+        # +-45 flap strokes reach alpha_eff~45deg). Cd_form = cd_form*sin^2(alpha_eff) (flat-plate-separated,
+        # ~0 attached -> grows when stalled), drag along the relative wind -> the missing thrust-axis drag. ----
+        if prof_drag:
+            nnq = nrm.numpy(); vr = np.asarray(Vinf) - vcn       # relative wind (freestream + flapping)
+            vrm = np.linalg.norm(vr, axis=1) + 1e-9
+            sap = np.sum(vr * nnq, axis=1) / vrm                 # sin(alpha_eff) per panel
+            # SATURATE: beyond full-separation (~cd_sat_deg) the form drag coeff stops growing (bluff-body Cd
+            # plateaus). Cap |sin(alpha)| at sin(cd_sat_deg) so Cd_form does not keep climbing as sin^2 at high
+            # frequency (where alpha_eff overshoots) -> matches the measured (drag does not blow up with freq).
+            ssat = np.sin(np.radians(cd_sat_deg))
+            sapc = np.clip(np.abs(sap), 0.0, ssat)
+            Cdp = cd_form * sapc ** 2                            # separated form drag (0 attached, plateaus stalled)
+            Dp = 0.5 * ug.RHO * vrm[:, None] * Cdp[:, None] * area[:, None] * vr   # along relative wind
+            Lh_pd[t] = float(np.sum(Dp[:, 2])); Xh_pd[t] = float(np.sum(Dp[:, 0]))
         # ---- LEADING-EDGE SUCTION thrust (Garrick / DeLaurier dTs = 2pi eta_s alpha_eff^2 (1/2 rho U V) c dy).
         # A flat-panel normal-pressure (Bernoulli) force structurally MISSES the leading-edge singular suction
         # (the sqrt(x) edge force) -> captures induced drag but NOT the forward LE-suction thrust. This is the
@@ -515,6 +532,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj,
                 L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
+                D_prof=2.0 * np.mean(Xh_pd[last]),                                # separated-flow form drag (>0 = drag)
                 Lh_vis=Lh_vis, Xh_vis=Xh_vis, Lh_les=Lh_les, Xh_les=Xh_les,       # per-step viscous / LE-suction
                 Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
                 Lh_ds=Lh_ds, L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),       # dynamic-stall: per-step + mean(bern+LEV)
