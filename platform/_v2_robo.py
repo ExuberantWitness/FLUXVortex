@@ -246,6 +246,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lev_detach_deg=90.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
+                  drag_polar=False, cd0_polar=0.018, oswald=0.85,
                   d0_drag=0.0,
                   part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, lev_owin=2.0,
                   sym=False, root_off=0.0, stall=False, stall_deg=12.0,
@@ -583,7 +584,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     L_les = 2.0 * np.mean(Lh_les[last]); Fx_les = 2.0 * np.mean(Xh_les[last])   # LE suction (forward, -x thrust)
     L_vtx = 2.0 * np.mean(Lh_vtx[last]); Fx_vtx = 2.0 * np.mean(Xh_vtx[last])   # vortex normal force (lift+drag)
     Lkj = 2.0 * np.mean(Lkjh[last])
-    return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj,
+    # FIRST-PRINCIPLES STEADY drag polar CD = CD0 + CL^2/(pi*AR*e), on the CYCLE-MEAN (base-AoA) lift only.
+    # The flapping lift makes thrust (Knoller-Betz), not induced drag, so the polar must NOT use the instantaneous
+    # CL (over-counts); the steady part (base AoA) gives the induced drag that grows with AoA. CD0/AR/e physical.
+    S_full = 2.0 * half_span * chord; AR_w = 2.0 * half_span / max(chord, 1e-9); qd0 = 0.5 * ug.RHO * U ** 2
+    CL_s = (L_bern + L_les - L_vis) / (qd0 * S_full + 1e-9)
+    D_polar = (cd0_polar + CL_s ** 2 / (np.pi * AR_w * oswald)) * qd0 * S_full if drag_polar else 0.0
+    return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
                 L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
                 D_prof=2.0 * np.mean(Xh_pd[last]),                                # separated-flow form drag (>0 = drag)
