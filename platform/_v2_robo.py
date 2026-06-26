@@ -247,7 +247,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
                   d0_drag=0.0,
-                  part_lev=False, lev_cons=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
+                  part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
@@ -279,7 +279,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     pp = wp.zeros(pmax, dtype=V3, device=dev); pa = wp.zeros(pmax, dtype=V3, device=dev)
     ps = wp.zeros(pmax, dtype=DTYPE, device=dev); pp_new = wp.zeros(pmax, dtype=V3, device=dev)
     sa_prev_p = wp.zeros(ns, dtype=DTYPE, device=dev)   # previous |sin a_eff| per strip (LESP-rate shed gate)
-    SIG0 = DTYPE(0.5 * U * dt); PCORE = DTYPE(0.10)   # base core (swept vol/2); floor 0.10c regularizes LE
+    I_lev_prev = np.zeros(3); I_lev_have = False         # previous LE-referenced LEV impulse (for -dI/dt force)
+    SIG0 = DTYPE(lev_sig0 * U * dt); PCORE = DTYPE(lev_core)   # LEV particle core (smaller -> stronger induction)
     sin_crit_p = DTYPE(np.sin(np.radians(lesp_crit_deg)))
     # --- coherent-core LEV (N-LEV merging, N=1 per strip): ONE smooth merged ring/strip (CPU state) ---
     lev_cen = np.zeros((ns, 3)); lev_gam = np.zeros(ns); lev_gam_raw = np.zeros(ns)
@@ -340,12 +341,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
         if lev_merge:
             Vcol = Vcol + Vlev.numpy()                                  # coherent LEV core induction (Bernoulli)
-        if part_lev and np_part > 0:   # rVPM LEV-particle induced velocity at the surface (the Bernoulli force).
-            # The shed-and-convect particles induce on the wing via Biot-Savart -> their lift enters the force.
-            # As they convect downstream their near-field induction decays (stable, no fixed-core feedback),
-            # and the odd-in-stroke shed strength makes the cycle-mean cancel at AoA=0 by conservation.
-            wp.launch(col_particle_vel_kernel, dim=npan, inputs=[col, pp, pa, ps, np_part], outputs=[Vpart], device=dev)
-            Vcol = Vcol + Vpart.numpy()
+        # NOTE: the LEV-particle force is the LE-referenced VORTEX-IMPULSE (added to Lh_imp below), NOT the
+        # surface-Bernoulli induction (that only gets the LEV x bound cross-term, missing the LEV's own KJ lift).
         # THIS GPU UVLM's ring corners: c0,c1 = LE edge; c2,c3 = TE edge (shed_kernel uses c2,c3 for the
         # TE wake). So chordwise (LE->TE) = mean(c2-c0, c3-c1); spanwise (along LE/TE edge) = mean(c1-c0, c2-c3).
         tcr = 0.5 * ((cc[:, 2] - cc[:, 0]) + (cc[:, 3] - cc[:, 1]))     # chordwise tangent (LE->TE)
@@ -375,6 +372,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             sf = np.minimum(1.0, np.sin(np.radians(stall_deg)) / (np.abs(sap) + 1e-9))  # CL_max saturation
             Fb = Fb * sf[:, None]
         Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
+        if part_lev and np_part > 0:   # rVPM LEV force via the LE-REFERENCED VORTEX-IMPULSE. The LEV's own KJ
+            # lift is the rate of hydrodynamic impulse I = rho * sum((x_p - x_le) x alpha_p). Referencing to the
+            # MOVING wing-LE centroid x_le removes (a) the z-flap spurious moment (the wing plunges +-0.5m, so a
+            # global origin gives a huge Sum(alpha)*dz fake force) and (b) the net-circulation origin term (the
+            # shed alpha is debited from the bound AT the LE -> the (LEV, bound-debit) dipole is referenced there).
+            le_ref = np.mean(0.5 * (cc[:ns, 0] + cc[:ns, 1]), axis=0)    # current wing-LE centroid (moves with flap)
+            pph = pp.numpy()[:np_part]; pah = pa.numpy()[:np_part]
+            I_lev = ug.RHO * np.sum(np.cross(pph - le_ref, pah), axis=0)
+            if I_lev_have:
+                Lh_imp[t] += -(I_lev[2] - I_lev_prev[2]) / max(dt, 1e-15)   # lift = -d/dt(impulse)_z
+                Xh_imp[t] += -(I_lev[0] - I_lev_prev[0]) / max(dt, 1e-15)   # drag = -d/dt(impulse)_x
+            I_lev_prev = I_lev; I_lev_have = True
         # ---- DeLaurier (1993) first-principles VISCOUS friction drag (strip theory). The inviscid
         # Bernoulli force has NO friction -> over-predicts net thrust. Skin friction drags each panel
         # DOWNSTREAM along the local tangential flow: dDf = 1/2 rho V_tan^2 Cdf dA, Cdf = 2*Cf*FF
