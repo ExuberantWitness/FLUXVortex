@@ -72,7 +72,8 @@ def col_particle_vel_kernel(col: wp.array(dtype=V3), pp: wp.array(dtype=V3), pa:
 def shed_lev_particles_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(dtype=V3),
                               vcol: wp.array(dtype=V3), gamma: wp.array(dtype=DTYPE, ndim=2),
                               Vinf: V3, ns: int, np0: int, sin_crit: DTYPE, klev: DTYPE,
-                              sig0: DTYPE, pcore: DTYPE, pp: wp.array(dtype=V3),
+                              sig0: DTYPE, pcore: DTYPE, sa_prev: wp.array(dtype=DTYPE),
+                              pp: wp.array(dtype=V3),
                               pa: wp.array(dtype=V3), ps: wp.array(dtype=DTYPE)):
     """Shed ONE leading-edge vortex PARTICLE per strip at the LE surface (vs the old isolated ring).
     Strength/criterion byte-identical to _shed_lev_kernel (LESP excess, delayed-Kutta gprev). The
@@ -85,10 +86,19 @@ def shed_lev_particles_kernel(rings: wp.array(dtype=V3, ndim=2), nrm: wp.array(d
     s_vec = rings[p, 1] - rings[p, 0]                                  # LE edge vector (spanwise, full length)
     le_mid = wp.float64(0.5) * (rings[p, 0] + rings[p, 1])            # LE midpoint
     chord_v = rings[p, 2] - rings[p, 0]; clen = wp.length(chord_v) + wp.float64(1.0e-12)
-    pp[idx] = le_mid + n * (wp.float64(0.08) * clen)                  # born AT the LE, 0.08c onto suction side
+    sgn = wp.sign(wp.dot(vr, n) / vmag)                              # SIGNED stroke: +1 downstroke, -1 upstroke
+    # born ON the suction side, which FLIPS with the stroke (+n downstroke, -n upstroke) -> the up/down LEV
+    # particles are mirror images that convect away and cancel at AoA=0 by construction (conserved, physical).
+    pp[idx] = le_mid + n * (sgn * wp.float64(0.08) * clen)            # born AT the LE, on the real suction side
     ps[idx] = wp.max(sig0, pcore * clen)                             # core >= 0.10c -> regularize near-LE
-    if sa > sin_crit:
-        gmag = -klev * gamma[0, p] * (wp.float64(1.0) - sin_crit / sa)  # SAME formula as the ring kernel
+    rising = sa - sa_prev[p]                                          # d|LESP|/dt: LEV grows on the BUILD-UP phase
+    sa_prev[p] = sa                                                  # store for next step's rate
+    # SHED only while the LE suction is SUPERCRITICAL and INCREASING (Ramesh/flap_ldvm up-stroke gate). This is
+    # self-adjusting: at AoA=0 both strokes build symmetrically -> symmetric shedding -> cancels; at AoA>0 the
+    # lift-producing stroke builds MORE -> downstroke-dominated net lift (the cruise overshoot) WITHOUT a fixed
+    # asymmetry that would break AoA=0. The detach (stop shedding on the decreasing phase) gives rise-peak-drop.
+    if sa > sin_crit and rising > wp.float64(0.0):
+        gmag = -klev * sgn * vmag * clen * (sa - sin_crit)           # mesh-independent, signed, LESP excess
         pa[idx] = gmag * s_vec                                        # alpha = Gamma * (full LE edge vector)
     else:
         pa[idx] = V3(wp.float64(0.0), wp.float64(0.0), wp.float64(0.0))
@@ -237,7 +247,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
                   d0_drag=0.0,
-                  part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
+                  part_lev=False, lev_cons=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
@@ -268,12 +278,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     pmax = N * ns + ns; np_part = 0                  # one particle per strip per step + slack
     pp = wp.zeros(pmax, dtype=V3, device=dev); pa = wp.zeros(pmax, dtype=V3, device=dev)
     ps = wp.zeros(pmax, dtype=DTYPE, device=dev); pp_new = wp.zeros(pmax, dtype=V3, device=dev)
+    sa_prev_p = wp.zeros(ns, dtype=DTYPE, device=dev)   # previous |sin a_eff| per strip (LESP-rate shed gate)
     SIG0 = DTYPE(0.5 * U * dt); PCORE = DTYPE(0.10)   # base core (swept vol/2); floor 0.10c regularizes LE
     sin_crit_p = DTYPE(np.sin(np.radians(lesp_crit_deg)))
     # --- coherent-core LEV (N-LEV merging, N=1 per strip): ONE smooth merged ring/strip (CPU state) ---
     lev_cen = np.zeros((ns, 3)); lev_gam = np.zeros(ns); lev_gam_raw = np.zeros(ns)
     lev_rw = wp.zeros((ns, 4), dtype=V3, device=dev); lev_gw = wp.zeros(ns, dtype=DTYPE, device=dev)
     Vlev = wp.zeros(npan, dtype=V3, device=dev)
+    Vpart = wp.zeros(npan, dtype=V3, device=dev)     # LEV-particle induced velocity at collocations (rVPM force)
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
@@ -298,6 +310,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(aick, dim=(npan, npan), inputs=[rings, col, nrm], outputs=[AIC], device=dev)
         rhs = wp.zeros((1, npan), dtype=DTYPE, device=dev)
         wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
+        if part_lev and lev_cons and np_part > 0:   # CONSERVATIVE rVPM: fold the CONVECTING LEV-particle induction
+            # into the solve RHS -> the bound circulation is REDUCED by the shed LEV (Kelvin). Unlike the FIXED
+            # core (which exploded - persistent near-field feedback), the particles CONVECT downstream so their
+            # induction on the bound DECAYS -> stable. The LEV lift then emerges through the (reduced) bound KJ +
+            # the particle induction in the Bernoulli, consistently (convention C) -> counts the convecting LEV.
+            wp.launch(col_particle_vel_kernel, dim=npan, inputs=[col, pp, pa, ps, np_part], outputs=[Vpart], device=dev)
+            wp.launch(rhs_add_lev_kernel, dim=npan, inputs=[nrm, Vpart], outputs=[rhs], device=dev)
         if lev_merge:   # coherent-LEV-core induced velocity at collocations (for the Bernoulli force ONLY -
             # NOT folded into the solve: coupling it reduces the bound circulation and the bound-reduction
             # dominates the LEV's own lift -> net DROP. Force-only -> the LEV's suction ADDS lift (overshoot).
@@ -321,6 +340,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
         if lev_merge:
             Vcol = Vcol + Vlev.numpy()                                  # coherent LEV core induction (Bernoulli)
+        if part_lev and np_part > 0:   # rVPM LEV-particle induced velocity at the surface (the Bernoulli force).
+            # The shed-and-convect particles induce on the wing via Biot-Savart -> their lift enters the force.
+            # As they convect downstream their near-field induction decays (stable, no fixed-core feedback),
+            # and the odd-in-stroke shed strength makes the cycle-mean cancel at AoA=0 by conservation.
+            wp.launch(col_particle_vel_kernel, dim=npan, inputs=[col, pp, pa, ps, np_part], outputs=[Vpart], device=dev)
+            Vcol = Vcol + Vpart.numpy()
         # THIS GPU UVLM's ring corners: c0,c1 = LE edge; c2,c3 = TE edge (shed_kernel uses c2,c3 for the
         # TE wake). So chordwise (LE->TE) = mean(c2-c0, c3-c1); spanwise (along LE/TE edge) = mean(c1-c0, c2-c3).
         tcr = 0.5 * ((cc[:, 2] - cc[:, 0]) + (cc[:, 3] - cc[:, 1]))     # chordwise tangent (LE->TE)
@@ -510,7 +535,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                       DTYPE(np.sin(np.radians(lesp_crit_deg))), DTYPE(lev_klev)], outputs=[wr, wg], device=dev)
         if part_lev:   # PARTICLE leading-edge vortex: shed one spanwise particle/strip at the LE (delayed-Kutta gprev)
             wp.launch(shed_lev_particles_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, np_part,
-                      sin_crit_p, DTYPE(lev_klev), SIG0, PCORE], outputs=[pp, pa, ps], device=dev)
+                      sin_crit_p, DTYPE(lev_klev), SIG0, PCORE, sa_prev_p], outputs=[pp, pa, ps], device=dev)
             np_part += ns
         nw_new = nw + shed_per
         wtype.extend([0] * ns + ([1] * ns if real_lev else []))   # TEV then LEV (matches shed order)
