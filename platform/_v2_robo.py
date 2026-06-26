@@ -247,7 +247,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
                   d0_drag=0.0,
-                  part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
+                  part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, lev_owin=2.0,
+                  sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3):
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
@@ -372,18 +373,22 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             sf = np.minimum(1.0, np.sin(np.radians(stall_deg)) / (np.abs(sap) + 1e-9))  # CL_max saturation
             Fb = Fb * sf[:, None]
         Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
-        if part_lev and np_part > 0:   # rVPM LEV force via the LE-REFERENCED VORTEX-IMPULSE. The LEV's own KJ
-            # lift is the rate of hydrodynamic impulse I = rho * sum((x_p - x_le) x alpha_p). Referencing to the
-            # MOVING wing-LE centroid x_le removes (a) the z-flap spurious moment (the wing plunges +-0.5m, so a
-            # global origin gives a huge Sum(alpha)*dz fake force) and (b) the net-circulation origin term (the
-            # shed alpha is debited from the bound AT the LE -> the (LEV, bound-debit) dipole is referenced there).
+        if part_lev and np_part > 0:   # rVPM LEV force via QUASI-STEADY KUTTA-JOUKOWSKI on the OVER-WING LEV.
+            # The full vortex-impulse sum(x x alpha) is WILD because it accumulates ALL shed particles -> the
+            # far-wake convection term rho*U*sum(alpha) grows unbounded. The physical LEV lift is the KJ of the
+            # circulation CURRENTLY OVER THE WING (the coherent LEV near the forward suction surface): as the LEV
+            # builds it grows, as it convects off the TE it drops (the rise-peak-drop). Count only particles within
+            # a chord-window of the LE; their spanwise circulation alpha_y gives L = rho * U * sum(alpha_y).
             le_ref = np.mean(0.5 * (cc[:ns, 0] + cc[:ns, 1]), axis=0)    # current wing-LE centroid (moves with flap)
             pph = pp.numpy()[:np_part]; pah = pa.numpy()[:np_part]
-            I_lev = ug.RHO * np.sum(np.cross(pph - le_ref, pah), axis=0)
-            if I_lev_have:
-                Lh_imp[t] += -(I_lev[2] - I_lev_prev[2]) / max(dt, 1e-15)   # lift = -d/dt(impulse)_z
-                Xh_imp[t] += -(I_lev[0] - I_lev_prev[0]) / max(dt, 1e-15)   # drag = -d/dt(impulse)_x
-            I_lev_prev = I_lev; I_lev_have = True
+            chdir = np.mean(tc[:ns], axis=0); chdir = chdir / (np.linalg.norm(chdir) + 1e-9)   # WING-CHORD dir (LE->TE)
+            dchord = (pph - le_ref) @ chdir                             # chordwise distance along the (tilted) chord
+            cbar = float(np.mean(0.5 * (np.linalg.norm(cc[:ns, 2] - cc[:ns, 0], axis=1) +
+                                        np.linalg.norm(cc[:ns, 3] - cc[:ns, 1], axis=1))))   # mean chord
+            ow = (dchord > -0.2 * cbar) & (dchord < lev_owin * cbar)    # OVER-WING window (LE .. owin*chord aft)
+            Urel = abs(float(Vinf[0]))
+            Lh_imp[t] += ug.RHO * Urel * float(np.sum(pah[ow, 1]))      # KJ lift of the over-wing LEV (spanwise circ)
+            Xh_imp[t] += ug.RHO * Urel * float(np.sum(pah[ow, 2]))      # chordwise circ -> streamwise force
         # ---- DeLaurier (1993) first-principles VISCOUS friction drag (strip theory). The inviscid
         # Bernoulli force has NO friction -> over-predicts net thrust. Skin friction drags each panel
         # DOWNSTREAM along the local tangential flow: dDf = 1/2 rho V_tan^2 Cdf dA, Cdf = 2*Cf*FF

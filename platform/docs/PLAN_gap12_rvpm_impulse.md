@@ -79,4 +79,28 @@ L_lev = −d(I_lev)_z/dt,  D_lev = −d(I_lev)_x/dt
 
 **当前判断**:Gap①② 是真研究墙(本会话 8+方案+2 research workflow+rVPM 4 力法全界定)。thrust 是 solid 交付。LEV 力记账是 UVLM+VPM 混合的开放难题。
 
-**进度锚**:thrust(Gap④)已 solid 同步 `meta-codesign`;Gap①② 在 `aero-rvpm-lev`(WIP=稳定脱涡+冲量诊断;本 plan=完整实验经验)。
+## 六、over-wing KJ 力(只数翼上当前 LEV)实测
+
+`L_lev = ρU·Σ_{翼上窗口} α_p,y`(窗口=LE 起 owin·chord 内的粒子,quasi-steady KJ,无 d/dt 无累积)。
+- **驯服了**(不狂野)✓,且 **AoA=0 对**(owin0.7/klev8 → 3.1N=+7%,LEV 加 ~+1.8 弯度驱动量,不是抵消到 0)。
+- **但 AoA-趋势错**:LEV 加的量 ~恒定甚至随 AoA **减**(AoA=15 加 ~0/负)。实测 LEV(AoA) 应**增长** +1.8/+3.5/+4.7/+4.9。cruise/高 AoA 偏弱 −21~−36%。
+- 根因:翼上窗口在高 AoA 抓不对(freestream-chordwise 窗口 vs 倾斜翼弦错位;且窗口含对消的旧上扑粒子)。窗口越大越对消(owin3 → AoA=0 +59%、高 AoA 暴跌)。
+
+## 七、最终诚实结论(本会话穷尽)
+
+**9+ 力/模型变体全不对** LEV(AoA) 趋势:
+| 模型 | LEV 行为 | 问题 |
+|---|---|---|
+| lev_merge 固定核(已标定) | ~恒定 +2.7,cruise✓ | 边缘过:AoA=0 +29%、AoA=15 +10% |
+| rVPM Bernoulli 面力 | 弱 ~10×(+0.3) | 粒子离面 |
+| rVPM 朴素冲量 | 狂野(+925%@15) | 累积对流 ρU·Σα |
+| rVPM lev_cons(削bound) | 弱 | 粒子离面→bound 不响应 |
+| rVPM over-wing KJ | 驯服、AoA=0 对(+1.8) | AoA-趋势反(高 AoA 不增长) |
+
+**根本**:`lev_merge`(固定核)其实**最接近**(只边缘过),但边缘修正(abar/Scheme B/odd-kernel)因 ±45° 扑动判别难全失败。rVPM(自由对流)给不出 LEV(AoA) 增长趋势,因粒子离面 + 力记账(弱/狂野/趋势反)。
+
+**这是真研究墙**:UVLM+VPM 混合里"附着型动态失速 LEV"的力记账是开放难题。需要的可能是:held-LEV(核停翼上)+ 对称生成 + 正确的"生成→翼上 KJ→TE detach"力链,或全系统冲量大重构。非本会话可破。
+
+**最接近可用**:`lev_merge` 标定态(cruise 5-10° ~5%),AoA=0/15 边缘 +29%/+10% 作已知局限。+ 推力 MAE 0.18N(solid)。
+
+**进度锚**:thrust(Gap④)已 solid 同步 `meta-codesign`;Gap①② 在 `aero-rvpm-lev`(完整实验记录);本 plan = 9+ 方案全记录,供后续/深度重构参考。
