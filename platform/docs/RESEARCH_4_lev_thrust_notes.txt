@@ -1,0 +1,83 @@
+I'll research the leading-edge vortex thrust component in flapping flight aerodynamics. Let me search systematically across the literature.
+
+---
+
+Let me start searching the literature on the LEV thrust component in flapping flight.
+
+---
+
+Good start. The Ramesh LDVM paper and the Polhamus analogy are foundational. Let me dig into the specific thrust computation methods in LDVM and the Garrick/Theodorsen unsteady thrust theory.
+
+---
+
+The Garrick result is key — for our problem, this directly addresses the frequency-squared thrust scaling. The 2025 JFM "A note on the thrust of airfoils" looks like a recent reassessment. Let me fetch the key Ramesh LDVM source and the Garrick-related JFM note. Let me also search for the specific gap on how thrust behaves when the LEV is present (separated flow thrust).
+
+---
+
+Both PDFs downloaded locally. Let me extract text from them directly using command-line tools.
+
+---
+
+`pdftotext` works. Let me extract the full text of both papers, focusing on the force/thrust equations.
+
+---
+
+This is highly relevant. This 2025 JFM paper directly addresses the Garrick thrust frequency scaling and its breakdown, and importantly mentions point (iii): LEVs reduce thrust. Let me extract the key equations from this paper, then the Ramesh LDVM force equations.
+
+---
+
+Let me extract the precise equation blocks — the leading-edge suction force, Garrick's thrust, and the mean thrust coefficient formula.
+
+---
+
+This is the crucial equation. Equation (2.22) is exactly what our model is missing:
+
+**T_G(t) = −α(t)·ℓ(t) + ρ·U∞²·π·c·A₀²(t)/4**
+
+The thrust has TWO parts: the leading-edge suction term ρU∞²πc·A₀²/4 (always positive, the von Kármán-Sears/Garrick LE suction), and −α·ℓ (projection of lift). Our model caps A₀ at LESP_crit, which kills the suction thrust growth. Let me get the mean thrust coefficient formula and reduced frequency scaling.
+
+---
+
+Let me get the final mean-thrust-coefficient closed form and its frequency scaling.
+
+---
+
+I have the Garrick result thoroughly. Now let me extract the Ramesh LDVM force computation (especially how it computes thrust/LE-suction). Let me extract that PDF text and search the force section.
+
+---
+
+This is a reduced-order variant. The force equations are summarized from Ramesh's original 2014 paper. Let me read the LDVM method section (lines ~165-260) and the force computation, then fetch the original Ramesh 2014 JFM paper which has the canonical thrust formula.
+
+---
+
+This confirms LESP = A₀ and capping A₀ at LESP_crit. Now the critical detail: **once the LEV is shed, A₀ is capped — so the Garrick LE-suction thrust term ρU∞²πc·A₀²/4 is frozen at its capped value and cannot grow with frequency.** That is exactly our model's bug. The thrust must come from a different mechanism (rotated normal force / Polhamus, or vortex impulse). Let me fetch the original Ramesh 2014 JFM paper for the canonical force decomposition (normal force + suction force), and search for how DVM/LDVM recovers thrust when separated.
+
+---
+
+Let me fetch the original Ramesh 2014 JFM paper (ResearchGate PDF) to get the canonical normal/suction/tangential force equations, and in parallel get the CORE PDF of the model-reduction paper which has explicit force formulas.
+
+---
+
+Both blocked. Let me get the Ramesh 2014 paper from a different source and the model-reduction paper from arXiv. The canonical force equations are in Ramesh 2013 (Theoretical Computational Fluid Dynamics) and the 2014 JFM. Let me try direct arXiv/alternative.
+
+---
+
+Got a modified-DVM PDF. The canonical formula confirmed: **"The only forces acting on the airfoil are the normal force and the axial leading-edge suction force."** This is the key decomposition. Let me extract this modified-DVM paper's force equations and fetch the Gloucester eprint of Ramesh 2020 (open access, has the suction force formula).
+
+---
+
+Let me extract the explicit normal and axial force equations from this modified-DVM paper (the canonical Ramesh formulas).
+
+---
+
+This is the canonical force decomposition I needed. The key equations:
+
+- **F_N** (normal force, Eq 19): bound circulation (quasi-steady) + added-mass (Ȧ₀, Ȧ₁, Ȧ₂) + LEV/TEV contributions
+- **F_A = ρ·π·c·U∞²·A₀²** (axial leading-edge suction force, Eq 20) — proportional to A₀²
+- **L = F_N·cos α + F_A·sin α**, **D = F_N·sin α − F_A·cos α** (Eqs 21-22)
+
+This is exactly the structure of our problem. Now I see the precise mechanism. Let me confirm the Polhamus rotation detail and how it relates to the thrust, then check the frequency-growth physics. Let me fetch the Gloucester eprint (Ramesh 2020) and search for the specific question of how separated-flow thrust is modeled in flapping flight with frequency growth.
+
+---
+
+Note from the patent: when a LEV forms on a deflected leading edge, the low pressure on the **forward-facing surface** of the leading edge produces a **forward thrust** — this is the LEV thrust mechanism on a curved/cambered leading edge. Let me extract the Gloucester PDF locally, and search the Garrick-vs-experiment frequency-squared scaling plus the DeLaurier/semi-empirical flapping models that explicitly include LEV thrust.

@@ -233,8 +233,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=-90.0,
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lev_merge=False, lev_tau=0.20,
+                  lev_detach_deg=90.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
+                  d0_drag=0.0,
                   part_lev=False, sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3):
@@ -394,11 +396,15 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # beyond alpha_crit the excess loading sheds into the LEV (already shed for lift), so the attached
             # LE-suction saturates. First-principles separation onset, NOT an empirical efficiency fit.
             a_crit = np.radians(lesp_crit_deg)
-            aeff_s = np.clip(aeff, -a_crit, a_crit)            # suction-relevant angle, capped at LESP-crit
+            aeff_s = np.clip(aeff, -a_crit, a_crit)            # LESP saturation: A0 caps at A0_crit when LEV sheds
             c_le = tcn.reshape(nc, ns).sum(0)                 # local chord per strip
             dy_le = tsn.reshape(nc, ns)[0]                    # strip spanwise width (LE row)
-            Uc = abs(float(Vinf[0]))
-            dTs = 2.0 * np.pi * les_eta * aeff_s ** 2 * (0.5 * ug.RHO * Uc * Vle_m) * c_le * dy_le
+            # GARRICK LE-suction thrust F_A = rho*pi*c * U_rel^2 * A0^2 (Ramesh/Gordillo). A0 = sin(alpha_eff)
+            # CAPS at sin(alpha_crit) (LESP), but the LOCAL dynamic pressure ~Vle_m^2 still grows with flap speed
+            # -> F_A ~ Vle_m^2 ~ f^2 even when saturated. Using Vle_m^2 (both factors LOCAL) is the correct
+            # quadratic scaling; the earlier rho*U_inf*Vle_m mix gave only ~f^1. This is the f^2 propulsion.
+            sa_s = np.sin(aeff_s)                              # saturated LE-suction parameter A0 = sin(a_crit) max
+            dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
             Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
             Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
         # ---- HIGH-ALPHA VORTEX NORMAL FORCE (Polhamus leading-edge-suction analogy). When the flow
@@ -413,7 +419,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             sa_v = np.sum(vr * nnv, axis=1) / vrm             # sin(alpha_eff) per panel (signed)
             ca_v = np.sqrt(np.maximum(0.0, 1.0 - sa_v ** 2))
             qd = 0.5 * ug.RHO * vrm ** 2                       # local dynamic pressure
-            Nv = k_vortex * sa_v * np.abs(sa_v) * ca_v * qd * area   # signed sin^2(a) cos(a) normal force
+            # Polhamus rotated-normal force, gated to past separation onset (|sin a_eff| > sin a_crit). NOTE: its
+            # STREAMWISE projection was measured ~0 (fore/aft panel normals cancel) -> NOT the thrust source; the
+            # f^2 thrust is the Garrick LE-suction (les_suction) above. Kept only for the high-alpha lift bump.
+            sep = (np.abs(sa_v) > np.sin(np.radians(lesp_crit_deg))).astype(NP)
+            Nv = k_vortex * sa_v * np.abs(sa_v) * ca_v * qd * area * sep   # sin^2(a) cos(a) normal force, separated
             Fv = Nv[:, None] * nnv                             # along the panel normal -> lift+drag both
             Lh_vtx[t] = float(np.sum(Fv[:, 2])); Xh_vtx[t] = float(np.sum(Fv[:, 0]))
         # ---- DYNAMIC-STALL LEV (L-B style, per strip): on the downstroke alpha_eff rises past the static
@@ -467,7 +477,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # INDEPENDENT increment (~pi rho U^2 c A0_crit^2), matching the measured ~constant ~3N. lev_tau =
             # build/shed time. The core is at the cap WHENEVER stalled (not proportional to the excess).
             cap = lev_klev * U * cst * scr
-            target = np.where(np.abs(sa_l) > scr, -cap * np.sign(sa_l), 0.0)   # sign: LEV core ADDS lift (overshoot)
+            # LEV active only for sin_crit < |alpha_eff| < sin(detach): below crit = attached (no LEV); ABOVE
+            # detach = FULL stall, the LEV detaches/sheds and its lift is LOST (the measured needed-LEV peaks
+            # ~10deg then DROPS at 15deg). Cruise (5deg, alpha_eff<=~45deg) is below detach -> unaffected.
+            sdet = np.sin(np.radians(lev_detach_deg))
+            active = (np.abs(sa_l) > scr) & (np.abs(sa_l) < sdet)
+            target = np.where(active, -cap * np.sign(sa_l), 0.0)              # sign: LEV core ADDS lift (overshoot)
             # 2nd-order lag = CONVECTION DELAY: the stall feeds lev_gam_raw, whose response lev_gam LAGS ->
             # the LEV lift peaks AFTER the attached peak (the vortex convects over the chord) = the plateau,
             # not a boost of the instantaneous peak.
@@ -533,6 +548,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
                 D_prof=2.0 * np.mean(Xh_pd[last]),                                # separated-flow form drag (>0 = drag)
+                D_para=d0_drag,   # constant baseline drag (support plates + rig + flap-cycle separation), both wings
+                                  # NOTE: empirically ~U-, f-independent over the tested 6-10 m/s x 1.4-2.6 Hz range
+                                  # (the U,f dependence lives in the Garrick suction, which grows with V_rel^2)
                 Lh_vis=Lh_vis, Xh_vis=Xh_vis, Lh_les=Lh_les, Xh_les=Xh_les,       # per-step viscous / LE-suction
                 Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
                 Lh_ds=Lh_ds, L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),       # dynamic-stall: per-step + mean(bern+LEV)

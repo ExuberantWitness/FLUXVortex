@@ -1,0 +1,86 @@
+I'll research this systematically. Let me start by searching the literature on the specific dynamic stall models you mentioned.
+
+---
+
+Let me launch parallel searches on the key model families.
+
+---
+
+Good start. Let me fetch the most directly relevant papers. The Goman-Khrabrov JFM 2022 paper and the Ramesh ROM paper are key. Let me also dig into the LB state equations and the cycle-mean behavior.
+
+---
+
+The PDFs were saved locally. The Goman-Khrabrov PDF parsed partially; the Ramesh one didn't. Let me read the saved PDFs directly, and the HTML versions which parse better.
+
+---
+
+I now have the complete Goman-Khrabrov formulation. This is directly relevant to gaps (1) and (2). Let me now get the Ramesh LDVM equations (the core LESP/LEV thrust machinery) and the Leishman-Beddoes state-variable detail. Let me read the saved Ramesh PDF and fetch the canonical LDVM sources.
+
+---
+
+This is excellent. I now have the complete LDVM/N-LEV machinery and the critical detachment criteria (TE flow reversal + max LEV circulation Γ_LEV/cU_eff ≈ 4.2). This is directly relevant to gaps (2) and (4). 
+
+Three findings here are gold for the user:
+- The N-LEV merging that they already use is exactly Ramesh/Gelado's structure, and the paper explicitly identifies the "excessive lift by N-LEV in early stages from non-physical impulse of merging" — that's the user's AoA=0 +37% bug.
+- Fig 8 + the text: as the airfoil descends back to α=0, LEV elements convect BELOW the airfoil creating negative lift — this is the up/down symmetry mechanism the user is missing.
+- The detachment criteria (Γ_LEV cap and TE flow reversal) are exactly the "CL_max-then-drop" mechanism for gap (2).
+
+Now let me get the Leishman-Beddoes full state-variable detail (Kirchhoff f', C_N^v vortex tracking, Tp/Tf/Tv/Tvl) and the ONERA model, plus the vortex-thrust / leading-edge-suction recovery for gap (4) thrust.
+
+---
+
+The OpenFAST doc is the new UAMod=4 state-space form. I want the classical Leishman-Beddoes with the explicit C_N^v / Tv / Tvl machinery (this is what the user actually needs for the vortex-lift-accumulation that decays — directly relevant to gaps 2 and 4). The Sheng-Galbraith-Coton 2006 low-speed variant and the Larsen-Nielsen-Krenk 2007 wind-turbine version are the canonical low-Mach references. Let me get the explicit classical LB equations from a primary source, plus the Larsen-Nielsen-Krenk reduced model.
+
+I'll search for an authoritative LB equation set and the Sheng low-speed onset criterion (critical for the Re~1e5 low-speed regime which differs from the original compressible LB).
+
+---
+
+I have the model families mapped. Let me now pull the explicit classical Leishman-Beddoes vortex equations (the C_N^v / Tv / Tvl machinery — the heart of what the user needs for both the CL_max-then-drop and the symmetry) and the Sheng low-speed onset criterion which is critical for Re~1e5. The arxiv 2102.01300 paper (asymmetric pitching, high reduced frequency) likely has the full LB equation set written out. Let me fetch it and the Larsen-Nielsen-Krenk reduced wind-turbine model which is the cleanest closed-form LB.
+
+---
+
+Let me read the saved asymmetric-pitching PDF directly (it has the full LB equation set) and get the Sheng criterion from the Glasgow eprints PDF directly.
+
+---
+
+This arxiv paper uses the ONERA EDLIN form (the Tran-Petot 2nd-order ODEs with the Venkatesan-Friedmann C(k) approximation), not the classical LB vortex tracking. Useful for the ONERA part of the answer — I now have the exact ONERA second-order ODE structure (Eqs 3-5) and the C(k) constants (A1=0.50, A2=0.393, A3=0.0439425, B2=0.5515, B3=0.0439075). But this paper is unstalled (A=6deg), so it doesn't give the deep-stall Van der Pol part.
+
+I now have enough on Goman-Khrabrov (full), Ramesh LDVM/N-LEV (full), ONERA EDLIN structure. The one remaining gap is the explicit classical Leishman-Beddoes vortex equations (C_N^v, Tv, Tvl) with constants. Let me get those from a clean source, plus the Sheng low-speed onset criterion equation. I'll also confirm the key flapping-propulsion / vortex-thrust mechanism (Garrick leading-edge suction thrust) for gap (4).
+
+Let me make three targeted fetches in parallel.
+
+---
+
+Two highly relevant new leads:
+1. **Minotti / "Unsteady thrust, lift and moment of a 2D flapping thin airfoil in the presence of leading-edge vortices: a first approximation from linear potential theory" (JFM)** — this is exactly the analytical closed-form for gap (4): how an LEV contributes to THRUST (not just lift) in linear potential theory. This is the missing piece for the user's thrust component.
+2. **The modified Leishman-Beddoes for low Re (Sci. Direct S0889974619300489)** — flat plate, NACA0012/0018, low Re, low Mach, very high reduced pitch rate. This is the closest published LB to the user's Re~1e5 regime and likely has the Tv/Tvl constants table.
+
+Let me fetch the OpenFAST UAMod=2/3 page detail (classical LB with vortex states — it does have C_N^v, Tv, Tvl) and the Minotti LEV-thrust paper, plus the low-Re modified LB paper. These three close the remaining gaps. Let me get the OpenFAST classical-LB equations from the readthedocs (the full theory page), the Minotti abstract/equations, and the low-Re LB.
+
+---
+
+Good — the Fernandez-Feria & Alaminos-Quesada (2018) result is important and somewhat counterintuitive for the user: in linear potential theory the LEV correction to thrust is small (∝a0²k³) and the bulk of flapping thrust is the Theodorsen/Garrick leading-edge suction itself, which is what the user is capping out with LESP. That directly informs gap (4).
+
+Now let me nail the classical Leishman-Beddoes vortex equations with constants (the canonical reference values for Tp, Tf, Tv, Tvl, CN1) and the Sheng low-speed onset criterion. Let me get the OpenFAST classical-LB theory and a clean Sheng source. The arxiv 2508.10647 HTML had good equation rendering — let me check if there's a comprehensive LB review with the vortex constants. I'll fetch the OpenFAST full theory page focusing on UAMod 2/3, and try the Glasgow Sheng PDF via a different path, plus get the canonical LB constants from the well-rendered review.
+
+---
+
+ScienceDirect is blocking. Let me get the canonical LB equation set with constants from the UMass thesis PDF (open access, scholarworks) which from the snippet has the full vortex module, and the WES open-access second-order model. These are freely fetchable and will give me the explicit C_N^v / Tv / Tvl equations and constants.
+
+---
+
+The WES PDF saved. Let me read it directly, focusing on the vortex 2nd-order ODE section. The 2nd-order vortex ODE is directly relevant to the user's "convection-delay lag breaks up/down symmetry" problem (gap 1) and the CL_max-then-drop (gap 2). Let me read the relevant pages.
+
+---
+
+This is the complete picture. I now have the full classical Leishman-Beddoes vortex module with exact constants (Bangga et al. 2020, Wind Energy Science), the IAG second-order model, Goman-Khrabrov (full), Ramesh/Gelado LDVM+N-LEV (full), ONERA EDLIN structure, and the Fernandez-Feria LEV-thrust result. I have everything needed.
+
+Critical equations now extracted from Bangga et al. (Eqs 21-27, 33, Table 2):
+- Vortex feed Cv = CN_C·(1−Kn), with Kn = ¼(1+√f₂)² — Eq 21-22
+- Vortex accumulation Eq 23: CN_v decays as exp(−Δs/Tv) but feeds with (Cv_n − Cv_{n-1})exp(−Δs/2Tv) **only while 0 < τ_v < Tvl**
+- Vortex timer Eq 24: τ_v increments **only when CN'^P1 > CN^CRIT**, resets to 0 when subcritical AND Δα>0 (downstroke) — this is the key on/off switch
+- CN^CRIT Eq 25 = critical static normal force at α^CRIT
+- Constants Table 2: A1=0.3, A2=0.7, b1=0.14, b2=0.53, Kα=0.75, **Tp=1.7, Tf=3.0, Tv=6.0, Tvl=6.0**, Kv=0.2, η=0.95
+- Separation point inversion from static polar Eq 33 (no curve-fit needed)
+
+I have more than enough to write a rigorous, directly-applicable synthesis. Let me do one final targeted check on the Goman-Khrabrov gust/gust-modification papers (Sedky/Williams) since the user needs the symmetry-breaking insight, and confirm I'm not missing a key recent (2023-2025) flapping-specific reduced-order stall paper. Then I'll synthesize.
