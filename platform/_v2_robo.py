@@ -291,6 +291,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Vpart = wp.zeros(npan, dtype=V3, device=dev)     # LEV-particle induced velocity at collocations (rVPM force)
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
+    Fxb_tot = np.zeros(N); Fzb_tot = np.zeros(N)      # TOTAL body-frame force per step (sum of ALL force vectors:
+    #   Bernoulli + LE-suction + friction + form-drag + vortex) -> the clean body force to rotate into wind axes
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
     Lh_pd = np.zeros(N); Xh_pd = np.zeros(N)           # separated-flow form/pressure drag (high-alpha, viscous-origin)
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
@@ -374,6 +376,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             sf = np.minimum(1.0, np.sin(np.radians(stall_deg)) / (np.abs(sap) + 1e-9))  # CL_max saturation
             Fb = Fb * sf[:, None]
         Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
+        Fzb_tot[t] = float(np.sum(Fb[:, 2])); Fxb_tot[t] = float(np.sum(Fb[:, 0]))   # body-force accumulator (base)
         if part_lev and np_part > 0:   # rVPM LEV force via QUASI-STEADY KUTTA-JOUKOWSKI on the OVER-WING LEV.
             # The full vortex-impulse sum(x x alpha) is WILD because it accumulates ALL shed particles -> the
             # far-wake convection term rho*U*sum(alpha) grows unbounded. The physical LEV lift is the KJ of the
@@ -405,6 +408,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Cdf = 2.0 * Cf * FORM_FF                                     # both surfaces x thickness form factor
             Df = 0.5 * ug.RHO * Cdf[:, None] * area[:, None] * Vtm[:, None] * Vtan  # drags wing downstream
             Lh_vis[t] = float(np.sum(Df[:, 2])); Xh_vis[t] = float(np.sum(Df[:, 0]))
+            Fzb_tot[t] += float(np.sum(Df[:, 2])); Fxb_tot[t] += float(np.sum(Df[:, 0]))   # friction force vector
         # ---- SEPARATED-FLOW FORM/PRESSURE DRAG (viscous-origin). Blasius friction (above) is only ~0.15N;
         # the BIG viscous drag is the pressure drag from boundary-layer SEPARATION at high alpha_eff (the
         # +-45 flap strokes reach alpha_eff~45deg). Cd_form = cd_form*sin^2(alpha_eff) (flat-plate-separated,
@@ -421,6 +425,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Cdp = cd_form * sapc ** 2                            # separated form drag (0 attached, plateaus stalled)
             Dp = 0.5 * ug.RHO * vrm[:, None] * Cdp[:, None] * area[:, None] * vr   # along relative wind
             Lh_pd[t] = float(np.sum(Dp[:, 2])); Xh_pd[t] = float(np.sum(Dp[:, 0]))
+            Fzb_tot[t] += float(np.sum(Dp[:, 2])); Fxb_tot[t] += float(np.sum(Dp[:, 0]))   # form-drag force vector
         # ---- LEADING-EDGE SUCTION thrust (Garrick / DeLaurier dTs = 2pi eta_s alpha_eff^2 (1/2 rho U V) c dy).
         # A flat-panel normal-pressure (Bernoulli) force structurally MISSES the leading-edge singular suction
         # (the sqrt(x) edge force) -> captures induced drag but NOT the forward LE-suction thrust. This is the
@@ -447,6 +452,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
             Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
             Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
+            Fzb_tot[t] += float(np.sum(Fs[:, 2])); Fxb_tot[t] += float(np.sum(Fs[:, 0]))   # LE-suction force vector
         # ---- HIGH-ALPHA VORTEX NORMAL FORCE (Polhamus leading-edge-suction analogy). When the flow
         # separates at high |alpha_eff| (the +-45 flap mid-strokes, alpha_eff ~ 45deg), the lost LE suction
         # reappears as a force NORMAL to the wing: C_Nv = k_v sin^2(a) cos(a). The SAME normal force projects
@@ -590,7 +596,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     S_full = 2.0 * half_span * chord; AR_w = 2.0 * half_span / max(chord, 1e-9); qd0 = 0.5 * ug.RHO * U ** 2
     CL_s = (L_bern + L_les - L_vis) / (qd0 * S_full + 1e-9)
     D_polar = (cd0_polar + CL_s ** 2 / (np.pi * AR_w * oswald)) * qd0 * S_full if drag_polar else 0.0
+    # ---- BODY vs WIND axes. The model builds forces in the BODY frame (AoA via tilted freestream -> Fz is the
+    # wing-normal force, Fx the chord-axial force). The wind-tunnel "lift / net thrust" convention is WIND axes
+    # (lift _|_ freestream, thrust // freestream). The rotation by the body AoA: Fz*sin(a) is the lift's streamwise
+    # projection = the induced-drag-like term (first-principles geometry, NOT a fitted drag polar). ----
+    Fx_body = 2.0 * np.mean(Fxb_tot[last]); Fz_body = 2.0 * np.mean(Fzb_tot[last])   # total body force (both wings)
+    _ca = np.cos(np.radians(aoa_deg)); _sa = np.sin(np.radians(aoa_deg))
+    L_bodyf = Fz_body;              T_bodyf = -Fx_body                               # BODY frame lift / thrust
+    L_windf = Fz_body * _ca - Fx_body * _sa                                          # WIND frame lift (_|_ freestream)
+    T_windf = -(Fx_body * _ca + Fz_body * _sa)                                       # WIND frame thrust (// freestream)
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
+                Fx_body=Fx_body, Fz_body=Fz_body, L_body=L_bodyf, T_body_f=T_bodyf,
+                L_wind=L_windf, T_wind=T_windf,                                       # rotated wind-axes lift/thrust
                 L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
                 D_prof=2.0 * np.mean(Xh_pd[last]),                                # separated-flow form drag (>0 = drag)
