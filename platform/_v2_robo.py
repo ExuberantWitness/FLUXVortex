@@ -245,7 +245,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lev_merge=False, lev_tau=0.20,
                   lev_detach_deg=90.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
-                  visc=False, tc_thick=0.06, prof_drag=False, cd_form=2.0, cd_sat_deg=30.0, les_suction=False, les_eta=1.0,
+                  visc=False, tc_thick=0.06, prof_drag=False, cd_form=1.98, cd_sat_deg=30.0, cd_dp=1.2, les_suction=False, les_eta=1.0,
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
                   d0_drag=0.0,
                   part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, lev_owin=2.0,
@@ -417,12 +417,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             nnq = nrm.numpy(); vr = np.asarray(Vinf) - vcn       # relative wind (freestream + flapping)
             vrm = np.linalg.norm(vr, axis=1) + 1e-9
             sap = np.sum(vr * nnq, axis=1) / vrm                 # sin(alpha_eff) per panel
-            # SATURATE: beyond full-separation (~cd_sat_deg) the form drag coeff stops growing (bluff-body Cd
-            # plateaus). Cap |sin(alpha)| at sin(cd_sat_deg) so Cd_form does not keep climbing as sin^2 at high
-            # frequency (where alpha_eff overshoots) -> matches the measured (drag does not blow up with freq).
-            ssat = np.sin(np.radians(cd_sat_deg))
-            sapc = np.clip(np.abs(sap), 0.0, ssat)
-            Cdp = cd_form * sapc ** 2                            # separated form drag (0 attached, plateaus stalled)
+            # CROSS-FLOW (Hoerner) separated drag: Cd = Cd_max*sin^2(a_eff), Cd_max=cd_form~1.98 (flat-plate
+            # slope), PLATEAUED at the deep-stall value cd_dp (~1.2, airfoil deep-stall Cd / Hoerner). The bluff-
+            # body Cd saturates past full separation (does NOT climb to the 2.0 broadside value) -> form drag
+            # stays ~f^2 at high frequency (matches measured net-thrust trend). First-principles (no RoboEagle fit).
+            Cdp = np.minimum(cd_form * sap ** 2, cd_dp)         # cross-flow form drag, deep-stall plateau cd_dp
             Dp = 0.5 * ug.RHO * vrm[:, None] * Cdp[:, None] * area[:, None] * vr   # along relative wind
             Lh_pd[t] = float(np.sum(Dp[:, 2])); Xh_pd[t] = float(np.sum(Dp[:, 0]))
             Fzb_tot[t] += float(np.sum(Dp[:, 2])); Fxb_tot[t] += float(np.sum(Dp[:, 0]))   # form-drag force vector
