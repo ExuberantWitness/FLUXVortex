@@ -245,7 +245,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lev_merge=False, lev_tau=0.20,
                   lev_detach_deg=90.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
-                  visc=False, tc_thick=0.06, prof_drag=False, cd_form=1.98, cd_sat_deg=30.0, cd_dp=1.2, les_suction=False, les_eta=1.0,
+                  visc=False, tc_thick=0.06, prof_drag=False, cd_form=1.98, cd_sat_deg=30.0, cd_dp=1.2, d_para=0.0, les_suction=False, les_eta=1.0,
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
                   d0_drag=0.0,
                   part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, lev_owin=2.0,
@@ -601,6 +601,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     # projection = the induced-drag-like term (first-principles geometry, NOT a fitted drag polar). ----
     Fx_body = 2.0 * np.mean(Fxb_tot[last]); Fz_body = 2.0 * np.mean(Fzb_tot[last])   # total body force (both wings)
     _ca = np.cos(np.radians(aoa_deg)); _sa = np.sin(np.radians(aoa_deg))
+    # RIG PARASITIC DRAG (~U^2): the wind-tunnel support plates (paper rig = plates + 2 wings, NO fuselage) add
+    # a drag ~ Cd*A*1/2 rho U^2, FREQUENCY-INDEPENDENT. Applied along the flight/freestream direction -> reduces
+    # T_wind by D_para, leaves L_wind unchanged. d_para = parasitic at U=8 m/s (calibrated; rig geometry not in
+    # the paper). NOTE: the cross-flow FORM drag (prof_drag) was found to REVERSE the net-thrust vs freq trend
+    # (Cd*sin^2(a_eff) grows faster than f^2) -> use this ~U^2 parasitic instead, which preserves the freq trend.
+    D_para = d_para * (U / 8.0) ** 2
+    Fx_body = Fx_body + D_para * _ca; Fz_body = Fz_body + D_para * _sa
     L_bodyf = Fz_body;              T_bodyf = -Fx_body                               # BODY frame lift / thrust
     L_windf = Fz_body * _ca - Fx_body * _sa                                          # WIND frame lift (_|_ freestream)
     T_windf = -(Fx_body * _ca + Fz_body * _sa)                                       # WIND frame thrust (// freestream)
