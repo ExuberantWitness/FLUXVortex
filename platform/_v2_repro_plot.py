@@ -11,9 +11,10 @@ R = json.load(open(os.path.join(DOCS, 'repro_data.json')))
 def draw(ax, d, xlab):
     kn = 'Lift' if d['kind'] == 'L' else 'Net thrust'
     nan = lambda L: [v if v is not None else np.nan for v in L]
-    ax.plot(d['x'], d['exp'], '-o', color='k', ms=5, lw=2, label='exp')
-    ax.plot(d['x'], nan(d['prev']), '--x', color='tab:red', ms=7, mew=2, label='PREV form-drag')
-    ax.plot(d['x'], nan(d['curr']), ':^', color='tab:blue', ms=6, mew=2, label='CURR parasitic')
+    ax.plot(d['x'], d['exp'], '-o', color='k', ms=5, lw=2.5, label='exp')
+    ax.plot(d['x'], nan(d['curr']), ':^', color='tab:blue', ms=6, mew=1.5, alpha=0.75, label='OLD (lev_merge, −90)')
+    if d.get('new') is not None:
+        ax.plot(d['x'], nan(d['new']), '-s', color='tab:green', ms=6, lw=2.2, label='NEW (fp-LEV, +90)')
     ax.set_title(f"{kn} vs {xlab.split()[0]}", fontsize=10)
     ax.set_xlabel(xlab, fontsize=9); ax.set_ylabel('force (N)', fontsize=9)
     ax.legend(fontsize=8); ax.grid(alpha=0.3)
