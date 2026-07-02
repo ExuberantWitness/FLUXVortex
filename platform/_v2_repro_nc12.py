@@ -12,7 +12,7 @@ DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'docs')
 JP = os.path.join(DOCS, 'repro_data.json')
 OD = os.path.join(DOCS, 'repro_nc12'); os.makedirs(OD, exist_ok=True)
 
-NC = 12; NS = 16; NCYC = 4; WINDS = None; FIXMODE = False
+NC = 12; NS = 16; NCYC = 4; WINDS = None; FIXMODE = False; CFG = None
 PROD = dict(real_geom=True, sym=True, les_suction=True, les_eta=1.0, d_para=3.0, a0_crit=0.23,
             lev_shed_mode='kelvin', lev_hold_mode='inviscid', attached_drag='faure',
             lev_sheet=True, lev_place='ansari', lev_sign=1.0)
@@ -20,14 +20,30 @@ PROD = dict(real_geom=True, sym=True, les_suction=True, les_eta=1.0, d_para=3.0,
 # Fix2 (friction) DROPPED: skin friction is freq-independent (~U^2, chordwise-flow-dominated), so it can NOT
 # explain the thrust freq-SLOPE error (model -3.2->+2.2 vs meas -1.1->+0.7, ~2.9x too steep). Thrust = open item.
 FIX = dict(geo_stall=True, geo_stall_deg=12.0, geo_stall_width=16.0)
+# --- 2026-07-02 candidate configs (--cfg): faithful-Hirato LEV thrust fix, all first-principles / no fits ---
+HIRATO_COMMON = dict(real_geom=True, sym=True, les_suction=True, les_eta=1.0, d_para=3.0, a0_crit=0.23,
+                     lev_shed_mode='hirato', lev_place='wake', lev_sheet=True, lev_sign=1.0,
+                     lev_le_off=0.10, lev_core_ring=0.4, attached_drag='faure')
+CFG_PRESETS = {
+    'K0': dict(PROD, **FIX),                                              # production kelvin+Fix1 baseline
+    'H2': dict(HIRATO_COMMON),                                            # hirato + saturated vnf (geo_stall OFF)
+    'H3': dict(HIRATO_COMMON, **FIX),                                     # + geo_stall ON (double-count probe)
+}
 
-def cache_path():     # grid+fix-tagged so different grids / model variants never collide
+def cache_path():     # grid+cfg-tagged so different grids / model variants never collide
+    if CFG == 'K0':   # K0 == the legacy PROD+FIX cache (59 Fig17/18 conds already computed) — reuse it
+        return os.path.join(OD, f"cache_nc{NC}_cyc{NCYC}_fix.json")
+    if CFG:
+        return os.path.join(OD, f"cache_nc{NC}_cyc{NCYC}_{CFG}.json")
     return os.path.join(OD, f"cache_nc{NC}_cyc{NCYC}{'_fix' if FIXMODE else ''}.json")
 
 
 def cond_of(key, xi):
     fig, sub, param = key.split('|')
     if fig == '17':                 U, aoa, freq, tw = 8., 5., float(param), xi
+    elif fig == '19':               # Fig19: aoa from param; a/b = freq sweep @twist0, c/d = twist sweep @2.6Hz (8 m/s)
+        if sub in ('a', 'b'):       U, aoa, freq, tw = 8., float(param), xi, 0.
+        else:                       U, aoa, freq, tw = 8., float(param), 2.6, xi
     elif sub in ('a', 'b'):         U, aoa, freq, tw = float(param), 5., xi, 0.
     else:                           w, f = eval(param); U, aoa, freq, tw = float(w), 5., float(f), xi
     # quantize away parse-noise duplicates (physically identical points run once): tw->0.5deg, freq->0.05Hz
@@ -67,7 +83,8 @@ def dry():
 def run():
     import warp as wp; wp.init()
     from _v2_robo import gpu_run_twist
-    conds = unique_conds(); CACHE = cache_path(); kw = dict(PROD, **(FIX if FIXMODE else {}))
+    conds = unique_conds(); CACHE = cache_path()
+    kw = dict(CFG_PRESETS[CFG]) if CFG else dict(PROD, **(FIX if FIXMODE else {}))
     cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
     todo = [(ck, c) for ck, c in sorted(conds.items()) if ck not in cache]
     print(f"resume[{os.path.basename(CACHE)}]: {len(cache)} done, {len(todo)} to run (of {len(conds)})", flush=True)
@@ -128,6 +145,20 @@ def plot():
     for a in ax: a.set_xlabel("freq (Hz)"); a.set_ylabel("force (N)"); a.grid(alpha=0.3); a.legend(fontsize=7, ncol=2)
     fig.suptitle("Fig18 exp(-o) vs nc12 Ansari-LEV(--x)  [twist0, per wind]", fontsize=12)
     fig.tight_layout(); fig.savefig(os.path.join(DOCS, "repro_fig18.png"), dpi=110); plt.close(fig)
+    # Fig19: thrust(a)+lift(b) vs freq @twist0 and thrust(c)+lift(d) vs twist @2.6Hz, 4 AoAs (8 m/s)
+    AOAS = [0, 5, 10, 15]
+    fig, ax = plt.subplots(2, 2, figsize=(15, 11))
+    for i, aoa in enumerate(AOAS):
+        c = CMAP(i / 3)
+        line(ax[0, 0], f"19|a|{aoa:g}", c, f"aoa{aoa}"); line(ax[0, 1], f"19|b|{aoa:g}", c, f"aoa{aoa}")
+        line(ax[1, 0], f"19|c|{aoa:g}", c, f"aoa{aoa}"); line(ax[1, 1], f"19|d|{aoa:g}", c, f"aoa{aoa}")
+    ax[0, 0].set_title("Fig19a net thrust vs freq (tw0)"); ax[0, 1].set_title("Fig19b lift vs freq (tw0)")
+    ax[1, 0].set_title("Fig19c net thrust vs twist (2.6Hz)"); ax[1, 1].set_title("Fig19d lift vs twist (2.6Hz)")
+    for a2 in ax.flat: a2.set_ylabel("force (N)"); a2.grid(alpha=0.3); a2.legend(fontsize=6, ncol=2)
+    ax[0, 0].set_xlabel("freq (Hz)"); ax[0, 1].set_xlabel("freq (Hz)")
+    ax[1, 0].set_xlabel("twist (deg)"); ax[1, 1].set_xlabel("twist (deg)")
+    fig.suptitle("Fig19 exp(-o) vs model(--x)  [8 m/s, per AoA]", fontsize=12)
+    fig.tight_layout(); fig.savefig(os.path.join(DOCS, "repro_fig19.png"), dpi=110); plt.close(fig)
     done = sum(1 for v in json.load(open(cache_path())).values() if not np.isnan(v[0]))
     print(f"saved repro_fig17.png + repro_fig18.png | {done} conds done | MAE={np.mean(ae) if ae else float('nan'):.2f}N "
           f"over {len(ae)} matched pts", flush=True)
@@ -137,11 +168,12 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--dry', action='store_true'); ap.add_argument('--run', action='store_true'); ap.add_argument('--plot', action='store_true')
     ap.add_argument('--nc', type=int); ap.add_argument('--ncyc', type=int); ap.add_argument('--winds'); ap.add_argument('--fix', action='store_true')
+    ap.add_argument('--cfg', choices=sorted(CFG_PRESETS))
     a = ap.parse_args()
     if a.nc: NC = a.nc
     if a.ncyc: NCYC = a.ncyc
     if a.winds: WINDS = [round(float(x), 1) for x in a.winds.split(',')]
-    FIXMODE = a.fix
+    FIXMODE = a.fix; CFG = a.cfg
     if a.dry: dry()
     elif a.run: run()
     elif a.plot: plot()

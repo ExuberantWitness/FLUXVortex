@@ -393,6 +393,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lev_sign=1.0,            # LEV circulation sign vs bound (+1 = same sign -> adds lift; test both)
                   lev_le_off=0.0,          # LEV sheet ORIGIN = the geometric leading-edge POINT (physically correct: the shear layer separates at the sharp LE, then rolls up above the surface). Stability comes from the convect core, not an offset.
                   attached_drag='none',    # 'none'|'faure'(static C_D(α_rel))|'legacy'(old visc/prof_drag)
+                  vnf_sat=True,            # (A/B) Polhamus/flat-plate saturation of the vnf excess (min branch); False = pure pi branch
+                  faure_gate_pre=True,     # (A/B) faure attached gate uses PRE-constraint A0pre strict < ; False = legacy post-A0 <=
                   # --- 2026-06-30 additive empirical-residual corrections (default OFF; physics-anchored) ---
                   geo_stall=False,         # Fix1: quasi-steady GEOMETRIC-pitch static stall lift loss (twist-driven, freq-independent)
                   geo_stall_deg=12.0,      # static stall angle alpha_ss (NACA-2406 @ Re~1e5; airfoil property)
@@ -951,8 +953,20 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # the constraint, so A0_post^2 - a0_crit^2 == 0. A0pre^2 - a0_crit^2 is the physical unrealized suction.
                 A0x = hirato_A0pre if hirato_A0pre is not None else A0
                 exc2 = np.maximum(A0x ** 2 - a0_crit ** 2, 0.0)                       # capped (excess) suction parameter^2
-                dNr = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * exc2  # recovered normal-force magnitude
-                Frec = (dNr * np.sign(A0))[:, None] * nle                            # along the panel normal (vortex lift)
+                # POLHAMUS / FLAT-PLATE SATURATION (no free coeff): A0pre comes from the LEV-free VIRTUAL solve — a
+                # potential-flow fiction at deep stall (can reach 2-3 at large twist+flap) whose square EXPLODES the
+                # rotated force. The realizable separated-flow normal force saturates at the Polhamus finite-wing
+                # vortex-force limit: coef_pol = 1/2*k_v*sin^2(a_eff)*|cos(a_eff)|, k_v = 2*pi/(1+2/AR) (NASA TN
+                # D-4739, analytic from geometry). min() keeps the pi-branch (continuous at A0=crit, ->0 there) for
+                # small excess and caps at the Polhamus branch in deep stall (sin^2*cos <= 0.385 @54.7deg).
+                S_half = float(np.sum(area)) + 1e-12                                  # actual half-wing area (this step)
+                AR_w_v = (2.0 * half_span) ** 2 / (2.0 * S_half)                      # geometric AR (both wings)
+                k_v_pol = 2.0 * np.pi / (1.0 + 2.0 / max(AR_w_v, 1e-6))
+                coef_pi = np.pi * exc2
+                coef_pol = 0.5 * k_v_pol * (np.sin(aeff) ** 2) * np.abs(np.cos(aeff))
+                coef_v = np.minimum(coef_pi, coef_pol) if vnf_sat else coef_pi
+                dNr = les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * coef_v
+                Frec = (dNr * np.sign(A0x))[:, None] * nle                            # along the panel normal (vortex lift)
                 Lh_vtx[t] += float(np.sum(Frec[:, 2])); Xh_vtx[t] += float(np.sum(Frec[:, 0]))
                 Fzb_tot[t] += float(np.sum(Frec[:, 2])); Fxb_tot[t] += float(np.sum(Frec[:, 0]))
             Fzb_tot[t] += float(np.sum(Fs[:, 2])); Fxb_tot[t] += float(np.sum(Fs[:, 0]))   # LE-suction force vector
@@ -989,7 +1003,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Cd_att = cd0_polar * (1.0 + (arel / a_ref) ** 2)         # static profile-drag polar
             att = np.ones(npan)                                       # gate: attached strips only (LEV not shed)
             if lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato'):
-                att = np.tile((np.abs(A0) <= a0_crit).astype(NP), nc)   # panel p uses strip j=p%ns gate (attached only)
+                # ATTACHED gate must use the PRE-constraint LESP under 'hirato': the implicit constraint pins the
+                # post-solve A0 EXACTLY at a0_crit on shedding strips, so |A0|<=crit would pass SEPARATED strips
+                # (whose alpha_rel is huge on the flap stroke -> the quadratic bucket explodes into fake drag).
+                # |A0pre|<crit (strict) = the strip is genuinely attached this step.
+                A0_gate = hirato_A0pre if (faure_gate_pre and lev_shed_mode == 'hirato' and hirato_A0pre is not None) else A0
+                att = (np.abs(A0_gate) < a0_crit) if faure_gate_pre else (np.abs(A0_gate) <= a0_crit)
+                att = np.tile(att.astype(NP), nc)                # panel p uses strip j=p%ns gate (attached only)
             Dfa = 0.5 * ug.RHO * vrm[:, None] * Cd_att[:, None] * area[:, None] * att[:, None] * vrf  # along rel. wind
             Lh_pd[t] += float(np.sum(Dfa[:, 2])); Xh_pd[t] += float(np.sum(Dfa[:, 0]))
             Fzb_tot[t] += float(np.sum(Dfa[:, 2])); Fxb_tot[t] += float(np.sum(Dfa[:, 0]))
