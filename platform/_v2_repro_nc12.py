@@ -28,6 +28,10 @@ CFG_PRESETS = {
     'K0': dict(PROD, **FIX),                                              # production kelvin+Fix1 baseline
     'H2': dict(HIRATO_COMMON),                                            # hirato + saturated vnf (geo_stall OFF)
     'H3': dict(HIRATO_COMMON, **FIX),                                     # + geo_stall ON (double-count probe)
+    # P1c 2026-07-02: H3==H2 on both worst conds (thrust identical, lift -0.07N) -> H3 sweep skipped.
+    # a0_crit is THE tw22.5 lever (0.27: dT -3.68 -> -1.93 passes gate; costs U6 +0.71 where the residual
+    # is a rig-offset known-unknown anyway). Both 0.23/0.27 are literature airfoil values (2D-anchored).
+    'H4': dict(HIRATO_COMMON, a0_crit=0.27),                              # LESP crit sensitivity (SD7003@Re2e4)
 }
 
 def cache_path():     # grid+cfg-tagged so different grids / model variants never collide
