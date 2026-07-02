@@ -8,6 +8,7 @@ the twist GAIN relationship (a relative measure, robust to the absolute aero mod
 induced drag so absolute L/D will exceed 6.8 until profile drag is added)."""
 from __future__ import annotations
 
+import os
 import numpy as np
 import warp as wp
 from fluxvortex.warp_fsi import config as cfg
@@ -126,13 +127,37 @@ def advect_particle_kernel(pp: wp.array(dtype=V3), pa: wp.array(dtype=V3), ps: w
     pp_new[k] = P + v * dt
 
 
-def twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis=False, root_off=0.0):
+def twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis=False, root_off=0.0, ramp=None):
     """Flat wing -> flap (rotate about root x-axis by θ=A_f sin Ωt) + spanwise-linear twist
     (pitch each section about the y-axis at x_ea by ψ(y)=A_t (y/span) sin(Ωt+phi)).
     swept_axis=True: real RoboEagle twist axis swept 33.8%c(root)->LE(tip) (_v2_robogeom.axis_x),
     not a constant x_ea — matches the paper's measured flap/twist hinge.
     root_off: wing root offset outboard of the y=0 flap axis. Twist/chord use the wing-LOCAL span
-    (y-root_off); the flap (dihedral) rotates about y=0 using the ASSEMBLY y (so the offset root swings)."""
+    (y-root_off); the flap (dihedral) rotates about y=0 using the ASSEMBLY y (so the offset root swings).
+    ramp=(pmax_rad, t_start, t_dur): HIRATO pitch-ramp mode — UNIFORM pitch about x_ea, smootherstep
+    0->pmax over [t_start, t_start+t_dur], NO flap/twist (validates LEV rollup vs Hirato Fig.11)."""
+    if ramp is not None:
+        # CANONICAL ELDREDGE/GRANLUND smoothed pitch ramp-hold (matches Hirato Fig.9): near-constant pitch rate
+        # 2K (convective) with smoothed corners, evaluated from a numerically-stable lncosh. SIGN: nose-UP
+        # (positive aerodynamic AoA -> positive lift) needs psi<0 in this frame (Vinf=[U,0,0], wing normal
+        # n=(-sin psi,0,cos psi) -> Vinf.n=-U sin psi>0 only for psi<0), matching the freestream-tilt +aoa
+        # convention -> pitch_max>0 = nose-up.
+        _, pmax, t1s, t2s, a_sm, tconv = ramp
+        that = t / max(tconv, 1e-12)                                   # convective time t* = U t / c
+        lnc = lambda z: np.logaddexp(z, -z) - np.log(2.0)             # stable ln(cosh(z))
+        fval = lnc(a_sm * (that - t1s)) - lnc(a_sm * (that - t2s))
+        D = a_sm * (t2s - t1s)
+        frac = np.clip((fval + D) / (2.0 * D + 1e-12), 0.0, 1.0)       # 0 (before t1) .. 1 (after t2, held)
+        x = C0[..., 0]; y = C0[..., 1]; z0 = C0[..., 2]
+        # uniform pitch ramp + optional GEOMETRIC spanwise TWIST (Hirato case 2: A_t deg higher incidence at the
+        # tip than the root, constant). Twist adds tip-ward nose-up incidence (same sign as the ramp pitch) so the
+        # LESP peaks OUTBOARD -> tip-first LEV onset (vs root-first for the untwisted case 1). yl = wing-local span.
+        yl = y - root_off
+        psi = -pmax * frac - A_t * (yl / max(span, 1e-9))            # A_t=radians(twist_amp_deg); 0 -> pure uniform pitch
+        cp, sp = np.cos(psi), np.sin(psi)
+        xr = x_ea + (x - x_ea) * cp - z0 * sp
+        zr = (x - x_ea) * sp + z0 * cp
+        return np.stack([xr, y, zr], axis=-1)                       # no flap
     th = A_f * np.sin(Om * t)
     ct, st = np.cos(th), np.sin(th)
     x = C0[..., 0]; y = C0[..., 1]; z0 = C0[..., 2]    # y = assembly span; z0 = NACA-2406 camber surface
@@ -148,10 +173,10 @@ def twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis=False, root
     return np.stack([xf, yf, zf], axis=-1)
 
 
-def twisted_state(C0, t, A_f, A_t, Om, phi, x_ea, span, dlt=1e-6, swept_axis=False, root_off=0.0):
-    corners = twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off)
-    cp = twisted_corners(C0, t + dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off)
-    cm = twisted_corners(C0, t - dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off)
+def twisted_state(C0, t, A_f, A_t, Om, phi, x_ea, span, dlt=1e-6, swept_axis=False, root_off=0.0, ramp=None):
+    corners = twisted_corners(C0, t, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off, ramp)
+    cp = twisted_corners(C0, t + dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off, ramp)
+    cm = twisted_corners(C0, t - dlt, A_f, A_t, Om, phi, x_ea, span, swept_axis, root_off, ramp)
     vel = (cp - cm) / (2 * dlt)
     return corners, vel
 
@@ -304,6 +329,32 @@ def _shed_te_traj(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE
     tcl[k] = cl; tcr[k] = cr                          # save for next step's "previous TE"
 
 
+@wp.kernel
+def _lev_inf_kernel(col: wp.array(dtype=V3), nrm: wp.array(dtype=V3),
+                    lwr: wp.array(dtype=V3, ndim=2), core: DTYPE, nlev: int,
+                    INF: wp.array(dtype=DTYPE, ndim=2)):
+    """(HIRATO Fig.6 implicit LESP constraint) influence matrix: INF[i,j] = (UNIT-strength nascent LEV ring j
+    induced velocity at bound collocation i) . n_i. Because the wing-bound circulation is linear in the RHS and
+    the LESP (=A0) is a linear functional of the bound circulation, LESP is AFFINE in the shed LEV strengths.
+    This matrix lets us solve — in ONE step — for the LEV ring strengths that drive each supercritical strip's
+    LESP exactly back to LESP_crit (Hirato Eq.8/9 Kelvin + the LESP=LESP_crit constraint), which the paper does
+    by fixed-point iteration (Fig.6). ring_vel_core(...,core) is the regularized (Lamb-Oseen) Biot-Savart ring."""
+    i, j = wp.tid()
+    v = ring_vel_core(col[i], lwr[j, 0], lwr[j, 1], lwr[j, 2], lwr[j, 3], core)
+    INF[i, j] = wp.dot(v, nrm[i])
+
+
+@wp.kernel
+def _place_rings_kernel(src: wp.array(dtype=V3, ndim=2), sg: wp.array(dtype=DTYPE), off: int,
+                        wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE)):
+    """Write ns freshly-built vortex rings (corners src[j,0..3], strength sg[j]) into the wake arrays at
+    offset off. Used by the 'hirato' path to shed the Eq.7-placed LEV rings directly (full geometry control)."""
+    j = wp.tid()
+    wr[off + j, 0] = src[j, 0]; wr[off + j, 1] = src[j, 1]
+    wr[off + j, 2] = src[j, 2]; wr[off + j, 3] = src[j, 3]
+    wg[off + j] = sg[j]
+
+
 def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=90.0,   # +90: twist LEADS flap 90deg
                   # (paper double-crank: psi~cos(wt), nose-down on downstroke = washout of the deep-stall AoA)
@@ -314,11 +365,24 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=1.98, cd_sat_deg=30.0, cd_dp=1.2, d_para=0.0, les_suction=False, les_eta=1.0,
                   fp_lev=False, lev_kv=4.62, lev_trans_deg=15.0,
                   # --- 2026-06-27 first-principles LESP-LEV: orthogonal MODE switches (candidate-model matrix) ---
-                  lev_shed_mode='none',    # 'none'|'kelvin'(Hirato)|'varA0'(Modulation Eq.11-12)|'kinematic'(legacy Path-B)
+                  lev_shed_mode='none',    # 'none'|'kelvin'(explicit excess)|'varA0'(Modulation Eq.11-12)|'kinematic'(legacy)|'hirato'(FAITHFUL Fig.6 implicit LESP=LESP_crit constraint solve)
+                  lev_iter=1,              # ('hirato') extra correction sweeps for spanwise LESP coupling (1 = single affine solve; the LESP=crit constraint is affine so 1 is near-exact, 2-3 tightens coupling)
+                  lev_pseudo=True,         # ('hirato') include the Hirato pseudovortex ring (Fig.5): cancels the geometric-LE filament + makes the LEV shed EFFECTIVE at reducing LESP (physical strength)
                   lev_hold_mode='inviscid',# 'inviscid'(convect freely)|'hold'(viscous τ_hold)|'hold_detach'(Li 4-phase cutoff)
                   a0_crit=0.25,            # critical LESP (airfoil/Re property; anchor via 2D flap_ldvm). 0.12 thin@Re10k .. 0.27 SD7003@Re20k
+                  a0_mode='xref',          # LESP A0 extraction: 'xref'(Hirato@x_ref=0.10c, nc-robust) | 'sqrtx'(√x limit from the RESOLVED 1st LE panel -> 3D, needs fine cosine LE)
                   tau_hold_scale=1.0,      # ×c/(0.4U) viscous-hold timescale
                   lev_roll_core=0.01,      # FLOOR LEV vortex-core (chord frac); the actual core is resolution-adaptive (below)
+                  lev_force_core=0.0,      # (FORCE) LEV force-core chord frac (0 -> = lev_roll_core). DECOUPLES the force core
+                  #   from the convection core: a SMALL convect core lets the LEV roll up (Fig.11), a LARGER force core
+                  #   keeps the near-surface rolled-up LEV from spiking the Bernoulli force (Hirato Lamb-Oseen Eq.25 ~0.5*ring)
+                  lev_vnf=True,            # (HIRATO force closure) recover the CAPPED LE suction (A0>a0_crit excess) as a
+                  #   VORTEX NORMAL force. Garrick/Polhamus: the LE suction realizable only to A0_crit; the unrealizable
+                  #   excess pi*rho*c*U^2*(A0^2-a0_crit^2) rotates 90deg onto the panel normal = the LEV vortex lift the
+                  #   shed sheet delivers (the discrete-ring induction is numerically too weak to deliver it directly).
+                  lev_core_ring=0.0,       # (HIRATO Eq.25) per-ring Lamb-Oseen core = lev_core_ring × LOCAL ring size (0 -> off,
+                  #   use fixed chord-frac cores). Scales the core WITH each ring so the compressed near-LE rings keep a
+                  #   STRONG bounded induction (recovers Polhamus vortex lift) while large/far rings stay smooth. r_c<0.5*ring.
                   lev_overlap=1.0,         # (STAB) LEV core = overlap × shed-spacing (∝U·dt & strip width) -> shrinks as grid refines, never near-singular
                   lev_consistent=True,     # apply the adaptive core in solve+force too (not just convect) -> grid-CONVERGENT LEV (vs singular drift/blow-up)
                   lev_sub=1,               # (FINE) spanwise sub-rings of LEV per strip (lev_sub=5 -> 5× finer LEV sheet, independent of wing grid)
@@ -341,7 +405,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, lev_owin=2.0,
                   sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
-                  ds_delay=18, frames_out=None, frame_skip=3):
+                  ds_delay=18, frames_out=None, frame_skip=3,
+                  pitch_ramp=False, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0):   # HIRATO pitch-ramp validation (Fig.9/11)
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -356,12 +421,24 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
           else ffv.flat_wing(nc, ns, chord, half_span)); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
     A_f = np.radians(flap_amp_deg); A_t = np.radians(twist_amp_deg); phi = np.radians(twist_phase_deg)
     Om = 2.0 * np.pi * freq; x_ea = 0.25 * chord
+    # HIRATO pitch-ramp (Fig.9): CANONICAL ELDREDGE/GRANLUND smoothed ramp-hold (Granlund et al. 2013, ref [30]),
+    # the same profile the paper uses — NOT a smootherstep. alpha(t*) ramps 0->pitch_max at the reduced pitch rate
+    # K = adot*c/(2U): a nearly-CONSTANT pitch rate (2K in convective time) with smoothed corners, then held. This
+    # gives the paper's C_L history (apparent-mass spike at ramp start, lift rising with alpha to a plateau) instead
+    # of the mid-ramp hump a smootherstep produces. In convective time t*=U t/c: alpha = pmax*(f+D)/(2D) with
+    # f = lncosh(a(t*-t1)) - lncosh(a(t*-t2)), D = a(t2-t1), t2 = t1 + pmax/(2K) (so the linear-region slope = 2K),
+    # a = corner-smoothing rate. ramp=None -> normal flap+twist.
+    ramp = None
+    if pitch_ramp:
+        pmax_r = np.radians(pitch_max); tconv = chord / max(U, 1e-6)
+        t2star = pitch_t0star + pmax_r / (2.0 * max(pitch_K, 1e-6))   # ramp-end convective time (slope=2K over t1..t2)
+        ramp = ('eldredge', pmax_r, pitch_t0star, t2star, 6.0, tconv)  # (tag, pmax, t1*, t2*, smoothing a, conv-time)
     Vinf = np.array([U, 0.0, U * np.tan(np.radians(aoa_deg))]); Vw = V3(*[float(v) for v in Vinf])
     T = 1.0 / freq; dt = T / steps_per_cycle; N = n_cycle * steps_per_cycle
     te = wp.array(np.array([(nc - 1) * ns + j for j in range(ns)], np.int32), dtype=wp.int32, device=dev)
     # NEW first-principles LESP-LEV sheds a ring/strip into the SAME wake (enters rhs + Bernoulli surface force);
     # reuses the real_lev plumbing. fp_shed True for any A0-based / kinematic LEV shed mode.
-    fp_shed = lev_shed_mode in ('kelvin', 'varA0', 'kinematic')
+    fp_shed = lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato')
     use_ansari = fp_shed and lev_sheet and lev_place == 'ansari'   # Hirato Eq.7: LEV is a SEPARATE sheet over the suction surface (NOT in the TEV wake)
     lev_in_wake = (real_lev or fp_shed) and not use_ansari         # a LEV ring goes into the TEV wake this run
     nsub = max(int(lev_sub), 1)                        # spanwise sub-rings of LEV per strip (FINE LEV sheet)
@@ -412,7 +489,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     # /lev_sub). Big enough to kill near-singular blow-ups (stability), shrinks as the grid refines -> CONVERGES.
     span_sp = half_span / max(ns * lev_sub, 1)
     lev_core_abs = max(lev_roll_core * chord, lev_overlap * max(U * dt, 0.5 * span_sp))   # SOLVE/convect: stabilizing
-    lev_core_force = lev_roll_core * chord                                                 # FORCE: small (lift sharpness)
+    lev_core_force = (lev_force_core if lev_force_core > 0.0 else lev_roll_core) * chord   # FORCE core (decoupled option)
     use_lev_sheet = fp_shed and lev_sheet                      # (E2) connected LEV sheet from the LE (rolls up)
     nls = ns * nsub                                            # number of LEV sub-rings shed per step (sheet)
     lpl = wp.zeros(nls, dtype=V3, device=dev); lpr = wp.zeros(nls, dtype=V3, device=dev)   # prev LE-shed corners
@@ -425,14 +502,33 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Vlev_a = wp.zeros(npan, dtype=V3, device=dev)              # LEV-sheet induced velocity at collocations
     lev_frame_rings = np.zeros((0, 4, 3)); lev_frame_g = np.zeros(0)   # LEV-sheet geometry for viz frames
     for t in range(N):
-        wcore_dev = None; wcore_force_dev = None
+        wcore_dev = None; wcore_force_dev = None; wcore_conv_dev = None
         if use_wcore and nw > 0:                                # per-ring core: LEV gets a core, TEV = standard
             islev_np = np.asarray(lev_born[:nw]) >= 0
-            # SOLVE/convect core (stabilizing, resolution-adaptive) and FORCE core (small, for held-lift sharpness)
-            cc_np = np.where(islev_np, lev_core_abs, ug.WAKE_CORE).astype(NP)
-            cf_np = np.where(islev_np, lev_core_force, ug.WAKE_CORE).astype(NP)
+            if lev_core_ring > 0.0:
+                # (HIRATO Eq.25) per-ring Lamb-Oseen core = lev_core_ring × LOCAL ring size (mean edge length). The
+                # compressed near-LE rings are SMALL -> small core -> STRONG bounded induction (recovers vortex lift);
+                # far/large rings get a proportionally larger core (smooth). Floored at lev_roll_core*c for stability.
+                wrn = wr.numpy()[:nw]
+                rsz = 0.25 * (np.linalg.norm(wrn[:, 1] - wrn[:, 0], axis=1) + np.linalg.norm(wrn[:, 2] - wrn[:, 1], axis=1)
+                              + np.linalg.norm(wrn[:, 3] - wrn[:, 2], axis=1) + np.linalg.norm(wrn[:, 0] - wrn[:, 3], axis=1))
+                levc = np.maximum(lev_core_ring * rsz, lev_roll_core * chord)
+                # CRITICAL: the TEV keeps the STANDARD near-singular treatment in the SOLVE/FORCE (matches the
+                # attached-UVLM baseline that uses the singular ring_vel — WAKE_CORE on the TEV softens the Kutta
+                # condition and drops the baseline C_N ~30%). The Lamb-Oseen per-ring core applies ONLY to the LEV.
+                # CONVECTION keeps WAKE_CORE on the TEV for free-wake stability.
+                tev_solve = max(0.5 * lev_roll_core * chord, 1e-4)
+                cc_np = np.where(islev_np, levc, tev_solve).astype(NP)         # rhs + force: TEV ~ singular (baseline-correct)
+                cf_np = cc_np
+                cconv_np = np.where(islev_np, levc, ug.WAKE_CORE).astype(NP)   # convect: TEV = WAKE_CORE (stability)
+            else:
+                # SOLVE/convect core (stabilizing, resolution-adaptive) and FORCE core (small, for held-lift sharpness)
+                cc_np = np.where(islev_np, lev_core_abs, ug.WAKE_CORE).astype(NP)
+                cf_np = np.where(islev_np, lev_core_force, ug.WAKE_CORE).astype(NP)
+                cconv_np = cc_np
             wcore_dev = wp.array(cc_np, dtype=DTYPE, device=dev)
             wcore_force_dev = wp.array(cf_np, dtype=DTYPE, device=dev)
+            wcore_conv_dev = wp.array(cconv_np, dtype=DTYPE, device=dev)
         # ==== S5 holding / detachment envelope (Li JFM 2023 four-phase): modulate each LEV wake ring's strength
         # by its age since shedding. 'hold' = sustain for tau_hold then gentle viscous decay; 'hold_detach' =
         # sustain then SHARP cut (secondary vortex severs the feeding shear layer -> rapid lift collapse = the
@@ -450,7 +546,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 wgh[idxs] = (s0[islev] * env).astype(wgh.dtype)
                 wg = wp.array(wgh, dtype=DTYPE, device=dev)
         corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span,
-                                      swept_axis=swept_axis, root_off=root_off)
+                                      swept_axis=swept_axis, root_off=root_off, ramp=ramp)
         cw = wp.array(corners.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
         vw = wp.array(cvel.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
         rings = wp.zeros((npan, 4), dtype=V3, device=dev); col = wp.zeros(npan, dtype=V3, device=dev)
@@ -509,6 +605,100 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # dominates the LEV's own lift -> net DROP. Force-only -> the LEV's suction ADDS lift (overshoot).
             wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, lev_rw, lev_gw, ns], outputs=[Vlev], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
+        hirato_gL = None; hirato_wr = None; hirato_A0pre = None
+        if lev_shed_mode == 'hirato' and lev_in_wake:
+            # ================= FAITHFUL HIRATO LEV: implicit LESP = LESP_crit constraint (paper Fig.6) =========
+            # The paper's core: when a strip's LESP (=A0) exceeds LESP_crit, an LEV ring is shed whose strength is
+            # set — BY ITERATION (Fig.6) — so that the RE-SOLVED bound circulation brings that strip's LESP back
+            # EXACTLY to LESP_crit. Because the bound circulation is linear in the RHS and A0 is a linear functional
+            # of the bound circulation, A0 is AFFINE in the shed LEV strengths -> we solve for the strengths in ONE
+            # linear step (the exact fixed point) instead of iterating. This is the mechanism the current explicit
+            # 'kelvin' shed only APPROXIMATES (it shed the excess without re-solving, so post-solve A0 != crit). ==
+            cc0 = rings.numpy(); g0 = gamma.numpy().reshape(-1); vcn0 = vcol.numpy()
+            tcr0 = 0.5 * ((cc0[:, 2] - cc0[:, 0]) + (cc0[:, 3] - cc0[:, 1])); tcn0 = np.linalg.norm(tcr0, axis=1) + 1e-15
+            tcnm0 = tcn0.reshape(nc, ns); c_str0 = tcnm0.sum(0); cum0 = np.cumsum(tcnm0, axis=0)
+            vr_le0 = (np.asarray(Vinf) - vcn0)[:ns]; Ur0 = np.linalg.norm(vr_le0, axis=1) + 1e-9
+            xref0 = 0.10; i_ref0 = np.argmax(cum0 >= (xref0 * c_str0)[None, :], axis=0)
+            th10 = np.arccos(np.clip(1.0 - 2.0 * xref0, -1.0, 1.0))
+            kA0 = 1.13 / (Ur0 * c_str0 * (th10 + np.sin(th10)) + 1e-12)   # A0[j] = kA0[j] * Gamma_1[j]  (Hirato Eq.6)
+            refidx = i_ref0 * ns + np.arange(ns)                           # flat index of the forwardmost-leg (Γ_1) ring
+            A0_0 = kA0 * g0[refidx]                                        # LESP per strip from the LEV-free solve
+            shed_m = np.abs(A0_0) > a0_crit                               # supercritical strips shed an LEV (Fig.6 gate)
+            hirato_A0pre = A0_0.copy()                                    # PRE-constraint LESP (before the LEV pulls it to crit)
+            hirato_gL = np.zeros(ns, dtype=NP)
+            # nascent LEV ring geometry — built ALWAYS (the shed section writes it directly for 'hirato'). Hirato
+            # Eq.7 / Ansari 1/3 rule: the ring FRONT sits at the geometric LE; its AFT edge (the shared edge with the
+            # previous LEV ring) is placed at x_{L,n-1} = 2/3 x_LE + 1/3 x_{L,n-2} — only 1/3 of the way toward the
+            # previous (convected) shed edge -> the LEV sheet stays COMPRESSED near the LE and rolls up over the
+            # suction surface (Fig.11), rather than trailing straight into the freestream wake and losing its
+            # (Polhamus) vortex lift. lpl/lpr hold the previous step's shared (aft) edge.
+            nle0 = nrm.numpy()[:ns]; c3 = corners.reshape(nc + 1, ns + 1, 3); offv = lev_le_off * chord
+            fL = c3[0, :ns] + nle0 * offv; fR = c3[0, 1:ns + 1] + nle0 * offv    # FRONT = geometric LE
+            lpl0 = lpl.numpy(); lpr0 = lpr.numpy(); Vd = np.asarray(Vinf) * dt
+            if lev_first == 0:
+                aL = (2.0 / 3.0) * fL + (1.0 / 3.0) * (lpl0[:ns] + Vd)           # aft = 2/3 LE + 1/3 (prev shared edge, convected)
+                aR = (2.0 / 3.0) * fR + (1.0 / 3.0) * (lpr0[:ns] + Vd)
+            else:
+                aL = fL + Vd; aR = fR + Vd
+            hirato_wr = np.stack([fL, fR, aR, aL], axis=1).astype(NP)            # (ns,4,3): 0,1=front(LE); 2,3=aft(shared)
+            if shed_m.any():
+                lev_wr_w = wp.array(hirato_wr, dtype=V3, device=dev)
+                INFw = wp.zeros((npan, ns), dtype=DTYPE, device=dev)
+                wp.launch(_lev_inf_kernel, dim=(npan, ns), inputs=[col, nrm, lev_wr_w, DTYPE(lev_core_abs), ns],
+                          outputs=[INFw], device=dev)
+                INF = INFw.numpy()                                        # (npan,ns): unit-LEV-j normal-flow at colloc i
+                # PSEUDOVORTEX RING (Hirato Fig.5, Eq.8->9): a ring from the GEOMETRIC leading edge (front) to the
+                # aft edge of the FRONTMOST bound-vortex ring (aft), of the SAME strength Gamma_tau = Gamma_L as the
+                # nascent LEV ring. It (a) cancels the spurious spanwise vortex filament that the LEV ring would
+                # otherwise leave at the geometric LE, and (b) places strong circulation right where the LESP is
+                # measured -> the shed LEV becomes EFFECTIVE at reducing LESP (physical strength, not the huge value
+                # a bare cored ring needs), which lets the constraint reach LESP_crit. It is a per-step near-LE
+                # device (NOT convected into the wake). Combined shed influence = LEV ring + pseudovortex ring.
+                if lev_pseudo:
+                    pf_L = c3[0, :ns]; pf_R = c3[0, 1:ns + 1]              # front = geometric LE (x=0 line)
+                    pa_R = cc0[:ns, 2]; pa_L = cc0[:ns, 3]                 # aft = frontmost bound ring's aft edge
+                    pseudo_wr0 = np.stack([pf_L, pf_R, pa_R, pa_L], axis=1).astype(NP)
+                    ps_w = wp.array(pseudo_wr0, dtype=V3, device=dev)
+                    INFp = wp.zeros((npan, ns), dtype=DTYPE, device=dev)
+                    wp.launch(_lev_inf_kernel, dim=(npan, ns), inputs=[col, nrm, ps_w, DTYPE(lev_core_force), ns],
+                              outputs=[INFp], device=dev)
+                    INF = INF + INFp.numpy()                              # Gamma_tau = Gamma_L -> add unit influences
+                # sensitivity of the bound to each unit LEV: G[j] = AIC^{-1} (-INF[:,j])  (rhs gets -wg·V·n)
+                AIC0 = AIC.numpy()[0]
+                A_tiled = wp.array(np.broadcast_to(AIC0, (ns, npan, npan)).copy(), dtype=DTYPE, device=dev)
+                rhs_cols = wp.array(np.ascontiguousarray(-INF.T).astype(NP), dtype=DTYPE, device=dev)  # (ns,npan)
+                G = batched_dense_solve(A_tiled, rhs_cols, dev).numpy()   # (ns,npan) bound response to each unit LEV
+                S = kA0[:, None] * G[:, refidx].T                        # S[k,j] = dA0[k]/dgL[j] (affine LESP sensitivity)
+                idx = np.where(shed_m)[0]
+                target = a0_crit * np.sign(A0_0)                         # drive LESP to +/- LESP_crit (Hirato: hold at crit)
+                for _ in range(max(int(lev_iter), 1)):                    # affine -> 1 sweep exact; >1 tightens spanwise coupling
+                    resid = (target - A0_0)[idx]
+                    Ssub = S[np.ix_(idx, idx)]
+                    reg = 1e-6 * (np.abs(np.diag(Ssub)).mean() + 1e-12)
+                    try:
+                        gsub = np.linalg.solve(Ssub + reg * np.eye(len(idx)), resid)
+                    except np.linalg.LinAlgError:
+                        gsub = resid / (np.diag(Ssub) + np.sign(np.diag(Ssub) + 1e-30) * 1e-9)
+                    hirato_gL[idx] = gsub
+                    A0_0 = A0_0 + (S @ hirato_gL)                        # predicted post-solve LESP (affine); loop refines
+                # SAFETY cap: guard ONLY a near-singular S-row runaway. The LEV's regularized (cored) induction is
+                # WEAK per unit strength, so the strength needed to reach LESP_crit is several x the naive Kelvin
+                # excess Gamma_1 — a tight cap would prevent the constraint from actually reaching crit. Cap at the
+                # larger of 30x the excess and half the strip's bound circulation (physical ceiling: the LEV cannot
+                # exceed the loading that fed it), which never binds in normal operation.
+                excG = np.maximum(np.abs(kA0 * g0[refidx]) - a0_crit, 0.0)
+                capG = np.maximum(excG / (kA0 + 1e-12) * 30.0, 0.5 * np.abs(g0[refidx])) + 1e-6
+                hirato_gL = np.clip(hirato_gL, -capG, capG)
+                # RE-SOLVE the bound with the LEV rings in the RHS (rhs_final = rhs_base - INF @ gL) -> post-solve
+                # LESP is at LESP_crit on the shedding strips (the paper's converged constraint).
+                rhs_f = rhs.numpy().reshape(-1) - INF @ hirato_gL
+                gamma = batched_dense_solve(AIC, wp.array(rhs_f[None, :].astype(NP), dtype=DTYPE, device=dev), dev)
+                if os.environ.get('HIRATO_DBG'):
+                    A0_post = kA0 * gamma.numpy().reshape(-1)[refidx]        # ACTUAL post-solve LESP
+                    sm = shed_m
+                    print(f"  [hirato t={t:3d}] shed={int(sm.sum()):2d}/{ns}  |A0_pre|max={np.abs(kA0*g0[refidx]).max():.3f}"
+                          f"  |A0_post[shed]|: {np.abs(A0_post[sm]).min():.3f}..{np.abs(A0_post[sm]).max():.3f}"
+                          f"  (crit={a0_crit})  |gL|max={np.abs(hirato_gL).max():.4f}", flush=True)
         # First-principles unsteady panel force: circulation (Kutta-Joukowski) + added-mass (rho dGamma/dt).
         # The REAL LEV (real_lev) acts through the wake it sheds (induction on the bound + its own impulse);
         # no empirical Polhamus/cap terms. Viscous term to be added (first-principles, Re-based) next.
@@ -605,13 +795,22 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         tcnm2 = tcn.reshape(nc, ns)                         # per-panel chordwise length
         c_strip = tcnm2.sum(0)                             # local chord per strip
         cumpos = np.cumsum(tcnm2, axis=0)                  # cumulative chordwise position (panel trailing edges)
-        xref_frac = 0.10                                   # FIXED reference chord fraction (nc-independent)
-        i_ref = np.argmax(cumpos >= (xref_frac * c_strip)[None, :], axis=0)   # first panel reaching x_ref per strip
-        Gamma_ref = gm2[i_ref, np.arange(ns)]              # cumulative bound circulation up to x_ref (converges in nc)
-        th1 = np.arccos(np.clip(1.0 - 2.0 * xref_frac, -1.0, 1.0))   # FIXED (x_ref/c = xref_frac)
         vr_le = (np.asarray(Vinf) - vcn)[:ns]              # LE-row body-relative flow
         Urel_le = np.linalg.norm(vr_le, axis=1) + 1e-9
-        A0 = 1.13 * Gamma_ref / (Urel_le * c_strip * (th1 + np.sin(th1)) + 1e-12)   # finite-wing LESP per strip (nc-robust)
+        if a0_mode == 'sqrtx':
+            # √x LIMIT (3D, FIRST-PRINCIPLES): the thin-airfoil bound sheet γ(x)→A0·√(2/x) near the LE, so the
+            # FIRST panel's circulation Γ_1 → A0·√(8·Δx1). With a fine COSINE LE (Δx1→0) this extracts A0 from the
+            # RESOLVED √x leading-edge behavior per spanwise strip (vs the crude x_ref=0.10c average). Hirato Eq.6
+            # evaluated at the actual first-panel width Δx1 (per strip), so as nc↑ A0 → the true √x coefficient.
+            dx1 = tcnm2[0]                                  # first (LE-most) panel chord per strip
+            th1 = np.arccos(np.clip(1.0 - 2.0 * dx1 / (c_strip + 1e-12), -1.0, 1.0))   # per-strip (→0 as Δx1→0)
+            A0 = 1.13 * gm2[0] / (Urel_le * c_strip * (th1 + np.sin(th1)) + 1e-12)
+        else:                                              # 'xref': cumulative bound circ up to FIXED x_ref=0.10c (nc-robust legacy)
+            xref_frac = 0.10
+            i_ref = np.argmax(cumpos >= (xref_frac * c_strip)[None, :], axis=0)   # first panel reaching x_ref per strip
+            Gamma_ref = gm2[i_ref, np.arange(ns)]          # cumulative bound circulation up to x_ref
+            th1 = np.arccos(np.clip(1.0 - 2.0 * xref_frac, -1.0, 1.0))
+            A0 = 1.13 * Gamma_ref / (Urel_le * c_strip * (th1 + np.sin(th1)) + 1e-12)   # finite-wing LESP per strip
         A0 = np.clip(np.nan_to_num(A0, nan=0.0, posinf=0.0, neginf=0.0), -3.0, 3.0)   # guard near-field blow-up
         # ---- LEV shed strength per strip (placed by _shed_lev_sat_kernel at the LE, enters wake -> rhs +
         # Bernoulli surface force, so the LEV LIFT/DRAG is per-panel and NOT double-counted). Three modes. ----
@@ -633,6 +832,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             lev_str_fp = (-lev_klev * dG1_exc * np.sign(A0)).astype(NP)
         elif lev_shed_mode == 'kinematic': # legacy Path-B kinematic strength (~U*c*(|A0|-crit)), for the ML anchor
             lev_str_fp = (-lev_klev * Urel_le * c_strip * exc * np.sign(A0)).astype(NP)
+        elif lev_shed_mode == 'hirato':    # FAITHFUL (paper Fig.6): the LEV ring strength was SOLVED above (implicit
+            # LESP=LESP_crit constraint) so the RE-SOLVED bound already holds each supercritical strip's LESP at crit.
+            # Use that solved strength directly (physical sign already correct -> callers keep lev_sign=1).
+            lev_str_fp = (hirato_gL if hirato_gL is not None else np.zeros(ns, dtype=NP)).astype(NP)
         if use_ansari:   # (HIRATO) update the parametric LEV sheet: convect rings aft (chordwise fraction f += U*dt/c),
             # drop those past lev_fmax (detach off the TE), and SHED a new ring at the LE (f=0) for every strip whose
             # |A0|>a0_crit (LESP supercritical), with the S3 strength. The sheet thus stays anchored at the LE.
@@ -731,13 +934,27 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # -> F_A ~ Vle_m^2 ~ f^2 even when saturated. Using Vle_m^2 (both factors LOCAL) is the correct
             # quadratic scaling; the earlier rho*U_inf*Vle_m mix gave only ~f^1. This is the f^2 propulsion.
             sa_s = np.sin(aeff_s)                              # saturated LE-suction parameter A0 = sin(a_crit) max
-            if lev_shed_mode in ('kelvin', 'varA0', 'kinematic'):
+            if lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato'):
                 # S4 (Hirato Eq.20): realized LE suction caps at the FIRST-PRINCIPLES A0 (from bound circulation),
                 # bounded by a0_crit; the EXCESS above a0_crit is what S3 sheds into the LEV (no double-count).
                 sa_s = np.clip(A0, -a0_crit, a0_crit)
             dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
             Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
             Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
+            if lev_vnf and lev_shed_mode == 'hirato':
+                # (HIRATO force closure) the LE suction capped at a0_crit -> the UNREALIZABLE excess (A0^2 - a0_crit^2)
+                # reappears as a force NORMAL to the wing (the LEV vortex lift). Same Garrick coefficient pi*rho*c*U^2
+                # as the suction, so the split is continuous at A0=a0_crit (no discontinuity). This is the vortex lift
+                # the shed LEV sheet delivers through the surface pressure (Eq.13 vL term); the discrete-ring induction
+                # captures it only weakly, so it is closed here first-principles from the constraint's A0 (no free coeff).
+                # excess from the PRE-constraint LESP (A0pre); the post-solve A0 has already been pulled to a0_crit by
+                # the constraint, so A0_post^2 - a0_crit^2 == 0. A0pre^2 - a0_crit^2 is the physical unrealized suction.
+                A0x = hirato_A0pre if hirato_A0pre is not None else A0
+                exc2 = np.maximum(A0x ** 2 - a0_crit ** 2, 0.0)                       # capped (excess) suction parameter^2
+                dNr = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * exc2  # recovered normal-force magnitude
+                Frec = (dNr * np.sign(A0))[:, None] * nle                            # along the panel normal (vortex lift)
+                Lh_vtx[t] += float(np.sum(Frec[:, 2])); Xh_vtx[t] += float(np.sum(Frec[:, 0]))
+                Fzb_tot[t] += float(np.sum(Frec[:, 2])); Fxb_tot[t] += float(np.sum(Frec[:, 0]))
             Fzb_tot[t] += float(np.sum(Fs[:, 2])); Fxb_tot[t] += float(np.sum(Fs[:, 0]))   # LE-suction force vector
             if fp_lev:
                 # ---- FIRST-PRINCIPLES held-LEV / dynamic-stall lift (NO fitted klev). The LE suction realizable
@@ -771,7 +988,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             a_ref = np.radians(12.0)                                 # profile-drag bucket half-width (airfoil property)
             Cd_att = cd0_polar * (1.0 + (arel / a_ref) ** 2)         # static profile-drag polar
             att = np.ones(npan)                                       # gate: attached strips only (LEV not shed)
-            if lev_shed_mode in ('kelvin', 'varA0', 'kinematic'):
+            if lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato'):
                 att = np.tile((np.abs(A0) <= a0_crit).astype(NP), nc)   # panel p uses strip j=p%ns gate (attached only)
             Dfa = 0.5 * ug.RHO * vrm[:, None] * Cd_att[:, None] * area[:, None] * att[:, None] * vrf  # along rel. wind
             Lh_pd[t] += float(np.sum(Dfa[:, 2])); Xh_pd[t] += float(np.sum(Dfa[:, 0]))
@@ -824,6 +1041,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 pp=(pp.numpy()[:np_part].copy() if np_part > 0 else np.zeros((0, 3))),        # LEV particles
                 pa=(pa.numpy()[:np_part].copy() if np_part > 0 else np.zeros((0, 3))),        # vortex moments
                 lev_rings=lev_frame_rings.copy(), lev_g=lev_frame_g.copy(),   # (HIRATO) LEV sheet over the suction surface
+                dp=dp.copy(), cp=(dp / max(q_ref, 1e-9)).copy(),             # per-panel unsteady-Bernoulli pressure jump + Cp
                 sep=(np.abs(sina) > np.sin(np.radians(lesp_crit_deg))), nc=nc, ns=ns))
         if te_traj:   # shed along the TE trajectory (continuous sheet for the plunging TE)
             wp.launch(_shed_te_traj, dim=ns, inputs=[rings, gamma, te, tpl, tpr, Vw, DTYPE(dt), nw],
@@ -833,7 +1051,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
         if fp_shed:   # FIRST-PRINCIPLES LESP-LEV with S3 strength lev_str_fp (varA0/kelvin/kinematic).
             lev_str_w = wp.array((lev_sign * lev_str_fp).astype(NP), dtype=DTYPE, device=dev)
-            if use_lev_sheet:   # (E2) CONNECTED LEV sheet from the geometric LE (offset onto suction side) -> rolls up
+            if lev_shed_mode == 'hirato' and hirato_wr is not None:   # FAITHFUL: shed the Eq.7-placed rings directly
+                # (geometry already built in the constraint block, strength = the LESP-constrained gL). Write the ns
+                # LEV rings into the wake at [nw+ns .. nw+2ns); track lpl/lpr = the aft (shared) edge for next step's
+                # Eq.7 placement so consecutive rings connect and the sheet stays compressed near the LE.
+                hw = wp.array(hirato_wr, dtype=V3, device=dev)
+                hg = wp.array((hirato_gL if hirato_gL is not None else np.zeros(ns, dtype=NP)).astype(NP),
+                              dtype=DTYPE, device=dev)
+                wp.launch(_place_rings_kernel, dim=ns, inputs=[hw, hg, nw + ns], outputs=[wr, wg], device=dev)
+                lpl = wp.array(np.ascontiguousarray(hirato_wr[:, 3]), dtype=V3, device=dev)   # aft-left  (shared edge)
+                lpr = wp.array(np.ascontiguousarray(hirato_wr[:, 2]), dtype=V3, device=dev)   # aft-right (shared edge)
+                lev_first = 0
+            elif use_lev_sheet:   # (E2) CONNECTED LEV sheet from the geometric LE (offset onto suction side) -> rolls up
                 nle_np = nrm.numpy()[:ns]                              # LE-row panel normals (suction-side direction)
                 corners3 = corners.reshape(nc + 1, ns + 1, 3)
                 off = lev_le_off * chord
@@ -844,6 +1073,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 frac = np.linspace(0.0, 1.0, nsub + 1)
                 subL = (le0[:, None, :] + frac[None, :nsub, None] * (le1 - le0)[:, None, :]).reshape(nls, 3).astype(NP)
                 subR = (le0[:, None, :] + frac[None, 1:, None] * (le1 - le0)[:, None, :]).reshape(nls, 3).astype(NP)
+                # (HIRATO Eq.7 / Ansari) place the new LEV ring's shed edge at x_L = 2/3*x_LE + 1/3*x_{L,prev}
+                # (between the geometric LE and the last-shed LEV ring), over the suction surface. lpl/lpr hold
+                # the previous step's LE-shed corners. First row (lev_first) -> geometric LE (no previous).
+                if lev_first == 0:
+                    subL = (2.0 / 3.0) * subL + (1.0 / 3.0) * lpl.numpy()
+                    subR = (2.0 / 3.0) * subR + (1.0 / 3.0) * lpr.numpy()
                 substr = (np.repeat(lev_sign * lev_str_fp, nsub) / nsub).astype(NP)
                 lel_w = wp.array(subL, dtype=V3, device=dev); ler_w = wp.array(subR, dtype=V3, device=dev)
                 lev_str_w = wp.array(substr, dtype=DTYPE, device=dev)
@@ -906,14 +1141,20 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             np_part += ns
         nw_new = nw + shed_per
         # bookkeeping: ns TEV then lev_count LEV (matches shed order). lev_count = ns*nsub for the subdivided sheet.
-        lev_strengths = list(substr) if use_lev_sheet else (list(lev_sign * lev_str_fp) if fp_shed
-                        else ([0.0] * lev_count if lev_in_wake else []))
+        if lev_shed_mode == 'hirato':
+            lev_strengths = list(hirato_gL if hirato_gL is not None else np.zeros(ns, dtype=NP))
+        elif use_lev_sheet:
+            lev_strengths = list(substr)
+        elif fp_shed:
+            lev_strengths = list(lev_sign * lev_str_fp)
+        else:
+            lev_strengths = [0.0] * lev_count if lev_in_wake else []
         wtype.extend([0] * ns + [1] * lev_count)
         lev_born.extend([-1] * ns + [t] * lev_count)
         lev_s0.extend([0.0] * ns + lev_strengths)
         if nw > 0:   # convect OLD wake only; freshly-shed ring STAYS attached at the TE (Katz&Plotkin
-            if use_wcore:   # (E) per-ring core: LEV rolls up tight (small core) without TEV near-singular noise
-                wp.launch(_convect_wcore, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, wcore_dev, nw,
+            if use_wcore:   # (E) per-ring core: LEV rolls up tight (small core); TEV keeps WAKE_CORE for wake stability
+                wp.launch(_convect_wcore, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, wcore_conv_dev, nw,
                           DTYPE(ug.WAKE_CORE), Vw, DTYPE(dt)], outputs=[wr_new], device=dev)
             else:
                 wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
