@@ -75,7 +75,8 @@ H2/H3 全量扫后见 docs/SCORECARD_full.md。
 
 ## 5. 回归状态 [P5 回填]
 
-- Hirato Fig.15 复现(_hirato_demo.py):off 4.33≈4.3 ✓ on峰 3.48≈3.5 ✓ hold 2.31 vs 3.5(诚实残差)
-- vnf 饱和后需重跑确认 [P5]
-- kelvin 生产路径冒烟(期望 L≈6.58N 不变)[P5]
+- Hirato Fig.15 复现(_hirato_demo.py,vnf 饱和后重跑 2026-07-02)✅:off 4.31≈4.3 ✓
+  on峰 3.48≈3.5 ✓ hold 2.34(前 2.31,饱和影响 +0.03)vs paper ~3.5(诚实残差,机制正确/保持力欠);
+  展向 onset:Case1 根先 1.53、Case2 外侧提前 1.40 ✓
+- kelvin 生产路径冒烟(vs 当日 K0 缓存同工况,期望 L=+5.9123 T=+1.1586)[P5 运行中]
 - nc12 网格确认 3-5 关键工况 [P5]
