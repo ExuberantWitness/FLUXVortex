@@ -420,6 +420,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   per-strip from the kinematic LE incidence; added-mass untouched. Constants = geo_stall_deg/width (NACA-2406).
                   les_att=False,           # (H10) realized LE suction x fsep(alpha_eff): dies at full separation (rotates into vnf)
                   fsep_lag=False,          # (H13) Goman-Khrabrov 1st-order lag on the fsep separation state: tau = fsep_tau*c/(2 U_rel).
+                  lev_impulse=False,       # (H16 Li/Feng) LEV force from the VORTEX IMPULSE derivative F = -d/dt[rho*Sum(Gamma*A)],
+                  #   grid-INDEPENDENT (no surface-pressure resolution). Replaces the Vlev_a->Vcol Bernoulli contribution (which
+                  #   under-resolves the LEV at coarse nc) -> the LEV lift emerges without the unstable LESP-constraint fold.
                   fsep_tau=4.5,            #   tau_star, LITERATURE airfoil dynamic-stall constant (GK-family ~3-9; NOT a RoboEagle fit)
                   fric_drag=False,         # Fix2: flap-velocity^2 friction drag (turbulent flat-plate Cf; reuses visc structure)
                   cf_mode='turbulent',     # 'turbulent'(0.074/Re^0.2) | 'laminar'(1.328/sqrt Re)
@@ -488,6 +491,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Vpart = wp.zeros(npan, dtype=V3, device=dev)     # LEV-particle induced velocity at collocations (rVPM force)
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
+    Lh_vimp = np.zeros(N); Xh_vimp = np.zeros(N)       # (H16) LEV VORTEX-IMPULSE force (Li/Feng): F = -d/dt[rho*Sum(Gamma*A)]
+    I_LEV_prev = None                                   #   previous step's LEV impulse (ansari sheet); None -> F=0 step 0
     Fxb_tot = np.zeros(N); Fzb_tot = np.zeros(N)      # TOTAL body-frame force per step (sum of ALL force vectors:
     #   Bernoulli + LE-suction + friction + form-drag + vortex) -> the clean body force to rotate into wind axes
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
@@ -630,7 +635,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, lev_rw, lev_gw, ns], outputs=[Vlev], device=dev)
         gamma = batched_dense_solve(AIC, rhs, dev)
         hirato_gL = None; hirato_wr = None; hirato_A0pre = None
-        if lev_shed_mode == 'hirato' and lev_in_wake:
+        if lev_shed_mode == 'hirato' and (lev_in_wake or use_ansari):   # (H14) run the LESP=crit constraint for the
             # ================= FAITHFUL HIRATO LEV: implicit LESP = LESP_crit constraint (paper Fig.6) =========
             # The paper's core: when a strip's LESP (=A0) exceeds LESP_crit, an LEV ring is shed whose strength is
             # set — BY ITERATION (Fig.6) — so that the RE-SOLVED bound circulation brings that strip's LESP back
@@ -761,8 +766,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
         if lev_merge:
             Vcol = Vcol + Vlev.numpy()                                  # coherent LEV core induction (Bernoulli)
-        if use_ansari:
-            Vcol = Vcol + Vlev_a.numpy()                                # (HIRATO) LEV-sheet induction enters the Bernoulli force
+        if use_ansari and not lev_impulse:
+            Vcol = Vcol + Vlev_a.numpy()                                # (HIRATO) LEV-sheet induction enters the Bernoulli force.
+            # Under lev_impulse (H16) the LEV force comes from the vortex-IMPULSE derivative instead (grid-independent),
+            # so the Vlev_a surface-pressure contribution is SKIPPED here to avoid double-counting.
         # NOTE: the LEV-particle force is the LE-referenced VORTEX-IMPULSE (added to Lh_imp below), NOT the
         # surface-Bernoulli induction (that only gets the LEV x bound cross-term, missing the LEV's own KJ lift).
         # THIS GPU UVLM's ring corners: c0,c1 = LE edge; c2,c3 = TE edge (shed_kernel uses c2,c3 for the
@@ -952,6 +959,28 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 lev_aj = np.concatenate([lev_aj, js.astype(np.int64)])
                 lev_af = np.concatenate([lev_af, np.zeros(len(js))])
                 lev_ag = np.concatenate([lev_ag, (lev_sign * lev_str_fp[js]).astype(float)])
+        if lev_impulse and use_ansari and len(lev_aj) > 0:
+            # (H16 Li/Feng vortex-impulse) LEV force = -d/dt[rho * Sum_j Gamma_j * A_j], A_j = vector area of the
+            # quad ring. Grid-INDEPENDENT (no surface-pressure resolution) -> the DSV lift emerges without the
+            # unstable LESP-constraint fold. Geometry mirrors the L591 ansari build, now on the UPDATED sheet
+            # (post-convection + post-shed). Half-wing impulse; the x2 full-wing factor is applied at cycle-mean
+            # (consistent with every other channel). F_wing = -dI_fluid/dt; sign verified empirically below.
+            c3v = corners.reshape(nc + 1, ns + 1, 3); nle_v = nrm.numpy()[:ns]
+            LElv = c3v[0, lev_aj]; LErv = c3v[0, lev_aj + 1]
+            chlv = c3v[nc, lev_aj] - LElv; chrrv = c3v[nc, lev_aj + 1] - LErv
+            c_kv = 0.5 * (np.linalg.norm(chlv, axis=1) + np.linalg.norm(chrrv, axis=1)) + 1e-9
+            n_kv = nle_v[lev_aj]
+            fposv = 0.45 * (1.0 - np.exp(-2.2 * lev_af)); hkv = (lev_rollh * c_kv * (lev_af + 0.06))[:, None]
+            f0v = fposv[:, None]; dchv = (U * dt / c_kv)[:, None]
+            a0v = LElv + f0v * chlv + hkv * n_kv; a1v = LErv + f0v * chrrv + hkv * n_kv
+            a2v = a1v + dchv * chrrv; a3v = a0v + dchv * chlv
+            Avec = 0.5 * (np.cross(a0v, a1v) + np.cross(a1v, a2v) + np.cross(a2v, a3v) + np.cross(a3v, a0v))
+            I_LEV = ug.RHO * np.sum(lev_ag[:, None] * Avec, axis=0)        # (3,) half-wing LEV impulse
+            if I_LEV_prev is not None:
+                Fvi = -(I_LEV - I_LEV_prev) / max(dt, 1e-15)
+                Lh_vimp[t] = float(Fvi[2]); Xh_vimp[t] = float(Fvi[0])
+                Fzb_tot[t] += Lh_vimp[t]; Fxb_tot[t] += Xh_vimp[t]
+            I_LEV_prev = I_LEV.copy()
         if part_lev and np_part > 0:   # rVPM LEV force via QUASI-STEADY KUTTA-JOUKOWSKI on the OVER-WING LEV.
             # The full vortex-impulse sum(x x alpha) is WILD because it accumulates ALL shed particles -> the
             # far-wake convection term rho*U*sum(alpha) grows unbounded. The physical LEV lift is the KJ of the
@@ -1185,7 +1214,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.launch(ug.shed_kernel, dim=ns, inputs=[rings, gamma, te, Vw, DTYPE(dt), nw], outputs=[wr, wg], device=dev)
         if fp_shed:   # FIRST-PRINCIPLES LESP-LEV with S3 strength lev_str_fp (varA0/kelvin/kinematic).
             lev_str_w = wp.array((lev_sign * lev_str_fp).astype(NP), dtype=DTYPE, device=dev)
-            if lev_shed_mode == 'hirato' and hirato_wr is not None:   # FAITHFUL: shed the Eq.7-placed rings directly
+            if lev_shed_mode == 'hirato' and lev_in_wake and hirato_wr is not None:   # wake path: shed Eq.7 rings into
                 # (geometry already built in the constraint block, strength = the LESP-constrained gL). Write the ns
                 # LEV rings into the wake at [nw+ns .. nw+2ns); track lpl/lpr = the aft (shared) edge for next step's
                 # Eq.7 placement so consecutive rings connect and the sheet stays compressed near the LE.
@@ -1364,6 +1393,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 Lh_vis=Lh_vis, Xh_vis=Xh_vis, Lh_les=Lh_les, Xh_les=Xh_les,       # per-step viscous / LE-suction
                 Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
                 Lh_pd=Lh_pd, Xh_pd=Xh_pd, Lh_stall=Lh_stall, Xh_stall=Xh_stall,   # per-step form/faure drag + Fix1 stall (diag)
+                Lh_vimp=Lh_vimp, Xh_vimp=Xh_vimp,                                  # (H16) per-step LEV vortex-impulse force
                 Lh_ds=Lh_ds, L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),       # dynamic-stall: per-step + mean(bern+LEV)
                 L_stall=2.0 * np.mean(Lh_stall[last]),                            # Fix1 geometric-stall lift loss (<=0)
                 L_fric=2.0 * np.mean(Lh_fric[last]), D_fric=2.0 * np.mean(Xh_fric[last]),  # Fix2 friction (lift/thrust comp)

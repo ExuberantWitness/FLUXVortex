@@ -27,9 +27,13 @@ MODELS = {
     'H13': dict(CFG_PRESETS['H13']),                 # + Goman-Khrabrov separation lag (tau*=4.5 literature)
     'K1':  dict(CFG_PRESETS['K1']),                  # kelvin path + closure suite + fp_lev DSV lift
     'K1g': dict(CFG_PRESETS['K1g']),                 # + legacy geo_stall
+    'H14': dict(CFG_PRESETS['H14']),                 # literature-faithful Hirato (ansari LEV sheet + LESP constraint, vnf off)
+    'H15': dict(CFG_PRESETS['H15']),                 # H14 + stall cap (production candidate)
+    'H16': dict(CFG_PRESETS['H16']),                 # Li/Feng vortex-impulse LEV force (grid-independent)
+    'H17': dict(CFG_PRESETS['H17']),                 # H16 + stall cap (non-conflicting: cap on Fb, impulse separate)
 }
-ZCH = ['Lh_bern', 'Lh_les', 'Lh_vtx', 'Lh_pd', 'Lh_vis', 'Lh_stall']
-XCH = ['Xh_bern', 'Xh_les', 'Xh_vtx', 'Xh_pd', 'Xh_vis', 'Xh_stall']
+ZCH = ['Lh_bern', 'Lh_les', 'Lh_vtx', 'Lh_pd', 'Lh_vis', 'Lh_stall', 'Lh_vimp']
+XCH = ['Xh_bern', 'Xh_les', 'Xh_vtx', 'Xh_pd', 'Xh_vis', 'Xh_stall', 'Xh_vimp']
 
 
 def parse_fig16():
@@ -80,11 +84,16 @@ def butter8(sig, freq):
 
 
 def main():
+    global NC, SPC
     ap = argparse.ArgumentParser(); ap.add_argument('--models', default='K0,H4,H9')
+    ap.add_argument('--nc', type=int, default=NC)
     a = ap.parse_args(); names = a.models.split(',')
+    if a.nc != NC:
+        NC = a.nc; SPC = int(round(15.0 * COND['U'] * NC / COND['freq'] / 60.0)) * 60
+        print(f'[nc{NC}] spc={SPC} (purge fig16_series.npz for clean nc-tagged cache)')
     E = parse_fig16()
     TWS = [0.0, 22.5, 45.0]
-    sim = {}; RAW = os.path.join(OD, 'fig16_series.npz')
+    sim = {}; RAW = os.path.join(OD, f'fig16_series_nc{NC}.npz')
     old = dict(np.load(RAW)) if os.path.exists(RAW) else {}                  # resumable across script edits
     for nm in names:
         for tw in TWS:
@@ -106,7 +115,7 @@ def main():
     import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
     fig, ax = plt.subplots(2, 3, figsize=(17, 8))
     COLS = {'K0': '#1b9e77', 'H4': '#d95f02', 'H9': '#7570b3', 'H10': '#e7298a', 'H11': '#66a61e',
-            'K0s': '#a6d854', 'H4s': '#e78ac3', 'H12': '#386cb0', 'H13': '#bf5b17', 'K1': '#f0027f', 'K1g': '#666666'}
+            'K0s': '#a6d854', 'H4s': '#e78ac3', 'H12': '#386cb0', 'H13': '#bf5b17', 'K1': '#f0027f', 'K1g': '#666666', 'H14': '#1f78b4', 'H15': '#b2df8a', 'H16': '#ff7f00', 'H17': '#cab2d6'}
     stats = []
     for j, tw in enumerate(TWS):
         for i, kind in enumerate(('T', 'L')):

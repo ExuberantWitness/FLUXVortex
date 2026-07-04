@@ -52,6 +52,26 @@ CFG_PRESETS = {
     # (real suction survives the brief deep-alpha pass -> reversal drag relief) + reattachment hysteresis
     # (downstroke/upstroke asymmetry -> mean lift). Targets BOTH open residuals with one standard mechanism.
     'H13': dict(HIRATO_COMMON, a0_crit=0.27, stall=True, les_att=True, fsep_lag=True),
+    # H14 2026-07-04 (literature-faithful Hirato; GAP->research->implement): implicit LESP=LESP_crit constraint run
+    # with the LEV sheet ANCHORED at the LE (lev_place='ansari', force-only Bernoulli) instead of dumped into the TEV
+    # wake. Per Hirato/Ramesh source-paper review: DSV lift = unsteady-Bernoulli v_L + dG_L/dt (route a), NOT Polhamus
+    # rotation -> lev_vnf=False (kills the double-count). Separation delay EMERGENT (LESP gate fires later than
+    # quasi-steady alpha_ss; A0 carries unsteady content) -> no kirch_cn/stall/fsep_lag. The wake pollution fed every
+    # prior hirato candidate's pathology (P0 runaway / A0 collapse / tw45 fiction). Zero new constants; 2-line code change.
+    'H14': dict(HIRATO_COMMON, lev_place='ansari', a0_crit=0.27, lev_vnf=False),
+    # H15: H14 + stall cap. H14 confirmed the LESP-constraint separation delay (best tw22.5/tw45 thrust) but DSV lift
+    # did NOT emerge at nc4 (discrete-ring induction under-resolves). Stall cap (H4s/H13-validated) supplies the
+    # lift-amplitude closure the coarse grid cannot. Production candidate.
+    'H15': dict(HIRATO_COMMON, lev_place='ansari', a0_crit=0.27, lev_vnf=False, stall=True),
+    # H16 2026-07-04 (Li/Feng vortex-impulse, user option B): LEV force = -d/dt[rho*Sum(Gamma*A)] (grid-INDEPENDENT,
+    # no surface-pressure resolution). Built on the STABLE kelvin path (ansari sheet, no unstable LESP-constraint
+    # fold) + a0_crit gates shed onset (kinematic, emergent separation delay). The Vlev_a surface-pressure
+    # contribution is skipped (LEV force via impulse instead) to avoid double-count. DSV lift should emerge at any nc.
+    'H16': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True),
+    # H17: H16 + stall cap. The stall cap acts ONLY on Fb (Bernoulli base) -> reduces the bound amplitude fiction
+    # WITHOUT touching the vortex-impulse LEV force (separate accumulator). Unlike H15 (cap killed H14's Fb-based
+    # thrust), here thrust stays at H16's best (impulse) AND lift gets the cap. Non-conflicting combination.
+    'H17': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, stall=True),
     # K1 2026-07-04: KELVIN path (no hirato ring wake pollution) + the full closure suite. The stall cap costs
     # -4N mean lift because the real wing's downstroke DSV lift ~ attached values (K0 imitated it via amplitude
     # fiction); fp_lev IS the DSV mechanism (kinematic excess suction rotated to normal, K_v=2pi/(1+2/AR)
