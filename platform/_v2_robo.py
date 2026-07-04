@@ -363,11 +363,25 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lev_detach_deg=90.0,
                   lesp_crit_deg=15.0, lev_klev=1.0,
                   visc=False, tc_thick=0.06, prof_drag=False, cd_form=1.98, cd_sat_deg=30.0, cd_dp=1.2, d_para=0.0, les_suction=False, les_eta=1.0,
+                  les_kin=False,           # (C4 2026-07-04) LE-suction/vnf velocity scale = the KINEMATIC LE velocity (Vinf - vbody),
+                  #   i.e. the SAME velocity that normalizes A0 (Urel_le / constraint kA0). WHY (verified vs Hirato/Ramesh sources):
+                  #   F_S = pi*rho*c*U^2*A0^2 with A0 = 1.13*Gamma_1/(U*c*(th+sin th)) -> U CANCELS (F_S ~ Gamma_1^2/c): the velocity
+                  #   in the suction formula is the DENORMALIZATION of A0, not a local dynamic pressure -> it must equal the A0-
+                  #   normalization velocity or the identity breaks. All induction (LEV sheet + TEV wake) enters ONLY through A0
+                  #   (Hirato Eq.10 solve); on shed strips A0 is PINNED at a0_crit, so letting Vcol's LEV-sheet induction also cut
+                  #   Vle^2 counts the same suppression twice (P1: les +10.4 vs kelvin-path +19.4 at 10/5/2.6/tw45, same cap).
+                  #   Default (False) keeps the legacy Vcol path. No new constants.
+                  les_pre=False,           # (C7 2026-07-04) 'hirato' realized LE suction keyed on the PRE-constraint A0pre
+                  #   (crit-capped), consistent with the vnf excess + faure gate; fixes the subcritical post-solve A0
+                  #   collapse under sustained shedding (discrete-ring over-suppression artifact). See S4 block.
                   fp_lev=False, lev_kv=4.62, lev_trans_deg=15.0,
                   # --- 2026-06-27 first-principles LESP-LEV: orthogonal MODE switches (candidate-model matrix) ---
                   lev_shed_mode='none',    # 'none'|'kelvin'(explicit excess)|'varA0'(Modulation Eq.11-12)|'kinematic'(legacy)|'hirato'(FAITHFUL Fig.6 implicit LESP=LESP_crit constraint solve)
                   lev_iter=1,              # ('hirato') extra correction sweeps for spanwise LESP coupling (1 = single affine solve; the LESP=crit constraint is affine so 1 is near-exact, 2-3 tightens coupling)
                   lev_pseudo=True,         # ('hirato') include the Hirato pseudovortex ring (Fig.5): cancels the geometric-LE filament + makes the LEV shed EFFECTIVE at reducing LESP (physical strength)
+                  lev_cap_exc=False,       # (H11) cap the shed ring strength at EXACTLY the Kelvin excess (physical circulation the
+                  #   bound gives up; no factor). Fixes the over-strong-ring wake pollution (P0 runaway / A0 collapse / tw45 fiction);
+                  #   the constraint then under-delivers like the kelvin path -> the crit-clip closures carry the semantics.
                   lev_hold_mode='inviscid',# 'inviscid'(convect freely)|'hold'(viscous τ_hold)|'hold_detach'(Li 4-phase cutoff)
                   a0_crit=0.25,            # critical LESP (airfoil/Re property; anchor via 2D flap_ldvm). 0.12 thin@Re10k .. 0.27 SD7003@Re20k
                   a0_mode='xref',          # LESP A0 extraction: 'xref'(Hirato@x_ref=0.10c, nc-robust) | 'sqrtx'(√x limit from the RESOLVED 1st LE panel -> 3D, needs fine cosine LE)
@@ -400,6 +414,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   geo_stall_deg=12.0,      # static stall angle alpha_ss (NACA-2406 @ Re~1e5; airfoil property)
                   geo_stall_width=16.0,    # separation-spread angle: alpha past stall over which TE separation goes full (airfoil property)
                   geo_stall_peak=False,    # False=instantaneous psi(t) each step; True=cycle-peak |psi| amplitude
+                  geo_stall_vec=False,     # (C8) Kirchhoff factor scales the strip Bernoulli force VECTOR (pressure-differential
+                  #   collapse, both lift AND its backward tilt at deep twist) instead of the legacy +z-only removal
+                  kirch_cn=False,          # (H10) alpha_eff-Kirchhoff CN factor on the CIRCULATORY Bernoulli pressure, vectorial,
+                  #   per-strip from the kinematic LE incidence; added-mass untouched. Constants = geo_stall_deg/width (NACA-2406).
+                  les_att=False,           # (H10) realized LE suction x fsep(alpha_eff): dies at full separation (rotates into vnf)
+                  fsep_lag=False,          # (H13) Goman-Khrabrov 1st-order lag on the fsep separation state: tau = fsep_tau*c/(2 U_rel).
+                  fsep_tau=4.5,            #   tau_star, LITERATURE airfoil dynamic-stall constant (GK-family ~3-9; NOT a RoboEagle fit)
                   fric_drag=False,         # Fix2: flap-velocity^2 friction drag (turbulent flat-plate Cf; reuses visc structure)
                   cf_mode='turbulent',     # 'turbulent'(0.074/Re^0.2) | 'laminar'(1.328/sqrt Re)
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
@@ -474,7 +495,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
     Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
     Lh_ds = np.zeros(N)                                 # dynamic-stall LEV lift (sustains the downstroke plateau)
-    Lh_stall = np.zeros(N)                              # Fix1: geometric quasi-steady stall lift loss (<=0)
+    Lh_stall = np.zeros(N); Xh_stall = np.zeros(N)      # Fix1: geometric quasi-steady stall loss (z; x only in vec mode)
     Lh_fric = np.zeros(N); Xh_fric = np.zeros(N)        # Fix2: flap-velocity^2 friction drag
     # per-strip wing-local span fraction yfrac=(y-root_off)/half_span (for the geometric twist pitch psi(y,t)=A_t*yfrac*sin(Om t+phi))
     _C0r = C0.reshape(nc + 1, ns + 1, 3)
@@ -497,6 +518,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lpl = wp.zeros(nls, dtype=V3, device=dev); lpr = wp.zeros(nls, dtype=V3, device=dev)   # prev LE-shed corners
     lcl = wp.zeros(nls, dtype=V3, device=dev); lcr = wp.zeros(nls, dtype=V3, device=dev)   # cur LE-shed corners
     lev_first = 1                                               # 1 until the first LEV row is shed
+    fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
     # (ANSARI / Hirato Eq.7) parametric LEV sheet OVER the suction surface: each ring stored by its strip index,
     # chordwise fraction f (0=LE, grows aft as it convects), and strength. Lifted off the surface by lev_rollh*f
     # (roll-up). Anchored at the LE, NOT convected into the TEV wake -> sits over the wing, induces on bound+force.
@@ -681,15 +703,30 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                         gsub = np.linalg.solve(Ssub + reg * np.eye(len(idx)), resid)
                     except np.linalg.LinAlgError:
                         gsub = resid / (np.diag(Ssub) + np.sign(np.diag(Ssub) + 1e-30) * 1e-9)
-                    hirato_gL[idx] = gsub
-                    A0_0 = A0_0 + (S @ hirato_gL)                        # predicted post-solve LESP (affine); loop refines
+                    # ACCUMULATE the correction and advance the predicted LESP by the INCREMENT only. The old
+                    # `hirato_gL[idx] = gsub; A0_0 += S @ hirato_gL` pair zeroed the strengths on sweep 2 (resid~0
+                    # -> gsub~0 REPLACES sweep 1) and double-added sweep-1's effect -> lev_iter>1 silently disabled
+                    # the shed. lev_iter=1 (production) is bit-identical under both forms.
+                    hirato_gL[idx] += gsub
+                    A0_0 = A0_0 + (S[:, idx] @ gsub)                     # predicted post-solve LESP (affine); loop refines
                 # SAFETY cap: guard ONLY a near-singular S-row runaway. The LEV's regularized (cored) induction is
                 # WEAK per unit strength, so the strength needed to reach LESP_crit is several x the naive Kelvin
                 # excess Gamma_1 — a tight cap would prevent the constraint from actually reaching crit. Cap at the
                 # larger of 30x the excess and half the strip's bound circulation (physical ceiling: the LEV cannot
                 # exceed the loading that fed it), which never binds in normal operation.
                 excG = np.maximum(np.abs(kA0 * g0[refidx]) - a0_crit, 0.0)
-                capG = np.maximum(excG / (kA0 + 1e-12) * 30.0, 0.5 * np.abs(g0[refidx])) + 1e-6
+                if lev_cap_exc:
+                    # (H11 2026-07-04) cap the shed ring at EXACTLY the Kelvin excess circulation — the physical
+                    # amount the bound must give up (Gamma units, no factor). The implicit constraint's cored-ring
+                    # near-field is WEAK per unit Gamma (needs several x the excess to pin LESP=crit at the ref
+                    # point), but the ring's WAKE-borne circulation acts at FULL strength -> over-strong rings
+                    # pollute everything downstream (P0 runaway feedback, P1 A0 sub-critical collapse, tw45
+                    # fictional bern/vnf loads at kinematically-feathered phases). With the 1x cap the constraint
+                    # under-delivers (post-solve A0 may stay >crit, same as the kelvin path) — the crit-clip in
+                    # the les/faure closures carries that semantic, while the wake stays physically sized.
+                    capG = excG / (kA0 + 1e-12) + 1e-6
+                else:
+                    capG = np.maximum(excG / (kA0 + 1e-12) * 30.0, 0.5 * np.abs(g0[refidx])) + 1e-6
                 hirato_gL = np.clip(hirato_gL, -capG, capG)
                 # RE-SOLVE the bound with the LEV rings in the RHS (rhs_final = rhs_base - INF @ gL) -> post-solve
                 # LESP is at LESP_crit on the shedding strips (the paper's converged constraint).
@@ -751,8 +788,62 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # panel can't poison the cycle force. Physical surface Cp stays well within +-8; only artifacts are clipped.
         Vtip = 2.0 * np.pi * freq * half_span * np.sin(A_f)            # max flap-tip speed (stable, kinematic)
         q_ref = 0.5 * ug.RHO * (np.linalg.norm(Vinf) + Vtip) ** 2
-        dp = np.clip(dp, -8.0 * q_ref, 8.0 * q_ref)
-        Fb = dp[:, None] * area[:, None] * nrm.numpy()
+        # ==== (H10 2026-07-04) UNIFIED alpha_eff-KIRCHHOFF SEPARATION STATE. Fig16 instantaneous data shows the
+        # attached UVLM over-predicts force amplitude 2.5-4x at ALL twist (mid-stroke alpha_eff~44deg = deep dynamic
+        # stall; measured lift amplitude collapses, measured thrust has NO mid-stroke suction pulses). ONE per-strip
+        # separation state fsep(alpha_eff) — SAME NACA-2406 constants as Fix1 (alpha_ss=geo_stall_deg, width=
+        # geo_stall_width), alpha_eff from the KINEMATIC LE flow (freestream+body, the A0-normalization family) —
+        # drives all three force closures: (1) kirch_cn: Bernoulli CIRCULATORY pressure x Kirchhoff CN factor
+        # ((1+sqrt f)/2)^2, VECTORIAL (pressure collapse has no preferred axis; fixes the deep-twist backward-tilt
+        # drag fiction); added-mass (rho dG/dt) is NON-circulatory inviscid inertia -> NOT scaled. (2) les_att (in
+        # the les block): realized LE suction x fsep -> suction DIES at full separation (Polhamus: it rotates into
+        # the vnf normal force, which is already k_v-capped). (3) vnf unchanged (Polhamus branch is the separated-
+        # flow limit). Quasi-steady limitation (no dynamic-stall lag; would need new time constants) -> documented.
+        fsep_le = None
+        if kirch_cn or les_att:
+            vr_k = np.asarray(Vinf) - vcn                                   # kinematic relative flow (no induction)
+            nn_k = nrm.numpy()
+
+            def _fsep_row(i0):                                              # Kirchhoff fsep from row i0's strip incidence
+                sl = slice(i0 * ns, (i0 + 1) * ns)
+                v_r = vr_k[sl]; n_r = nn_k[sl]
+                sa_r = np.sum(v_r * n_r, axis=1) / (np.linalg.norm(v_r, axis=1) + 1e-9)
+                a_r = np.abs(np.arcsin(np.clip(sa_r, -0.999, 0.999)))
+                ass_k = np.radians(geo_stall_deg)
+                return np.where(a_r <= ass_k, 1.0,
+                                np.clip(1.0 - (a_r - ass_k) / np.radians(geo_stall_width), 0.0, 1.0))
+            fsep_le = _fsep_row(0)                                          # LE row: gates the LE suction (les_att)
+            if fsep_lag:
+                # (H13 2026-07-04) GOMAN-KHRABROV 1st-order separation-state lag: d fsep/dt = (fsep_qs - fsep)/tau,
+                # tau = tau_star * c / (2 U_rel) (convective; tau_star ~ 4.5, LITERATURE airfoil constant, not a
+                # RoboEagle fit). One standard mechanism, two measured effects the quasi-steady gate misses:
+                # (a) separation DELAY at the stroke reversals (the wing arrives at deep alpha faster than the
+                # boundary layer separates -> measured reversal drag << static-stall value), (b) reattachment lag
+                # -> downstroke/upstroke HYSTERESIS (the measured mean-lift asymmetry). State kept across steps.
+                Ur_st = np.linalg.norm((np.asarray(Vinf) - vcn)[:ns], axis=1) + 1e-9
+                c_st = tcn.reshape(nc, ns).sum(0)                           # local strip chord (this step)
+                tau_st = fsep_tau * c_st / (2.0 * Ur_st)
+                if fsep_state is None:
+                    fsep_state = fsep_le.copy()
+                else:
+                    fsep_state = fsep_state + (fsep_le - fsep_state) * np.clip(dt / tau_st, 0.0, 1.0)
+                fsep_le = fsep_state
+        if kirch_cn:
+            dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
+            dp_a = ug.RHO * dGdt                                            # added mass: survives separation
+            dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
+            # CIRCULATORY loading gate at the 3/4-CHORD row: the classic unsteady thin-airfoil result — the
+            # circulatory load follows the effective incidence at 3c/4, which carries the PITCH-RATE term
+            # theta_dot*(3c/4 - x_ea)/V that the LE row misses. At tw45 mid-stroke the section is kinematically
+            # FEATHERED at the LE (fsep_LE~1) while the twist RATE peaks (twist zero-crossing) -> only the 3c/4
+            # incidence sees the rotation-induced stall that the measured Fig16 mid-downstroke collapse shows.
+            # vcn already contains the full rotation velocity distribution -> no new constants, standard theory.
+            fsep_cn = _fsep_row(min(int(round(0.75 * nc)), nc - 1))
+            fac_cn = np.tile(((1.0 + np.sqrt(fsep_cn)) / 2.0) ** 2, nc)     # Kirchhoff CN factor, per strip
+            Fb = (dp_c * fac_cn + dp_a)[:, None] * area[:, None] * nrm.numpy()
+        else:
+            dp = np.clip(dp, -8.0 * q_ref, 8.0 * q_ref)
+            Fb = dp[:, None] * area[:, None] * nrm.numpy()
         # ---- STALL: the attached UVLM has no separation -> at high |alpha_eff| (deep stall on the +-45
         # flap strokes, tip alpha_eff reaches +-40-50deg) it over-predicts the force (BOTH the downstroke
         # lift peak and the upstroke downforce trough). Cap the section force at the airfoil's CL_max:
@@ -783,9 +874,20 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             fsep = np.clip(1.0 - (psi_abs - ass) / np.radians(geo_stall_width), 0.0, 1.0)
             fsep = np.where(psi_abs <= ass, 1.0, fsep)
             loss_frac = 1.0 - ((1.0 + np.sqrt(fsep)) / 2.0) ** 2               # 0 attached (twist=0), ->0.75 separated
-            Fb_strip_z = Fb[:, 2].reshape(nc, ns).sum(0)                       # per-strip Bernoulli lift (ns,)
-            dLz = -loss_frac * np.maximum(Fb_strip_z, 0.0)                     # remove only positive lift on stalled strips
-            Lh_stall[t] = float(np.sum(dLz)); Fzb_tot[t] += Lh_stall[t]        # lift-axis only (thrust handled by Fix2)
+            if geo_stall_vec:
+                # (C8 2026-07-04) VECTORIAL Kirchhoff: separation collapses the surface-pressure DIFFERENTIAL, i.e.
+                # the strip's whole Bernoulli force VECTOR (normal-directed) — not just its +z projection. At deep
+                # twist the attached-UVLM normal force tilts backward (bern T=-14N at tw45 vs measured ~-2N flat);
+                # scaling the vector recovers the measured collapse+redirection (paper Fig16 text: twist "reduces
+                # the wing surface pressure differential ... alters the pressure force direction, creating a larger
+                # forward thrust component"). Same NACA-2406 alpha_ss/width constants as the legacy z-only branch.
+                dFv = -loss_frac[None, :].repeat(nc, 0).reshape(-1)[:, None] * Fb    # per-panel (strip-wise factor)
+                Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
+                Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
+            else:
+                Fb_strip_z = Fb[:, 2].reshape(nc, ns).sum(0)                   # per-strip Bernoulli lift (ns,)
+                dLz = -loss_frac * np.maximum(Fb_strip_z, 0.0)                 # remove only positive lift on stalled strips
+                Lh_stall[t] = float(np.sum(dLz)); Fzb_tot[t] += Lh_stall[t]    # lift-axis only (thrust handled by Fix2)
         # ==== FIRST-PRINCIPLES per-strip LESP A0 (Hirato/Gopalarathnam 2019, Eq.6) from the bound LE-row
         # circulation: A0[j] = 1.13*Gamma_{b,1}[j] / (U_rel*c*(arccos(1-2dx1/c)+sin(arccos(...)))). One value
         # per spanwise strip -> per-element. Drives both the LE-suction cap (S4) and the LEV shed rate (S3). ====
@@ -920,7 +1022,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # applied on ATTACHED strips (LEV not shed; shed-strip suction goes into the LEV captured by Bernoulli). ----
         if les_suction:
             nn2 = nrm.numpy(); iLE = np.arange(ns)            # leading-edge panel row (i=0)
-            Vle = Vcol[iLE]; nle = nn2[iLE]; tcle = tc[iLE]
+            # C4: kinematic LE velocity (matches the LESP-constraint Ur and Hirato Eq.20); default keeps Vcol (legacy)
+            Vle = ((np.asarray(Vinf) - vcn) if les_kin else Vcol)[iLE]; nle = nn2[iLE]; tcle = tc[iLE]
             Vle_m = np.linalg.norm(Vle, axis=1) + 1e-12
             sa = np.sum(Vle * nle, axis=1) / Vle_m            # sin(alpha_eff) at the LE strip
             aeff = np.arcsin(np.clip(sa, -0.999, 0.999))
@@ -939,8 +1042,19 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             if lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato'):
                 # S4 (Hirato Eq.20): realized LE suction caps at the FIRST-PRINCIPLES A0 (from bound circulation),
                 # bounded by a0_crit; the EXCESS above a0_crit is what S3 sheds into the LEV (no double-count).
-                sa_s = np.clip(A0, -a0_crit, a0_crit)
+                # (C7 les_pre, 2026-07-04) under 'hirato' the POST-solve A0 collapses SUBCRITICAL after heavy shedding
+                # (prior-step rings over-suppress: measured effective |A0|~0.17 vs crit 0.27 at 10/5/2.6/tw45 ->
+                # les_T +10.7 vs kelvin-path +19.8) — a DISCRETE-ring artifact; in sustained shedding the physical
+                # LESP hovers AT crit (Hirato Fig.6 re-converges every step). les_pre keys the realized suction on
+                # the PRE-constraint A0pre — the SAME quantity that sizes the vnf excess and the faure gate (one
+                # consistent closure, no new constants): suction = crit-capped attached-flow value while shedding.
+                A0f = hirato_A0pre if (les_pre and lev_shed_mode == 'hirato' and hirato_A0pre is not None) else A0
+                sa_s = np.clip(A0f, -a0_crit, a0_crit)
             dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
+            if les_att and fsep_le is not None:
+                # (H10) realized suction only on the ATTACHED fraction: fsep->0 at deep stall kills the fictional
+                # mid-stroke suction pulses (Fig16: measured thrust has none); the lost suction is the vnf's job.
+                dTs = dTs * fsep_le
             Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
             Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
             if lev_vnf and lev_shed_mode == 'hirato':
@@ -1249,6 +1363,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                                   # (the U,f dependence lives in the Garrick suction, which grows with V_rel^2)
                 Lh_vis=Lh_vis, Xh_vis=Xh_vis, Lh_les=Lh_les, Xh_les=Xh_les,       # per-step viscous / LE-suction
                 Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
+                Lh_pd=Lh_pd, Xh_pd=Xh_pd, Lh_stall=Lh_stall, Xh_stall=Xh_stall,   # per-step form/faure drag + Fix1 stall (diag)
                 Lh_ds=Lh_ds, L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),       # dynamic-stall: per-step + mean(bern+LEV)
                 L_stall=2.0 * np.mean(Lh_stall[last]),                            # Fix1 geometric-stall lift loss (<=0)
                 L_fric=2.0 * np.mean(Lh_fric[last]), D_fric=2.0 * np.mean(Xh_fric[last]),  # Fix2 friction (lift/thrust comp)

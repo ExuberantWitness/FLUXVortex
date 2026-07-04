@@ -32,7 +32,34 @@ CFG_PRESETS = {
     # a0_crit is THE tw22.5 lever (0.27: dT -3.68 -> -1.93 passes gate; costs U6 +0.71 where the residual
     # is a rig-offset known-unknown anyway). Both 0.23/0.27 are literature airfoil values (2D-anchored).
     'H4': dict(HIRATO_COMMON, a0_crit=0.27),                              # LESP crit sensitivity (SD7003@Re2e4)
+    # P2 2026-07-04 deep-stall overshoot candidates (P1 diag: les double-suppressed by LEV-sheet induction; K0's
+    # flat thrust at tw45 = -14N bern drag canceled by +19.4N les; H4 got les +10.4 + vtx -6.1 -> -15N blowup):
+    'H5': dict(HIRATO_COMMON, a0_crit=0.27, les_kin=True),                # C4: kinematic LE velocity (consistency, no new consts)
+    'H6': dict(HIRATO_COMMON, a0_crit=0.27, les_kin=True, **FIX),         # C4 + C2 (geo_stall Kirchhoff lift loss, NACA-2406)
+    # H10 2026-07-04 (approved rebuild): unified alpha_eff-Kirchhoff closure — Fig16 instantaneous data showed the
+    # attached model over-predicts amplitudes 2.5-4x and the mean-level fit rode on two fictions canceling
+    # (les mid-stroke pulses vs d_para; deep-twist bern drag vs K0's saturated les). fsep(alpha_eff) drives
+    # bern(circulatory)xKirchhoff-CN + les x fsep; vnf stays (Polhamus separated-flow limit). Zero new constants.
+    'H10': dict(HIRATO_COMMON, a0_crit=0.27, kirch_cn=True, les_att=True),
+    # H11: + ring strength capped at the exact Kelvin excess (fixes the over-strong-ring wake pollution that
+    # fed the P0 runaway, the A0 sub-critical collapse AND the tw45 fictional loads at feathered phases).
+    'H11': dict(HIRATO_COMMON, a0_crit=0.27, kirch_cn=True, les_att=True, lev_cap_exc=True),
+    # H12: stall cap (Vcol-based per-panel CL_max saturation — the induction-included alpha SEES the fictional
+    # wake-induced loading, which the kinematic fsep gate cannot) + les_att (kinematic fsep kills the tw0 fake
+    # suction pulses). Composite of the two experimentally-validated blocks.
+    'H12': dict(HIRATO_COMMON, a0_crit=0.27, stall=True, les_att=True),
+    # H13: + Goman-Khrabrov lag on the separation state (tau*=4.5 literature): separation DELAY at reversals
+    # (real suction survives the brief deep-alpha pass -> reversal drag relief) + reattachment hysteresis
+    # (downstroke/upstroke asymmetry -> mean lift). Targets BOTH open residuals with one standard mechanism.
+    'H13': dict(HIRATO_COMMON, a0_crit=0.27, stall=True, les_att=True, fsep_lag=True),
+    # K1 2026-07-04: KELVIN path (no hirato ring wake pollution) + the full closure suite. The stall cap costs
+    # -4N mean lift because the real wing's downstroke DSV lift ~ attached values (K0 imitated it via amplitude
+    # fiction); fp_lev IS the DSV mechanism (kinematic excess suction rotated to normal, K_v=2pi/(1+2/AR)
+    # analytic) and only works OFF the polluted-A0 hirato path. All existing flags, zero new constants.
+    'K1':  dict(PROD, stall=True, les_att=True, fsep_lag=True, fp_lev=True),
+    'K1g': dict(PROD, **FIX, stall=True, les_att=True, fsep_lag=True, fp_lev=True),   # + legacy geo_stall (dbl-count probe)
 }
+ONLY = None                                                               # --only whitelist of conditions (ck strings)
 
 def cache_path():     # grid+cfg-tagged so different grids / model variants never collide
     if CFG == 'K0':   # K0 == the legacy PROD+FIX cache (59 Fig17/18 conds already computed) — reuse it
@@ -67,6 +94,8 @@ def unique_conds():
             if WINDS is not None and round(U, 1) not in WINDS: continue
             ck = f"{U:.1f}_{aoa:.1f}_{freq:.3f}_{tw:.3f}"
             seen[ck] = (U, aoa, freq, tw)
+    if ONLY is not None:                    # --only whitelist (P2 A/B sets, P4 nc12 key conds)
+        seen = {ck: c for ck, c in seen.items() if ck in ONLY}
     return seen
 
 
@@ -173,10 +202,12 @@ if __name__ == '__main__':
     ap.add_argument('--dry', action='store_true'); ap.add_argument('--run', action='store_true'); ap.add_argument('--plot', action='store_true')
     ap.add_argument('--nc', type=int); ap.add_argument('--ncyc', type=int); ap.add_argument('--winds'); ap.add_argument('--fix', action='store_true')
     ap.add_argument('--cfg', choices=sorted(CFG_PRESETS))
+    ap.add_argument('--only', help='comma list U_aoa_f_tw (short floats ok, e.g. 10_5_2.6_45)')
     a = ap.parse_args()
     if a.nc: NC = a.nc
     if a.ncyc: NCYC = a.ncyc
     if a.winds: WINDS = [round(float(x), 1) for x in a.winds.split(',')]
+    if a.only: ONLY = {ckey(*[float(x) for x in c.split('_')]) for c in a.only.split(',')}
     FIXMODE = a.fix; CFG = a.cfg
     if a.dry: dry()
     elif a.run: run()
