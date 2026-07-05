@@ -162,11 +162,16 @@ class FlapEntryRobo(FlapEntry):
 
 
 def run_fsi(wing="11b", freq=2.3, amp_deg=45.0, aoa_deg=5.0, Ey=10e9, nc=6, ns=12,
-            n_cycles=4, substeps=10, damping=0.05, verbose=False, E_override=None):
+            n_cycles=4, substeps=10, damping=0.05, verbose=False, E_override=None, three_mat=False,
+            pre_tension=0.0):
     """Flexible RoboEagle FSI: real geometry + measured-EI-calibrated Ex + physical mass, flap +-amp.
-    E_override: skip the (fragile) point-load calibration, use this E for both Ex,Ey (diagnostic)."""
+    E_override: skip the (fragile) point-load calibration, use this E for both Ex,Ey (diagnostic).
+    three_mat: 3-material partition (carbon spars + plywood ribs + membrane base); Ex/Ey are then
+    the MEMBRANE base moduli and only the membrane Ex is calibrated to the measured k (diagnostic)."""
     if E_override is not None:
         Ex, Ey, kfit = E_override, E_override, 0.0
+    elif three_mat:
+        Ex, kfit = calibrate_Ex_3mat(nc, ns, Ey, wing)
     else:
         Ex, kfit, _ = calibrate_Ex(nc, ns, Ey, wing)
     alpha = np.deg2rad(aoa_deg); period = 1.0 / freq
@@ -174,7 +179,8 @@ def run_fsi(wing="11b", freq=2.3, amp_deg=45.0, aoa_deg=5.0, Ey=10e9, nc=6, ns=1
     dtw = (CHORD / nc) / 8.0
     wpc = int(round(period / dtw)); n_windows = int(round(n_cycles * period / dtw))
     kin = FlapKinematics(np.deg2rad(amp_deg), period)
-    entry = FlapEntryRobo(nc, ns, kin, Ex, Ey, damping=damping)
+    entry = FlapEntryRobo(nc, ns, kin, Ex, Ey, damping=damping, three_mat=three_mat,
+                          pre_tension=pre_tension)
     V_vec = 8.0 * np.array([np.cos(alpha), 0.0, np.sin(alpha)])
     provider = FlapUVLMProvider(V_vec, 1.225, dtw, K=6, nu=15.06e-6, chord=CHORD,
                                 particles=False, max_particles=1)
