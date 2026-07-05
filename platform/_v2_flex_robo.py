@@ -135,13 +135,15 @@ class FlapEntryRobo(FlapEntry):
     """FlapEntry on the REAL RoboEagle geometry + orthotropic calibrated stiffness (root y=0 edge
     prescribed-flap about the x-axis; reuses FlapEntry.substep/state/snapshot/restore)."""
 
-    def __init__(self, nc, ns, kin, Ex, Ey, thickness=THICK, rho_s=RHO_S, damping=0.05, three_mat=False):
+    def __init__(self, nc, ns, kin, Ex, Ey, thickness=THICK, rho_s=RHO_S, damping=0.05, three_mat=False, pre_tension=0.0):
         self.kin = kin; self.mode = "elastic"; self.nc, self.ns = nc, ns
         self.extra_force_fn = None
         if three_mat:
             self.shell, self.nodes0 = build_3mat_shell(nc, ns, Ex, Ey, h=thickness, rho_s=rho_s, damping=damping)
         else:
             self.shell, self.nodes0 = build_robo_shell(nc, ns, Ex, Ey, h=thickness, rho_s=rho_s, damping=damping)
+        if pre_tension:
+            self.shell.set_pre_tension(pre_tension)             # (P2-S0) taut drum-skin membrane
         self.t = 0.0
         root = [n for n in range(self.shell.nn) if abs(self.nodes0[n, 1]) < 1e-9]   # y=0 root edge
         pd = np.array([9 * n + d for n in sorted(root) for d in range(9)])

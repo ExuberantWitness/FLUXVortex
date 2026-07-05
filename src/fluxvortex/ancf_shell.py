@@ -270,6 +270,7 @@ class ANCFShell:
         # broadcast -> bit-identical to the global case (golden redline preserved);
         # set_distribution() overrides per element for a spanwise/per-element design.
         self.Dm_e = np.broadcast_to(self.Dm, (self.ne, 3, 3)).copy()
+        self.S_pre_e = np.zeros((self.ne, 3))   # (P2-S0) seedable pre-tension as 2nd-PK pre-stress [Sxx,Syy,Sxy]; zero -> bit-identical
         self.Dk_e = np.broadcast_to(self.Dk, (self.ne, 3, 3)).copy()
         self.rho_e = np.full(self.ne, float(self.rho))
 
@@ -342,6 +343,25 @@ class ANCFShell:
             self.rho_e = self.rho * rs
             self.M = self._assemble_mass()
             self.rho_scale_e = rs
+        return self
+
+    def set_pre_tension(self, N0):
+        """(P2-S0) Seed a constant in-plane pre-tension N0 (Pa, force per unit length / thickness) as a
+        2nd-PK pre-stress on every element. N0 may be a scalar (biaxial isotropic), a (2,) array
+        [N0_x, N0_y], or a callable N0(x, y) of element-centroid coords. The pre-stress enters the
+        membrane internal force (Q_mem) AND the geometric stiffness (K_mem K_geo term) automatically
+        via Dm_eps -> a taut drum-skin membrane instead of a floppy plate. Zero -> bit-identical."""
+        c = self._elem_centers()
+        if callable(N0):
+            N0 = np.array([float(N0(c[e, 0], c[e, 1])) for e in range(self.ne)])
+            N0 = np.broadcast_to(N0[:, None], (self.ne, 2)).copy()
+        N0 = np.asarray(N0, float)
+        if N0.ndim == 0:
+            N0 = np.full((self.ne, 2), float(N0))
+        elif N0.ndim == 1 and N0.shape[0] == 2:
+            N0 = np.broadcast_to(N0[None, :], (self.ne, 2)).copy()
+        Sxx = N0[:, 0] / self.h; Syy = N0[:, 1] / self.h
+        self.S_pre_e = np.stack([Sxx, Syy, np.zeros(self.ne)], axis=1)
         return self
 
     # ─── Mass matrix (constant) ───
@@ -417,7 +437,7 @@ class ANCFShell:
                 A2 = ed.A2[i, j]
                 A3 = ed.A3[i, j]
 
-                Dm_eps = self.Dm_e[e] @ eps_v
+                Dm_eps = self.Dm_e[e] @ eps_v + self.S_pre_e[e]   # (P2-S0) + seedable pre-tension pre-stress
                 Q_mem += w * (deps.T @ Dm_eps)
 
                 K_mem += w * (A1 * Dm_eps[0] + A2 * Dm_eps[1] + A3 * Dm_eps[2])
