@@ -69,17 +69,18 @@ def batched_dense_solve(A_wp, b_wp, device=None, in_place_b=False):
 
 @wp.kernel
 def smatvec_kernel(v: wp.array(dtype=DTYPE, ndim=2),       # (B, ndof) input
-                   Me: wp.array(dtype=DTYPE, ndim=3),      # (ne, 36, 36) shared mass
-                   Kblk: wp.array(dtype=DTYPE, ndim=4),    # (B, ne, 36, 36) per-env tangent
-                   edofs: wp.array(dtype=wp.int32, ndim=2),# (ne, 36)
+                   Me: wp.array(dtype=DTYPE, ndim=3),      # (ne, nblk, nblk) shared mass
+                   Kblk: wp.array(dtype=DTYPE, ndim=4),    # (B, ne, nblk, nblk) per-env tangent
+                   edofs: wp.array(dtype=wp.int32, ndim=2),# (ne, nblk)
                    free: wp.array(dtype=DTYPE, ndim=1),    # (ndof,) 1 free / 0 BC
                    cM: DTYPE, cK: DTYPE,
+                   nblk: int,
                    w: wp.array(dtype=DTYPE, ndim=2)):      # (B, ndof) out (accumulate)
     """w += free⊙((cM·M + cK·K)·(free⊙v)).  cM=1,cK=coef -> S; cM=0,cK=.. -> K; cM=1,cK=0 -> M."""
     e, el, a = wp.tid()
     da = edofs[el, a]
     acc = DTYPE(0.0)
-    for b in range(36):
+    for b in range(nblk):
         db = edofs[el, b]
         vb = v[e, db] * free[db]
         acc = acc + (cM * Me[el, a, b] + cK * Kblk[e, el, a, b]) * vb
@@ -99,9 +100,10 @@ def apply_MK(vin, wout, Me, Kblk, edofs, free, cM, cK, device, madd=None, madd_t
     Adds the −M_added term (M_eff = M − M_added) when `madd` (a CSR) is given and
     cM≠0. Assumes vin has bc=0 (true for all CG/Newmark vectors)."""
     NP = config.NP_DTYPE
+    nblk = edofs.shape[1]
     wout.zero_()
-    wp.launch(smatvec_kernel, dim=(vin.shape[0], edofs.shape[0], 36),
-              inputs=[vin, Me, Kblk, edofs, free, DTYPE(NP(cM)), DTYPE(NP(cK))],
+    wp.launch(smatvec_kernel, dim=(vin.shape[0], edofs.shape[0], nblk),
+              inputs=[vin, Me, Kblk, edofs, free, DTYPE(NP(cM)), DTYPE(NP(cK)), nblk],
               outputs=[wout], device=device)
     if madd is not None and cM != 0.0:
         mv = madd.matvec(vin, out=madd_tmp)
@@ -200,7 +202,7 @@ def structural_cg(b_wp, Me, Kblk, edofs, free, coef, ndof,
 
     # Jacobi preconditioner: diag(S)
     diag = wp.zeros((B, ndof), dtype=DTYPE, device=device)
-    wp.launch(sdiag_kernel, dim=(B, ne, 36),
+    wp.launch(sdiag_kernel, dim=(B, ne, edofs.shape[1]),
               inputs=[Me, Kblk, edofs, free, coefD], outputs=[diag], device=device)
     if madd_diag is not None:
         wp.launch(_sub_bcast_kernel, dim=(B, ndof), inputs=[diag, madd_diag, free], device=device)
