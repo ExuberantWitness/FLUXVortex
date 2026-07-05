@@ -72,6 +72,21 @@ CFG_PRESETS = {
     # WITHOUT touching the vortex-impulse LEV force (separate accumulator). Unlike H15 (cap killed H14's Fb-based
     # thrust), here thrust stays at H16's best (impulse) AND lift gets the cap. Non-conflicting combination.
     'H17': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, stall=True),
+    # H18: H16 + the two literature-validated DRAG flags that are OFF by default — prof_drag (Hoerner crossflow
+    # separated pressure drag, cd_form=1.98/cd_dp=1.2 flat-plate constants, zero-fit) + visc (DeLaurier profile
+    # friction, Blasius Cf, zero-fit). Targets the residual's twist-dimension (sep drag ~sin^2 alpha) and
+    # speed-dimension (profile ~U^2) structure per the drag-research synthesis (Hoerner/Polhamus/Faure/Ramesh).
+    'H18': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, prof_drag=True, visc=True),
+    # H19: H18 + fsep_lag — gate the Hoerner sep drag by the LAGGED separated fraction (1-fsep). H18 confirmed sep
+    # drag is the right term (tw0 +2.84->-1.46) but static Hoerner OVERSHOOTS at mid-stroke (tw45 -11.8 vs meas -4.2)
+    # = no dynamic-stall delay. The GK lag (tau*=4.5 literature) holds fsep~1 through the brief alpha peak -> sep
+    # drag switches on late -> matches measured. Same mechanism as H13, now on the stable impulse path + prof_drag.
+    'H19': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, prof_drag=True, visc=True, fsep_lag=True),
+    # H20 (P1 2026-07-05): the DOUBLE-COUNT FIX. H19's prof_drag (Hoerner) added to the uncapped bound Bernoulli
+    # backward-tilt -> deep-twist over-drag (-4.7N). kirch_blend REPLACES it: one blended vector (attached Bernoulli
+    # + flat-plate CN by separated fraction) -> pressure drag emerges from the same vector that loses lift, no
+    # double-count. = H16 impulse + kirch_blend + visc + fsep_lag (no prof_drag).
+    'H20': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, kirch_blend=True, visc=True, fsep_lag=True),
     # K1 2026-07-04: KELVIN path (no hirato ring wake pollution) + the full closure suite. The stall cap costs
     # -4N mean lift because the real wing's downstroke DSV lift ~ attached values (K0 imitated it via amplitude
     # fiction); fp_lev IS the DSV mechanism (kinematic excess suction rotated to normal, K_v=2pi/(1+2/AR)

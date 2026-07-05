@@ -417,6 +417,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   geo_stall_vec=False,     # (C8) Kirchhoff factor scales the strip Bernoulli force VECTOR (pressure-differential
                   #   collapse, both lift AND its backward tilt at deep twist) instead of the legacy +z-only removal
                   kirch_cn=False,          # (H10) alpha_eff-Kirchhoff CN factor on the CIRCULATORY Bernoulli pressure, vectorial,
+                  kirch_blend=False,       # (P1 2026-07-05) DOUBLE-COUNT FIX: blend attached Bernoulli + flat-plate CN by the
+                  #   (lagged) separated fraction (1-fsep) into ONE consistent force vector (replace, not add). The flat-plate
+                  #   CN's backward tilt yields pressure drag from the SAME vector that loses lift -> no double-count with the
+                  #   bound's backward-tilt component. prof_drag is gated OFF when this is on (the flat-plate CN replaces it).
                   #   per-strip from the kinematic LE incidence; added-mass untouched. Constants = geo_stall_deg/width (NACA-2406).
                   les_att=False,           # (H10) realized LE suction x fsep(alpha_eff): dies at full separation (rotates into vnf)
                   fsep_lag=False,          # (H13) Goman-Khrabrov 1st-order lag on the fsep separation state: tau = fsep_tau*c/(2 U_rel).
@@ -807,7 +811,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # the vnf normal force, which is already k_v-capped). (3) vnf unchanged (Polhamus branch is the separated-
         # flow limit). Quasi-steady limitation (no dynamic-stall lag; would need new time constants) -> documented.
         fsep_le = None
-        if kirch_cn or les_att:
+        if kirch_cn or les_att or prof_drag or kirch_blend:   # separation state consumers (incl. P1 kirch_blend)
             vr_k = np.asarray(Vinf) - vcn                                   # kinematic relative flow (no induction)
             nn_k = nrm.numpy()
 
@@ -835,7 +839,25 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 else:
                     fsep_state = fsep_state + (fsep_le - fsep_state) * np.clip(dt / tau_st, 0.0, 1.0)
                 fsep_le = fsep_state
-        if kirch_cn:
+        if kirch_blend:
+            # (P1 2026-07-05) DOUBLE-COUNT FIX. H19's prof_drag (Hoerner) ADDED to the uncapped bound Bernoulli's
+            # backward-tilt component -> deep-twist over-drag (-4.7N). Fix: ONE consistent force vector blended by
+            # the separated fraction. Attached: full Bernoulli (circulatory + added mass). Separated: flat-plate CN
+            # normal pressure dp_fp = q*Cd_max*sin^2(aeff)*sign(sa) (Cd_max=cd_form, flat-plate constant). The CN
+            # force projects to BOTH lift (reduced, sin^2*cos) AND pressure drag (sin^3) from the SAME vector -> no
+            # double-count. prof_drag is gated OFF below when kirch_blend is on.
+            dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
+            dp_a = ug.RHO * dGdt
+            dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
+            dp_att = dp_c + dp_a                                              # attached Bernoulli pressure
+            vr_k = np.asarray(Vinf) - vcn; vrm_k = np.linalg.norm(vr_k, axis=1) + 1e-9
+            sa_k = np.sum(vr_k * nrm.numpy(), axis=1) / vrm_k                 # sin(aeff) per panel (kinematic)
+            dp_fp = q_ref * (cd_form * sa_k ** 2) * np.sign(sa_k)             # flat-plate CN pressure (along +n)
+            dp_fp = np.clip(dp_fp, -8.0 * q_ref, 8.0 * q_ref)
+            fsep_p = np.tile(fsep_le, nc)                                     # per-panel separated fraction (panel p -> strip j=p%ns)
+            dp_blend = fsep_p * dp_att + (1.0 - fsep_p) * dp_fp
+            Fb = dp_blend[:, None] * area[:, None] * nrm.numpy()
+        elif kirch_cn:
             dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
             dp_a = ug.RHO * dGdt                                            # added mass: survives separation
             dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
@@ -1032,7 +1054,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # the BIG viscous drag is the pressure drag from boundary-layer SEPARATION at high alpha_eff (the
         # +-45 flap strokes reach alpha_eff~45deg). Cd_form = cd_form*sin^2(alpha_eff) (flat-plate-separated,
         # ~0 attached -> grows when stalled), drag along the relative wind -> the missing thrust-axis drag. ----
-        if prof_drag:
+        if prof_drag and not kirch_blend:   # (P1) skip when kirch_blend: the flat-plate CN already in the blend
             nnq = nrm.numpy(); vr = np.asarray(Vinf) - vcn       # relative wind (freestream + flapping)
             vrm = np.linalg.norm(vr, axis=1) + 1e-9
             sap = np.sum(vr * nnq, axis=1) / vrm                 # sin(alpha_eff) per panel
@@ -1041,6 +1063,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # body Cd saturates past full separation (does NOT climb to the 2.0 broadside value) -> form drag
             # stays ~f^2 at high frequency (matches measured net-thrust trend). First-principles (no RoboEagle fit).
             Cdp = np.minimum(cd_form * sap ** 2, cd_dp)         # cross-flow form drag, deep-stall plateau cd_dp
+            if fsep_le is not None:
+                # (H19) gate the SEPARATED drag by the (lagged) separated fraction (1-fsep): in attached flow the
+                # Hoerner crossflow drag is zero (only profile friction, handled by `visc`); it switches ON as the
+                # boundary layer separates. With fsep_lag the gate is delayed through the brief mid-stroke alpha peak
+                # -> the static-Hoerner overshoot (H18 tw45 -11.8N) is removed, matching the measured dynamic-stall
+                # delay. Per-strip fsep tiled to per-panel (panel p uses strip j=p%ns).
+                Cdp = Cdp * np.tile(1.0 - fsep_le, nc)
             Dp = 0.5 * ug.RHO * vrm[:, None] * Cdp[:, None] * area[:, None] * vr   # along relative wind
             Lh_pd[t] = float(np.sum(Dp[:, 2])); Xh_pd[t] = float(np.sum(Dp[:, 0]))
             Fzb_tot[t] += float(np.sum(Dp[:, 2])); Fxb_tot[t] += float(np.sum(Dp[:, 0]))   # form-drag force vector

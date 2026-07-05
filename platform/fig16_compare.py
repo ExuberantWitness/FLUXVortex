@@ -31,6 +31,9 @@ MODELS = {
     'H15': dict(CFG_PRESETS['H15']),                 # H14 + stall cap (production candidate)
     'H16': dict(CFG_PRESETS['H16']),                 # Li/Feng vortex-impulse LEV force (grid-independent)
     'H17': dict(CFG_PRESETS['H17']),                 # H16 + stall cap (non-conflicting: cap on Fb, impulse separate)
+    'H18': dict(CFG_PRESETS['H18']),                 # H16 + prof_drag (sep) + visc (profile): drag-axis fix
+    'H19': dict(CFG_PRESETS['H19']),                 # H18 + fsep_lag (gate sep drag by lagged separation)
+    'H20': dict(CFG_PRESETS['H20']),                 # P1 double-count fix (kirch_blend replaces prof_drag)
 }
 ZCH = ['Lh_bern', 'Lh_les', 'Lh_vtx', 'Lh_pd', 'Lh_vis', 'Lh_stall', 'Lh_vimp']
 XCH = ['Xh_bern', 'Xh_les', 'Xh_vtx', 'Xh_pd', 'Xh_vis', 'Xh_stall', 'Xh_vimp']
@@ -115,7 +118,7 @@ def main():
     import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
     fig, ax = plt.subplots(2, 3, figsize=(17, 8))
     COLS = {'K0': '#1b9e77', 'H4': '#d95f02', 'H9': '#7570b3', 'H10': '#e7298a', 'H11': '#66a61e',
-            'K0s': '#a6d854', 'H4s': '#e78ac3', 'H12': '#386cb0', 'H13': '#bf5b17', 'K1': '#f0027f', 'K1g': '#666666', 'H14': '#1f78b4', 'H15': '#b2df8a', 'H16': '#ff7f00', 'H17': '#cab2d6'}
+            'K0s': '#a6d854', 'H4s': '#e78ac3', 'H12': '#386cb0', 'H13': '#bf5b17', 'K1': '#f0027f', 'K1g': '#666666', 'H14': '#1f78b4', 'H15': '#b2df8a', 'H16': '#ff7f00', 'H17': '#cab2d6', 'H18': '#fb9a99', 'H19': '#e31a1c', 'H20': '#6a3d9a'}
     stats = []
     for j, tw in enumerate(TWS):
         for i, kind in enumerate(('T', 'L')):
