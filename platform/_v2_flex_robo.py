@@ -24,6 +24,16 @@ RHO_S = 135.0                       # physical areal density 150 g/m^2 / 1.2mm
 K_MEAS = {"11a": 40.9, "11b": 166.9}   # measured chordwise cantilever stiffness (N/m)
 MEAS_SPAN = 0.5886                  # measurement point spanwise (m)
 
+# ---- 3-material composite (the REAL RoboEagle wing, per user 2026-07-05) ----
+# Main carbon spar @ 30% chord (spanwise) + aux carbon spar @ 70% chord ("rear 30%")
+# + 7 aviation-plywood ribs (spanwise-distributed, chordwise) + root aluminum rib (rigid clamp)
+# + membrane (Mylar) covering the rest. Literature defaults (user-approved "文献默认你审核").
+E_CARBON = 150e9                    # carbon-fiber tube axial modulus (Pa)
+E_PLYWOOD = 8e9                     # aviation plywood (Pa)
+RHO_CARBON = 1600.0; RHO_PLYWOOD = 700.0; RHO_MEMBRANE = 1390.0
+SPAR_X = 0.30; AUXSPAR_X = 0.70     # chordwise fractions of main / aux spar
+N_RIBS = 7                          # plywood ribs along the span (root rib is aluminum = clamp)
+
 
 def build_robo_shell(nc, ns, Ex, Ey, h=THICK, rho_s=RHO_S, nu=0.3, damping=0.0):
     """Orthotropic ANCF shell on the REAL RoboEagle planform (raked TE + NACA2406 camber).
@@ -41,6 +51,47 @@ def build_robo_shell(nc, ns, Ex, Ey, h=THICK, rho_s=RHO_S, nu=0.3, damping=0.0):
             quads[j * nc + i] = (n1, n1 + 1, n1 + nc + 2, n1 + nc + 1)
     return ANCFShell(nodes, quads, h=h, rho=rho_s, Ex=Ex, Ey=Ey, nu_xy=nu,
                      structural_damping=damping), nodes
+
+
+def _material_scale(nodes, quads, Ex_base, rho_base, half_span, rib_frac=1.0/8.0):
+    """Per-element (E_scale, rho_scale) for the 3-material composite: main carbon spar @ 30% chord,
+    aux carbon spar @ 70% chord, 7 plywood ribs (chordwise strips at evenly-spaced span stations),
+    membrane elsewhere. Element assigned by its centroid's chordwise fraction (x/local-chord) and span y."""
+    ne = len(quads)
+    E_scale = np.ones(ne); rho_scale = np.ones(ne)
+    rib_ys = [(k + 1) * rib_frac * half_span for k in range(N_RIBS)]   # 7 ribs, root..near-tip
+    for e in range(ne):
+        cx, cy = nodes[quads[e]].mean(0)[:2]                            # element centroid (x_chord, y_span)
+        c_local = rg.chord_at(abs(cy)) + 1e-9                            # local chord at this span
+        xf = cx / c_local                                                # chordwise fraction
+        on_spar = (abs(xf - SPAR_X) < 0.6 / 8.0) or (abs(xf - AUXSPAR_X) < 0.6 / 8.0)
+        rib_d = min(abs(cy - ry) for ry in rib_ys)
+        on_rib = rib_d < 0.6 * half_span / 16.0                          # within one span element of a rib
+        if on_spar:
+            E_scale[e] = E_CARBON / Ex_base; rho_scale[e] = RHO_CARBON / rho_base
+        elif on_rib:
+            E_scale[e] = E_PLYWOOD / Ex_base; rho_scale[e] = RHO_PLYWOOD / rho_base
+        # else: membrane (1.0)
+    return E_scale, rho_scale
+
+
+def build_3mat_shell(nc, ns, Ex_mem, Ey_mem, half_span=0.80, h=THICK, rho_s=RHO_S, nu=0.3, damping=0.0):
+    """3-material ANCF shell on the real planform: carbon spars (30%/70% chord) + plywood ribs + membrane,
+    via per-element set_distribution. Ex_mem/Ey_mem = the MEMBRANE base (chordwise Ex calibrated to measured k)."""
+    shell, nodes = build_robo_shell(nc, ns, Ex_mem, Ey_mem, h=h, rho_s=rho_s, nu=nu, damping=damping)
+    E_scale, rho_scale = _material_scale(nodes, shell.quads, Ex_mem, rho_s, half_span)
+    shell.set_distribution(E_scale, rho_scale)
+    return shell, nodes
+
+
+def calibrate_Ex_3mat(nc, ns, Ey_mem, wing="11b", Ex0=4e6, n_it=6, half_span=0.80):
+    """Iterate the MEMBRANE chordwise Ex so the 3-material shell's chordwise cantilever k matches measured."""
+    Ex = Ex0; k = None
+    for _ in range(n_it):
+        sh, nodes = build_3mat_shell(nc, ns, Ex, Ey_mem, half_span=half_span)
+        k, _ = cantilever_k(sh, nodes, nc, ns)
+        Ex = Ex * (K_MEAS[wing] / k) ** 0.8
+    return Ex, k
 
 
 def cantilever_k(shell, nodes, nc, ns, F=0.5):
@@ -84,10 +135,13 @@ class FlapEntryRobo(FlapEntry):
     """FlapEntry on the REAL RoboEagle geometry + orthotropic calibrated stiffness (root y=0 edge
     prescribed-flap about the x-axis; reuses FlapEntry.substep/state/snapshot/restore)."""
 
-    def __init__(self, nc, ns, kin, Ex, Ey, thickness=THICK, rho_s=RHO_S, damping=0.05):
+    def __init__(self, nc, ns, kin, Ex, Ey, thickness=THICK, rho_s=RHO_S, damping=0.05, three_mat=False):
         self.kin = kin; self.mode = "elastic"; self.nc, self.ns = nc, ns
         self.extra_force_fn = None
-        self.shell, self.nodes0 = build_robo_shell(nc, ns, Ex, Ey, h=thickness, rho_s=rho_s, damping=damping)
+        if three_mat:
+            self.shell, self.nodes0 = build_3mat_shell(nc, ns, Ex, Ey, h=thickness, rho_s=rho_s, damping=damping)
+        else:
+            self.shell, self.nodes0 = build_robo_shell(nc, ns, Ex, Ey, h=thickness, rho_s=rho_s, damping=damping)
         self.t = 0.0
         root = [n for n in range(self.shell.nn) if abs(self.nodes0[n, 1]) < 1e-9]   # y=0 root edge
         pd = np.array([9 * n + d for n in sorted(root) for d in range(9)])
