@@ -167,6 +167,18 @@ class WingModel:
         self.M = (self._scatter(self.BeamC.Me_np, self.BeamC.edofs_np)
                   + self._scatter(self.MemC.Me_np, self.MemC.edofs_np)).tocsc()
         self.bc_dofs: set[int] = set()
+        # strip-theory added mass (flat-plate potential flow, m_a = rho pi c^2/4
+        # per unit span — analytic zero-fit constant). Node share = tributary
+        # membrane area / local chord. The provider's exact AIC-based madd is
+        # measured INDEFINITE (docs/p2_s4_fsi.md) — this PSD physical operator
+        # is the implicit added-mass stabilizer instead.
+        rho_air = 1.225
+        A_trib = np.zeros(nn)
+        for e, tri in enumerate(tris):
+            for nd_ in tri:
+                A_trib[nd_] += self.MemC.A0_np[e] / 3.0
+        c_node = np.maximum(rg.chord_at(nodes[:, 1]), 1e-3)
+        self.m_added_node = rho_air * np.pi * c_node ** 2 / 4.0 * (A_trib / c_node)
         self.mass_report = dict(
             membrane=MEM_RHO * MEM_H * self.MemC.A0_np.sum(),
             spars=kb.MAIN_SPAR.m_lin * 0.8 + kb.AUX_SPAR.m_lin * 0.8,
@@ -540,7 +552,7 @@ def host_newmark_step(model, q, dq, dt, F_const,
 
 def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
                        gamma=0.6, newton_tol=1e-8, max_newton=8, beta_R=1e-3,
-                       M_add=None):
+                       M_add=None, C_add=None):
     """Fully implicit Newmark-beta (average-acceleration family, gamma=0.6 for
     algorithmic high-frequency damping — the generalized-alpha-class dissipation
     the membrane-FSI literature recommends) with Newton iterations per substep.
@@ -588,6 +600,13 @@ def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
         # substep. Rayleigh C = beta_R * K(q_n) FROZEN for the step (a C that
         # tracks K(q1) makes Newton chase a moving residual — measured).
         Cd = beta_R * model.K_csc(q, symmetrize=True, latch=False)
+        if C_add is not None:
+            # implicit quasi-steady aero damping (strip theory dF/dv = pi rho U
+            # A_node along the flap normal, analytic zero-fit, PSD). Air IS the
+            # membrane's dominant physical damper (zeta >> 1); with the coupling
+            # under-relaxed the lagged provider cannot supply it — implicit
+            # treatment stops the ring the aero would physically kill.
+            Cd = Cd + C_add
         for it in range(max_newton):
             v1 = dq_pred + gamma * dt * a1
             r = F_const - model.Q_int(q1) - M @ a1 - Cd @ v1
@@ -700,27 +719,46 @@ class WingEntry:
             if self.load_ramp_T > 0 and t < self.load_ramp_T:   # impulsive-start
                 ramp = 0.5 * (1 - np.cos(np.pi * t / self.load_ramp_T))  # absorber
                 f *= ramp
-            if getattr(forces, "madd", None) is not None:
-                from scipy.sparse import coo_matrix as _coo
-                nn = self.m.nn
-                zidx9 = 9 * np.arange(nn) + 2
-                Mzz = ramp * np.asarray(forces.madd)[np.ix_(zidx9, zidx9)]
-                zd = self.m.trans_map[:, 2]
-                rows = np.repeat(zd, nn); cols = np.tile(zd, nn)
-                M_add = _coo((Mzz.ravel(), (rows, cols)),
-                             shape=(self.m.ndof, self.m.ndof)).tocsc()
-        self._advance(t - dt, t, dt, f, M_add, depth=0)
+            # implicit strip added mass along the instantaneous flap normal
+            # n(theta): LHS gains +M_a (via M_add = -M_a in host_implicit_step's
+            # M_eff = M - M_add), RHS gains the lagged compensation +M_a a_n —
+            # identical fixed point, contraction for the added-mass Picard loop
+            # (mass ratio ~5 made the bare loop gain ~1.6).
+            from scipy.sparse import coo_matrix as _coo
+            th_n = self._angles(t)[0]
+            nvec = np.array([0.0, -np.sin(th_n), np.cos(th_n)])
+            blk = np.einsum("n,i,j->nij", self.m.m_added_node, nvec, nvec)
+            tm3 = self.m.trans_map
+            rows = np.repeat(tm3, 3, axis=1).ravel()
+            cols = np.tile(tm3, (1, 3)).ravel()
+            M_a = _coo((blk.ravel(), (rows, cols)),
+                       shape=(self.m.ndof, self.m.ndof)).tocsc()
+            # NO lagged compensation: with ringing accelerations the one-step-
+            # lagged M_a a_n term pumps energy at high frequency (measured).
+            # Accepted smoke-scope bias: the provider's own unsteady force also
+            # reacts to acceleration -> transiently ~2x added inertia on the
+            # membrane normal modes (documented; S5-proper replaces this with a
+            # validated exact madd operator).
+            M_add = -M_a
+            rho_air, U_inf = 1.225, 8.0
+            # dcoef = pi rho U A_trib  (m_added_node = rho pi c^2/4 * A/c)
+            dcoef = np.pi * rho_air * U_inf * (self.m.m_added_node /
+                    (rho_air * np.pi * np.maximum(rg.chord_at(self.m.nodes[:, 1]), 1e-3) / 4.0))
+            blkc = np.einsum("n,i,j->nij", dcoef, nvec, nvec)
+            C_add = _coo((blkc.ravel(), (rows, cols)),
+                         shape=(self.m.ndof, self.m.ndof)).tocsc()
+        self._advance(t - dt, t, dt, f, M_add, C_add if forces is not None else None, depth=0)
         self.t = t
         return self
 
-    def _advance(self, t0, t1, dt, f, M_add, depth):
+    def _advance(self, t0, t1, dt, f, M_add, C_add, depth):
         """Implicit substep with adaptive halving: an unconverged Newton substep
         (acute wrinkle/sliver events at flapping speed) must never be accepted."""
         qb, dqb, ddqb = self._cb(t1)
         try:
             q1, dq1, a1, ok = host_implicit_step(
                 self.m, self.q, self.dq, self.a, t1 - t0, f,
-                presc=(self.pd, qb, dqb, ddqb), M_add=M_add)
+                presc=(self.pd, qb, dqb, ddqb), M_add=M_add, C_add=C_add)
         except RuntimeError:
             ok, q1 = False, self.q                           # treat as unconverged
         if ok and np.all(np.isfinite(q1)):
@@ -729,8 +767,8 @@ class WingEntry:
         if depth >= 4:
             raise RuntimeError(f"substep failed to converge at t={t1:.4f} (depth {depth})")
         tm_ = 0.5 * (t0 + t1)
-        self._advance(t0, tm_, dt, f, M_add, depth + 1)
-        self._advance(tm_, t1, dt, f, M_add, depth + 1)
+        self._advance(t0, tm_, dt, f, M_add, C_add, depth + 1)
+        self._advance(tm_, t1, dt, f, M_add, C_add, depth + 1)
 
     def state(self):
         nc, ns = self.m.nc, self.m.ns
