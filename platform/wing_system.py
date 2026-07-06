@@ -538,14 +538,100 @@ def host_newmark_step(model, q, dq, dt, F_const,
     return q_new, dq_new
 
 
+def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
+                       gamma=0.6, newton_tol=1e-8, max_newton=8, beta_R=1e-3,
+                       M_add=None):
+    """Fully implicit Newmark-beta (average-acceleration family, gamma=0.6 for
+    algorithmic high-frequency damping — the generalized-alpha-class dissipation
+    the membrane-FSI literature recommends) with Newton iterations per substep.
+
+    Adopted for the WING driver after the linearly-implicit two-stage scheme hit
+    its validity edge on this system: under continuous root excitation the
+    frozen-K damping operator mismatches the rotating membrane geometric
+    stiffness and pumps a dt-independent instability (measured: c_damp=2/4/8 all
+    diverge, only delayed). Beam/membrane elements, gates and the aero
+    production path are untouched.
+
+    Soft-latched branch weights are frozen at q_n for the whole substep
+    (variational within the step, smooth across steps). Prescribed DOFs carry
+    their exact (qb, dqb, ddqb) — inertial coupling rides M @ a naturally.
+    Returns (q1, dq1, a1).
+    """
+    from scipy.sparse import diags, identity as _eye
+    ndof = model.ndof
+    free = model.free
+    beta = 0.25 * (gamma + 0.5) ** 2
+    MemC = getattr(model, "MemC", None)
+    if MemC is not None:
+        model._latch_soft(q)
+    try:
+        M = model.M
+        if M_add is not None:
+            # added-mass operator: M_eff = M - dF_aero/da (the MATLAB Qf_p_mat
+            # treatment; mandatory here — membrane added-mass ratio ~5 makes the
+            # loose two-pass PC otherwise unstable, exactly as the research
+            # (决策点3) and the measured w~10 aero blow-up say).
+            M = M - M_add
+        q_pred = q + dt * dq + dt * dt * (0.5 - beta) * a
+        dq_pred = dq + dt * (1 - gamma) * a
+        q1 = q_pred.copy()
+        if presc is not None:
+            pd, qb, dqb, ddqb = presc
+            q1[pd] = qb
+        a1 = (q1 - q_pred) / (beta * dt * dt)
+        if presc is not None:
+            a1[pd] = ddqb
+        scale = max(1.0, float(np.linalg.norm(F_const)))
+        # beta_R: stiffness-proportional structural damping (membrane material
+        # loss + joints; zeta ~ 1% at 16 Hz). The undamped wing rings up to
+        # repeated deep-wrinkle excursions and eventually an unconvergeable
+        # substep. Rayleigh C = beta_R * K(q_n) FROZEN for the step (a C that
+        # tracks K(q1) makes Newton chase a moving residual — measured).
+        Cd = beta_R * model.K_csc(q, symmetrize=True, latch=False)
+        for it in range(max_newton):
+            v1 = dq_pred + gamma * dt * a1
+            r = F_const - model.Q_int(q1) - M @ a1 - Cd @ v1
+            rn = np.linalg.norm(r[free])
+            if not np.isfinite(rn):
+                rn = np.inf                                  # reject cleanly
+                break
+            if rn < newton_tol * scale:
+                break
+            K = model.K_csc(q1, symmetrize=True, latch=False)
+            S = (K + M / (beta * dt * dt)
+                 + (gamma / (beta * dt)) * Cd)[free][:, free].tocsc()
+            dsc = 1.0 / np.sqrt(np.maximum(S.diagonal(), 1e-300))
+            Dsc = diags(dsc)
+            try:
+                lu = splu((Dsc @ S @ Dsc).tocsc())
+                dq1 = dsc * lu.solve(dsc * r[free])
+            except RuntimeError:                             # singular from a bad state
+                rn = np.inf
+                break
+            q1[free] += dq1
+            a1 = (q1 - q_pred) / (beta * dt * dt)
+            if presc is not None:
+                a1[pd] = ddqb
+        converged = bool(np.isfinite(rn) and rn < 1e-4 * scale)
+        dq1_vec = dq_pred + gamma * dt * a1
+        if presc is not None:
+            q1[pd] = qb
+            dq1_vec[pd] = dqb
+    finally:
+        if MemC is not None:
+            MemC.unfreeze_branches()
+    return q1, dq1_vec, a1, converged
+
+
 class WingEntry:
     """StructuralEntry for the mixed wing: prescribed root flapping frame with
     smooth amplitude ramp (S4 cold start), host Newmark inner stepper."""
 
-    def __init__(self, model: WingModel, kin, ramp_T=0.0):
+    def __init__(self, model: WingModel, kin, ramp_T=0.0, load_ramp_T=0.0):
         self.m = model
         self.kin = kin
         self.ramp_T = float(ramp_T)
+        self.load_ramp_T = float(load_ramp_T)   # C1 aero-load ramp-in (cold start)
         nc = model.nc
         root_nodes = list(range(nc + 1))                    # j=0 row
         pd = []
@@ -562,6 +648,7 @@ class WingEntry:
         # from the raw uniform-N0 state — see WingModel.pre_equilibrate.
         self.q, self.preeq_info = model.pre_equilibrate()
         self.dq = np.zeros(model.ndof)
+        self.a = np.zeros(model.ndof)
         self.t = 0.0
         qb, dqb, _ = self._cb(0.0)
         self.q[self.pd] = qb; self.dq[self.pd] = dqb
@@ -597,22 +684,53 @@ class WingEntry:
 
     # protocol ---------------------------------------------------------------
     def snapshot(self):
-        return (self.t, self.q.copy(), self.dq.copy())
+        return (self.t, self.q.copy(), self.dq.copy(), self.a.copy())
 
     def restore(self, snap):
-        self.t, q, dq = snap
-        self.q = q.copy(); self.dq = dq.copy()
+        self.t, q, dq, a = snap
+        self.q = q.copy(); self.dq = dq.copy(); self.a = a.copy()
 
     def substep(self, t, dt, forces=None):
         f = np.zeros(self.m.ndof)
+        M_add = None
         if forces is not None:
             f9 = np.asarray(forces.f).reshape(-1, 9)        # provider 9-dof layout
             f[self.m.trans_map.ravel()] = f9[:, 0:3].ravel()
-        qb, dqb, ddqb = self._cb(t)
-        self.q, self.dq = host_newmark_step(self.m, self.q, self.dq, dt, f,
-                                            presc=(self.pd, qb, dqb, ddqb))
+            ramp = 1.0
+            if self.load_ramp_T > 0 and t < self.load_ramp_T:   # impulsive-start
+                ramp = 0.5 * (1 - np.cos(np.pi * t / self.load_ramp_T))  # absorber
+                f *= ramp
+            if getattr(forces, "madd", None) is not None:
+                from scipy.sparse import coo_matrix as _coo
+                nn = self.m.nn
+                zidx9 = 9 * np.arange(nn) + 2
+                Mzz = ramp * np.asarray(forces.madd)[np.ix_(zidx9, zidx9)]
+                zd = self.m.trans_map[:, 2]
+                rows = np.repeat(zd, nn); cols = np.tile(zd, nn)
+                M_add = _coo((Mzz.ravel(), (rows, cols)),
+                             shape=(self.m.ndof, self.m.ndof)).tocsc()
+        self._advance(t - dt, t, dt, f, M_add, depth=0)
         self.t = t
         return self
+
+    def _advance(self, t0, t1, dt, f, M_add, depth):
+        """Implicit substep with adaptive halving: an unconverged Newton substep
+        (acute wrinkle/sliver events at flapping speed) must never be accepted."""
+        qb, dqb, ddqb = self._cb(t1)
+        try:
+            q1, dq1, a1, ok = host_implicit_step(
+                self.m, self.q, self.dq, self.a, t1 - t0, f,
+                presc=(self.pd, qb, dqb, ddqb), M_add=M_add)
+        except RuntimeError:
+            ok, q1 = False, self.q                           # treat as unconverged
+        if ok and np.all(np.isfinite(q1)):
+            self.q, self.dq, self.a = q1, dq1, a1
+            return
+        if depth >= 4:
+            raise RuntimeError(f"substep failed to converge at t={t1:.4f} (depth {depth})")
+        tm_ = 0.5 * (t0 + t1)
+        self._advance(t0, tm_, dt, f, M_add, depth + 1)
+        self._advance(tm_, t1, dt, f, M_add, depth + 1)
 
     def state(self):
         nc, ns = self.m.nc, self.m.ns
