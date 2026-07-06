@@ -334,11 +334,15 @@ class Beam3DConstants:
             Lam[e] = _frame_from_axis(t) if Lam0 is None else np.asarray(Lam0)[e]
             s = sections[e]
             CF[e] = [s.EA, s.GAks, s.GAks]
-            CM[e] = [s.GJ, s.EI, s.EI]
+            EI2 = getattr(s, "EI2", None) or s.EI      # anisotropic sections (ribs)
+            EI3 = getattr(s, "EI3", None) or s.EI
+            rI2 = getattr(s, "rhoI2", None) or s.rhoI
+            rI3 = getattr(s, "rhoI3", None) or s.rhoI
+            CM[e] = [s.GJ, EI2, EI3]
             # constant consistent mass: linear interp (translation isotropic;
             # rotary inertia in the reference frame — documented approximation)
             mt = s.m_lin * L / 6.0
-            Ir = Lam[e] @ np.diag([s.rhoJ, s.rhoI, s.rhoI]) @ Lam[e].T * L / 6.0
+            Ir = Lam[e] @ np.diag([s.rhoJ, rI2, rI3]) @ Lam[e].T * L / 6.0
             for (a, b, w) in ((0, 0, 2.0), (0, 1, 1.0), (1, 0, 1.0), (1, 1, 2.0)):
                 Me[e, 6*a:6*a+3, 6*b:6*b+3] = w * mt * np.eye(3)
                 Me[e, 6*a+3:6*a+6, 6*b+3:6*b+6] = w * Ir
