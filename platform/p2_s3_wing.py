@@ -102,7 +102,7 @@ def gate_W3(d_star):
     assert 1.0 <= ratio <= 2.05, f"f1(4N0)/f1(N0) = {ratio:.3f} outside [1, 2]"
     # where does mode 1 live? (diagnostic print, no assert)
     nc, ns = m.nc, m.ns
-    z = np.abs(u[:, 2]).reshape(ns + 1, nc + 1)
+    z = np.abs(u[m.nid_grid.ravel(), 2]).reshape(ns + 1, nc + 1)
     region = ["LE-strip", "spar-bay", "TE-strip"][int(np.argmax(
         [z[:, :m.i_spar + 1].max(), z[:, m.i_spar:m.i_aux + 1].max(),
          z[:, m.i_aux:].max()]))]

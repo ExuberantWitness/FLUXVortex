@@ -45,6 +45,8 @@ from fluxvortex.warp_fsi import config as cfg                # noqa: E402
 from fluxvortex.warp_fsi import kernels_beam3d as kb         # noqa: E402
 from fluxvortex.warp_fsi import kernels_membrane as km       # noqa: E402
 import _v2_robogeom as rg                                    # noqa: E402
+import wing_mesh as wmesh                                    # noqa: E402
+import wing_mass as wmass                                    # noqa: E402
 
 # membrane skin (Mylar, research-anchored: docs/p2_s2_membrane_research.md)
 MEM_H, MEM_E, MEM_NU, MEM_RHO = 5e-5, 4e9, 0.3, 1390.0
@@ -54,6 +56,9 @@ E_PLY, RHO_PLY, G_PLY = 8e9, 700.0, 0.6e9
 RIB_WIDTH = 3e-3
 K_MEAS_11B = 166.9          # measured chordwise stiffness (N/m) at (y=588.6mm, TE)
 MEAS_Y, MEAS_X = 0.5886, 0.2735
+# LE rod: paper-recorded member ("8 mm carbon rod spar"); SOLID assumed (user
+# decision 2026-07-06; if the real one is a tube, supply the wall here)
+LE_SPAR = kb.TubeSection(D_out=8e-3, wall=4e-3, E=150e9, rho=1592.0, G=5e9)
 
 
 @dataclass(frozen=True)
@@ -100,31 +105,29 @@ class WingModel:
         self.nc, self.ns = nc, ns
         self.N0, self.rib_depth = float(N0), float(rib_depth)
         device = device or cfg.DEVICE
-        C0 = rg.robowing_real(nc, ns)                     # (nc+1, ns+1, 3)
-        nn = (nc + 1) * (ns + 1)
-        nodes = np.zeros((nn, 3))
-        for j in range(ns + 1):
-            for i in range(nc + 1):
-                nodes[j * (nc + 1) + i] = C0[i, j]
+        # flat structural mesh (assembly v3): z=0, three STRAIGHT rods each
+        # extended to the planform edge arc, tip pockets re-triangulated so the
+        # rod tails are membrane edges (all asserted inside flat_wing_mesh)
+        mesh = wmesh.flat_wing_mesh(nc, ns)
+        self.mesh = mesh
+        nodes, tris = mesh["nodes"], mesh["tris"]
+        nn = len(nodes)
         self.nodes = nodes; self.nn = nn
+        self.nid_grid = mesh["nid_grid"]                   # (ns+1, nc+1) grid ids
+        self.i_le, self.i_spar, self.i_aux = 0, 3, 5       # rod grid columns
+        self.rib_js = mesh["rib_js"]
 
-        xf = 0.5 * (1 - np.cos(np.linspace(0, np.pi, nc + 1)))
-        self.i_spar = int(np.argmin(np.abs(xf - 0.30)))
-        self.i_aux = int(np.argmin(np.abs(xf - 0.70)))
-        self.rib_js = sorted({int(round((k + 1) / 8 * ns)) for k in range(7)} - {0})
-
-        nid = lambda i, j: j * (nc + 1) + i
+        chains = mesh["chains"]
         beam_elems, sections = [], []
         rib_sec = RectSection(RIB_WIDTH, self.rib_depth, E_PLY, RHO_PLY, G_PLY)
-        for j in range(ns):                                # spanwise spars
-            beam_elems.append([nid(self.i_spar, j), nid(self.i_spar, j + 1)])
-            sections.append(kb.MAIN_SPAR)
-            beam_elems.append([nid(self.i_aux, j), nid(self.i_aux, j + 1)])
-            sections.append(kb.AUX_SPAR)
-        for j in self.rib_js:                              # chordwise ribs
-            for i in range(nc):
-                beam_elems.append([nid(i, j), nid(i + 1, j)])
-                sections.append(rib_sec)
+        for name, sec in (("le", LE_SPAR), ("main", kb.MAIN_SPAR),
+                          ("aux", kb.AUX_SPAR)):
+            ch = chains[name]
+            for a, b in zip(ch[:-1], ch[1:]):
+                beam_elems.append([a, b]); sections.append(sec)
+        for r in chains["ribs"]:                           # chordwise ribs
+            for a, b in zip(r[:-1], r[1:]):
+                beam_elems.append([a, b]); sections.append(rib_sec)
         beam_elems = np.array(beam_elems)
         self.beam_nodes = sorted(set(beam_elems.ravel().tolist()))
         rot_rank = {n: r for r, n in enumerate(self.beam_nodes)}
@@ -137,17 +140,17 @@ class WingModel:
             dof6[n, 3:] = 3 * nn + 3 * r + np.arange(3)
         self.trans_map, self.dof6 = trans_map, dof6
 
-        # assembly assertions (research §4)
-        for j in self.rib_js:                              # rib-spar crossings shared
-            assert nid(self.i_spar, j) in rot_rank and nid(self.i_aux, j) in rot_rank
-        tris = []
-        for j in range(ns):
-            for i in range(nc):
-                p = nid(i, j)
-                tris.append([p, p + 1, p + nc + 2])
-                tris.append([p, p + nc + 2, p + nc + 1])
-        tris = np.array(tris)
+        nid = lambda i, j: j * (nc + 1) + i
+        for j in self.rib_js:                              # rib-rod crossings shared
+            assert all(nid(i_, j) in rot_rank
+                       for i_ in (self.i_le, self.i_spar, self.i_aux))
         assert tris.max() < nn and beam_elems.max() < nn  # conforming: shared node ids
+
+        # aero camber surface offset (NACA2406 on the rest chord fraction):
+        # the STRUCTURE is flat; the aero lattice = structural grid + this
+        # offset along the deformed local normal (WingEntry.state).
+        cj = rg.chord_at(nodes[self.nid_grid.ravel(), 1]).reshape(ns + 1, nc + 1)
+        self.aero_off = rg.naca_camber(mesh["xf_grid"]) * cj   # (ns+1, nc+1), m
 
         self.BeamC = kb.Beam3DConstants(nodes, beam_elems, sections,
                                         dof_map=dof6, ndof=self.ndof, device=device)
@@ -179,11 +182,18 @@ class WingModel:
                 A_trib[nd_] += self.MemC.A0_np[e] / 3.0
         c_node = np.maximum(rg.chord_at(nodes[:, 1]), 1e-3)
         self.m_added_node = rho_air * np.pi * c_node ** 2 / 4.0 * (A_trib / c_node)
+        # mass budget via the parametric mass program (co-design channel)
+        members = {"le_spar": (chains["le"], LE_SPAR.m_lin),
+                   "main_spar": (chains["main"], kb.MAIN_SPAR.m_lin),
+                   "aux_spar": (chains["aux"], kb.AUX_SPAR.m_lin)}
+        for k_, r in enumerate(chains["ribs"]):
+            members[f"rib{k_}"] = (r, rib_sec.m_lin)
+        self.mass_detail = wmass.budget(nodes, tris, members, MEM_H, MEM_RHO)
+        tt = self.mass_detail["totals"]
         self.mass_report = dict(
-            membrane=MEM_RHO * MEM_H * self.MemC.A0_np.sum(),
-            spars=kb.MAIN_SPAR.m_lin * 0.8 + kb.AUX_SPAR.m_lin * 0.8,
-            ribs=sum(rib_sec.m_lin * np.linalg.norm(nodes[b] - nodes[a])
-                     for (a, b), s in zip(beam_elems, sections) if s is rib_sec))
+            membrane=tt["membrane"],
+            spars=tt["le_spar"] + tt["main_spar"] + tt["aux_spar"],
+            ribs=sum(v for n_, v in tt.items() if n_.startswith("rib")))
 
     # ── assembly helpers ─────────────────────────────────────────────────────
     def _scatter(self, blocks, edofs):
@@ -240,11 +250,11 @@ class WingModel:
         return self
 
     def clamp_root(self):
-        """Static clamp of the aluminum root rib: j=0 translations + spar-root psi."""
+        """Static clamp of the aluminum root rib: j=0 translations + rod-root psi."""
         dofs = []
         for n in range(self.nc + 1):                       # j=0 row: node id == i
             dofs += list(self.trans_map[n])
-        for n in (self.i_spar, self.i_aux):                # spar root psi
+        for n in (self.i_le, self.i_spar, self.i_aux):     # rod root psi (x3)
             dofs += list(self.dof6[n, 3:])
         return self.set_bc(dofs)
 
@@ -330,8 +340,6 @@ class WingModel:
             from scipy.sparse import identity as _eye
             for outer in range(max_outer):
                 n_outer = outer + 1
-                if rn < tol * r0 and outer > 1:
-                    break
                 self._latch_soft(q)
                 for it in range(15):                     # Newton on the smooth problem
                     r = -self.Q_int(q)
@@ -346,9 +354,18 @@ class WingModel:
                     dq[free] = splu(Kff).solve(r[free])
                     step = min(1.0, 5e-3 / max(np.abs(dq).max(), 1e-30))
                     q += (0.5 if outer == 0 and it == 0 else step) * dq
+                # fixed-point convergence must be judged with FRESH weights at
+                # the current q (the solved stale-weight residual is ~1e-7 by
+                # construction and says nothing about the latch fixed point —
+                # measured: breaking on it left a 0.21 N re-latch residual on
+                # the flat assembly while the true fixed point converges ~4x
+                # per outer to 1e-6 N).
+                self._latch_soft(q)
+                rn = np.linalg.norm(self.Q_int(q)[free])
                 if verbose:
-                    print(f"  pre-eq outer{outer}: |r|={rn:.3e} "
-                          f"branches taut/wr/sl = {(ids==0).sum()}/{(ids==1).sum()}/{(ids==2).sum()}")
+                    print(f"  pre-eq outer{outer}: fixed-point |r|={rn:.3e}")
+                if rn < tol * r0 and outer > 1:
+                    break
         finally:
             self.MemC.unfreeze_branches()
 
@@ -680,13 +697,13 @@ class WingEntry:
         pd = []
         for n in root_nodes:
             pd += list(model.trans_map[n])
-        for n in (model.i_spar, model.i_aux):               # spar roots carry psi
+        for n in (model.i_le, model.i_spar, model.i_aux):   # rod roots carry psi
             pd += list(model.dof6[n, 3:])
         self.pd = np.array(sorted(pd))
         model.set_bc(self.pd)                               # held by the solver mask
         self._X_root = model.nodes[root_nodes]              # (nc+1, 3)
         self._spar_psi_slots = [np.where(self.pd == model.dof6[n, 3])[0][0]
-                                for n in (model.i_spar, model.i_aux)]
+                                for n in (model.i_le, model.i_spar, model.i_aux)]
         # start from the pretension equilibrium (free-edge relaxation), never
         # from the raw uniform-N0 state — see WingModel.pre_equilibrate.
         self.q, self.preeq_info = model.pre_equilibrate()
@@ -816,9 +833,21 @@ class WingEntry:
         self._advance(tm_, t1, dt, f, M_add, C_add, depth + 1)
 
     def state(self):
-        nc, ns = self.m.nc, self.m.ns
-        u = self.q[self.m.trans_map.ravel()].reshape(-1, 3)
-        du = self.dq[self.m.trans_map.ravel()].reshape(-1, 3)
-        verts = (self.m.nodes + u).reshape(ns + 1, nc + 1, 3).transpose(1, 0, 2)
-        vels = du.reshape(ns + 1, nc + 1, 3).transpose(1, 0, 2)
-        return dict(verts=verts.copy(), vels=vels.copy())
+        """Aero interface state: the AERO surface = deformed structural grid +
+        NACA2406 camber offset along the local (deformed) normal. The structure
+        itself is flat (assembly v3); the offset keeps the UVLM geometry equal
+        to the rigid Fig17-19 baseline. Offset rotation-rate contribution to
+        vels is neglected (|off|<=5.7mm x thd<=14.5rad/s ~ 0.08 m/s << U)."""
+        m = self.m
+        u = self.q[m.trans_map.ravel()].reshape(-1, 3)
+        du = self.dq[m.trans_map.ravel()].reshape(-1, 3)
+        gid = m.nid_grid.ravel()
+        g = (m.nodes + u)[gid].reshape(m.ns + 1, m.nc + 1, 3)
+        vg = du[gid].reshape(m.ns + 1, m.nc + 1, 3)
+        ti = np.gradient(g, axis=1)                         # chordwise tangent
+        tj = np.gradient(g, axis=0)                         # spanwise tangent
+        nrm = np.cross(ti, tj)
+        nrm /= np.maximum(np.linalg.norm(nrm, axis=-1, keepdims=True), 1e-30)
+        verts = g + nrm * m.aero_off[..., None]
+        return dict(verts=verts.transpose(1, 0, 2).copy(),
+                    vels=vg.transpose(1, 0, 2).copy())

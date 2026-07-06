@@ -1,0 +1,391 @@
+<title>P2 翼装配图 — 梁+肋+膜复合结构</title>
+<style>
+:root{
+  --bg:#f7f6f2; --ink:#22271f; --muted:#6a7061; --line:#d8d6cc;
+  --carbon:#2b2f36; --carbon2:#5a626e; --ply:#b07a28; --mem:#3d7a6e; --memfill:#3d7a6e14;
+  --alu:#7d4a9c; --axis:#b3382e; --card:#ffffff; --code:#eeede6;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#14161a; --ink:#e6e4da; --muted:#9aa08e; --line:#33373d;
+  --carbon:#cfd6e0; --carbon2:#8b95a3; --ply:#d99a3d; --mem:#5fb3a1; --memfill:#5fb3a114;
+  --alu:#b07fd4; --axis:#e06055; --card:#1b1e24; --code:#23262c;
+}}
+:root[data-theme="dark"]{
+  --bg:#14161a; --ink:#e6e4da; --muted:#9aa08e; --line:#33373d;
+  --carbon:#cfd6e0; --carbon2:#8b95a3; --ply:#d99a3d; --mem:#5fb3a1; --memfill:#5fb3a114;
+  --alu:#b07fd4; --axis:#e06055; --card:#1b1e24; --code:#23262c;
+}
+:root[data-theme="light"]{
+  --bg:#f7f6f2; --ink:#22271f; --muted:#6a7061; --line:#d8d6cc;
+  --carbon:#2b2f36; --carbon2:#5a626e; --ply:#b07a28; --mem:#3d7a6e; --memfill:#3d7a6e14;
+  --alu:#7d4a9c; --axis:#b3382e; --card:#ffffff; --code:#eeede6;
+}
+body{background:var(--bg);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;
+  margin:0;padding:2.2rem 1.4rem 4rem;}
+main{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:1.6rem;}
+h1{font-size:1.45rem;line-height:1.3;margin:0;text-wrap:balance;}
+h2{font-size:1.02rem;margin:0 0 .6rem;letter-spacing:.02em;}
+.sub{color:var(--muted);margin:0;font-size:.92rem;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1.1rem 1.2rem;}
+.figwrap{overflow-x:auto;}
+svg{display:block;max-width:100%;height:auto;}
+.eyebrow{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 .3rem;}
+table{border-collapse:collapse;width:100%;font-size:.88rem;font-variant-numeric:tabular-nums;}
+th,td{text-align:left;padding:.34rem .6rem;border-bottom:1px solid var(--line);vertical-align:top;}
+th{font-weight:600;color:var(--muted);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;}
+td:first-child{white-space:nowrap;}
+code{background:var(--code);padding:.05rem .3rem;border-radius:3px;font-size:.85em;}
+ul{margin:.3rem 0 0;padding-left:1.2rem;}
+li{margin:.28rem 0;}
+.legend{display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;font-size:.82rem;color:var(--muted);margin-top:.5rem;}
+.legend span{display:inline-flex;align-items:center;gap:.4rem;}
+.sw{display:inline-block;width:22px;height:0;border-top-width:3px;border-top-style:solid;}
+.warn{border-left:3px solid var(--axis);padding-left:.9rem;}
+.tag{font-size:.72rem;border:1px solid var(--line);border-radius:99px;padding:.05rem .55rem;color:var(--muted);}
+</style>
+<main>
+<header>
+  <p class="eyebrow">FLUXV · P2 · 装配 v3(2026-07-06 二次拍板:三根笔直碳杆 + 结构平铺 + 载荷映射)</p>
+  <h1>RoboEagle 半翼装配图:LE 梁 + 主梁 + 辅梁 + 翼肋 + 张力膜</h1>
+  <p class="sub">真实 planform(论文实测 TE 点)。<b>结构参考面平铺(z=0)</b>,三根碳杆均为笔直直线;梁/肋 = S1 几何精确 <b>3D 梁单元</b>(拉伸/双向弯曲/扭转/剪切),蒙皮 = S2 张力场 CST 膜元,共享平动节点 conforming 装配。气动拱度面(NACA2406)独立建立,载荷经映射传递到结构网格。</p>
+</header>
+
+<section class="card">
+  <h2>图 A — 俯视平面图(planform,单位 mm)</h2>
+  <div class="figwrap"><svg id="plan" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <div class="legend">
+    <span><span class="sw" style="border-color:var(--carbon)"></span>LE 梁 碳杆 Ø8 实心(x=0 直线 → 翼尖 (0,800))</span>
+    <span><span class="sw" style="border-color:var(--carbon)"></span>主梁 碳管 Ø10×1(<b>直线</b> x=88.6mm → <b>TE 弧交点</b> y=792.0)</span>
+    <span><span class="sw" style="border-color:var(--carbon2);border-top-style:dashed"></span>辅梁 碳管 Ø6×1(<b>直线</b> x=198.4mm → <b>TE 弧交点</b> y=725.0)</span>
+    <span><span class="sw" style="border-color:var(--ply)"></span>翼肋 胶合板 3×d*(7 根 × 8 梁元,深度待重标定)</span>
+    <span><span class="sw" style="border-color:var(--alu)"></span>根肋 j=0:铝,prescribed 刚性扑动框</span>
+    <span><span class="sw" style="border-color:var(--axis);border-top-style:dashed"></span>扑动/扭转轴(实测:根 33.8%c → 尖 LE)</span>
+    <span><span class="sw" style="border-color:var(--mem);border-top-style:dotted"></span>膜自由边(TE / 翼尖;LE 改由碳杆支撑)</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>图 B — 弦向剖面 @ y=300mm(肋站位,c=287mm)</h2>
+  <div class="figwrap"><svg id="sect" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <p class="sub"><b>结构平铺</b>:膜/杆/肋全部位于 z=0 平面(实机膜为平绷,飞行中鼓包);上方虚线 = 独立的气动拱度面(NACA2406,z 放大 ×5),UVLM 在其上求解,<b>载荷经映射传递回结构网格</b>(节点一一对应)。管径/肋深按弦长真实比例;膜厚 0.05mm 画作线。</p>
+</section>
+
+<section class="card">
+  <h2>图 C — 节点自由度与耦合方式(conforming 共享节点)</h2>
+  <div class="figwrap"><svg id="dof" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <p class="sub">膜元只用平动 u(3);梁线上的节点追加转动 ψ(3)。肋-梁交点(7×2=14 个)自动共享同一节点 id —— 装配断言 ×2 保证(膜边缘节点 ⊆ 梁节点集;带 ψ 节点 ≥2 共线杆元)。</p>
+</section>
+
+<section class="card">
+  <h2>图 D — 三维几何(轴测;结构平铺 z=0)</h2>
+  <div class="figwrap"><svg id="iso" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <p class="sub">结构参考面为平面(153 节点全在 z=0);三根碳杆笔直,主/辅梁在锥度区越出翼面前终止。TE 为实测锥度线。根排(紫)prescribed ±45°@2.3Hz 扑动(启动带 T/2 C¹ 包络)。气动拱度面独立(图 B 虚线),不在此图。</p>
+</section>
+
+<section class="card">
+  <h2>图 E — 单元形式与边界条件</h2>
+  <div class="figwrap"><svg id="elem" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <ul style="font-size:.88rem">
+    <li><b>3D 梁元(S1)</b>:Simo/Crisfield 几何精确梁(非轴力杆!),2 节点 × [u(3), ψ(3)] = 12 DOF/元,含<b>拉伸 EA、双向弯曲 EI₂/EI₃、扭转 GJ、横向剪切</b>与全几何刚度;单高斯点,Crisfield-Jelenić 相对转动插值;闭式内力(解析变分)+ 中心差分一致切线(含载荷刚度);|ψ|&lt;0.9π 图卡;截面 = Ø8 实心 / Ø10×1 / Ø6×1 碳 + 3×d* 胶合板矩形。</li>
+    <li><b>膜元(S2)</b>:CST 常应变三角形,仅 u(3);Pipkin 松弛应变能 3 分支(张紧/褶皱/松弛),η=1e-4 混合保 LU 非奇异;各向同性预张力 N₀=30 N/m;褶皱开关用连续闩锁(sigmoid 权重 k=25,步内冻结)。</li>
+    <li><b>边界(wing_system.py:242/679)</b>:j=0 整排 9 节点平动 prescribed:u=(R(θ)−I)X;梁根 ψ=(θ,0,0)(现主/辅两根,T0 三梁后含 LE);其余全自由。θ(t)=45°·sin(2π·2.3t),前 T/2 C¹ 余弦包络;起始态 = 预张力自平衡(pre_equilibrate,自由边松弛),气动载荷另有 C¹ ramp-in。</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>图 F — 翼面量分布(按节点分摊)</h2>
+  <div class="figwrap"><svg id="dist" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <p class="sub">按<b>专用质量程序</b>(wing_mass.py,T0 交付)计算:密度(碳 1592 / 航空层板 700 / Mylar 1390 kg/m³)× 真实截面 × 直线走向,逐节点集中分摊 —— 同一程序即 co-design 的质量/惯性通道。膜面密度均匀 69.5 g/m²,结构质量集中在梁/肋线;条带附加质量 m_a=ρ_air·πc²/4·A_trib/c ∝ 弦长,总 55.5 g ≈ 结构的 38%(μ≈5 病灶,S5 隐式化上 LHS)。N₀ 均匀 30 N/m。</p>
+</section>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.6rem;">
+<section class="card">
+  <h2>构件清单(半翼)</h2>
+  <table>
+    <tr><th>构件</th><th>位置 / 数量</th><th>截面·材料(ρ:碳 1592 / 层板 700 / Mylar 1390)</th><th>质量</th></tr>
+    <tr><td>LE 梁</td><td>直线 x=0 → 翼尖 (0,800),0.800m</td><td>碳杆 Ø8 实心(论文「碳杆 8mm 翼梁」;若实机为管请给壁厚)</td><td>64.0 g</td></tr>
+    <tr><td>主梁</td><td><b>直线</b> x=88.6mm → <b>TE 弧交点</b> y=792.0,0.792m</td><td>碳管 Ø10×1,E=150GPa,G=5GPa</td><td>35.7 g</td></tr>
+    <tr><td>辅梁</td><td><b>直线</b> x=198.4mm → <b>TE 弧交点</b> y=725.0,0.725m</td><td>碳管 Ø6×1</td><td>18.1 g</td></tr>
+    <tr><td>翼肋 ×7</td><td>y=100…700mm(每 100mm)</td><td>航空层板 3mm 宽 × 深 d*(重标定到 K_MEAS=166.9N/m;现值 4.43mm)</td><td>17.9 g</td></tr>
+    <tr><td>根肋</td><td>y=0,i=0…8 整排</td><td>铝(不建模,prescribed)</td><td>—</td></tr>
+    <tr><td>蒙皮</td><td>整个 planform,0.211 m²(平铺)</td><td>Mylar 0.05mm,E=4GPa,N₀=30N/m</td><td>14.7 g</td></tr>
+    <tr><td colspan="3">结构合计(不含根肋;由质量程序 wing_mass.py 按密度×截面×走向计算)</td><td><b>150.4 g</b></td></tr>
+  </table>
+</section>
+<section class="card">
+  <h2>离散化 / 自由度</h2>
+  <table>
+    <tr><th>项</th><th>值</th></tr>
+    <tr><td>网格</td><td>弦向 nc=8 × 展向 ns=16;<b>i=3/i=5 节点线钉在直梁上</b>(常数 x);<b>梁端 = 边界弧上的新节点</b>,尖部口袋区扇形三角闭合(T0 网格生成器定稿)</td></tr>
+    <tr><td>节点</td><td>≈155 = 9×17 + 2 个梁端弧点(全部 z=0 平铺)</td></tr>
+    <tr><td>膜元</td><td>≈258 CST 三角形(含尖部扇形闭合;张力场松弛能 3 分支)</td></tr>
+    <tr><td>梁元</td><td>≈103 = LE 16 + 主 16 + 辅 15 + 肋 7×8(几何精确 3D 梁)</td></tr>
+    <tr><td>DOF</td><td>≈741 = 平动 3×155 + 转动 3×92(T0 定稿后为准)</td></tr>
+    <tr><td>纯膜节点</td><td>≈63(只有 u,无 ψ)</td></tr>
+    <tr><td>边界</td><td>j=0 整排 u 及梁根 ψ prescribed(±45°@2.3Hz 绕斜掠轴)</td></tr>
+  </table>
+</section>
+</div>
+
+<section class="card warn">
+  <h2>拍板记录与遗留假设(2026-07-06,两轮)</h2>
+  <ul>
+    <li><b>三梁定案</b>(第一轮):LE 加 Ø8 碳杆(论文记录「碳杆 8mm 翼梁」);肋布置 7 根等距保持;肋深 d* <b>重标定</b>到实测 K_MEAS=166.9 N/m,S3 门禁 W1–W5 全部重跑。</li>
+    <li><b>碳杆笔直 + 全部到边</b>(第二/三轮纠错):主梁 = 直线 x=88.6mm 延伸至 <b>TE 弧交点 (88.6, 792.0)</b>,辅梁 = 直线 x=198.4mm 至 <b>(198.4, 725.0)</b>,LE 杆至翼尖 (0,800)—— 所有梁端节点落在翼面边缘弧上;废除旧"弦向分数曲线"走向;尖部口袋区网格扇形闭合。</li>
+    <li><b>结构平铺</b>(第二轮纠错):全部构件与膜位于 z=0 平面(实机膜平绷);<b>气动拱度面独立</b>(NACA2406,保 Fig17-19 刚性基线一致),UVLM 在气动面求解,<b>载荷经映射传回结构网格</b>(同网格指标一一对应,含到翼肋/LE 梁的传递)。</li>
+    <li><b>单元 = 几何精确 3D 梁</b>(澄清):[u(3),ψ(3)]×2,EA/EI₂/EI₃/GJ/剪切全在,非轴力杆 —— 无需更换单元。</li>
+    <li><b>质量程序</b>(第二轮新增):`platform/wing_mass.py` 参数化质量模型(设计变量 → 逐构件/逐节点质量+惯性),co-design 复用。</li>
+    <li><b>遗留假设 ①</b>:LE 碳杆按<b>实心 Ø8</b>(论文措辞「杆」);若为管请给壁厚(64g vs ~28g)。</li>
+    <li><b>遗留假设 ②</b>:主/辅梁 Ø10×1/Ø6×1 截面与根部弦向位置为建模选择(论文未记录);线刚度由 d* 重标定兜底。</li>
+    <li>膜连续覆盖整个 planform(共节点),TE/翼尖自由边;管偏心/包覆/胶层未建模;扑动+扭转 prescribed 于根排。</li>
+  </ul>
+</section>
+</main>
+<script>
+const YT=[0,13.35,119.05,193.6,240.33,305.98,356.05,408.34,435.05,499.58,526.29,565.23,613.07,634.21,668.71,688.73,716.55,741.03,757.72,765.51,778.86,789.99,794.44,797.77,800];
+const CT=[287,288.23,285.77,285.77,287,287,287,287,287,288.23,285.77,279.64,267.38,257.56,241.62,228.13,207.28,181.52,159.44,148.41,122.65,98.12,77.27,58.87,28];
+function chord(y){ if(y<=YT[0])return CT[0]; if(y>=YT[24])return CT[24];
+  let k=1; while(YT[k]<y)k++; const t=(y-YT[k-1])/(YT[k]-YT[k-1]); return CT[k-1]+t*(CT[k]-CT[k-1]); }
+const XF=[0,0.0381,0.1464,0.3087,0.5,0.6913,0.8536,0.9619,1];
+const DATA={"nodes": [[0.0, 0.0, 0.0], [10.92, 0.0, 0.0], [42.03, 0.0, 0.0], [88.58, 0.0, 0.0], [143.5, 0.0, 0.0], [198.42, 0.0, 0.0], [244.97, 0.0, 0.0], [276.08, 0.0, 0.0], [287.0, 0.0, 0.0], [0.0, 50.0, 0.0], [10.92, 50.0, 0.0], [42.03, 50.0, 0.0], [88.58, 50.0, 0.0], [143.5, 50.0, 0.0], [198.42, 50.0, 0.0], [245.17, 50.0, 0.0], [276.41, 50.0, 0.0], [287.38, 50.0, 0.0], [0.0, 100.0, 0.0], [10.92, 100.0, 0.0], [42.03, 100.0, 0.0], [88.58, 100.0, 0.0], [143.5, 100.0, 0.0], [198.42, 100.0, 0.0], [244.56, 100.0, 0.0], [275.39, 100.0, 0.0], [286.21, 100.0, 0.0], [0.0, 150.0, 0.0], [10.92, 150.0, 0.0], [42.03, 150.0, 0.0], [88.58, 150.0, 0.0], [143.5, 150.0, 0.0], [198.42, 150.0, 0.0], [244.33, 150.0, 0.0], [275.0, 150.0, 0.0], [285.77, 150.0, 0.0], [0.0, 200.0, 0.0], [10.92, 200.0, 0.0], [42.03, 200.0, 0.0], [88.58, 200.0, 0.0], [143.5, 200.0, 0.0], [198.42, 200.0, 0.0], [244.41, 200.0, 0.0], [275.15, 200.0, 0.0], [285.94, 200.0, 0.0], [0.0, 250.0, 0.0], [10.92, 250.0, 0.0], [42.03, 250.0, 0.0], [88.58, 250.0, 0.0], [143.5, 250.0, 0.0], [198.42, 250.0, 0.0], [244.97, 250.0, 0.0], [276.08, 250.0, 0.0], [287.0, 250.0, 0.0], [0.0, 300.0, 0.0], [10.92, 300.0, 0.0], [42.03, 300.0, 0.0], [88.58, 300.0, 0.0], [143.5, 300.0, 0.0], [198.42, 300.0, 0.0], [244.97, 300.0, 0.0], [276.08, 300.0, 0.0], [287.0, 300.0, 0.0], [0.0, 350.0, 0.0], [10.92, 350.0, 0.0], [42.03, 350.0, 0.0], [88.58, 350.0, 0.0], [143.5, 350.0, 0.0], [198.42, 350.0, 0.0], [244.97, 350.0, 0.0], [276.08, 350.0, 0.0], [287.0, 350.0, 0.0], [0.0, 400.0, 0.0], [10.92, 400.0, 0.0], [42.03, 400.0, 0.0], [88.58, 400.0, 0.0], [143.5, 400.0, 0.0], [198.42, 400.0, 0.0], [244.97, 400.0, 0.0], [276.08, 400.0, 0.0], [287.0, 400.0, 0.0], [0.0, 450.0, 0.0], [10.92, 450.0, 0.0], [42.03, 450.0, 0.0], [88.58, 450.0, 0.0], [143.5, 450.0, 0.0], [198.42, 450.0, 0.0], [245.12, 450.0, 0.0], [276.33, 450.0, 0.0], [287.28, 450.0, 0.0], [0.0, 500.0, 0.0], [10.92, 500.0, 0.0], [42.03, 500.0, 0.0], [88.58, 500.0, 0.0], [143.5, 500.0, 0.0], [198.42, 500.0, 0.0], [245.6, 500.0, 0.0], [277.12, 500.0, 0.0], [288.19, 500.0, 0.0], [0.0, 550.0, 0.0], [10.92, 550.0, 0.0], [42.03, 550.0, 0.0], [88.58, 550.0, 0.0], [143.5, 550.0, 0.0], [198.42, 550.0, 0.0], [242.36, 550.0, 0.0], [271.73, 550.0, 0.0], [282.04, 550.0, 0.0], [0.0, 600.0, 0.0], [10.92, 600.0, 0.0], [42.03, 600.0, 0.0], [88.58, 600.0, 0.0], [143.5, 600.0, 0.0], [198.42, 600.0, 0.0], [236.42, 600.0, 0.0], [261.81, 600.0, 0.0], [270.73, 600.0, 0.0], [0.0, 650.0, 0.0], [10.92, 650.0, 0.0], [42.03, 650.0, 0.0], [88.58, 650.0, 0.0], [143.5, 650.0, 0.0], [198.42, 650.0, 0.0], [225.67, 650.0, 0.0], [243.87, 650.0, 0.0], [250.26, 650.0, 0.0], [0.0, 700.0, 0.0], [10.92, 700.0, 0.0], [42.03, 700.0, 0.0], [88.58, 700.0, 0.0], [143.5, 700.0, 0.0], [198.42, 700.0, 0.0], [209.59, 700.0, 0.0], [217.06, 700.0, 0.0], [219.68, 700.0, 0.0], [0.0, 750.0, 0.0], [10.92, 750.0, 0.0], [42.03, 750.0, 0.0], [88.58, 750.0, 0.0], [102.93, 750.0, 0.0], [117.29, 750.0, 0.0], [144.81, 750.0, 0.0], [163.2, 750.0, 0.0], [169.65, 750.0, 0.0], [0.0, 800.0, 0.0], [1.07, 800.0, 0.0], [4.1, 800.0, 0.0], [8.64, 800.0, 0.0], [14.0, 800.0, 0.0], [19.36, 800.0, 0.0], [23.9, 800.0, 0.0], [26.93, 800.0, 0.0], [28.0, 800.0, 0.0]], "m_str": [2.0132, 0.0424, 0.0719, 1.2159, 0.0954, 0.711, 0.0631, 0.0307, 0.0063, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.4267, 0.1352, 0.0732, 0.019, 4.0709, 0.2685, 0.4962, 2.8989, 0.7018, 1.8959, 0.492, 0.2663, 0.0692, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.4256, 0.1332, 0.0721, 0.0187, 4.0709, 0.2685, 0.4962, 2.8989, 0.7018, 1.8954, 0.4904, 0.2653, 0.0689, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.4267, 0.1346, 0.0728, 0.0189, 4.0709, 0.2685, 0.4962, 2.8989, 0.7018, 1.8987, 0.4962, 0.2685, 0.0698, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.4267, 0.1349, 0.073, 0.019, 4.0709, 0.2685, 0.4962, 2.8989, 0.7018, 1.8987, 0.4962, 0.2685, 0.0698, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.4272, 0.1355, 0.0733, 0.019, 4.0709, 0.2685, 0.4962, 2.8989, 0.7018, 1.9008, 0.5013, 0.2715, 0.0707, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.4187, 0.1269, 0.0694, 0.0184, 4.0709, 0.2685, 0.4962, 2.8989, 0.7018, 1.8378, 0.4043, 0.22, 0.0578, 4.0201, 0.073, 0.1349, 2.4269, 0.1908, 1.3838, 0.079, 0.0447, 0.0126, 4.0709, 0.2685, 0.4962, 2.8754, 0.6783, 1.0569, 0.1347, 0.0729, 0.0189, 4.0144, 0.0568, 0.1106, 1.2259, 0.0682, 0.0829, 0.0614, 0.0337, 0.009, 2.0012, 0.0087, 0.0224, 0.0327, 0.0145, 0.014, 0.0203, 0.013, 0.0044], "m_add": [0.0503, 0.1683, 0.2858, 0.3599, 0.3791, 0.3411, 0.2506, 0.1219, 0.0251, 0.0755, 0.2905, 0.5368, 0.7014, 0.7592, 0.7014, 0.5377, 0.2911, 0.0757, 0.0752, 0.2893, 0.5346, 0.6986, 0.7562, 0.6952, 0.5309, 0.2876, 0.0749, 0.0751, 0.2889, 0.5338, 0.6975, 0.755, 0.6932, 0.527, 0.2853, 0.0742, 0.0751, 0.2891, 0.5341, 0.6979, 0.7554, 0.6953, 0.5283, 0.2858, 0.0742, 0.0754, 0.2901, 0.5361, 0.7005, 0.7582, 0.7005, 0.5348, 0.2893, 0.0751, 0.0754, 0.2901, 0.5361, 0.7005, 0.7582, 0.7005, 0.5361, 0.2901, 0.0754, 0.0754, 0.2901, 0.5361, 0.7005, 0.7582, 0.7005, 0.5361, 0.2901, 0.0754, 0.0754, 0.2901, 0.5361, 0.7005, 0.7582, 0.7008, 0.5363, 0.2902, 0.0754, 0.0755, 0.2904, 0.5366, 0.7012, 0.759, 0.7033, 0.5387, 0.2914, 0.0756, 0.0757, 0.2913, 0.5383, 0.7034, 0.7614, 0.7003, 0.5395, 0.2928, 0.0765, 0.0741, 0.2851, 0.5268, 0.6884, 0.7451, 0.6572, 0.4956, 0.2709, 0.0717, 0.0711, 0.2737, 0.5057, 0.6608, 0.7153, 0.5817, 0.4101, 0.2265, 0.0611, 0.0657, 0.253, 0.4675, 0.6108, 0.6612, 0.4624, 0.2736, 0.1549, 0.0435, 0.0577, 0.2221, 0.4103, 0.4647, 0.5089, 0.378, 0.146, 0.079, 0.0205, 0.0312, 0.1333, 0.2597, 0.2363, 0.1601, 0.1948, 0.1442, 0.0792, 0.0211, 0.0002, 0.0034, 0.0087, 0.0127, 0.0056, 0.0054, 0.0079, 0.005, 0.0017], "ys": [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800], "row_str": [4.25, 8.5, 11.16, 8.496, 11.156, 8.499, 11.169, 8.499, 11.17, 8.501, 11.181, 8.479, 10.956, 8.366, 9.673, 5.663, 2.131], "row_add": [1.982, 3.969, 3.942, 3.93, 3.935, 3.96, 3.962, 3.962, 3.963, 3.972, 3.979, 3.815, 3.506, 2.993, 2.287, 1.26, 0.051], "chord": [287.0, 287.4, 286.2, 285.8, 285.9, 287.0, 287.0, 287.0, 287.0, 287.3, 288.2, 282.0, 270.7, 250.3, 219.7, 169.7, 28.0], "jm": 15, "ja": 14};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function draw(){
+  // ---- FIG A planform ----
+  const S=0.92, mL=64, mT=46, mB=64, mR=30;
+  const W=mL+800*S+mR, H=mT+290*S+mB;
+  const X=y=>mL+y*S, Y=x=>mT+x*S;
+  let s='';
+  const P=(pts)=>pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+  const ys=[]; for(let y=0;y<=800;y+=5)ys.push(y);
+  // membrane fill
+  let outline=ys.map(y=>[y,0]).concat(ys.slice().reverse().map(y=>[y,chord(y)]));
+  s+=`<path d="${P(outline)} Z" fill="${css('--memfill')}" stroke="none"/>`;
+  // mesh: spanwise stations (vertical)
+  for(let j=0;j<=16;j++){const y=j*50,c=chord(y);
+    s+=`<line x1="${X(y)}" y1="${Y(0)}" x2="${X(y)}" y2="${Y(c)}" stroke="${css('--line')}" stroke-width="1"/>`;}
+  // mesh: chordwise node lines (pinned to straight rods where valid, DATA mesh)
+  for(let i=1;i<8;i++){
+    const pts=Array.from({length:17},(_,j)=>{const n=DATA.nodes[j*9+i];return [n[1],n[0]];});
+    s+=`<path d="${P(pts)}" fill="none" stroke="${css('--line')}" stroke-width="1"/>`;}
+  // free edges TE/tip (LE now carries the Ø8 rod)
+  s+=`<path d="${P(ys.map(y=>[y,chord(y)]))}" fill="none" stroke="${css('--mem')}" stroke-width="2.2" stroke-dasharray="2 5" stroke-linecap="round"/>`;
+  s+=`<line x1="${X(800)}" y1="${Y(0)}" x2="${X(800)}" y2="${Y(28)}" stroke="${css('--mem')}" stroke-width="2.2" stroke-dasharray="2 5"/>`;
+  // LE spar (new, user decision 2026-07-06)
+  s+=`<path d="${P(ys.map(y=>[y,0]))}" fill="none" stroke="${css('--carbon')}" stroke-width="4.4"/>`;
+  // ribs
+  for(let j=2;j<=14;j+=2){const y=j*50,c=chord(y);
+    s+=`<line x1="${X(y)}" y1="${Y(0)}" x2="${X(y)}" y2="${Y(c)}" stroke="${css('--ply')}" stroke-width="4" stroke-linecap="round"/>`;}
+  // root rib (aluminum, prescribed)
+  s+=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(0)}" y2="${Y(287)}" stroke="${css('--alu')}" stroke-width="6" stroke-linecap="round"/>`;
+  // spars: STRAIGHT rods, extended TO the TE arc (edge nodes on boundary)
+  s+=`<line x1="${X(0)}" y1="${Y(198.42)}" x2="${X(725)}" y2="${Y(198.42)}" stroke="${css('--carbon2')}" stroke-width="3.5" stroke-dasharray="9 4"/>`;
+  s+=`<circle cx="${X(725)}" cy="${Y(198.42)}" r="4.5" fill="${css('--carbon2')}" stroke="${css('--bg')}" stroke-width="1.5"/>`;
+  s+=`<line x1="${X(0)}" y1="${Y(88.58)}" x2="${X(792)}" y2="${Y(88.58)}" stroke="${css('--carbon')}" stroke-width="5"/>`;
+  s+=`<circle cx="${X(792)}" cy="${Y(88.58)}" r="4.5" fill="${css('--carbon')}" stroke="${css('--bg')}" stroke-width="1.5"/>`;
+  s+=`<circle cx="${X(800)}" cy="${Y(0)}" r="4.5" fill="${css('--carbon')}" stroke="${css('--bg')}" stroke-width="1.5"/>`;
+  // flap/twist axis
+  s+=`<line x1="${X(0)}" y1="${Y(96.89)}" x2="${X(800)}" y2="${Y(0)}" stroke="${css('--axis')}" stroke-width="1.6" stroke-dasharray="8 5"/>`;
+  // shared nodes at rib-spar crossings (straight-rod x)
+  for(let j=2;j<=14;j+=2){const y=j*50;
+    for(const xr of [88.58,198.42]) s+=`<circle cx="${X(y)}" cy="${Y(xr)}" r="3.4" fill="${css('--bg')}" stroke="${css('--ink')}" stroke-width="1.4"/>`;}
+  // dimensions
+  const dim=(x1,y1,x2,y2,txt,dx,dy)=>{
+    s+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${css('--muted')}" stroke-width="1"/>`;
+    s+=`<text x="${(x1+x2)/2+dx}" y="${(y1+y2)/2+dy}" fill="${css('--muted')}" font-size="12" text-anchor="middle">${txt}</text>`;};
+  dim(X(0),H-26,X(800),H-26,'半展 800(节距 50)',0,-6);
+  dim(W-16,Y(0),W-16,Y(287),'',0,0);
+  s+=`<text x="${W-16}" y="${Y(150)}" fill="${css('--muted')}" font-size="12" text-anchor="middle" transform="rotate(90 ${W-16} ${Y(150)})">根弦 287</text>`;
+  const lbl=(x,y,t,anch,col)=>s+=`<text x="${x}" y="${y}" fill="${col||css('--ink')}" font-size="12.5" text-anchor="${anch||'start'}">${t}</text>`;
+  lbl(X(340),Y(88.58)-10,'主梁 Ø10 直线 x=88.6mm → TE 弧交点 (792.0)');
+  lbl(X(280),Y(198.42)+18,'辅梁 Ø6 直线 x=198.4mm → TE 弧交点 (725.0)',null,css('--carbon2'));
+  lbl(X(100)+8,Y(276),'肋 ×7(3×4.43 胶合板)',null,css('--ply'));
+  lbl(X(0)+9,Y(287)+15,'根肋(铝)= prescribed 扑动框',null,css('--alu'));
+  lbl(X(430),Y(50)-14,'扑动/扭转轴(斜掠:33.8%c→LE)',null,css('--axis'));
+  lbl(X(560),Y(-2)-8,'LE 梁 Ø8 碳杆(新增,论文记录)');
+  lbl(X(120),Y(-2)-8,'来流 U=8m/s →',null,css('--muted'));
+  document.getElementById('plan').setAttribute('viewBox',`0 0 ${W} ${H}`);
+  document.getElementById('plan').innerHTML=s;
+
+  // ---- FIG B section: FLAT structure + separate aero camber surface ----
+  const c2=287, s2=2.6, zx=5, oX=46, oY=128, W2=oX+c2*s2+140, H2=200;
+  const camb=x=>{const p=.4,m=.02,xc=x/c2; return c2*(xc<p? m/(p*p)*(2*p*xc-xc*xc) : m/((1-p)*(1-p))*((1-2*p)+2*p*xc-xc*xc));};
+  const SX=x=>oX+x*s2, SZ=z=>oY-z*zx*s2;
+  let t='';
+  // aero camber surface (dashed) + load-transfer arrows down to structure
+  let d2='M'; for(let x=0;x<=c2;x+=2){d2+=(x?' L':'')+SX(x).toFixed(1)+' '+SZ(camb(x)).toFixed(1);}
+  t+=`<path d="${d2}" fill="none" stroke="${css('--axis')}" stroke-width="1.8" stroke-dasharray="7 4"/>`;
+  for(const xm of [50,115,180,245]) t+=`<line x1="${SX(xm)}" y1="${SZ(camb(xm))+6}" x2="${SX(xm)}" y2="${SZ(0)-8}" stroke="${css('--axis')}" stroke-width="1.1" marker-end="url(#ahB)"/>`;
+  // FLAT structural membrane plane
+  t+=`<line x1="${SX(0)}" y1="${SZ(0)}" x2="${SX(c2)}" y2="${SZ(0)}" stroke="${css('--mem')}" stroke-width="2.6"/>`;
+  // rib strip flat (3 x d*, depth true scale)
+  const rd=4.43*s2;
+  t+=`<rect x="${SX(0)}" y="${SZ(0)-rd/2}" width="${c2*s2}" height="${rd}" fill="${css('--ply')}" fill-opacity="0.45" stroke="${css('--ply')}" stroke-width="1"/>`;
+  // rods on the flat plane (true diameters)
+  const sp=(xm,D,col,solid)=>{t+=`<circle cx="${SX(xm)}" cy="${SZ(0)}" r="${D/2*s2}" fill="${solid?col:css('--card')}" fill-opacity="${solid?0.55:1}" stroke="${col}" stroke-width="3"/>`;};
+  sp(0,8,css('--carbon'),true); sp(88.58,10,css('--carbon'),false); sp(198.42,6,css('--carbon2'),false);
+  const lb2=(x,y,txt,col,anch)=>t+=`<text x="${x}" y="${y}" fill="${col||css('--ink')}" font-size="12.5" text-anchor="${anch||'start'}">${txt}</text>`;
+  lb2(SX(0)+12,SZ(0)-5*s2-10,'LE 梁 Ø8(实心)',css('--carbon'));
+  lb2(SX(88.58),SZ(0)-5*s2-10,'主梁 Ø10 @88.6mm',css('--carbon'),'middle');
+  lb2(SX(198.42),SZ(0)-3*s2-12,'辅梁 Ø6 @198.4mm',css('--carbon2'),'middle');
+  lb2(SX(150),SZ(0)+26,'肋 3×d* + 膜 0.05mm(共面平铺,z=0)',css('--ply'),'middle');
+  lb2(SX(115)+8,SZ(camb(115))-10,'气动拱度面 NACA2406(z×5)· 载荷映射 ↓',css('--axis'));
+  lb2(SX(0)-4,SZ(0)+6,'LE',null,'end');
+  lb2(SX(c2)+6,SZ(0)+6,'TE');
+  t+=`<line x1="${SX(0)}" y1="${H2-14}" x2="${SX(c2)}" y2="${H2-14}" stroke="${css('--muted')}" stroke-width="1"/>`;
+  t+=`<text x="${SX(c2/2)}" y="${H2-20}" fill="${css('--muted')}" font-size="12" text-anchor="middle">c = 287 mm</text>`;
+  t=`<defs><marker id="ahB" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="${css('--axis')}"/></marker></defs>`+t;
+  document.getElementById('sect').setAttribute('viewBox',`0 0 ${W2} ${H2}`);
+  document.getElementById('sect').innerHTML=t;
+
+  // ---- FIG C dof schematic ----
+  let u=''; const W3=880,H3=210;
+  const tri=(x,y,r,fill)=>`<path d="M${x} ${y-r} L${x+r*0.87} ${y+r*0.5} L${x-r*0.87} ${y+r*0.5} Z" fill="${fill}" stroke="${css('--mem')}" stroke-width="1.3"/>`;
+  const node=(x,y,ring)=>`<circle cx="${x}" cy="${y}" r="5" fill="${css('--bg')}" stroke="${css('--ink')}" stroke-width="1.6"/>`+(ring?`<circle cx="${x}" cy="${y}" r="9.5" fill="none" stroke="${css('--axis')}" stroke-width="1.2" stroke-dasharray="2.5 2.5"/>`:'');
+  // panel 1: pure membrane node
+  u+=tri(90,90,42,css('--memfill'))+tri(150,110,42,css('--memfill'))+node(120,100,false);
+  u+=`<text x="120" y="170" font-size="12.5" fill="${css('--ink')}" text-anchor="middle">纯膜节点 ×63</text>`;
+  u+=`<text x="120" y="188" font-size="12" fill="${css('--muted')}" text-anchor="middle">u(3):仅平动</text>`;
+  // panel 2: beam-membrane shared
+  u+=tri(360,86,42,css('--memfill'))+tri(420,112,42,css('--memfill'));
+  u+=`<line x1="310" y1="100" x2="470" y2="100" stroke="${css('--carbon')}" stroke-width="5"/>`;
+  u+=node(390,100,true);
+  u+=`<text x="390" y="170" font-size="12.5" fill="${css('--ink')}" text-anchor="middle">梁线共享节点 ×90</text>`;
+  u+=`<text x="390" y="188" font-size="12" fill="${css('--muted')}" text-anchor="middle">u(3)+ψ(3):膜给 u,梁给 u+ψ</text>`;
+  // panel 3: rib-spar crossing
+  u+=`<line x1="590" y1="100" x2="750" y2="100" stroke="${css('--carbon')}" stroke-width="5"/>`;
+  u+=`<line x1="670" y1="34" x2="670" y2="166" stroke="${css('--ply')}" stroke-width="4"/>`;
+  u+=node(670,100,true);
+  u+=`<text x="670" y="186" font-size="12.5" fill="${css('--ink')}" text-anchor="middle">肋-梁交点 ×14:同一节点 id(共 u+ψ)</text>`;
+  document.getElementById('dof').setAttribute('viewBox',`0 0 ${W3} ${H3}`);
+  document.getElementById('dof').innerHTML=u;
+
+  // ---- FIG D 3D axonometric ----
+  const N=DATA.nodes, ZX=6;
+  const pr=(n)=>{const [x,y,z]=n; return [40+y*0.95+x*0.32, 150+x*0.62-z*ZX-y*0.13];};
+  const gi=(i,j)=>j*9+i;
+  let v='';
+  const W4=1010,H4=400;
+  for(let j=15;j>=0;j--)for(let i=7;i>=0;i--){          // membrane quads, painter far->near
+    const q=[gi(i,j),gi(i+1,j),gi(i+1,j+1),gi(i,j+1)].map(k=>pr(N[k]));
+    v+=`<path d="M${q.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L')} Z" fill="${css('--memfill')}" stroke="${css('--line')}" stroke-width="0.8"/>`;}
+  const pline=(idxs,col,wd,dash)=>v+=`<path d="M${idxs.map(k=>pr(N[k]).map(c=>c.toFixed(1)).join(' ')).join(' L')}" fill="none" stroke="${col}" stroke-width="${wd}"${dash?` stroke-dasharray="${dash}"`:''}/>`;
+  const lineTo=(i,jend)=>Array.from({length:jend+1},(_,j)=>gi(i,j));
+  for(const j of [2,4,6,8,10,12,14]) pline(Array.from({length:9},(_,i)=>gi(i,j)),css('--ply'),3.2);
+  // rods extended to their TE-arc endpoints (edge nodes)
+  const arcSeg=(i,jend,ex,ey,col,wd,dash)=>{
+    const pts=lineTo(i,jend).map(k=>pr(N[k])); pts.push(pr([ex,ey,0]));
+    v+=`<path d="M${pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L')}" fill="none" stroke="${col}" stroke-width="${wd}"${dash?` stroke-dasharray="${dash}"`:''}/>`;
+    const e=pr([ex,ey,0]);
+    v+=`<circle cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="4" fill="${col}" stroke="${css('--bg')}" stroke-width="1.3"/>`;};
+  arcSeg(5,DATA.ja,198.42,725.0,css('--carbon2'),2.8,'8 4');
+  arcSeg(3,DATA.jm,88.58,792.0,css('--carbon'),4.2);
+  pline(lineTo(0,16),css('--carbon'),3.6);               // LE rod full span to tip
+  pline(Array.from({length:9},(_,i)=>gi(i,0)),css('--alu'),5);
+  // flap arc at root about the swept axis (z here is SCREEN-scale mm/ZX)
+  v+=`<path d="M ${pr([90,-35,14])} Q ${pr([230,-48,0])} ${pr([90,-35,-14])}" fill="none" stroke="${css('--axis')}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+  const L4=(x,y,txt,col,anch)=>v+=`<text x="${x}" y="${y}" fill="${col||css('--ink')}" font-size="12.5" text-anchor="${anch||'start'}">${txt}</text>`;
+  const pT=pr([0,700,0]), pM=pr([100,420,5]), pA=pr([210,300,3]), pRt=pr([287,60,0]);
+  L4(pT[0]-6,pT[1]-14,'LE 梁 Ø8',css('--carbon'),'end');
+  L4(pM[0],pM[1]+30,'主梁 Ø10 直线 → TE 弧 (792)',css('--carbon'));
+  L4(pA[0]+16,pA[1]+34,'辅梁 Ø6 直线 → TE 弧 (725)',css('--carbon2'));
+  L4(pRt[0]-10,pRt[1]+34,'根排 prescribed:±45°@2.3Hz(绕斜掠轴,红弧)',css('--alu'));
+  L4(40,24,'结构平铺 z=0(直杆共面);肋 ×7 站位同图 A',css('--muted'));
+  document.getElementById('iso').setAttribute('viewBox',`0 0 ${W4} ${H4}`);
+  document.getElementById('iso').innerHTML=v;
+
+  // ---- FIG E element forms + BC ----
+  let e='';
+  const W5=1010,H5=300;
+  const ETXT=(x,y,txt,col,fs,anch)=>e+=`<text x="${x}" y="${y}" fill="${col||css('--ink')}" font-size="${fs||12.5}" text-anchor="${anch||'middle'}">${txt}</text>`;
+  // panel 1: beam element
+  e+=`<line x1="60" y1="110" x2="270" y2="90" stroke="${css('--carbon')}" stroke-width="5"/>`;
+  for(const [x,y] of [[60,110],[270,90]]){
+    e+=`<circle cx="${x}" cy="${y}" r="6" fill="${css('--bg')}" stroke="${css('--ink')}" stroke-width="1.8"/>`;
+    e+=`<line x1="${x}" y1="${y}" x2="${x}" y2="${y-34}" stroke="${css('--ink')}" stroke-width="1.5" marker-end="url(#ah)"/>`;
+    e+=`<line x1="${x}" y1="${y}" x2="${x+30}" y2="${y+16}" stroke="${css('--ink')}" stroke-width="1.5" marker-end="url(#ah)"/>`;
+    e+=`<path d="M ${x-22} ${y-6} A 20 20 0 1 1 ${x-4} ${y-24}" fill="none" stroke="${css('--axis')}" stroke-width="1.6" marker-end="url(#ahr)"/>`;}
+  e+=`<path d="M165 94 l7 12 M172 106 l-14 0 M158 106 l7 -12" stroke="${css('--carbon2')}" stroke-width="1.6" fill="none"/>`;
+  ETXT(165,130,'×1 高斯点',css('--muted'),11.5);
+  ETXT(165,42,'3D 梁元:2 节点 × [u(3), ψ(3)]',null,13.5);
+  // section glyphs
+  const secY=196;
+  e+=`<circle cx="70" cy="${secY}" r="12" fill="${css('--carbon')}" fill-opacity="0.55" stroke="${css('--carbon')}" stroke-width="2"/>`;
+  e+=`<circle cx="130" cy="${secY}" r="15" fill="none" stroke="${css('--carbon')}" stroke-width="4"/>`;
+  e+=`<circle cx="185" cy="${secY}" r="9" fill="none" stroke="${css('--carbon2')}" stroke-width="3.5"/>`;
+  e+=`<rect x="222" y="${secY-14}" width="9" height="28" fill="${css('--ply')}" fill-opacity="0.5" stroke="${css('--ply')}"/>`;
+  ETXT(70,secY+34,'Ø8 实心',css('--muted'),11); ETXT(130,secY+34,'Ø10×1',css('--muted'),11);
+  ETXT(185,secY+34,'Ø6×1',css('--muted'),11); ETXT(227,secY+34,'肋 3×d*',css('--muted'),11);
+  ETXT(165,272,'EA·EI₂·EI₃·GJ·剪切 全在 · FD 一致切线',css('--muted'),11.5);
+  // panel 2: membrane CST 3-branch
+  const mx=470;
+  e+=`<path d="M${mx-90} 120 L${mx+70} 138 L${mx-16} 46 Z" fill="${css('--memfill')}" stroke="${css('--mem')}" stroke-width="2"/>`;
+  for(const [x,y] of [[mx-90,120],[mx+70,138],[mx-16,46]]){
+    e+=`<circle cx="${x}" cy="${y}" r="5.5" fill="${css('--bg')}" stroke="${css('--ink')}" stroke-width="1.6"/>`;
+    e+=`<line x1="${x}" y1="${y}" x2="${x+22}" y2="${y-20}" stroke="${css('--ink')}" stroke-width="1.4" marker-end="url(#ah)"/>`;}
+  ETXT(mx-10,42-14,'膜元 CST:3 节点 × u(3),常应变',null,13.5);
+  // three branch mini-states
+  const bx=mx-108, by=190;
+  e+=`<rect x="${bx}" y="${by}" width="58" height="40" fill="none" stroke="${css('--mem')}" stroke-width="1.5"/>`;
+  for(let k=1;k<4;k++)e+=`<line x1="${bx+k*14}" y1="${by+4}" x2="${bx+k*14}" y2="${by+36}" stroke="${css('--mem')}" stroke-width="1"/>`;
+  ETXT(bx+29,by+56,'张紧',css('--muted'),11);
+  const wx=bx+88;
+  e+=`<rect x="${wx}" y="${by}" width="58" height="40" fill="none" stroke="${css('--mem')}" stroke-width="1.5"/>`;
+  for(let k=0;k<4;k++)e+=`<path d="M${wx+6} ${by+8+k*8} q7 -5 14 0 t14 0 t14 0 t10 0" fill="none" stroke="${css('--mem')}" stroke-width="1.1"/>`;
+  ETXT(wx+29,by+56,'褶皱(单轴)',css('--muted'),11);
+  const sx2=wx+88;
+  e+=`<rect x="${sx2}" y="${by}" width="58" height="40" fill="none" stroke="${css('--mem')}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  e+=`<path d="M${sx2+8} ${by+14} q12 16 20 4 t22 10" fill="none" stroke="${css('--mem')}" stroke-width="1.1"/>`;
+  ETXT(sx2+29,by+56,'松弛',css('--muted'),11);
+  ETXT(mx-10,272,'Pipkin 松弛能 3 分支 · η=1e-4 混合 · N₀=30 N/m · 连续闩锁 σ(k=25)',css('--muted'),11.5);
+  // panel 3: BC
+  const px=790;
+  e+=`<line x1="${px-95}" y1="150" x2="${px+95}" y2="150" stroke="${css('--alu')}" stroke-width="6"/>`;
+  for(let k=0;k<9;k++){const x=px-88+k*22;
+    e+=`<rect x="${x-4.5}" y="145.5" width="9" height="9" fill="${css('--alu')}" stroke="none"/>`;}
+  for(const x of [px-88,px-88+3*22,px-88+5*22]) e+=`<circle cx="${x}" cy="150" r="9" fill="none" stroke="${css('--axis')}" stroke-width="1.5" stroke-dasharray="2.5 2.5"/>`;
+  ETXT(px,42,'边界:根排 j=0',null,13.5);
+  ETXT(px,178,'9 节点 u=(R(θ)−I)X;梁根 ψ=θ(圈)',css('--muted'),11.5);
+  // theta(t) mini plot
+  const gx=px-95,gy=250,gw=190,gh=44;
+  e+=`<line x1="${gx}" y1="${gy}" x2="${gx+gw}" y2="${gy}" stroke="${css('--line')}" stroke-width="1"/>`;
+  let th='M';
+  for(let k=0;k<=120;k++){const t=k/120*2.0, env=t<0.2174?0.5*(1-Math.cos(Math.PI*t/0.2174)):1;
+    th+=(k?' L':'')+(gx+k/120*gw).toFixed(1)+' '+(gy-env*Math.sin(2*Math.PI*2.3*t)*gh*0.9).toFixed(1);}
+  e+=`<path d="${th}" fill="none" stroke="${css('--axis')}" stroke-width="1.8"/>`;
+  ETXT(px,gy+34,'θ(t)=45°·sin(2π·2.3t),T/2 C¹ 包络',css('--muted'),11.5);
+  e=`<defs><marker id="ah" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="${css('--ink')}"/></marker><marker id="ahr" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="${css('--axis')}"/></marker></defs>`+e;
+  e+=`<line x1="330" y1="30" x2="330" y2="280" stroke="${css('--line')}" stroke-width="1"/><line x1="660" y1="30" x2="660" y2="280" stroke="${css('--line')}" stroke-width="1"/>`;
+  document.getElementById('elem').setAttribute('viewBox',`0 0 ${W5} ${H5}`);
+  document.getElementById('elem').innerHTML=e;
+
+  // ---- FIG F distributions ----
+  let f='';
+  const W6=1010,H6=560, S6=0.52;
+  const bx6=(ox,oy,vals,col,title,scale)=>{
+    // planform outline
+    f+=`<path d="${ys.map((y,k)=>(k?'L':'M')+(ox+y*S6).toFixed(1)+' '+(oy).toFixed(1)).join(' ')} ${ys.slice().reverse().map(y=>'L'+(ox+y*S6).toFixed(1)+' '+(oy+chord(y)*S6).toFixed(1)).join(' ')} Z" fill="${css('--memfill')}" stroke="${css('--line')}" stroke-width="1"/>`;
+    for(let k=0;k<153;k++){const n=DATA.nodes[k];
+      const r=scale*Math.sqrt(vals[k]);
+      f+=`<circle cx="${(ox+n[1]*S6).toFixed(1)}" cy="${(oy+n[0]*S6).toFixed(1)}" r="${r.toFixed(2)}" fill="${col}" fill-opacity="0.55" stroke="${col}" stroke-width="0.8"/>`;}
+    f+=`<text x="${ox}" y="${oy-12}" fill="${css('--ink')}" font-size="13">${title}</text>`;};
+  bx6(40,40,DATA.m_str,css('--carbon'),'结构节点质量(膜+梁+肋),Σ=150.4 g — 含梁至边缘弧的尾段',3.0);
+  bx6(530,40,DATA.m_add,css('--mem'),'条带附加质量 m_a ∝ c·A_trib,Σ=55.5 g — 随弦长分布',3.0);
+  // spanwise chart
+  const cx0=70,cy0=520,cw=880,chh=150;
+  const mx6=Math.max(...DATA.row_str);
+  f+=`<line x1="${cx0}" y1="${cy0}" x2="${cx0+cw}" y2="${cy0}" stroke="${css('--line')}"/>`;
+  f+=`<line x1="${cx0}" y1="${cy0}" x2="${cx0}" y2="${cy0-chh-14}" stroke="${css('--line')}"/>`;
+  const pl6=(rows,col,dash)=>f+=`<path d="${rows.map((m,k)=>(k?'L':'M')+(cx0+DATA.ys[k]/800*cw).toFixed(1)+' '+(cy0-m/mx6*chh).toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="2.2"${dash?` stroke-dasharray="${dash}"`:''}/>`;
+  pl6(DATA.row_str,css('--carbon'));
+  pl6(DATA.row_add,css('--mem'),'7 4');
+  f+=`<path d="${DATA.chord.map((c,k)=>(k?'L':'M')+(cx0+DATA.ys[k]/800*cw).toFixed(1)+' '+(cy0-c/300*chh*0.55).toFixed(1)).join(' ')}" fill="none" stroke="${css('--muted')}" stroke-width="1.3" stroke-dasharray="2 3"/>`;
+  for(const [txt,col,yy] of [['结构 g/站位(50mm)',css('--carbon'),402],['附加质量 g/站位',css('--mem'),420],['弦长(示意)',css('--muted'),438]])
+    f+=`<text x="${cx0+16}" y="${yy}" fill="${col}" font-size="12">— ${txt}</text>`;
+  f+=`<text x="${cx0+cw/2}" y="${cy0+26}" fill="${css('--muted')}" font-size="12" text-anchor="middle">展向 y(0 → 800 mm);峰值 = 根排/肋站位(梁质量向站位节点集中)</text>`;
+  document.getElementById('dist').setAttribute('viewBox',`0 0 ${W6} ${H6}`);
+  document.getElementById('dist').innerHTML=f;
+}
+draw();
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+if(window.matchMedia)window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+</script>

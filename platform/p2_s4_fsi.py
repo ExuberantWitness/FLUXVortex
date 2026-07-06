@@ -38,17 +38,21 @@ from newton_pc import WindowPredictorCorrector               # noqa: E402
 from newton_pc.adapters.flap import (FlapKinematics,         # noqa: E402
                                      FlapUVLMProvider, NodalForceSet)
 
-D_STAR = 4.43e-3          # rib depth from the K_MEAS calibration (p2_s3 gate W2)
+D_STAR = 3.77e-3          # rib depth from the K_MEAS calibration (p2_s3 gate W2,
+                          # assembly v3: flat + three straight rods to the edge arc)
 CHORD = 0.287
 U, AOA_DEG, FREQ, AMP_DEG = 8.0, 5.0, 2.3, 45.0
 N_CYCLES = 2
 
 
 def force_to_wing(model, fset):
-    """Provider 9-dof/node layout -> wing global dof vector (translations)."""
+    """Provider 9-dof/node layout (aero grid order j*(nc+1)+i) -> wing global
+    dof vector (translations of the structured-grid nodes; the two rod-end arc
+    nodes receive their load through the shared membrane, not directly)."""
     f = np.zeros(model.ndof)
     f9 = np.asarray(fset.f).reshape(-1, 9)
-    f[model.trans_map.ravel()] = f9[:, 0:3].ravel()
+    gid = model.nid_grid.ravel()
+    f[model.trans_map[gid].ravel()] = f9[:, 0:3].ravel()
     return f
 
 
@@ -143,7 +147,9 @@ def main():
         th = entry._angles(pc._t)[0]         # ramped kinematics
         c, s_ = np.cos(th), np.sin(th)
         R = np.array([[1, 0, 0], [0, c, -s_], [0, s_, c]])
-        rigid = (model.nodes @ R.T).reshape(ns + 1, nc + 1, 3).transpose(1, 0, 2)
+        g0 = model.nodes[model.nid_grid.ravel()].reshape(ns + 1, nc + 1, 3).copy()
+        g0[..., 2] += model.aero_off         # rest AERO surface (flat + camber)
+        rigid = (g0.reshape(-1, 3) @ R.T).reshape(ns + 1, nc + 1, 3).transpose(1, 0, 2)
         bend.append(float(np.abs(st["verts"][..., 2] - rigid[..., 2]).max()))
         if w % 10 == 0:
             print(f"  w={w:3d} t={pc._t:.3f}s th={np.rad2deg(th):+6.1f}deg "
