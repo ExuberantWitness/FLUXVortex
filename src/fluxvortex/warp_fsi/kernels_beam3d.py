@@ -457,7 +457,7 @@ def _bc_rows_cols_kernel(free: wp.array(dtype=DTYPE, ndim=1),
     S[e, i, j] = v
 
 
-def beam_newmark_step(q_n, dq_n, Kblk, C: Beam3DConstants,
+def beam_newmark_step(q_n, dq_n, Kblk, C,
                       F_const, Q_int_n, recompute_Q,
                       alpha_v=0.5, c_damp=2.0, dt=1e-4, device=None):
     """One block-reduced Newmark step (matches numerical_solver.step semantics
@@ -465,6 +465,8 @@ def beam_newmark_step(q_n, dq_n, Kblk, C: Beam3DConstants,
 
     q_n, dq_n, F_const, Q_int_n: (B, ndof) wp arrays. recompute_Q(q_p1)->(B,ndof).
     Returns (q_new, dq_new). BC DOFs are held at q_n (prescribed handled by caller).
+    C is duck-typed (Beam3DConstants, MembraneConstants, ...): needs
+    ne/ndof/Me/edofs/free/device; block size taken from edofs.shape[1].
     """
     from .batched_solver import apply_MK, batched_dense_solve, _saxpy_kernel, \
         _lincomb_mask, _copy_free_else
@@ -472,13 +474,14 @@ def beam_newmark_step(q_n, dq_n, Kblk, C: Beam3DConstants,
     NP = config.NP_DTYPE
     B = q_n.shape[0]
     ndof = C.ndof
+    nblk = C.edofs.shape[1]
     coef = alpha_v * c_damp * dt * dt / 2.0
     Dbl = c_damp * dt / 2.0
     dtN = DTYPE(NP(dt)); adt = DTYPE(NP(alpha_v * dt))
     Me, edofs, free = C.Me, C.edofs, C.free
 
     S = wp.zeros((B, ndof, ndof), dtype=DTYPE, device=device)
-    wp.launch(_scatter_S_kernel, dim=(B, C.ne, 12, 12),
+    wp.launch(_scatter_S_kernel, dim=(B, C.ne, nblk, nblk),
               inputs=[Me, Kblk, edofs, DTYPE(NP(coef))], outputs=[S], device=device)
     wp.launch(_bc_rows_cols_kernel, dim=(B, ndof, ndof), inputs=[free], outputs=[S],
               device=device)
