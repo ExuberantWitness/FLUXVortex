@@ -109,11 +109,10 @@ def main():
 
         def solve(self, state):
             F = self.inner.solve(state)
-            if self._rel is None:
-                self._rel = F
-            else:
-                fmix = self._rel.f + self.omega * (F.f - self._rel.f)
-                self._rel = NodalForceSet(fmix, payload=F.payload)
+            fmix = F.f if self._rel is None else self._rel.f + self.omega * (F.f - self._rel.f)
+            pay = dict(F.payload or {})
+            pay["a_lag"] = entry.a.copy()      # freeze the accel at solve time
+            self._rel = NodalForceSet(fmix, payload=pay)
             return self._rel
 
         def commit(self, forces):

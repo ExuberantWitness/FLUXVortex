@@ -627,10 +627,34 @@ def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
             except RuntimeError:                             # singular from a bad state
                 rn = np.inf
                 break
-            q1[free] += dq1
-            a1 = (q1 - q_pred) / (beta * dt * dt)
-            if presc is not None:
-                a1[pd] = ddqb
+            # trust-region-ish cap: dynamic substep displacements are ~v*dt
+            # (mm scale); a wild Newton direction on a near-degenerate sliver
+            # must not leave the physical neighborhood.
+            mx = np.abs(dq1).max()
+            if mx > 1e-2:
+                dq1 *= 1e-2 / mx
+            # backtracking line search on the residual (up to 3 halvings; keep
+            # the best step — residuals here are M/(beta dt^2)-dominated, far
+            # better conditioned than statics, so mild backtracking suffices)
+            best = None
+            for step_ in (1.0, 0.5, 0.25):
+                q_try = q1.copy(); q_try[free] += step_ * dq1
+                a_try = (q_try - q_pred) / (beta * dt * dt)
+                if presc is not None:
+                    a_try[pd] = ddqb
+                v_try = dq_pred + gamma * dt * a_try
+                r_try = F_const - model.Q_int(q_try) - M @ a_try - Cd @ v_try
+                rn_try = np.linalg.norm(r_try[free])
+                if not np.isfinite(rn_try):
+                    continue
+                if best is None or rn_try < best[0]:
+                    best = (rn_try, q_try, a_try)
+                if rn_try < rn:
+                    break
+            if best is None:
+                rn = np.inf
+                break
+            _, q1, a1 = best
         converged = bool(np.isfinite(rn) and rn < 1e-4 * scale)
         dq1_vec = dq_pred + gamma * dt * a1
         if presc is not None:
@@ -733,12 +757,14 @@ class WingEntry:
             cols = np.tile(tm3, (1, 3)).ravel()
             M_a = _coo((blk.ravel(), (rows, cols)),
                        shape=(self.m.ndof, self.m.ndof)).tocsc()
-            # NO lagged compensation: with ringing accelerations the one-step-
-            # lagged M_a a_n term pumps energy at high frequency (measured).
-            # Accepted smoke-scope bias: the provider's own unsteady force also
-            # reacts to acceleration -> transiently ~2x added inertia on the
-            # membrane normal modes (documented; S5-proper replaces this with a
-            # validated exact madd operator).
+            # Jacobian-lagged linearization F ~ F_w - M_a (a - a_lag): a_lag is
+            # the acceleration AT THE PROVIDER SOLVE (frozen per window, ride in
+            # forces.payload['a_lag']) — first-order consistent, cancels the
+            # added-mass channel gain exactly to O(window). Without a_lag in the
+            # payload the compensation is skipped (transient double-inertia bias).
+            a_lag = (forces.payload or {}).get("a_lag") if hasattr(forces, "payload") else None
+            if a_lag is not None:
+                f = f + M_a @ a_lag
             M_add = -M_a
             rho_air, U_inf = 1.225, 8.0
             # dcoef = pi rho U A_trib  (m_added_node = rho pi c^2/4 * A/c)
@@ -765,6 +791,25 @@ class WingEntry:
             self.q, self.dq, self.a = q1, dq1, a1
             return
         if depth >= 4:
+            # last resort: transient eta boost (1e-4 -> 1e-2) — deep-wrinkle/
+            # sliver states gain 100x residual stiffness and become integrable;
+            # the regularization is local in time (restored immediately) and
+            # its force error is O(eta_boost) on the affected elements only.
+            MemC = self.m.MemC
+            eta0 = MemC.eta
+            try:
+                MemC.eta = 1e-2
+                self._eta_boosts = getattr(self, "_eta_boosts", 0) + 1
+                q1, dq1, a1, ok = host_implicit_step(
+                    self.m, self.q, self.dq, self.a, t1 - t0, f,
+                    presc=(self.pd,) + self._cb(t1), M_add=M_add, C_add=C_add)
+                if ok and np.all(np.isfinite(q1)):
+                    self.q, self.dq, self.a = q1, dq1, a1
+                    return
+            except RuntimeError:
+                pass
+            finally:
+                MemC.eta = eta0
             raise RuntimeError(f"substep failed to converge at t={t1:.4f} (depth {depth})")
         tm_ = 0.5 * (t0 + t1)
         self._advance(t0, tm_, dt, f, M_add, C_add, depth + 1)
