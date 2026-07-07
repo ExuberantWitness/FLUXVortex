@@ -45,28 +45,38 @@ class NodalForceSet:
     """
 
     def __init__(self, f: np.ndarray, payload: dict | None = None,
-                 madd: np.ndarray | None = None):
+                 madd: np.ndarray | None = None,
+                 a_lag: np.ndarray | None = None):
         self.f = f
         self.payload = payload
         self.madd = madd
+        self.a_lag = a_lag        # accel at the provider solve (Robin RHS pair)
+
+    @staticmethod
+    def _mix(a, b, beta):
+        if a is None and b is None:
+            return None
+        a = a if a is not None else 0.0 * b
+        b = b if b is not None else 0.0 * a
+        return a + (b - a) * beta
 
     def affine(self, other: "NodalForceSet", beta: float) -> "NodalForceSet":
-        ma = None
-        if self.madd is not None or other.madd is not None:
-            a = self.madd if self.madd is not None else 0.0 * other.madd
-            b = other.madd if other.madd is not None else 0.0 * self.madd
-            ma = a + (b - a) * beta
-        return NodalForceSet(self.f + (other.f - self.f) * beta, madd=ma)
+        return NodalForceSet(self.f + (other.f - self.f) * beta,
+                             madd=self._mix(self.madd, other.madd, beta),
+                             a_lag=self._mix(self.a_lag, other.a_lag, beta))
 
     def lincomb(self, pairs) -> "NodalForceSet":
         acc = None
         ma = None
+        al = None
         for fs, w in pairs:
             term = fs.f * w
             acc = term if acc is None else acc + term
             if fs.madd is not None:
                 ma = fs.madd * w if ma is None else ma + fs.madd * w
-        return NodalForceSet(acc, madd=ma)
+            if fs.a_lag is not None:
+                al = fs.a_lag * w if al is None else al + fs.a_lag * w
+        return NodalForceSet(acc, madd=ma, a_lag=al)
 
 
 # ── kinematics ───────────────────────────────────────────────────────────
@@ -262,8 +272,8 @@ class FlapUVLMProvider:
 
     def __init__(self, V_inf_vec, rho, dt_window, K=8, nu=15.06e-6,
                  chord=1.5, particles=True, max_particles=60000,
-                 added_mass_operator=False, pop_scheme="drop",
-                 merge_eps=1e-3, merge_protect=64):
+                 added_mass_operator=False, madd_project=True,
+                 pop_scheme="drop", merge_eps=1e-3, merge_protect=64):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
         self.dtw = dt_window
@@ -273,6 +283,13 @@ class FlapUVLMProvider:
         self.particles = particles
         self.max_particles = max_particles
         self.added_mass_operator = added_mass_operator
+        # madd_project=True: symmetrize + clip wrong-sign eigenvalues (safe
+        # for a bare M_eff = M - madd). False: the RAW unsymmetric operator —
+        # under the Robin pairing (-madd*a_lag on the RHS) the fixed point is
+        # unchanged and the LHS then matches the true discrete dF/da exactly
+        # (BNV: convergence rate ~ ||M_true - M_model||; the clipped 31%
+        # spectral mass is otherwise an uncompensated loop-gain channel).
+        self.madd_project = madd_project
         self.pop_scheme = pop_scheme        # none | drop | merge
         self.merge_eps = merge_eps          # at-wing rel. velocity threshold
         self.merge_protect = merge_protect  # newest particles excluded
@@ -367,10 +384,13 @@ class FlapUVLMProvider:
         dgs = np.hstack([g2[:, :1], np.diff(g2, axis=1)]) / ds_.reshape(nc, ns)
         gb = g2
         gb_prev = self._gb_prev if self._gb_prev is not None else gb
-        # with the implicit added-mass operator active, the acceleration part
-        # of dgamma/dt is carried by M_add - keep only it (no double count)
-        dgb_dt = (0.0 * gb if self.added_mass_operator
-                  else (gb - gb_prev) / self.dtw)
+        # FULL dgamma/dt stays in the force even in madd mode (S5): the
+        # operator on the LHS is paired with a -madd*a_lag compensation on the
+        # RHS (BNV generalized-Robin form) — fixed point untouched, no double
+        # count, and the circulatory unsteady pressure (the dominant physical
+        # damper of start-up ringing) is NOT lost. (Measured: zeroing dgb_dt
+        # here let window-converged solutions escalate 11->39->141 m/s.)
+        dgb_dt = (gb - gb_prev) / self.dtw
         dp = self.rho * (np.einsum('tc,tc->t', V_loc, tch).reshape(nc, ns) * dgc
                          + np.einsum('tc,tc->t', V_loc, tsh).reshape(nc, ns) * dgs
                          + dgb_dt)
@@ -401,28 +421,46 @@ class FlapUVLMProvider:
             new_ages = [0.0] + [a + self.dtw for a in self.ages]
         madd = None
         if self.added_mass_operator:
-            # dF/daccel: gamma responds as A^-1 N to colloc normal velocity;
-            # the impulsive pressure rho*dgamma/dt gives F = M_add @ ddq_z.
-            # Quarter lumping maps nodal z-accel -> colloc and panel force ->
-            # nodes (same lumping as the force path). MATLAB Qf_p_mat analog.
+            # dF/daccel, FULL normal-projection blocks (P2-S5 T1, user-approved
+            # n(x)n scope): gamma responds as A^-1 (N a) to nodal acceleration a
+            # (all 3 components projected on the panel normal); the impulsive
+            # pressure rho*dgamma/dt pushes back along the normal. The old z-z
+            # truncation lost ~half the operator at +-45 deg flap (n_z^2 ~ 0.5).
+            # Quarter lumping both ways (same as the force path). Then:
+            #   symmetrize (AIC non-reciprocity + one-sided area metric make the
+            #   raw operator non-symmetric) and CLIP wrong-sign eigenvalues —
+            #   apparent mass must OPPOSE acceleration (madd <= 0 so that
+            #   M_eff = M - madd adds mass); destabilizing directions are not
+            #   allowed onto the structural LHS. Clip fraction recorded.
             nn = (nc + 1) * (ns + 1)
-            L_v = np.zeros((P, nn))           # nodal z -> colloc normal accel
-            Lf = np.zeros((nn, P))            # panel z-force -> nodal z
+            Nv = np.zeros((P, 3 * nn))        # nodal accel (3n) -> colloc a.n
+            Lf = np.zeros((nn, P))            # panel scalar -> nodal quarter lump
             for i in range(nc):
                 for j in range(ns):
                     p_ = i * ns + j
                     for (ii, jj) in ((i, j), (i + 1, j), (i, j + 1),
                                      (i + 1, j + 1)):
                         node = jj * (nc + 1) + ii
-                        L_v[p_, node] += 0.25 * nrm[p_, 2]
+                        Nv[p_, 3 * node:3 * node + 3] += 0.25 * nrm[p_]
                         Lf[node, p_] += 0.25
-            Ainv_N = np.linalg.solve(A, L_v)          # dgamma/d(vz_nodal)
-            # panel force per dgamma/dt: rho * area * n_z  (unsteady term)
-            Fz = (self.rho * area * nrm[:, 2])[:, None] * Ainv_N
-            M_zz = Lf @ Fz                            # (nn, nn): Fz per ddq_z
+            Ainv_N = np.linalg.solve(A, Nv)           # (P, 3nn) dgamma/da
+            W = (self.rho * area)[:, None] * Ainv_N   # rho*area*dgamma/da
+            M3 = np.zeros((3 * nn, 3 * nn))
+            for c_ in range(3):                       # force component rows
+                M3[3 * np.arange(nn) + c_, :] = Lf @ (nrm[:, c_][:, None] * W)
+            if self.madd_project:
+                Ms = 0.5 * (M3 + M3.T)
+                wev, Vev = np.linalg.eigh(Ms)
+                pos = wev > 0.0
+                self.madd_clip_frac = float(
+                    wev[pos].sum() / max(np.abs(wev).sum(), 1e-30))
+                Ms = (Vev * np.where(pos, 0.0, wev)) @ Vev.T
+            else:
+                Ms = M3                                   # raw dF/da (Robin)
+                self.madd_clip_frac = 0.0
             madd = np.zeros((9 * nn, 9 * nn))
-            zidx = 9 * np.arange(nn) + 2
-            madd[np.ix_(zidx, zidx)] = M_zz
+            tidx = (9 * np.arange(nn)[:, None] + np.arange(3)[None, :]).ravel()
+            madd[np.ix_(tidx, tidx)] = Ms
         ref_pts = rc_pt[:: max(1, P // 9)][:9].copy()
         return dict(f_panel=f_panel, gamma=gamma, gb=gb, madd=madd,
                     new_pts=new_pts, new_gam=new_gam, new_ages=new_ages,
@@ -445,7 +483,12 @@ class FlapUVLMProvider:
         f9 = f.reshape(-1, 9)
         f9[:, 0:3] = fgrid.transpose(1, 0, 2).reshape(-1, 3)
         madd = out.get("madd")
-        return NodalForceSet(f, payload=out, madd=madd)
+        # Robin pair: the accel of the state this force was solved at (grid
+        # node order), so the structure can compensate -madd*(a - a_lag)
+        a_lag = None
+        if madd is not None and "accel" in state:
+            a_lag = np.asarray(state["accel"]).transpose(1, 0, 2).reshape(-1)
+        return NodalForceSet(f, payload=out, madd=madd, a_lag=a_lag)
 
     def commit(self, forces: NodalForceSet) -> None:
         out = forces.payload

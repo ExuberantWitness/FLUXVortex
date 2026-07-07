@@ -59,6 +59,12 @@ MEAS_Y, MEAS_X = 0.5886, 0.2735
 # LE rod: paper-recorded member ("8 mm carbon rod spar"); SOLID assumed (user
 # decision 2026-07-06; if the real one is a tube, supply the wall here)
 LE_SPAR = kb.TubeSection(D_out=8e-3, wall=4e-3, E=150e9, rho=1592.0, G=5e9)
+# TE hem: kite-fabric construction ALWAYS hems the raw trailing edge (double
+# fold + stitch; tension-stiff, bending-soft). Missing it leaves bare-edge
+# membrane slivers whose free-edge flutter aliases through the window
+# coupling (measured 2-window sawtooth at the max-speed stroke phases).
+# 15 mm double fold of the polyester fabric: EA ~ 3.6 kN, out-of-plane EI
+# ~ 8e-6 N m^2 (floppy), 1.3 g/m — zero-fit fabric constants (hem_sec below).
 
 
 @dataclass(frozen=True)
@@ -120,8 +126,9 @@ class WingModel:
         chains = mesh["chains"]
         beam_elems, sections = [], []
         rib_sec = RectSection(RIB_WIDTH, self.rib_depth, E_PLY, RHO_PLY, G_PLY)
+        hem_sec = RectSection(15e-3, 1.6e-4, 1.5e9, 525.0, 5e8)  # TE hem (fabric x2)
         for name, sec in (("le", LE_SPAR), ("main", kb.MAIN_SPAR),
-                          ("aux", kb.AUX_SPAR)):
+                          ("aux", kb.AUX_SPAR), ("te", hem_sec)):
             ch = chains[name]
             for a, b in zip(ch[:-1], ch[1:]):
                 beam_elems.append([a, b]); sections.append(sec)
@@ -146,11 +153,48 @@ class WingModel:
                        for i_ in (self.i_le, self.i_spar, self.i_aux))
         assert tris.max() < nn and beam_elems.max() < nn  # conforming: shared node ids
 
-        # aero camber surface offset (NACA2406 on the rest chord fraction):
-        # the STRUCTURE is flat; the aero lattice = structural grid + this
-        # offset along the deformed local normal (WingEntry.state).
-        cj = rg.chord_at(nodes[self.nid_grid.ravel(), 1]).reshape(ns + 1, nc + 1)
-        self.aero_off = rg.naca_camber(mesh["xf_grid"]) * cj   # (ns+1, nc+1), m
+        # ── aero surface: DECOUPLED from the structural pinned mesh ─────────
+        # The structural grid lines are pinned to the straight rods; in the
+        # tip taper that produces strongly skewed/twisted aero panels whose
+        # AIC rows are ill-conditioned (measured: gamma at the taper TE panel
+        # doubling per window, 4 -> 1246, local force blow-up). The AERO
+        # lattice therefore keeps the healthy COSINE-FRACTION grid (the
+        # S1-exit-validated panel geometry); structure <-> aero exchange goes
+        # through work-consistent barycentric interpolation W precomputed on
+        # the rest planform (both meshes are material-fixed):
+        #   pos_aero = W @ pos_struct  |  f_struct = W^T @ f_aero.
+        from scipy.sparse import csr_matrix, kron as _spkron, identity as _spI
+        xf = 0.5 * (1 - np.cos(np.linspace(0, np.pi, nc + 1)))
+        ya = np.linspace(0.0, rg.HALF_SPAN, ns + 1)
+        ca = rg.chord_at(ya)
+        ar = np.zeros((ns + 1, nc + 1, 2))
+        ar[..., 0] = xf[None, :] * ca[:, None]
+        ar[..., 1] = ya[:, None]
+        self.aero_rest2d = ar                              # (ns+1, nc+1, 2)
+        self.aero_off = rg.naca_camber(np.tile(xf, (ns + 1, 1))) * ca[:, None]
+        nn_a = (nc + 1) * (ns + 1)
+        p2d = nodes[:, :2]
+        Wr, Wc, Wv = [], [], []
+        t0_, t1_, t2_ = tris[:, 0], tris[:, 1], tris[:, 2]
+        v0 = p2d[t1_] - p2d[t0_]
+        v1 = p2d[t2_] - p2d[t0_]
+        den = v0[:, 0] * v1[:, 1] - v0[:, 1] * v1[:, 0]
+        for pa in range(nn_a):
+            pt = ar.reshape(-1, 2)[pa]
+            d = pt[None, :] - p2d[t0_]
+            l1 = (d[:, 0] * v1[:, 1] - d[:, 1] * v1[:, 0]) / den
+            l2 = (v0[:, 0] * d[:, 1] - v0[:, 1] * d[:, 0]) / den
+            l0 = 1.0 - l1 - l2
+            ok = np.where((l0 > -1e-9) & (l1 > -1e-9) & (l2 > -1e-9))[0]
+            assert len(ok), f"aero node {pa} outside structural mesh"
+            e = ok[np.argmax(np.minimum(np.minimum(l0[ok], l1[ok]), l2[ok]))]
+            lam = np.clip([l0[e], l1[e], l2[e]], 0.0, None)
+            lam = lam / lam.sum()
+            for nd_, lv in zip(tris[e], lam):
+                if lv > 1e-12:
+                    Wr.append(pa); Wc.append(int(nd_)); Wv.append(float(lv))
+        self.W_a2s = csr_matrix((Wv, (Wr, Wc)), shape=(nn_a, nn))
+        self.W3 = _spkron(self.W_a2s, _spI(3, format="csr"), format="csr")
 
         self.BeamC = kb.Beam3DConstants(nodes, beam_elems, sections,
                                         dof_map=dof6, ndof=self.ndof, device=device)
@@ -185,7 +229,8 @@ class WingModel:
         # mass budget via the parametric mass program (co-design channel)
         members = {"le_spar": (chains["le"], LE_SPAR.m_lin),
                    "main_spar": (chains["main"], kb.MAIN_SPAR.m_lin),
-                   "aux_spar": (chains["aux"], kb.AUX_SPAR.m_lin)}
+                   "aux_spar": (chains["aux"], kb.AUX_SPAR.m_lin),
+                   "te_hem": (chains["te"], hem_sec.m_lin)}
         for k_, r in enumerate(chains["ribs"]):
             members[f"rib{k_}"] = (r, rib_sec.m_lin)
         self.mass_detail = wmass.budget(nodes, tris, members, MEM_H, MEM_RHO)
@@ -755,34 +800,54 @@ class WingEntry:
         M_add = None
         if forces is not None:
             f9 = np.asarray(forces.f).reshape(-1, 9)        # provider 9-dof layout
-            f[self.m.trans_map.ravel()] = f9[:, 0:3].ravel()
+            # work-consistent transfer aero -> structure: f_s = W^T f_a
+            f[self.m.trans_map.ravel()] = (self.m.W_a2s.T @ f9[:, 0:3]).ravel()
             ramp = 1.0
             if self.load_ramp_T > 0 and t < self.load_ramp_T:   # impulsive-start
                 ramp = 0.5 * (1 - np.cos(np.pi * t / self.load_ramp_T))  # absorber
                 f *= ramp
-            # implicit strip added mass along the instantaneous flap normal
-            # n(theta): LHS gains +M_a (via M_add = -M_a in host_implicit_step's
-            # M_eff = M - M_add), RHS gains the lagged compensation +M_a a_n —
-            # identical fixed point, contraction for the added-mass Picard loop
-            # (mass ratio ~5 made the bare loop gain ~1.6).
             from scipy.sparse import coo_matrix as _coo
             th_n = self._angles(t)[0]
             nvec = np.array([0.0, -np.sin(th_n), np.cos(th_n)])
-            blk = np.einsum("n,i,j->nij", self.m.m_added_node, nvec, nvec)
             tm3 = self.m.trans_map
             rows = np.repeat(tm3, 3, axis=1).ravel()
             cols = np.tile(tm3, (1, 3)).ravel()
-            M_a = _coo((blk.ravel(), (rows, cols)),
-                       shape=(self.m.ndof, self.m.ndof)).tocsc()
-            # Jacobian-lagged linearization F ~ F_w - M_a (a - a_lag): a_lag is
-            # the acceleration AT THE PROVIDER SOLVE (frozen per window, ride in
-            # forces.payload['a_lag']) — first-order consistent, cancels the
-            # added-mass channel gain exactly to O(window). Without a_lag in the
-            # payload the compensation is skipped (transient double-inertia bias).
-            a_lag = (forces.payload or {}).get("a_lag") if hasattr(forces, "payload") else None
-            if a_lag is not None:
-                f = f + M_a @ a_lag
-            M_add = -M_a
+            madd = getattr(forces, "madd", None)
+            if madd is not None:
+                # S5 mode (BNV generalized-Robin form): the provider force
+                # keeps its FULL dGamma/dt; the UVLM-consistent added-mass
+                # operator (full n(x)n, symmetrized + sign-projected, <= 0)
+                # goes onto the LHS (M_eff = M - madd) PAIRED with the RHS
+                # compensation -madd*a_lag (a_lag = accel at the provider
+                # solve, riding the force set) — identical fixed point, no
+                # double count, and the added-mass channel gain is cancelled.
+                # a_lag and strip M_a of the fallback path are OFF here.
+                # NOT scaled by the load ramp: it is an operator (physical
+                # apparent mass), not a load — ramping it re-opens the
+                # added-mass gap exactly in the most violent start-up windows.
+                nn_a = self.m.W_a2s.shape[0]
+                t9 = (9 * np.arange(nn_a)[:, None] + np.arange(3)[None, :]).ravel()
+                Ms = np.asarray(madd)[np.ix_(t9, t9)]       # aero-space (3na)^2
+                W3 = self.m.W3
+                a_lag9 = getattr(forces, "a_lag", None)
+                if a_lag9 is not None:                      # -madd*a_lag on RHS
+                    f[self.m.trans_map.ravel()] -= W3.T @ (Ms @ np.asarray(a_lag9))
+                Ms_s = np.asarray(W3.T @ (W3.T @ Ms.T).T)   # W3^T Ms W3
+                gd = self.m.trans_map.ravel()
+                rws = np.repeat(gd, len(gd)); cls = np.tile(gd, len(gd))
+                M_add = _coo((Ms_s.ravel(), (rws, cls)),
+                             shape=(self.m.ndof, self.m.ndof)).tocsc()
+            else:
+                # fallback: implicit strip added mass along the instantaneous
+                # flap normal + Jacobian-lagged compensation (BNV-style scalar
+                # surrogate; insufficient alone at mu~5 — S5 research)
+                blk = np.einsum("n,i,j->nij", self.m.m_added_node, nvec, nvec)
+                M_a = _coo((blk.ravel(), (rows, cols)),
+                           shape=(self.m.ndof, self.m.ndof)).tocsc()
+                a_lag = (forces.payload or {}).get("a_lag") if hasattr(forces, "payload") else None
+                if a_lag is not None:
+                    f = f + M_a @ a_lag
+                M_add = -M_a
             rho_air, U_inf = 1.225, 8.0
             # dcoef = pi rho U A_trib  (m_added_node = rho pi c^2/4 * A/c)
             dcoef = np.pi * rho_air * U_inf * (self.m.m_added_node /
@@ -841,13 +906,15 @@ class WingEntry:
         m = self.m
         u = self.q[m.trans_map.ravel()].reshape(-1, 3)
         du = self.dq[m.trans_map.ravel()].reshape(-1, 3)
-        gid = m.nid_grid.ravel()
-        g = (m.nodes + u)[gid].reshape(m.ns + 1, m.nc + 1, 3)
-        vg = du[gid].reshape(m.ns + 1, m.nc + 1, 3)
+        da = self.a[m.trans_map.ravel()].reshape(-1, 3)
+        g = (m.W_a2s @ (m.nodes + u)).reshape(m.ns + 1, m.nc + 1, 3)
+        vg = (m.W_a2s @ du).reshape(m.ns + 1, m.nc + 1, 3)
+        ag = (m.W_a2s @ da).reshape(m.ns + 1, m.nc + 1, 3)
         ti = np.gradient(g, axis=1)                         # chordwise tangent
         tj = np.gradient(g, axis=0)                         # spanwise tangent
         nrm = np.cross(ti, tj)
         nrm /= np.maximum(np.linalg.norm(nrm, axis=-1, keepdims=True), 1e-30)
         verts = g + nrm * m.aero_off[..., None]
         return dict(verts=verts.transpose(1, 0, 2).copy(),
-                    vels=vg.transpose(1, 0, 2).copy())
+                    vels=vg.transpose(1, 0, 2).copy(),
+                    accel=ag.transpose(1, 0, 2).copy())

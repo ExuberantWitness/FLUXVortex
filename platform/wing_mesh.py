@@ -125,6 +125,12 @@ def flat_wing_mesh(nc=8, ns=16, x_main=None, x_aux=None, half_span=None,
         main=[nid(3, j) for j in range(j_main + 1)] + [ID_MAIN],
         aux=[nid(5, j) for j in range(j_aux + 1)] + [ID_AUX],
         ribs=[[nid(i, j) for i in range(nc + 1)] for j in rib_js],
+        # TE hem: kite-fabric construction ALWAYS hems the raw trailing edge
+        # (folded + stitched, tension-stiff / bending-soft). Runs along the
+        # full membrane boundary polyline incl. the rod-end arc nodes.
+        te=[nid(nc, j) for j in range(j_aux + 1)] + [ID_AUX]
+           + [nid(nc, j) for j in range(j_aux + 1, j_main + 1)] + [ID_MAIN]
+           + [nid(nc, j) for j in range(j_main + 1, ns + 1)],
     )
 
     # ── assertions (mesh gate; every one is a decision made above) ──────────
@@ -150,7 +156,8 @@ def flat_wing_mesh(nc=8, ns=16, x_main=None, x_aux=None, half_span=None,
         for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
             eset.add((min(a, b), max(a, b)))
     for name, ch in (("le", chains["le"]), ("main", chains["main"]),
-                     ("aux", chains["aux"]), *(("rib", r) for r in chains["ribs"])):
+                     ("aux", chains["aux"]), ("te", chains["te"]),
+                     *(("rib", r) for r in chains["ribs"])):
         for a, b in zip(ch[:-1], ch[1:]):
             assert (min(a, b), max(a, b)) in eset, f"{name} edge {(a, b)} not conforming"
     # 5. rib-spar crossings share node ids by construction (grid indexing)

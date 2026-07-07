@@ -54,12 +54,19 @@ class WindowPredictorCorrector:
             cut heavy-loading interpolation error ~2x.
         iterations: corrector (Picard) iterations per window. 1 reproduces
             the validated baseline scheme.
-        adaptive_tol: if set, iterate the corrector until the relative
-            window residual (change of window-end state between successive
-            iterations, measured by ``residual_norm``) drops below this
+        min_iterations: floor on the Picard iterations per window (SHARPy
+            practice: >= 3 for strongly-coupled added-mass problems). Default
+            1 keeps every existing configuration bit-identical.
+        adaptive_tol: if set, iterate the corrector until the window residual
+            (change of window-end state between successive iterations,
+            measured by ``residual_norm``) drops below this ABSOLUTE
             tolerance, up to ``iterations`` as the cap.
+        adaptive_tol_rel: optional RELATIVE convergence criterion — the
+            residual must drop below ``adaptive_tol_rel * (first residual of
+            this window)`` (Kuettler-Wall: acceleration/force scales make
+            absolute tolerances non-portable). Either criterion converges.
         residual_norm: callable mapping (state_prev, state_new) -> float,
-            required when ``adaptive_tol`` is set.
+            required when ``adaptive_tol`` or ``adaptive_tol_rel`` is set.
     """
 
     entry: StructuralEntry
@@ -69,8 +76,18 @@ class WindowPredictorCorrector:
     mode: str = "two-pass"
     interp: str = "linear"
     iterations: int = 1
+    min_iterations: int = 1
     adaptive_tol: float | None = None
+    adaptive_tol_rel: float | None = None
     residual_norm: Callable[[Any, Any], float] | None = None
+    # commit_probe: after the final corrector march, run ONE extra provider
+    # solve at the accepted window-end state and COMMIT that force set (its
+    # wake/shed state is consistent with the trajectory that was actually
+    # integrated). Without it, an iteration-capped window commits the wake of
+    # an arbitrary orbit sample — measured to pump a 2-window sawtooth through
+    # the delayed-Kutta shed. The marched (possibly averaged) force stays the
+    # interpolation anchor (_F_cur).
+    commit_probe: bool = False
 
     _F_prev: ForceSet | None = field(default=None, init=False, repr=False)
     _F_cur: ForceSet | None = field(default=None, init=False, repr=False)
@@ -82,8 +99,9 @@ class WindowPredictorCorrector:
             raise ValueError(f"unknown mode {self.mode!r}")
         if self.interp not in ("linear", "quad"):
             raise ValueError(f"unknown interp {self.interp!r}")
-        if self.adaptive_tol is not None and self.residual_norm is None:
-            raise ValueError("adaptive_tol requires residual_norm")
+        if ((self.adaptive_tol is not None or self.adaptive_tol_rel is not None)
+                and self.residual_norm is None):
+            raise ValueError("adaptive_tol/adaptive_tol_rel require residual_norm")
 
     # ------------------------------------------------------------------
     @property
@@ -165,6 +183,7 @@ class WindowPredictorCorrector:
             n_solves += 1
             # -- corrector (with optional Picard iterations) --
             prev_end_state = None
+            res0 = None
             for it in range(max(1, self.iterations)):
                 iters_done = it + 1
                 self.entry.restore(snap)
@@ -177,9 +196,18 @@ class WindowPredictorCorrector:
                 self._march(t0, tf, n - 1, self._corrector_force(F_new))
                 n_marches += 1
                 end_state = self.entry.state()
-                if self.adaptive_tol is not None and prev_end_state is not None:
+                if ((self.adaptive_tol is not None
+                     or self.adaptive_tol_rel is not None)
+                        and prev_end_state is not None):
                     residual = self.residual_norm(prev_end_state, end_state)
-                    if residual < self.adaptive_tol:
+                    if res0 is None:
+                        res0 = residual
+                    conv = (self.adaptive_tol is not None
+                            and residual < self.adaptive_tol)
+                    conv = conv or (self.adaptive_tol_rel is not None
+                                    and res0 > 0.0
+                                    and residual < self.adaptive_tol_rel * res0)
+                    if conv and it + 1 >= max(1, self.min_iterations):
                         # converged: finish with a full corrector march
                         self.entry.restore(snap)
                         self._march(t0, tf, n, self._corrector_force(F_new))
@@ -189,7 +217,12 @@ class WindowPredictorCorrector:
                 F_new = self.provider.solve(end_state)
                 n_solves += 1
 
-        self.provider.commit(F_new)
+        if self.mode != "lagged" and self.commit_probe:
+            F_fin = self.provider.solve(self.entry.state())
+            n_solves += 1
+            self.provider.commit(F_fin)
+        else:
+            self.provider.commit(F_new)
         self._F_prev = self._F_cur
         self._F_cur = F_new
         self._t = t0 + n * self.dt

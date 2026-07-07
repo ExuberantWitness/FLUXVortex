@@ -34,9 +34,10 @@ for p in (_ROOT, _HERE, os.path.join(_ROOT, "src")):
 import warp as wp                                            # noqa: E402
 from fluxvortex.warp_fsi import config as cfg                # noqa: E402
 from wing_system import WingModel, WingEntry                 # noqa: E402
+from wing_iqn import add_iqnils                              # noqa: E402
 from newton_pc import WindowPredictorCorrector               # noqa: E402
 from newton_pc.adapters.flap import (FlapKinematics,         # noqa: E402
-                                     FlapUVLMProvider, NodalForceSet)
+                                     FlapUVLMProvider)
 
 D_STAR = 3.77e-3          # rib depth from the K_MEAS calibration (p2_s3 gate W2,
                           # assembly v3: flat + three straight rods to the edge arc)
@@ -46,13 +47,11 @@ N_CYCLES = 2
 
 
 def force_to_wing(model, fset):
-    """Provider 9-dof/node layout (aero grid order j*(nc+1)+i) -> wing global
-    dof vector (translations of the structured-grid nodes; the two rod-end arc
-    nodes receive their load through the shared membrane, not directly)."""
+    """Provider 9-dof/node layout (aero fraction grid, order j*(nc+1)+i) ->
+    wing global dof vector via the work-consistent transfer f_s = W^T f_a."""
     f = np.zeros(model.ndof)
     f9 = np.asarray(fset.f).reshape(-1, 9)
-    gid = model.nid_grid.ravel()
-    f[model.trans_map[gid].ravel()] = f9[:, 0:3].ravel()
+    f[model.trans_map.ravel()] = (model.W_a2s.T @ f9[:, 0:3]).ravel()
     return f
 
 
@@ -60,19 +59,35 @@ def main():
     alpha = np.deg2rad(AOA_DEG)
     period = 1.0 / FREQ
     nc, ns = 8, 16
-    dtw = (CHORD / nc) / 8.0 / U * 8.0            # panel-transit window (as run_fsi)
-    dtw = (CHORD / nc) / 8.0
+    dtw = (CHORD / nc) / U                        # panel-transit window (as run_fsi)
     wpc = int(round(period / dtw))
     n_windows = int(round(N_CYCLES * period / dtw))
-    substeps = 20                                  # dt_sub ~ 2.2e-4 (ring-down regime)
+    substeps = 40                                  # dt_sub ~ 1.1e-4: fine enough that
+    # adaptive halving never triggers at the violent stroke phases — the halving
+    # BRANCH FLIP made the window map g(x) discontinuous (measured: Picard limit
+    # cycles -> committed 2-window sawtooth pumped through the delayed-Kutta shed)
 
     print(f"S4 FSI: U={U} AoA={AOA_DEG} flap ±{AMP_DEG}deg@{FREQ}Hz | "
           f"windows/cycle={wpc}, total={n_windows}, substeps={substeps} "
           f"(dt_sub={dtw/substeps:.2e})")
 
     model = WingModel(nc=nc, ns=ns, rib_depth=D_STAR)
-    kin = FlapKinematics(np.deg2rad(AMP_DEG), period)
-    entry = WingEntry(model, kin, ramp_T=period / 2, load_ramp_T=period / 2)
+    # S5 cold start: START AT THE STROKE TOP (theta=+A, theta_dot=0) — the
+    # test-rig-realistic release point. Full-amplitude kinematics from t=0
+    # (the wake is measured unstable on near-frozen geometry — S4 blocker #2)
+    # but with ZERO interface velocity at t=0: aero loads grow continuously
+    # from static values instead of the 9 m/s impulsive start (measured: the
+    # mid-stroke start left w>=3 windows on a strongly repelling fixed point,
+    # L -15 -> -125 -> -413 N even under IQN-ILS). Short load ramp (~4
+    # windows, SHARPy style) absorbs the Wagner transient.
+    kin0 = FlapKinematics(np.deg2rad(AMP_DEG), period)
+
+    class TopStartKin:
+        """theta(t) = A cos(2 pi t / T): stroke-top release, theta_dot(0)=0."""
+        def angles(self, t):
+            return kin0.angles(t + period / 4.0)
+    kin = TopStartKin()
+    entry = WingEntry(model, kin, ramp_T=0.0, load_ramp_T=4 * dtw)
     print(f"  pre-eq: |r|_soft={entry.preeq_info['resid']:.2e} N, "
           f"wrinkled {entry.preeq_info['n_wrinkled']}/{entry.preeq_info['ne']}")
 
@@ -95,48 +110,59 @@ def main():
     # geometry is measured unstable (stacked rings: Fz -> 5.8e4 N in 8
     # commits), so the standalone spin-up is folded into step 3; the
     # impulsive-start (Wagner) transient is absorbed by the amplitude ramp.
-    provider_raw = FlapUVLMProvider(V_vec, 1.225, dtw, K=6, nu=15.06e-6,
-                                    chord=CHORD, particles=False, max_particles=1)
+    #
+    # S5 strong coupling (docs/p2_s5_coupling_research.md, Lefrancois route):
+    #   - provider madd = UVLM-consistent added-mass matrix (full n(x)n,
+    #     symmetrized + sign-projected; G1-gated vs the analytic plate) goes
+    #     onto the structural LHS inside WingEntry.substep (M_eff = M - madd);
+    #     explicit dGamma/dt is zeroed by the provider (no double count, no
+    #     a_lag channel);
+    #   - window-level Picard to convergence + Kuettler-Wall Aitken (omega
+    #     inherited across windows, sign-kept, clamped 0.5), min 3 iterations
+    #     (SHARPy), rel tol 1e-3 on the interface displacement residual.
+    provider = FlapUVLMProvider(V_vec, 1.225, dtw, K=6, nu=15.06e-6,
+                                chord=CHORD, particles=False, max_particles=1,
+                                added_mass_operator=True)
+    ait_stats = add_iqnils(provider)               # IQN-ILS w/ history reuse
 
-    class UnderRelaxedProvider:
-        """Force under-relaxation between provider solves (omega=0.35): the
-        membrane added-mass ratio ~5 gives the loose two-pass PC a window loop
-        gain ~1.6 (measured 2-window sawtooth, L alternating to +-1e2 N by w=8)
-        — the research-recommended remedy (决策点3: 欠松弛+子迭代 before damping).
-        The provider's madd operator is NOT used: measured INDEFINITE
-        (eigs +-5e-4 ~ structural node mass) and historically never enabled."""
-
-        def __init__(self, inner, omega=0.35):
-            self.inner = inner
-            self.omega = omega
-            self._rel = None
-
-        def solve(self, state):
-            F = self.inner.solve(state)
-            fmix = F.f if self._rel is None else self._rel.f + self.omega * (F.f - self._rel.f)
-            pay = dict(F.payload or {})
-            pay["a_lag"] = entry.a.copy()      # freeze the accel at solve time
-            self._rel = NodalForceSet(fmix, payload=pay)
-            return self._rel
-
-        def commit(self, forces):
-            self.inner.commit(forces)
-
-    provider = UnderRelaxedProvider(provider_raw)
-
-    # ── Stein step 3: coupled, zero velocities, amplitude ramp ──────────────
+    # ── Stein step 3: kinematically consistent stroke-top IC ────────────────
+    # The WHOLE wing (pre-equilibrium shape) rigidly rotated to theta(0)=+A;
+    # dq = 0 exactly (stroke reversal); a = theta_dd x r (angular acceleration
+    # of the release, theta_dot=0 so no centripetal term). Root row and rod
+    # psi match the prescribed _cb(0) values by construction.
+    th0, thd0, thdd0 = kin.angles(0.0)
+    c0_, s0_ = np.cos(th0), np.sin(th0)
+    R0 = np.array([[1, 0, 0], [0, c0_, -s0_], [0, s0_, c0_]])
+    u_pre = entry.q[model.trans_map]               # pre-eq displacements
+    pos_rot = (model.nodes + u_pre) @ R0.T
+    entry.q[model.trans_map.ravel()] = (pos_rot - model.nodes).ravel()
+    al = np.array([thdd0, 0.0, 0.0])               # flap axis = +x (see _cb)
     entry.dq[:] = 0.0
-    entry.a[:] = 0.0
-    pc = WindowPredictorCorrector(entry=entry, provider=provider,
-                                  substeps=substeps, dt=dtw / substeps,
-                                  mode="two-pass")
+    entry.a[model.trans_map.ravel()] = np.cross(al, pos_rot).ravel()
+    for n_ in model.beam_nodes:
+        entry.q[model.dof6[n_, 3:]] = [th0, 0.0, 0.0]
+        entry.a[model.dof6[n_, 3:]] = al
+    pc = WindowPredictorCorrector(
+        entry=entry, provider=provider, substeps=substeps, dt=dtw / substeps,
+        mode="two-pass", iterations=30, min_iterations=3,
+        # abs tol at the PHYSICAL scale (30 um interface displacement): the
+        # iteration has a ~1.5e-5 m noise floor (branchy substep algorithms);
+        # demanding rel 1e-3 below it burned the full budget on already-
+        # converged windows and committed limit-cycle samples on the rest
+        adaptive_tol=3e-5, adaptive_tol_rel=1e-3,
+        residual_norm=lambda a, b: float(np.linalg.norm(
+            np.asarray(b["verts"]) - np.asarray(a["verts"]))))
     pc.initialize(F0)
     pc.advance(n_substeps=1)
 
-    lift, thrust, bend = [], [], []
+    cap = int(os.environ.get("S4_NWIN", "0") or 0)     # short-run hook (G2)
+    if cap:
+        n_windows = min(n_windows, cap)
+    lift, thrust, bend, iters = [], [], [], []
     t0 = time.time()
     for w in range(n_windows):
-        pc.advance()
+        stat = pc.advance()
+        iters.append(stat.iterations)
         st = entry.state()
         if not np.all(np.isfinite(st["verts"])):
             print(f"  NON-FINITE at window {w}"); return False
@@ -147,24 +173,28 @@ def main():
         th = entry._angles(pc._t)[0]         # ramped kinematics
         c, s_ = np.cos(th), np.sin(th)
         R = np.array([[1, 0, 0], [0, c, -s_], [0, s_, c]])
-        g0 = model.nodes[model.nid_grid.ravel()].reshape(ns + 1, nc + 1, 3).copy()
-        g0[..., 2] += model.aero_off         # rest AERO surface (flat + camber)
+        g0 = np.zeros((ns + 1, nc + 1, 3))   # rest AERO surface (flat + camber)
+        g0[..., 0:2] = model.aero_rest2d
+        g0[..., 2] = model.aero_off
         rigid = (g0.reshape(-1, 3) @ R.T).reshape(ns + 1, nc + 1, 3).transpose(1, 0, 2)
         bend.append(float(np.abs(st["verts"][..., 2] - rigid[..., 2]).max()))
         if w % 10 == 0:
             print(f"  w={w:3d} t={pc._t:.3f}s th={np.rad2deg(th):+6.1f}deg "
                   f"L={lift[-1]:+7.2f}N bend={bend[-1]*1e3:6.1f}mm "
-                  f"[{time.time()-t0:.0f}s]", flush=True)
+                  f"it={iters[-1]:2d} [{time.time()-t0:.0f}s]", flush=True)
 
-    lift = np.array(lift); thrust = np.array(thrust)
+    lift = np.array(lift); thrust = np.array(thrust); iters = np.array(iters)
     Lcyc = 2.0 * float(lift[-wpc:].mean())        # x2: half-wing channel
     Tcyc = 2.0 * float(thrust[-wpc:].mean())
-    print("\n=== S4 anchors ===")
+    print("\n=== S5 coupled anchors ===")
     print(f"  A1 old ANCF-shell path : diverged <10 windows (this run: "
           f"{n_windows} windows finite, bend_max {max(bend)*1e3:.1f} mm)")
     print(f"  A2 rigid UVLM lift     : ~4.2 N   | flexible cycle-mean 2L = {Lcyc:+.2f} N")
     print(f"  A3 measured flapping   : ~7.79 N  | (lift scale only; thrust "
-          f"2T = {Tcyc:+.2f} N NOT comparable pre-S5)")
+          f"2T = {Tcyc:+.2f} N NOT comparable pre-S5b closure port)")
+    print(f"  Picard iters/window    : mean {iters.mean():.1f} max {iters.max()} "
+          f"(IQN-ILS w/ reuse; Degroote strong-coupling reference ~6-10); "
+          f"rank-filtered cols {ait_stats['n_filtered']}")
     print(f"  wall {time.time()-t0:.0f}s")
     return True
 
