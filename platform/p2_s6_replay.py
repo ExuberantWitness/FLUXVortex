@@ -92,17 +92,22 @@ class TwistTopKin:
         return (pm + (np.asarray(X) - pm) @ Ry.T) @ Rx.T
 
 
-def record(U, freq, tw_deg=0.0, n_cycles=2.0):
+def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
+           ckpt_every=15):
     """S5 coupled run; record aero-grid (du, dv) vs rigid frame per window.
     tw_deg > 0: mechanism twist (root pitch about the main spar, TwistTopKin);
     the du/dv reference is then the production LINEAR-twist rigid field so
-    that replay total = production rigid + du = our flexible surface."""
+    that replay total = production rigid + du = our flexible surface.
+    rc0_scale: near-field vortex-core scale (reversal regularization).
+    resume: path to a .ckpt.npz saved by a previous run — restarts the
+    coupled state (structure + wake + coupler anchors) at that window."""
+    import pickle
     import warp as wp                                       # noqa: F401
     from scipy.spatial.transform import Rotation as _Rot
     from wing_system import WingModel, WingEntry
     from wing_iqn import add_iqnils
     from newton_pc import WindowPredictorCorrector
-    from newton_pc.adapters.flap import FlapUVLMProvider
+    from newton_pc.adapters.flap import FlapUVLMProvider, NodalForceSet
 
     period = 1.0 / freq
     alpha = np.deg2rad(AOA_DEG)
@@ -113,12 +118,18 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0):
     kin = TwistTopKin(np.deg2rad(AMP_DEG), period, np.deg2rad(tw_deg))
     entry = WingEntry(model, kin, ramp_T=0.0, load_ramp_T=4 * dtw)
     V = U * np.array([np.cos(alpha), 0, np.sin(alpha)])
-    p0 = FlapUVLMProvider(V, 1.225, dtw, K=6, nu=15.06e-6, chord=CHORD,
-                          particles=False, max_particles=1)
+    # wake settings (user-directed 2026-07-07): K=18 rows (~2.3 chords) so the
+    # wake actually DEVELOPS before the measurement cycle (K=6 never had a
+    # wake "in place" — start/reversal transients dominated); wake core FLOOR
+    # at 0.5 x row spacing (= chord/16, resolution-adaptive) regularizes the
+    # stroke-reversal near field (bound AIC untouched).
+    wcm = 0.5 * U * dtw * rc0_scale
+    p0 = FlapUVLMProvider(V, 1.225, dtw, K=18, nu=15.06e-6, chord=CHORD,
+                          particles=False, max_particles=1, wake_core_min=wcm)
     F0 = p0.solve(entry.state())
-    prov = FlapUVLMProvider(V, 1.225, dtw, K=6, nu=15.06e-6, chord=CHORD,
+    prov = FlapUVLMProvider(V, 1.225, dtw, K=18, nu=15.06e-6, chord=CHORD,
                             particles=False, max_particles=1,
-                            added_mass_operator=True)
+                            added_mass_operator=True, wake_core_min=wcm)
     add_iqnils(prov, mann_after=20, final_at=44)   # sync w/ iterations=45
     # kinematically consistent IC from the FULL rigid root motion at t=0
     # (flap theta_dot(0)=0 at the stroke top, but the twist RATE is nonzero)
@@ -151,9 +162,6 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0):
         adaptive_tol=3e-5, adaptive_tol_rel=1e-3,
         residual_norm=lambda a, b: float(np.linalg.norm(
             np.asarray(b["verts"]) - np.asarray(a["verts"]))))
-    pc.initialize(F0)
-    pc.advance(n_substeps=1)
-
     ns_, nc_ = model.ns, model.nc
     g0 = np.zeros((ns_ + 1, nc_ + 1, 3))                     # rest aero surface
     g0[..., 0:2] = model.aero_rest2d
@@ -179,11 +187,47 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0):
         c_, s_ = np.cos(th), np.sin(th)
         R = np.array([[1, 0, 0], [0, c_, -s_], [0, s_, c_]])
         return (g.reshape(-1, 3) @ R.T).reshape(ns_ + 1, nc_ + 1, 3)
+    ckpt_path = _npz_path(U, freq, tw_deg) + ".ckpt"
     ts, dus, dvs, lifts, thrusts, iters = [], [], [], [], [], []
+    w_start = 0
+    if resume and os.path.exists(resume):
+        ck = pickle.load(open(resume, "rb"))
+        entry.q[:] = ck["q"]; entry.dq[:] = ck["dq"]; entry.a[:] = ck["a"]
+        entry.t = ck["et"]
+        prov.pts = ck["pts"]; prov.gam = list(ck["gam"])
+        prov.ages = list(ck["ages"])
+        prov.gamma_prev = ck["gamma_prev"]; prov._gb_prev = ck["gb_prev"]
+        pc._t = ck["t"]; pc._window_index = ck["wi"]
+        pc._F_prev = NodalForceSet(ck["Fp_f"], madd=ck["Fp_m"], a_lag=ck["Fp_al"])
+        pc._F_cur = NodalForceSet(ck["Fc_f"], madd=ck["Fc_m"], a_lag=ck["Fc_al"])
+        ts, dus, dvs = list(ck["ts"]), list(ck["dus"]), list(ck["dvs"])
+        lifts, thrusts, iters = (list(ck["lifts"]), list(ck["thrusts"]),
+                                 list(ck["iters"]))
+        w_start = ck["w"] + 1
+        print(f"  resumed from {resume} at window {w_start} (t={pc._t:.4f})",
+              flush=True)
+    else:
+        pc.initialize(F0)
+        pc.advance(n_substeps=1)
+
+    def _save_ckpt(w):
+        ck = dict(w=w, t=pc._t, wi=pc._window_index, et=entry.t,
+                  q=entry.q.copy(), dq=entry.dq.copy(), a=entry.a.copy(),
+                  pts=prov.pts, gam=prov.gam, ages=prov.ages,
+                  gamma_prev=prov.gamma_prev, gb_prev=prov._gb_prev,
+                  Fp_f=pc._F_prev.f, Fp_m=pc._F_prev.madd,
+                  Fp_al=getattr(pc._F_prev, "a_lag", None),
+                  Fc_f=pc._F_cur.f, Fc_m=pc._F_cur.madd,
+                  Fc_al=getattr(pc._F_cur, "a_lag", None),
+                  ts=ts, dus=dus, dvs=dvs, lifts=lifts, thrusts=thrusts,
+                  iters=iters)
+        with open(ckpt_path, "wb") as fh:
+            pickle.dump(ck, fh)
+
     import time as _time
     t0_ = _time.time()
     fail = None
-    for w in range(n_windows):
+    for w in range(w_start, n_windows):
         try:
             s = pc.advance()
         except RuntimeError as e:
@@ -203,6 +247,8 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0):
         lifts.append(float(-Fp[0] * np.sin(alpha) + Fp[2] * np.cos(alpha)))
         thrusts.append(float(-(Fp[0] * np.cos(alpha) + Fp[2] * np.sin(alpha))))
         iters.append(s.iterations)
+        if ckpt_every and (w + 1) % ckpt_every == 0:
+            _save_ckpt(w)
         if w % 10 == 0:
             print(f"  w={w:3d}/{n_windows} t={t:.3f}s it={s.iterations:2d} "
                   f"L={lifts[-1]:+7.2f} |du|max={np.abs(du).max()*1e3:5.1f}mm "

@@ -273,6 +273,7 @@ class FlapUVLMProvider:
     def __init__(self, V_inf_vec, rho, dt_window, K=8, nu=15.06e-6,
                  chord=1.5, particles=True, max_particles=60000,
                  added_mass_operator=False, madd_project=True,
+                 wake_core_min=0.0,
                  pop_scheme="drop", merge_eps=1e-3, merge_protect=64):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
@@ -280,6 +281,14 @@ class FlapUVLMProvider:
         self.K = K
         self.nu = nu
         self.rc0 = 0.03 * chord
+        # minimum WAKE ring core (m): floor on the Lamb-Oseen/Squire aged core
+        # for SHED rings only (bound AIC untouched — inflating it corrupts the
+        # static solution, measured -0.17 -> -13.7 N). Physically: a freshly
+        # shed sheet segment is not a concentrated age-0 filament; a floor at
+        # ~0.5 x row spacing (resolution-adaptive, the production LEV-core
+        # treatment) regularizes the stroke-REVERSAL near field where the
+        # quasi-static wing sits right on its newest rows.
+        self.wake_core_min = wake_core_min
         self.particles = particles
         self.max_particles = max_particles
         self.added_mass_operator = added_mass_operator
@@ -335,6 +344,8 @@ class FlapUVLMProvider:
         gam = np.concatenate(self.gam)
         ns = p.shape[1] - 1
         rc_row = _wake_rc_sq(self.rc0, self.gam, self.ages, self.nu)
+        if self.wake_core_min > 0.0:               # reversal near-field floor
+            rc_row = np.maximum(rc_row, self.wake_core_min ** 2)
         rc = np.repeat(rc_row, ns)
         return c0, c1, c2, c3, gam, rc
 
