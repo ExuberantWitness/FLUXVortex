@@ -49,10 +49,11 @@ def main():
                     "-o", color="#b3382e", label="柔性(耦合回放)")
             ax.plot(tws, [pts[(8.0, 2.3, t)]["rigid"][idx] for t in tws],
                     "--s", color="#2b2f36", label="刚性(同闭合)")
-        mk = f"17|{'a' if comp == 'L' else 'b'}|2.3"
-        if mk in meas:
-            ax.plot(meas[mk]["x"], meas[mk]["exp"], "k-x", lw=1.2,
-                    label="实测(Fig17)")
+        for pan in ("a", "b"):                      # pick panel by kind field
+            mk = f"17|{pan}|2.3"
+            if mk in meas and meas[mk].get("kind") == comp:
+                ax.plot(meas[mk]["x"], meas[mk]["exp"], "k-x", lw=1.2,
+                        label="实测(Fig17)")
         ax.set_xlabel("扭转幅值 (deg)"); ax.set_ylabel(f"{comp} (N)")
         ax.legend(fontsize=8); ax.grid(alpha=0.3)
         ax.set_title(f"Fig17 型:{comp} vs 扭转 @U8/f2.3", fontsize=10)
@@ -68,10 +69,11 @@ def main():
                 ax.plot(fs, [pts[(U, f, 0.0)]["rigid"][idx] for f in fs],
                         "--s", color=cols.get(U, "k"), alpha=0.5,
                         label=f"刚性 U{U:g}")
-            mk = f"18|{'a' if comp == 'L' else 'b'}|{U}"
-            if mk in meas:
-                ax.plot(meas[mk]["x"], meas[mk]["exp"], "-x", color=cols.get(U, "k"),
-                        lw=1.0, alpha=0.8)
+            for pan in ("a", "b"):
+                mk = f"18|{pan}|{U}"
+                if mk in meas and meas[mk].get("kind") == comp:
+                    ax.plot(meas[mk]["x"], meas[mk]["exp"], "-x",
+                            color=cols.get(U, "k"), lw=1.0, alpha=0.8)
         ax.set_xlabel("扑动频率 (Hz)"); ax.set_ylabel(f"{comp} (N)")
         ax.legend(fontsize=7); ax.grid(alpha=0.3)
         ax.set_title(f"Fig18 型:{comp} vs 频率 @tw0(×= 实测)", fontsize=10)
