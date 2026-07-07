@@ -273,7 +273,8 @@ class FlapUVLMProvider:
     def __init__(self, V_inf_vec, rho, dt_window, K=8, nu=15.06e-6,
                  chord=1.5, particles=True, max_particles=60000,
                  added_mass_operator=False, madd_project=True,
-                 wake_core_min=0.0,
+                 wake_core_min=0.0, kirch_stall=False,
+                 stall_deg=12.0, stall_width=16.0,
                  pop_scheme="drop", merge_eps=1e-3, merge_protect=64):
         self.V_inf = np.asarray(V_inf_vec, dtype=float)
         self.rho = rho
@@ -289,6 +290,17 @@ class FlapUVLMProvider:
         # treatment) regularizes the stroke-REVERSAL near field where the
         # quasi-static wing sits right on its newest rows.
         self.wake_core_min = wake_core_min
+        # Kirchhoff quasi-steady stall on the CIRCULATORY pressure (the
+        # production-validated Fix1/geo_stall closure, NACA-2406 constants
+        # alpha_ss=12 deg / width=16 deg — literature airfoil values, zero
+        # new fits). Per-panel incidence from the LOCAL flow (V_loc vs n):
+        # captures the deep flapping alpha_eff (+-40 deg at stroke extremes)
+        # that the bare attached-flow lattice turns into load fictions
+        # (measured: L -> -18 N late-upstroke killed the membrane).
+        # The apparent-mass term (rho dGamma/dt) stays UNSCALED (production).
+        self.kirch_stall = kirch_stall
+        self.stall_deg = stall_deg
+        self.stall_width = stall_width
         self.particles = particles
         self.max_particles = max_particles
         self.added_mass_operator = added_mass_operator
@@ -402,9 +414,20 @@ class FlapUVLMProvider:
         # damper of start-up ringing) is NOT lost. (Measured: zeroing dgb_dt
         # here let window-converged solutions escalate 11->39->141 m/s.)
         dgb_dt = (gb - gb_prev) / self.dtw
-        dp = self.rho * (np.einsum('tc,tc->t', V_loc, tch).reshape(nc, ns) * dgc
-                         + np.einsum('tc,tc->t', V_loc, tsh).reshape(nc, ns) * dgs
-                         + dgb_dt)
+        dp_circ = (np.einsum('tc,tc->t', V_loc, tch).reshape(nc, ns) * dgc
+                   + np.einsum('tc,tc->t', V_loc, tsh).reshape(nc, ns) * dgs)
+        if self.kirch_stall:
+            # Kirchhoff TE-separation factor from the LOCAL flow incidence
+            sa = (np.einsum('tc,tc->t', V_loc, nrm)
+                  / (np.linalg.norm(V_loc, axis=1) + 1e-9))
+            a_p = np.abs(np.arcsin(np.clip(sa, -0.999, 0.999)))
+            ass = np.radians(self.stall_deg)
+            fsep = np.where(a_p <= ass, 1.0,
+                            np.clip(1.0 - (a_p - ass) / np.radians(self.stall_width),
+                                    0.0, 1.0))
+            fac = ((1.0 + np.sqrt(fsep)) / 2.0) ** 2       # 1 .. 0.25 (bounded)
+            dp_circ = dp_circ * fac.reshape(nc, ns)
+        dp = self.rho * (dp_circ + dgb_dt)
         f_panel = (dp.reshape(P)[:, None] * area[:, None] * nrm).reshape(nc, ns, 3)
         # ---- wake evolution (Ptera order): convect grid, then prepend TE row
         te_back = np.vstack([c3[(nc - 1) * ns:],

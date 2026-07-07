@@ -125,11 +125,13 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
     # stroke-reversal near field (bound AIC untouched).
     wcm = 0.5 * U * dtw * rc0_scale
     p0 = FlapUVLMProvider(V, 1.225, dtw, K=18, nu=15.06e-6, chord=CHORD,
-                          particles=False, max_particles=1, wake_core_min=wcm)
+                          particles=False, max_particles=1, wake_core_min=wcm,
+                          kirch_stall=True)
     F0 = p0.solve(entry.state())
     prov = FlapUVLMProvider(V, 1.225, dtw, K=18, nu=15.06e-6, chord=CHORD,
                             particles=False, max_particles=1,
-                            added_mass_operator=True, wake_core_min=wcm)
+                            added_mass_operator=True, wake_core_min=wcm,
+                            kirch_stall=True)
     add_iqnils(prov, mann_after=20, final_at=44)   # sync w/ iterations=45
     # kinematically consistent IC from the FULL rigid root motion at t=0
     # (flap theta_dot(0)=0 at the stroke top, but the twist RATE is nonzero)

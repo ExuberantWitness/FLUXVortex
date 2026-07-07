@@ -55,11 +55,19 @@ def main(cfg="K0"):
         npz = rp._npz_path(U, f, tw)
         try:
             if key not in res or not res[key].get("flex"):
-                if not os.path.exists(npz):
+                ck = npz + ".ckpt"
+                if not os.path.exists(npz) or os.path.exists(ck):
                     print(f"=== RECORD {key} ===", flush=True)
                     t0 = time.time()
-                    rp.record(U, f, tw, n_cycles=1.6)
+                    # rc0_scale=2: wake-core floor 1.0 x row spacing — the
+                    # validated reversal/wake-recross regularization (0.5x
+                    # died at w55 post-reversal; 1.0x crossed)
+                    rp.record(U, f, tw, n_cycles=1.6, rc0_scale=2.0,
+                              resume=ck if os.path.exists(ck) else None)
                     print(f"  record wall {time.time()-t0:.0f}s", flush=True)
+                    d_ = np.load(npz)
+                    if str(d_["fail"]) == "None" and os.path.exists(ck):
+                        os.remove(ck)              # complete: drop checkpoint
                 d = np.load(npz)
                 if str(d["fail"]) != "None":
                     res[key] = dict(fail=str(d["fail"]))
