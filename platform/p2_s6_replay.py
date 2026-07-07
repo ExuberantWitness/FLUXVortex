@@ -39,17 +39,70 @@ CHORD, AOA_DEG = 0.287, 5.0
 AMP_DEG = 45.0
 
 
-def _npz_path(U, freq):
-    return os.path.join(DOCS, f"s6_defl_U{U:g}_f{freq:g}.npz")
+def _npz_path(U, freq, tw=0.0):
+    suf = f"_tw{tw:g}" if tw else ""
+    return os.path.join(DOCS, f"s6_defl_U{U:g}_f{freq:g}{suf}.npz")
 
 
-def record(U, freq, n_cycles=2.0):
-    """S5 coupled run; record aero-grid (du, dv) vs rigid frame per window."""
+X_MAIN = 0.08858                     # main-spar line (m aft of LE), assembly v3
+
+
+class TwistTopKin:
+    """Stroke-top release kinematics with the RoboEagle double-crank twist:
+    flap theta about body-x COMPOSED with the mechanism pitch psi about the
+    MAIN-SPAR line (paper 2.2: the slider twist reaches the wing at the outer
+    rod connection -> the root assembly pitches about the spar; the spanwise
+    twist DISTRIBUTION is left to the structure). Twist amplitude 2*beta =
+    data.md tw (mechanism definition); psi leads flap by 90 deg."""
+
+    def __init__(self, amp_f_rad, period, tw_rad):
+        from newton_pc.adapters.flap import FlapKinematics
+        self._kin0 = FlapKinematics(amp_f_rad, period)
+        self.period = period
+        self.beta = 0.5 * tw_rad
+        self.om = 2.0 * np.pi / period
+
+    def angles(self, t):                       # flap component (ramp, C_add)
+        return self._kin0.angles(t + self.period / 4.0)
+
+    def _psi(self, t):
+        # production convention: twist angle psi_p = A_t cos(Om t_rig) applied
+        # by [x' = xe+(x-xe)c - z s, z' = (x-xe)s + z c] = rotation about -y.
+        # In STANDARD +y rotation terms that is -psi_p; with record time
+        # t = t_rig - T/4 (cos -> -sin):  psi_std(t) = +beta sin(Om t).
+        return self.beta * np.sin(self.om * t)
+
+    def root_rot(self, t):
+        th = self.angles(t)[0]
+        ps = self._psi(t)
+        cx, sx = np.cos(th), np.sin(th)
+        cy, sy = np.cos(ps), np.sin(ps)
+        Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+        Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+        return Rx @ Ry
+
+    def root_map(self, t, X):
+        th = self.angles(t)[0]
+        ps = self._psi(t)
+        cx, sx = np.cos(th), np.sin(th)
+        cy, sy = np.cos(ps), np.sin(ps)
+        Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+        Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+        pm = np.array([X_MAIN, 0.0, 0.0])
+        return (pm + (np.asarray(X) - pm) @ Ry.T) @ Rx.T
+
+
+def record(U, freq, tw_deg=0.0, n_cycles=2.0):
+    """S5 coupled run; record aero-grid (du, dv) vs rigid frame per window.
+    tw_deg > 0: mechanism twist (root pitch about the main spar, TwistTopKin);
+    the du/dv reference is then the production LINEAR-twist rigid field so
+    that replay total = production rigid + du = our flexible surface."""
     import warp as wp                                       # noqa: F401
+    from scipy.spatial.transform import Rotation as _Rot
     from wing_system import WingModel, WingEntry
     from wing_iqn import add_iqnils
     from newton_pc import WindowPredictorCorrector
-    from newton_pc.adapters.flap import FlapKinematics, FlapUVLMProvider
+    from newton_pc.adapters.flap import FlapUVLMProvider
 
     period = 1.0 / freq
     alpha = np.deg2rad(AOA_DEG)
@@ -57,12 +110,7 @@ def record(U, freq, n_cycles=2.0):
     substeps = 40
     n_windows = int(round(n_cycles * period / dtw))
     model = WingModel(rib_depth=D_STAR)
-    kin0 = FlapKinematics(np.deg2rad(AMP_DEG), period)
-
-    class TopKin:                                            # stroke-top release
-        def angles(self, t):
-            return kin0.angles(t + period / 4.0)
-    kin = TopKin()
+    kin = TwistTopKin(np.deg2rad(AMP_DEG), period, np.deg2rad(tw_deg))
     entry = WingEntry(model, kin, ramp_T=0.0, load_ramp_T=4 * dtw)
     V = U * np.array([np.cos(alpha), 0, np.sin(alpha)])
     p0 = FlapUVLMProvider(V, 1.225, dtw, K=6, nu=15.06e-6, chord=CHORD,
@@ -71,21 +119,35 @@ def record(U, freq, n_cycles=2.0):
     prov = FlapUVLMProvider(V, 1.225, dtw, K=6, nu=15.06e-6, chord=CHORD,
                             particles=False, max_particles=1,
                             added_mass_operator=True)
-    add_iqnils(prov)
-    th0, thd0, thdd0 = kin.angles(0.0)
-    c0_, s0_ = np.cos(th0), np.sin(th0)
-    R0 = np.array([[1, 0, 0], [0, c0_, -s0_], [0, s0_, c0_]])
-    pos_rot = (model.nodes + entry.q[model.trans_map]) @ R0.T
-    entry.q[model.trans_map.ravel()] = (pos_rot - model.nodes).ravel()
-    al = np.array([thdd0, 0, 0])
+    add_iqnils(prov, mann_after=20, final_at=44)   # sync w/ iterations=45
+    # kinematically consistent IC from the FULL rigid root motion at t=0
+    # (flap theta_dot(0)=0 at the stroke top, but the twist RATE is nonzero)
+    dlt = 1e-6
+    u_pre = entry.q[model.trans_map].copy()
+    u_pre[:model.nc + 1] = 0.0        # root row: __init__ already wrote the
+    # PRESCRIBED (rotated) values there — rotating them again would double-
+    # rotate the root (measured 45 deg root-band distortion at t=0)
+    pos_pre = model.nodes + u_pre
+    pos0 = kin.root_map(0.0, pos_pre)
+    posp = kin.root_map(dlt, pos_pre)
+    posm = kin.root_map(-dlt, pos_pre)
+    entry.q[model.trans_map.ravel()] = (pos0 - model.nodes).ravel()
     entry.dq[:] = 0.0
-    entry.a[model.trans_map.ravel()] = np.cross(al, pos_rot).ravel()
+    entry.dq[model.trans_map.ravel()] = ((posp - posm) / (2 * dlt)).ravel()
+    entry.a[model.trans_map.ravel()] = ((posp - 2 * pos0 + posm) / dlt ** 2).ravel()
+    rv0 = _Rot.from_matrix(kin.root_rot(0.0)).as_rotvec()
+    drv = (_Rot.from_matrix(kin.root_rot(dlt)).as_rotvec()
+           - _Rot.from_matrix(kin.root_rot(-dlt)).as_rotvec()) / (2 * dlt)
     for n_ in model.beam_nodes:
-        entry.q[model.dof6[n_, 3:]] = [th0, 0, 0]
-        entry.a[model.dof6[n_, 3:]] = al
+        entry.q[model.dof6[n_, 3:]] = rv0
+        entry.dq[model.dof6[n_, 3:]] = drv
+        entry.a[model.dof6[n_, 3:]] = 0.0
     pc = WindowPredictorCorrector(
         entry=entry, provider=prov, substeps=substeps, dt=dtw / substeps,
-        mode="two-pass", iterations=30, min_iterations=3,
+        # 45 iterations: the stroke-REVERSAL windows (wing re-crossing its own
+        # wake) converge slowly (probe: res 6e-5..9e-4 at the 30 cap; a capped
+        # commit there occasionally seeds a divergence within ~6 windows)
+        mode="two-pass", iterations=45, min_iterations=3,
         adaptive_tol=3e-5, adaptive_tol_rel=1e-3,
         residual_norm=lambda a, b: float(np.linalg.norm(
             np.asarray(b["verts"]) - np.asarray(a["verts"]))))
@@ -96,34 +158,68 @@ def record(U, freq, n_cycles=2.0):
     g0 = np.zeros((ns_ + 1, nc_ + 1, 3))                     # rest aero surface
     g0[..., 0:2] = model.aero_rest2d
     g0[..., 2] = model.aero_off
-    ts, dus, dvs, lifts, iters = [], [], [], [], []
+    # rigid REFERENCE field for du/dv: flap + the production LINEAR-twist
+    # pitch about the swept axis (twisted_corners math), so that the replay
+    # total (production rigid + du) equals our flexible surface exactly
+    import _v2_robogeom as _rg
+    ys_st = np.linspace(0.0, 0.8, ns_ + 1)
+    xe_st = _rg.axis_x(ys_st)[:, None]
+    yfrac = (ys_st / 0.8)[:, None]
+    om_ = 2.0 * np.pi / period
+    tw_rad = np.deg2rad(tw_deg)
+
+    def rigid_ref(t):
+        th = kin.angles(t)[0]
+        psl = tw_rad * yfrac * (-np.sin(om_ * t))            # production phase
+        g = g0.copy()
+        dx = g0[..., 0] - xe_st
+        cz, sz = np.cos(psl), np.sin(psl)
+        g[..., 0] = xe_st + dx * cz - g0[..., 2] * sz
+        g[..., 2] = dx * sz + g0[..., 2] * cz
+        c_, s_ = np.cos(th), np.sin(th)
+        R = np.array([[1, 0, 0], [0, c_, -s_], [0, s_, c_]])
+        return (g.reshape(-1, 3) @ R.T).reshape(ns_ + 1, nc_ + 1, 3)
+    ts, dus, dvs, lifts, thrusts, iters = [], [], [], [], [], []
+    import time as _time
+    t0_ = _time.time()
+    fail = None
     for w in range(n_windows):
-        s = pc.advance()
+        try:
+            s = pc.advance()
+        except RuntimeError as e:
+            fail = f"w{w}: {e}"
+            print(f"  FAIL {fail} — saving what was recorded", flush=True)
+            break
         st = entry.state()
         t = pc._t
-        th, thd, _ = kin.angles(t)
-        c_, s2 = np.cos(th), np.sin(th)
-        R = np.array([[1, 0, 0], [0, c_, -s2], [0, s2, c_]])
-        Rd = thd * np.array([[0, 0, 0], [0, -s2, -c_], [0, c_, -s2]])
-        rig = (g0.reshape(-1, 3) @ R.T).reshape(ns_ + 1, nc_ + 1, 3)
-        rigv = (g0.reshape(-1, 3) @ Rd.T).reshape(ns_ + 1, nc_ + 1, 3)
+        dt2 = 1e-6
+        rig = rigid_ref(t)
+        rigv = (rigid_ref(t + dt2) - rigid_ref(t - dt2)) / (2 * dt2)
         du = st["verts"].transpose(1, 0, 2) - rig            # (ns+1, nc+1, 3)
         dv = st["vels"].transpose(1, 0, 2) - rigv
         ts.append(t); dus.append(du); dvs.append(dv)
-        lifts.append(float(pc._F_cur.f.reshape(-1, 9)[:, 2].sum()))
+        Fp = (pc._F_cur.payload["f_panel"].sum(axis=(0, 1))
+              if pc._F_cur.payload else np.zeros(3))
+        lifts.append(float(-Fp[0] * np.sin(alpha) + Fp[2] * np.cos(alpha)))
+        thrusts.append(float(-(Fp[0] * np.cos(alpha) + Fp[2] * np.sin(alpha))))
         iters.append(s.iterations)
         if w % 10 == 0:
             print(f"  w={w:3d}/{n_windows} t={t:.3f}s it={s.iterations:2d} "
-                  f"L={lifts[-1]:+7.2f} |du|max={np.abs(du).max()*1e3:5.1f}mm",
-                  flush=True)
-    xf = model.aero_rest2d[0, :, 0] / max(float(CHORD), 1e-9)  # root row = xf*c
-    np.savez(_npz_path(U, freq), ts=np.array(ts), dus=np.array(dus),
-             dvs=np.array(dvs), lifts=np.array(lifts), iters=np.array(iters),
-             period=period, phase0=period / 4.0,
+                  f"L={lifts[-1]:+7.2f} |du|max={np.abs(du).max()*1e3:5.1f}mm "
+                  f"[{_time.time()-t0_:.0f}s]", flush=True)
+    np.savez(_npz_path(U, freq, tw_deg), ts=np.array(ts), dus=np.array(dus),
+             dvs=np.array(dvs), lifts=np.array(lifts),
+             thrusts=np.array(thrusts), iters=np.array(iters),
+             period=period, phase0=period / 4.0, fail=str(fail),
              xf=0.5 * (1 - np.cos(np.linspace(0, np.pi, nc_ + 1))),
              ys=np.linspace(0, 0.8, ns_ + 1))
-    print(f"recorded {len(ts)} windows -> {_npz_path(U, freq)}  "
-          f"(iters mean {np.mean(iters):.1f})")
+    wpc = int(round(period / dtw))
+    if len(lifts) >= wpc:
+        print(f"  cycle-mean (last cycle, x2 half-wing): "
+              f"2L={2*np.mean(lifts[-wpc:]):+.2f} N  "
+              f"2T={2*np.mean(thrusts[-wpc:]):+.2f} N")
+    print(f"recorded {len(ts)} windows -> {_npz_path(U, freq, tw_deg)}  "
+          f"(iters mean {np.mean(iters):.1f}, fail={fail})")
 
 
 class DeformInterp:
@@ -174,23 +270,23 @@ class DeformInterp:
                 self._resample(dv).transpose(1, 0, 2))
 
 
-def replay(U, freq, cfg_name="K0", nc=12, ns=16, n_cycle=4):
+def replay(U, freq, tw=0.0, cfg_name="K0", nc=12, ns=16, n_cycle=4):
     from _v2_robo import gpu_run_twist
     sys.path.insert(0, _HERE)
     from _v2_repro_nc12 import CFG_PRESETS, spc_of
     kw = dict(CFG_PRESETS[cfg_name])
     spc = spc_of(U, freq)
-    hook = DeformInterp(_npz_path(U, freq), nc, ns)
-    out_flex = gpu_run_twist(U=U, aoa_deg=AOA_DEG, freq=freq, twist_amp_deg=0.0,
+    hook = DeformInterp(_npz_path(U, freq, tw), nc, ns)
+    out_flex = gpu_run_twist(U=U, aoa_deg=AOA_DEG, freq=freq, twist_amp_deg=tw,
                              twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                              steps_per_cycle=spc, wake_rows=spc,
                              deform_hook=hook, **kw)
-    out_rig = gpu_run_twist(U=U, aoa_deg=AOA_DEG, freq=freq, twist_amp_deg=0.0,
+    out_rig = gpu_run_twist(U=U, aoa_deg=AOA_DEG, freq=freq, twist_amp_deg=tw,
                             twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                             steps_per_cycle=spc, wake_rows=spc, **kw)
     Lf, Tf = float(out_flex["L_wind"]), float(out_flex["T_wind"])
     Lr, Tr = float(out_rig["L_wind"]), float(out_rig["T_wind"])
-    print(f"S6 replay U={U} f={freq} [{cfg_name}]: "
+    print(f"S6 replay U={U} f={freq} tw={tw} [{cfg_name}]: "
           f"flex L={Lf:+.3f} T={Tf:+.3f} | rigid L={Lr:+.3f} T={Tr:+.3f} | "
           f"dL={Lf-Lr:+.3f} dT={Tf-Tr:+.3f}")
     return dict(flex=(Lf, Tf), rigid=(Lr, Tr))
@@ -199,7 +295,8 @@ def replay(U, freq, cfg_name="K0", nc=12, ns=16, n_cycle=4):
 if __name__ == "__main__":
     mode = sys.argv[1]
     U_, f_ = float(sys.argv[2]), float(sys.argv[3])
+    tw_ = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
     if mode == "record":
-        record(U_, f_)
+        record(U_, f_, tw_)
     else:
-        replay(U_, f_, sys.argv[4] if len(sys.argv) > 4 else "K0")
+        replay(U_, f_, tw_, sys.argv[5] if len(sys.argv) > 5 else "K0")

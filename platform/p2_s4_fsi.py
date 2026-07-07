@@ -133,7 +133,9 @@ def main():
     th0, thd0, thdd0 = kin.angles(0.0)
     c0_, s0_ = np.cos(th0), np.sin(th0)
     R0 = np.array([[1, 0, 0], [0, c0_, -s0_], [0, s0_, c0_]])
-    u_pre = entry.q[model.trans_map]               # pre-eq displacements
+    u_pre = entry.q[model.trans_map].copy()        # pre-eq displacements
+    u_pre[:model.nc + 1] = 0.0                     # root row already holds the
+    # prescribed (rotated) values — rotating again would double-rotate it
     pos_rot = (model.nodes + u_pre) @ R0.T
     entry.q[model.trans_map.ravel()] = (pos_rot - model.nodes).ravel()
     al = np.array([thdd0, 0.0, 0.0])               # flap axis = +x (see _cb)

@@ -777,6 +777,8 @@ class WingEntry:
         return th, thd, thdd
 
     def _cb(self, t):
+        if hasattr(self.kin, "root_map"):
+            return self._cb_general(t)
         th, thd, thdd = self._angles(t)
         c, s = np.cos(th), np.sin(th)
         R = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
@@ -792,6 +794,38 @@ class WingEntry:
         qb[:ntr], dqb[:ntr], ddqb[:ntr] = u, du, ddu
         for slot in self._spar_psi_slots:                   # single-axis: psi=(th,0,0) exact
             qb[slot] = th; dqb[slot] = thd; ddqb[slot] = thdd
+        return qb, dqb, ddqb
+
+    def _cb_general(self, t, dlt=1e-6):
+        """Two-DOF (or general rigid) prescribed root: the kinematics object
+        provides root_map(t, X) -> positions of the root points under the full
+        rigid root motion (e.g. flap about body-x COMPOSED with the mechanism
+        pitch about the MAIN-SPAR line — RoboEagle double-crank: the slider
+        twists the outer-rod connection, i.e. the root assembly pitches about
+        the spar; spanwise twist DISTRIBUTION then EMERGES structurally) and
+        root_rot(t) -> the 3x3 rotation of the root triads. Velocities and
+        accelerations by central differences (prescribed C^inf kinematics)."""
+        from scipy.spatial.transform import Rotation as _Rot
+        X = self._X_root
+        p0 = self.kin.root_map(t, X)
+        pp = self.kin.root_map(t + dlt, X)
+        pm = self.kin.root_map(t - dlt, X)
+        u = (p0 - X).ravel()
+        du = ((pp - pm) / (2 * dlt)).ravel()
+        ddu = ((pp - 2 * p0 + pm) / dlt ** 2).ravel()
+        rv0 = _Rot.from_matrix(self.kin.root_rot(t)).as_rotvec()
+        rvp = _Rot.from_matrix(self.kin.root_rot(t + dlt)).as_rotvec()
+        rvm = _Rot.from_matrix(self.kin.root_rot(t - dlt)).as_rotvec()
+        drv = (rvp - rvm) / (2 * dlt)
+        ddrv = (rvp - 2 * rv0 + rvm) / dlt ** 2
+        npd = len(self.pd)
+        qb = np.zeros(npd); dqb = np.zeros(npd); ddqb = np.zeros(npd)
+        ntr = 3 * len(X)
+        qb[:ntr], dqb[:ntr], ddqb[:ntr] = u, du, ddu
+        for slot in self._spar_psi_slots:
+            qb[slot:slot + 3] = rv0
+            dqb[slot:slot + 3] = drv
+            ddqb[slot:slot + 3] = ddrv
         return qb, dqb, ddqb
 
     # protocol ---------------------------------------------------------------
