@@ -79,25 +79,36 @@ def gate_W3(d_star):
           f"|r|_soft {info['resid0']:.1f}->{info['resid']:.2e} N "
           f"(sharp floor {info['resid_sharp']:.2e} N = band mismatch), |u|max "
           f"{info['umax']*1e3:.2f}mm, wrinkled {info['n_wrinkled']}/{info['ne']} tris")
-    f, phi = m.modal(q0=q_eq, k=8)
-    assert np.all(np.isfinite(f)), f"bad spectrum {f}"
-    neg = f[f < 0]
-    assert len(neg) <= 3 and np.all(np.abs(neg) < 25.0), \
-        f"negative modes beyond the eta artifact: {f}"
-    ip = int(np.argmax(f > 5.0))                  # first physical mode
-    f1 = f[ip]
-    # lowest physical mode: out-of-plane dominant?
-    u = phi[m.trans_map.ravel(), ip].reshape(-1, 3)
+    def first_bay_mode(model_, q_, k=24):
+        """Lowest out-of-plane INTERIOR (bay) mode. The TE hem contributes a
+        family of ~1 Hz edge-swing modes (incl. tiny negatives |f| < 3 Hz from
+        the relaxed free edge putting the hem in slight compression) — real,
+        heavy-air-damped (S5 coupled run), but not the sqrt(N0) discriminator
+        target. Track the lowest mode whose peak lives OFF the hem column."""
+        f_, phi_ = model_.modal(q0=q_, k=k)
+        assert np.all(np.isfinite(f_)), f"bad spectrum {f_}"
+        neg = f_[f_ < 0]
+        assert np.all(np.abs(neg) < 3.0) or (len(neg) <= 3
+                                             and np.all(np.abs(neg) < 25.0)), \
+            f"negative modes beyond hem/eta bands: {f_}"
+        for ip_ in range(k):
+            if f_[ip_] < 2.0:
+                continue
+            u_ = phi_[model_.trans_map.ravel(), ip_].reshape(-1, 3)
+            n_pk = int(np.argmax(np.abs(u_[:, 2])))
+            if n_pk < 153 and n_pk % (model_.nc + 1) < model_.nc:   # off-hem
+                return f_[ip_], u_, f_
+        raise AssertionError(f"no interior bay mode found in {f_}")
+    f1, u, f = first_bay_mode(m, q_eq)
     zfrac = np.linalg.norm(u[:, 2]) / max(np.linalg.norm(u), 1e-30)
-    assert zfrac > 0.9, f"lowest mode not out-of-plane (z frac {zfrac:.2f})"
+    assert zfrac > 0.9, f"bay mode not out-of-plane (z frac {zfrac:.2f})"
     # health discriminator: membrane bay modes scale with sqrt(N0) (physical,
     # N0-supported), global beam bending does not; a broken prestress path or a
     # zero-energy mode would show f1 ~ 0 or no N0 response. Degenerate bay-mode
     # CLUSTERS with arbitrary sign mixing are expected (LE strip x 7 bays).
     m4 = WingModel(rib_depth=d_star, N0=4 * m.N0).clamp_root()
     q4, _ = m4.pre_equilibrate()
-    f4, _ = m4.modal(q0=q4, k=8)
-    f41 = f4[int(np.argmax(f4 > 5.0))]
+    f41, _, _ = first_bay_mode(m4, q4)
     ratio = f41 / f1
     assert 1.0 <= ratio <= 2.05, f"f1(4N0)/f1(N0) = {ratio:.3f} outside [1, 2]"
     # where does mode 1 live? (diagnostic print, no assert)
@@ -107,7 +118,8 @@ def gate_W3(d_star):
         [z[:, :m.i_spar + 1].max(), z[:, m.i_spar:m.i_aux + 1].max(),
          z[:, m.i_aux:].max()]))]
     print(f"W3 PASS: signed modes = {np.array2string(f, precision=1)} Hz "
-          f"({len(neg)} small negatives = eta artifact); physical f1={f1:.1f}Hz, "
+          f"({int((f < 0).sum())} small negatives = hem/eta bands); "
+          f"bay mode f1={f1:.1f}Hz, "
           f"z-frac {zfrac:.3f}, lives in {region}; f1(4N0)/f1(N0) = {ratio:.3f} "
           f"(sqrt-N0 -> membrane bay mode; 1.0 -> beam bending; both healthy)")
     return m, f

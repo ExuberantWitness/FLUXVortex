@@ -436,7 +436,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3,
-                  pitch_ramp=False, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0):   # HIRATO pitch-ramp validation (Fig.9/11)
+                  pitch_ramp=False, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0,   # HIRATO pitch-ramp validation (Fig.9/11)
+                  deform_hook=None):   # (P2-S6) flexible-wing REPLAY: callable t -> (du, dv) added to the
+                  #   rigid-kinematic corners/velocities, shapes (nc+1, ns+1, 3). The S5 coupled solve
+                  #   produces the deformation field; THIS validated closure stack evaluates the forces
+                  #   on the deformed motion (one-way replay, S6 v1). None -> bit-identical rigid path.
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -580,6 +584,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 wg = wp.array(wgh, dtype=DTYPE, device=dev)
         corners, cvel = twisted_state(C0, t * dt, A_f, A_t, Om, phi, x_ea, half_span,
                                       swept_axis=swept_axis, root_off=root_off, ramp=ramp)
+        if deform_hook is not None:                # (P2-S6) flexible replay offset
+            du_, dv_ = deform_hook(t * dt)
+            corners = corners + du_
+            cvel = cvel + dv_
         cw = wp.array(corners.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
         vw = wp.array(cvel.reshape(ncv, 3).astype(NP), dtype=V3, device=dev)
         rings = wp.zeros((npan, 4), dtype=V3, device=dev); col = wp.zeros(npan, dtype=V3, device=dev)

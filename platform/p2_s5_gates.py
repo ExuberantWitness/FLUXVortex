@@ -31,7 +31,7 @@ from newton_pc.adapters.flap import (FlapKinematics,          # noqa: E402
                                      FlapUVLMProvider)
 import _v2_robogeom as rg                                     # noqa: E402
 
-D_STAR = 3.77e-3
+D_STAR = 3.78e-3
 CHORD, U, AOA_DEG = 0.287, 8.0, 5.0
 RHO = 1.225
 

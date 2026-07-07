@@ -39,7 +39,7 @@ from newton_pc import WindowPredictorCorrector               # noqa: E402
 from newton_pc.adapters.flap import (FlapKinematics,         # noqa: E402
                                      FlapUVLMProvider)
 
-D_STAR = 3.77e-3          # rib depth from the K_MEAS calibration (p2_s3 gate W2,
+D_STAR = 3.78e-3          # rib depth from the K_MEAS calibration (p2_s3 gate W2,
                           # assembly v3: flat + three straight rods to the edge arc)
 CHORD = 0.287
 U, AOA_DEG, FREQ, AMP_DEG = 8.0, 5.0, 2.3, 45.0

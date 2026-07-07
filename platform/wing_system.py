@@ -48,8 +48,15 @@ import _v2_robogeom as rg                                    # noqa: E402
 import wing_mesh as wmesh                                    # noqa: E402
 import wing_mass as wmass                                    # noqa: E402
 
-# membrane skin (Mylar, research-anchored: docs/p2_s2_membrane_research.md)
-MEM_H, MEM_E, MEM_NU, MEM_RHO = 5e-5, 4e9, 0.3, 1390.0
+# membrane skin: POLYESTER kite fabric (user decision 2026-07-07 — the real
+# wing is kite-cloth, not Mylar film). Literature-anchored typical values for
+# coated polyester ripstop (Icarex-class 31 g/m2 up to standard 涤纶格子布
+# ~60 g/m2; woven PET with crimp, effective E ~ 1.5 GPa):
+#   areal density rho*h = 42 g/m2   (h_eff 0.08 mm x 525 kg/m3)
+#   tensile stiffness E*h ~ 1.2e5 N/m (vs Mylar 2e5 — softer)
+# NOTE mass ratio mu = rho_air*c/(rho_s*h) rises 5.1 -> 8.4 (added-mass
+# HARDER; the S5 strong-coupling machinery is load-bearing here).
+MEM_H, MEM_E, MEM_NU, MEM_RHO = 8e-5, 1.5e9, 0.3, 525.0
 N0_DEFAULT = 30.0
 # plywood ribs (literature-anchored constants, as in _v2_flex_robo 3mat)
 E_PLY, RHO_PLY, G_PLY = 8e9, 700.0, 0.6e9

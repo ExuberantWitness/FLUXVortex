@@ -35,7 +35,7 @@ from wing_system import WingModel                             # noqa: E402
 import _v2_robogeom as rg                                     # noqa: E402
 
 DOCS = os.path.join(_HERE, "docs")
-D_STAR = 3.77e-3
+D_STAR = 3.78e-3
 C_CARBON, C_CARBON2, C_PLY, C_MEM, C_ALU, C_AXIS = (
     "#2b2f36", "#5a626e", "#b07a28", "#3d7a6e", "#7d4a9c", "#b3382e")
 
@@ -50,6 +50,8 @@ def fig_A(m):
     ax.triplot(nodes[:, 1], nodes[:, 0], m.mesh["tris"],
                color="#c9cec4", lw=0.5, zorder=1)
     ch = m.mesh["chains"]
+    ax.plot(nodes[ch["te"], 1], nodes[ch["te"], 0], color=C_MEM, lw=2.4,
+            zorder=3, label="TE hem")
     for r in ch["ribs"]:
         ax.plot(nodes[r, 1], nodes[r, 0], color=C_PLY, lw=2.8, zorder=3)
     ax.plot(nodes[ch["aux"], 1], nodes[ch["aux"], 0], color=C_CARBON2,
@@ -77,6 +79,8 @@ def fig_A(m):
     ax.annotate("扑动/扭转轴(实测斜掠)", (430, 45), color=C_AXIS, fontsize=9)
     ax.annotate("肋 ×7 航空层板 3×%.2fmm" % (m.rib_depth * 1e3), (95, 262),
                 color=C_PLY, fontsize=9)
+    ax.annotate("TE 缝边(涤纶布双折 15mm,EA≈3.6kN)", (330, 296),
+                color=C_MEM, fontsize=9)
     ax.annotate("根肋(铝)= prescribed 扑动框", (5, 300), color=C_ALU, fontsize=9)
     ax.set_xlim(-25, 860); ax.set_ylim(320, -35)
     ax.set_xlabel("展向 y (mm)"); ax.set_ylabel("弦向 x (mm)")
@@ -104,6 +108,8 @@ def fig_D(m):
     for j in range(0, m.ns + 1, 4):
         ax.plot(g[j, :, 1], g[j, :, 0], g[j, :, 2], color=C_AXIS, lw=0.8,
                 ls="--", alpha=0.7)
+    ax.plot(nodes[ch["te"], 1], nodes[ch["te"], 0], nodes[ch["te"], 2],
+            color=C_MEM, lw=2.0)
     for r in ch["ribs"]:
         ax.plot(nodes[r, 1], nodes[r, 0], nodes[r, 2], color=C_PLY, lw=2.2)
     ax.plot(nodes[ch["aux"], 1], nodes[ch["aux"], 0], nodes[ch["aux"], 2],
@@ -154,11 +160,12 @@ def fig_F(m):
     ax.legend(fontsize=9); ax.grid(alpha=0.3)
     ax = axes[1, 1]
     tt = md["totals"]
-    names = ["le_spar", "main_spar", "aux_spar", "membrane"]
+    names = ["le_spar", "main_spar", "aux_spar", "membrane", "te_hem"]
     vals = [tt[n] * 1e3 for n in names] + [
         sum(v for k, v in tt.items() if k.startswith("rib")) * 1e3]
-    labels = ["LE Ø8", "主 Ø10×1", "辅 Ø6×1", "膜 0.05", f"肋×7 d*={m.rib_depth*1e3:.2f}"]
-    ax.bar(labels, vals, color=[C_CARBON, C_CARBON, C_CARBON2, C_MEM, C_PLY])
+    labels = ["LE Ø8", "主 Ø10×1", "辅 Ø6×1", "涤纶布", "TE缝边",
+              f"肋×7 d*={m.rib_depth*1e3:.2f}"]
+    ax.bar(labels, vals, color=[C_CARBON, C_CARBON, C_CARBON2, C_MEM, C_MEM, C_PLY])
     for i, v in enumerate(vals):
         ax.text(i, v + 0.5, f"{v:.1f}", ha="center", fontsize=9)
     ax.set_ylabel("g"); ax.set_title(f"构件质量分解,合计 {sum(vals):.1f} g", fontsize=10)
