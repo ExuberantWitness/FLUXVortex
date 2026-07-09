@@ -57,6 +57,18 @@ def batched_dense_solve(A_wp, b_wp, device=None, in_place_b=False):
     """
     device = device or config.DEVICE
     B, N, _ = A_wp.shape
+    if B <= 4:
+        # (2026-07-09 perf) few-env case: one GPU thread doing the whole O(N³) LU is
+        # ~150 ms at N=192 (measured; 1/3 of the UVLM step cost). Host LAPACK dgesv is
+        # the SAME partial-pivoting algorithm at <1 ms incl. transfers. The GPU kernel
+        # stays for the many-env co-design workload it was written for.
+        A_h = A_wp.numpy()
+        b_h = b_wp.numpy()
+        x_h = np.linalg.solve(A_h, b_h[..., None])[..., 0].astype(b_h.dtype, copy=False)
+        if in_place_b:
+            wp.copy(b_wp, wp.array(x_h, dtype=b_wp.dtype, device=b_wp.device))
+            return b_wp
+        return wp.array(x_h, dtype=b_wp.dtype, device=device)
     A_work = wp.clone(A_wp)
     x = b_wp if in_place_b else wp.clone(b_wp)
     wp.launch(_lu_solve_kernel, dim=B, inputs=[A_work, x, N], device=device)

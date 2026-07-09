@@ -288,6 +288,151 @@ def _col_wake_wcore(col: wp.array(dtype=V3), wr: wp.array(dtype=V3, ndim=2), wg:
     Vw[i] = V3(vx, vy, vz)
 
 
+# ================= fp32 FAST WAKE-INDUCTION PATH (2026-07-09 perf) =================
+# GeForce fp64 throughput is 1/64 of fp32 (4090: 1.3 vs 83 TFLOPS) and the three N²
+# wake kernels dominate the step cost (see docs/diag/perf_uvlm.md). These twins keep
+# ALL state fp64 (positions/strengths/outputs accumulate in fp64) and cast per element
+# inside the kernel: only the induced-velocity ARITHMETIC runs fp32. Force error vs
+# the fp64 path must sit inside the ±0.15N run-to-run band (validated before default-on).
+V3F = wp.vec3f
+
+
+@wp.func
+def _f3(v: V3) -> V3F:
+    return V3F(wp.float32(v[0]), wp.float32(v[1]), wp.float32(v[2]))
+
+
+@wp.func
+def _vseg_f(P: V3F, A: V3F, B: V3F) -> V3F:
+    r1 = P - A; r2 = P - B; r0 = B - A
+    cr = wp.cross(r1, r2)
+    cr2 = wp.dot(cr, cr) + wp.float32(1.0e-10)
+    n1 = wp.sqrt(wp.dot(r1, r1) + wp.float32(1.0e-12))
+    n2 = wp.sqrt(wp.dot(r2, r2) + wp.float32(1.0e-12))
+    return wp.float32(0.07957747154594767) * wp.dot(r0, r1 / n1 - r2 / n2) / cr2 * cr
+
+
+@wp.func
+def _ring_vel_f(P: V3F, c0: V3F, c1: V3F, c2: V3F, c3: V3F) -> V3F:
+    return _vseg_f(P, c0, c1) + _vseg_f(P, c1, c2) + _vseg_f(P, c2, c3) + _vseg_f(P, c3, c0)
+
+
+@wp.func
+def _vseg_core_f(P: V3F, A: V3F, B: V3F, delta: wp.float32) -> V3F:
+    r1 = P - A; r2 = P - B; r0 = B - A
+    cr = wp.cross(r1, r2)
+    cr2 = wp.dot(cr, cr) + delta * delta * wp.dot(r0, r0) + wp.float32(1.0e-18)
+    n1 = wp.sqrt(wp.dot(r1, r1) + wp.float32(1.0e-12))
+    n2 = wp.sqrt(wp.dot(r2, r2) + wp.float32(1.0e-12))
+    return wp.float32(0.07957747154594767) * wp.dot(r0, r1 / n1 - r2 / n2) / cr2 * cr
+
+
+@wp.func
+def _ring_vel_core_f(P: V3F, c0: V3F, c1: V3F, c2: V3F, c3: V3F, delta: wp.float32) -> V3F:
+    return _vseg_core_f(P, c0, c1, delta) + _vseg_core_f(P, c1, c2, delta) \
+        + _vseg_core_f(P, c2, c3, delta) + _vseg_core_f(P, c3, c0, delta)
+
+
+@wp.kernel
+def _convect_wcore_f32(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE, ndim=2), npan: int,
+                       wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE), wcore: wp.array(dtype=DTYPE),
+                       nw: int, bcore: DTYPE, Vinf: V3, dt: DTYPE, wr_new: wp.array(dtype=V3, ndim=2)):
+    k, c = wp.tid(); Pd = wr[k, c]; P = _f3(Pd)
+    bc = wp.float32(bcore)
+    v = _f3(Vinf)
+    for p in range(npan):
+        v = v + wp.float32(gamma[0, p]) * _ring_vel_core_f(
+            P, _f3(rings[p, 0]), _f3(rings[p, 1]), _f3(rings[p, 2]), _f3(rings[p, 3]), bc)
+    for m in range(nw):
+        v = v + wp.float32(wg[m]) * _ring_vel_core_f(
+            P, _f3(wr[m, 0]), _f3(wr[m, 1]), _f3(wr[m, 2]), _f3(wr[m, 3]), wp.float32(wcore[m]))
+    wr_new[k, c] = Pd + V3(wp.float64(v[0]), wp.float64(v[1]), wp.float64(v[2])) * dt
+
+
+@wp.kernel
+def _convect_f32(rings: wp.array(dtype=V3, ndim=2), gamma: wp.array(dtype=DTYPE, ndim=2), npan: int,
+                 wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE), nw: int,
+                 Vinf: V3, dt: DTYPE, bcore: DTYPE, wr_new: wp.array(dtype=V3, ndim=2)):
+    k, c = wp.tid(); Pd = wr[k, c]; P = _f3(Pd)
+    dl = wp.float32(bcore)
+    v = _f3(Vinf)
+    for p in range(npan):
+        v = v + wp.float32(gamma[0, p]) * _ring_vel_core_f(
+            P, _f3(rings[p, 0]), _f3(rings[p, 1]), _f3(rings[p, 2]), _f3(rings[p, 3]), dl)
+    for m in range(nw):
+        v = v + wp.float32(wg[m]) * _ring_vel_core_f(
+            P, _f3(wr[m, 0]), _f3(wr[m, 1]), _f3(wr[m, 2]), _f3(wr[m, 3]), dl)
+    wr_new[k, c] = Pd + V3(wp.float64(v[0]), wp.float64(v[1]), wp.float64(v[2])) * dt
+
+
+@wp.kernel
+def _rhs_moving_f32(col: wp.array(dtype=V3), nrm: wp.array(dtype=V3), Vinf: V3, vcol: wp.array(dtype=V3),
+                    wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE), nw: int,
+                    rhs: wp.array(dtype=DTYPE, ndim=2)):
+    i = wp.tid(); ci = _f3(col[i]); ni = _f3(nrm[i])
+    s = wp.float32(0.0)
+    for k in range(nw):
+        s = s - wp.float32(wg[k]) * wp.dot(_ring_vel_f(
+            ci, _f3(wr[k, 0]), _f3(wr[k, 1]), _f3(wr[k, 2]), _f3(wr[k, 3])), ni)
+    rhs[0, i] = -wp.dot(Vinf - vcol[i], nrm[i]) + wp.float64(s)
+
+
+@wp.kernel
+def _col_wake_f32(col: wp.array(dtype=V3), wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE),
+                  nw: int, Vw: wp.array(dtype=V3)):
+    i = wp.tid(); ci = _f3(col[i])
+    v = V3F(wp.float32(0.0), wp.float32(0.0), wp.float32(0.0))
+    for k in range(nw):
+        v = v + wp.float32(wg[k]) * _ring_vel_f(
+            ci, _f3(wr[k, 0]), _f3(wr[k, 1]), _f3(wr[k, 2]), _f3(wr[k, 3]))
+    Vw[i] = V3(wp.float64(v[0]), wp.float64(v[1]), wp.float64(v[2]))
+
+
+# CHUNKED variants: dim=npan(=192) kernels are LATENCY-bound (6 warps can't hide the
+# 11.5k-source serial loop; measured 142 ms each). Split the source loop over _NCH
+# chunks -> npan*_NCH threads, fp32 partials atomically added into the fp64 output.
+_NCH = 64
+
+
+@wp.kernel
+def _rhs_base_k(col: wp.array(dtype=V3), nrm: wp.array(dtype=V3), Vinf: V3, vcol: wp.array(dtype=V3),
+                rhs: wp.array(dtype=DTYPE, ndim=2)):
+    i = wp.tid()
+    rhs[0, i] = -wp.dot(Vinf - vcol[i], nrm[i])
+
+
+@wp.kernel
+def _rhs_wake_chunk_wcore_f32(col: wp.array(dtype=V3), nrm: wp.array(dtype=V3),
+                              wr: wp.array(dtype=V3, ndim=2), wg: wp.array(dtype=DTYPE),
+                              wcore: wp.array(dtype=DTYPE), nw: int, nch: int,
+                              rhs: wp.array(dtype=DTYPE, ndim=2)):
+    i, c = wp.tid()
+    ci = _f3(col[i]); ni = _f3(nrm[i])
+    s = wp.float32(0.0)
+    k = c
+    while k < nw:
+        s = s - wp.float32(wg[k]) * wp.dot(_ring_vel_core_f(
+            ci, _f3(wr[k, 0]), _f3(wr[k, 1]), _f3(wr[k, 2]), _f3(wr[k, 3]), wp.float32(wcore[k])), ni)
+        k = k + nch
+    wp.atomic_add(rhs, 0, i, wp.float64(s))
+
+
+@wp.kernel
+def _col_wake_chunk_wcore_f32(col: wp.array(dtype=V3), wr: wp.array(dtype=V3, ndim=2),
+                              wg: wp.array(dtype=DTYPE), wcore: wp.array(dtype=DTYPE),
+                              nw: int, nch: int, Vw: wp.array(dtype=V3)):
+    i, c = wp.tid()
+    ci = _f3(col[i])
+    v = V3F(wp.float32(0.0), wp.float32(0.0), wp.float32(0.0))
+    k = c
+    while k < nw:
+        v = v + wp.float32(wg[k]) * _ring_vel_core_f(
+            ci, _f3(wr[k, 0]), _f3(wr[k, 1]), _f3(wr[k, 2]), _f3(wr[k, 3]), wp.float32(wcore[k]))
+        k = k + nch
+    wp.atomic_add(Vw, i, V3(wp.float64(v[0]), wp.float64(v[1]), wp.float64(v[2])))
+# ================= end fp32 fast path =================
+
+
 @wp.kernel
 def _shed_lev_traj(lel: wp.array(dtype=V3), ler: wp.array(dtype=V3),
                    lpl: wp.array(dtype=V3), lpr: wp.array(dtype=V3), lev_str: wp.array(dtype=DTYPE),
@@ -407,6 +552,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lev_overlap=1.0,         # (STAB) LEV core = overlap × shed-spacing (∝U·dt & strip width) -> shrinks as grid refines, never near-singular
                   lev_consistent=True,     # apply the adaptive core in solve+force too (not just convect) -> grid-CONVERGENT LEV (vs singular drift/blow-up)
                   lev_sub=1,               # (FINE) spanwise sub-rings of LEV per strip (lev_sub=5 -> 5× finer LEV sheet, independent of wing grid)
+                  wake_f32=True,           # (2026-07-09 perf) N² wake-induction kernels in fp32 ARITHMETIC (state
+                  #   stays fp64; positions update in fp64). GeForce fp64 = 1/64 fp32 throughput -> the dominant
+                  #   step cost drops ~10-30x. False = legacy fp64-exact path (adjoint/repro). ±0.15N band gated.
                   lev_sheet=True,          # (E2) shed LEV as a CONNECTED trailing sheet from the LE (rolls up) instead of fixed-offset rings
                   lev_place='ansari',      # 'ansari' = Hirato Eq.7 placement, LEV sheet OVER the suction surface anchored at the LE; 'wake' = old (trails off the back, wrong)
                   lev_rollh=0.5,           # LEV roll-up height as it convects aft (chord frac) — the sheet lifts off the suction surface (Hirato Fig.11 spiral)
@@ -609,9 +757,16 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # LEV→bound feedback that makes nc/ns NON-convergent. The core shrinks as the grid refines -> the result
         # CONVERGES to a grid-independent value (vs the singular kernel which drifts 7→3 with nc + blows up).
         if use_wcore and nw > 0 and lev_consistent:
-            wp.launch(_rhs_moving_wcore, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, wcore_dev, nw], outputs=[rhs], device=dev)
+            if wake_f32:
+                wp.launch(_rhs_base_k, dim=npan, inputs=[col, nrm, Vw, vcol], outputs=[rhs], device=dev)
+                wp.launch(_rhs_wake_chunk_wcore_f32, dim=(npan, _NCH),
+                          inputs=[col, nrm, wr, wg, wcore_dev, nw, _NCH], outputs=[rhs], device=dev)
+            else:
+                wp.launch(_rhs_moving_wcore, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, wcore_dev, nw],
+                          outputs=[rhs], device=dev)
         else:
-            wp.launch(ug.rhs_moving_kernel, dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
+            wp.launch(_rhs_moving_f32 if wake_f32 else ug.rhs_moving_kernel,
+                      dim=npan, inputs=[col, nrm, Vw, vcol, wr, wg, nw], outputs=[rhs], device=dev)
         if use_ansari:   # (HIRATO) LEV sheet OVER the suction surface: build ring geometry from the persistent
             # state (strip j, chordwise fraction f, strength g) using the CURRENT wing geometry; the ring sits at
             # LE + f*chord*chordhat + (lev_rollh*f*c)*normal -> over the suction surface, lifting off as it rolls
@@ -778,9 +933,15 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # FORCE induction: cored (consistent with solve+convect) so the held-lift contribution CONVERGES with grid
         # instead of drifting with the singular near field. Same adaptive core shrinks toward the singular limit as refined.
         if use_wcore and nw > 0 and lev_consistent:
-            wp.launch(_col_wake_wcore, dim=npan, inputs=[col, wr, wg, wcore_dev, nw], outputs=[Vwk], device=dev)
+            if wake_f32:
+                wp.launch(_col_wake_chunk_wcore_f32, dim=(npan, _NCH),
+                          inputs=[col, wr, wg, wcore_dev, nw, _NCH], outputs=[Vwk], device=dev)
+            else:
+                wp.launch(_col_wake_wcore, dim=npan, inputs=[col, wr, wg, wcore_dev, nw],
+                          outputs=[Vwk], device=dev)
         else:
-            wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, wr, wg, nw], outputs=[Vwk], device=dev)
+            wp.launch(_col_wake_f32 if wake_f32 else ug.col_wake_vel_kernel,
+                      dim=npan, inputs=[col, wr, wg, nw], outputs=[Vwk], device=dev)
         cc = rings.numpy(); g = gamma.numpy().reshape(-1); gp = gprev.numpy().reshape(-1)
         Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
         if lev_merge:
@@ -1376,14 +1537,22 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         lev_s0.extend([0.0] * ns + lev_strengths)
         if nw > 0:   # convect OLD wake only; freshly-shed ring STAYS attached at the TE (Katz&Plotkin
             if use_wcore:   # (E) per-ring core: LEV rolls up tight (small core); TEV keeps WAKE_CORE for wake stability
-                wp.launch(_convect_wcore, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, wcore_conv_dev, nw,
+                wp.launch(_convect_wcore_f32 if wake_f32 else _convect_wcore,
+                          dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, wcore_conv_dev, nw,
                           DTYPE(ug.WAKE_CORE), Vw, DTYPE(dt)], outputs=[wr_new], device=dev)
+            elif wake_f32:
+                wp.launch(_convect_f32, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, nw, Vw,
+                          DTYPE(dt), DTYPE(ug.WAKE_CORE)], outputs=[wr_new], device=dev)
             else:
                 wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
                           outputs=[wr_new], device=dev)   # order) so it cancels the trailing bound segment
             if rk2:   # Heun RK2: second Euler from the predicted midpoint wake, then average
-                wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr_new, wg, nw, Vw,
-                          DTYPE(dt)], outputs=[wr_m2], device=dev)
+                if wake_f32:
+                    wp.launch(_convect_f32, dim=(nw, 4), inputs=[rings, gamma, npan, wr_new, wg, nw, Vw,
+                              DTYPE(dt), DTYPE(ug.WAKE_CORE)], outputs=[wr_m2], device=dev)
+                else:
+                    wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr_new, wg, nw, Vw,
+                              DTYPE(dt)], outputs=[wr_m2], device=dev)
                 wp.launch(_wake_avg, dim=(nw, 4), inputs=[wr, wr_m2], outputs=[wr_new], device=dev)
             wp.copy(wr, wr_new, count=nw * 4)
         if nw_new > wake_max:
