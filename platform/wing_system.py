@@ -46,6 +46,17 @@ from fluxvortex.warp_fsi import kernels_beam3d as kb         # noqa: E402
 from fluxvortex.warp_fsi import kernels_membrane as km       # noqa: E402
 import _v2_robogeom as rg                                    # noqa: E402
 import wing_mesh as wmesh                                    # noqa: E402
+
+STRUCT_GPU = os.environ.get("FLUX_STRUCT_GPU", "1") == "1"   # 100% GPU structural solve
+_STEP_FN = None                                              # resolved lazily (torch probe)
+
+
+@wp.kernel
+def _scatter_dense_kernel(blocks: wp.array(dtype=cfg.DTYPE, ndim=4),   # (1, ne, nb, nb)
+                          edofs: wp.array(dtype=wp.int32, ndim=2),     # (ne, nb)
+                          Kd: wp.array(dtype=cfg.DTYPE, ndim=2)):      # (ndof, ndof) dense
+    e, a, b = wp.tid()
+    wp.atomic_add(Kd, edofs[e, a], edofs[e, b], blocks[0, e, a, b])
 import wing_mass as wmass                                    # noqa: E402
 
 # membrane skin: POLYESTER kite fabric (user decision 2026-07-07 — the real
@@ -258,6 +269,86 @@ class WingModel:
     def _wpq(self, q_np):
         return wp.array(np.ascontiguousarray(q_np[None, :], dtype=cfg.NP_DTYPE),
                         dtype=cfg.DTYPE, device=self.device)
+
+    # ── 100% GPU dense path (2026-07-09 perf; profiled: SuperLU + scipy sparse
+    # assembly were 74% of recording — element kernels were ALREADY on GPU, the
+    # host round-trip + sparse algebra was the whole cost) ────────────────────
+    def _gpu_init(self):
+        import torch
+        if getattr(self, "_gt", None) is not None:
+            return self._gt
+        dev = torch.device("cuda")
+        gt = {
+            "torch": torch, "dev": dev,
+            "M": torch.as_tensor(np.asarray(self.M.todense()),
+                                 dtype=torch.float64, device=dev),
+            "free": torch.as_tensor(self.free, dtype=torch.long, device=dev),
+            "Kd": wp.zeros((self.ndof, self.ndof), dtype=cfg.DTYPE,
+                           device=self.device),
+            "eb": wp.array(self.BeamC.edofs_np.astype(np.int32),
+                           dtype=wp.int32, device=self.device),
+            "em": wp.array(self.MemC.edofs_np.astype(np.int32),
+                           dtype=wp.int32, device=self.device),
+        }
+        self._gt = gt
+        return gt
+
+    def Q_int_t(self, q_t):
+        """Internal force as a torch cuda tensor (zero-copy from the warp
+        element kernels; branch-free exact forces, same as Q_int). Explicit
+        stream fences both ways: torch and warp run on different CUDA streams."""
+        gt = self._gpu_init()
+        gt["torch"].cuda.synchronize()                       # torch writes to q_t done
+        qw = wp.from_torch(q_t.reshape(1, -1).contiguous(), dtype=cfg.DTYPE)
+        Qb = kb.beam_internal_force(qw, self.BeamC)
+        Qm = km.membrane_internal_force(qw, self.MemC)
+        wp.synchronize_device(self.device)                   # warp kernels done
+        return wp.to_torch(Qb)[0] + wp.to_torch(Qm)[0]
+
+    def K_dense_t(self, q_np, symmetrize=True, latch=False):
+        """Assembled tangent as a torch cuda DENSE tensor — the device twin of
+        K_csc (same element blocks, same latch semantics), scatter on GPU."""
+        gt = self._gpu_init()
+        qw = self._wpq(q_np)
+        Kb = kb.assemble_beam_kblocks(qw, self.BeamC, symmetrize=symmetrize)
+        if latch and bool((self.MemC.branch_np == -1).all()):
+            st = km.membrane_state(qw, self.MemC).numpy()[0]
+            e1, e2 = st[:, 0], st[:, 1]
+            nf2 = self.MemC.N0 + self.MemC.hb * (e2 + self.MemC.nu * e1)
+            e1sl = -self.MemC.N0 * (1 - self.MemC.nu) / self.MemC.hE
+            ids = np.where(nf2 > 0, 0, np.where(e1 > e1sl, 1, 2)).astype(np.int32)
+            saved = self.MemC.branch_np.copy()
+            self.MemC.freeze_branches(ids)
+            try:
+                Km_ = km.assemble_membrane_kblocks(qw, self.MemC,
+                                                   symmetrize=symmetrize)
+            finally:
+                self.MemC.freeze_branches(saved)
+        else:
+            Km_ = km.assemble_membrane_kblocks(qw, self.MemC,
+                                               symmetrize=symmetrize)
+        Kd = gt["Kd"]
+        Kd.zero_()
+        nbb = self.BeamC.edofs_np.shape[1]
+        nbm = self.MemC.edofs_np.shape[1]
+        wp.launch(_scatter_dense_kernel, dim=(Kb.shape[1], nbb, nbb),
+                  inputs=[Kb, gt["eb"]], outputs=[Kd], device=self.device)
+        wp.launch(_scatter_dense_kernel, dim=(Km_.shape[1], nbm, nbm),
+                  inputs=[Km_, gt["em"]], outputs=[Kd], device=self.device)
+        wp.synchronize_device(self.device)                   # fence before torch reads
+        return wp.to_torch(Kd)
+
+    def _gpu_cache_mat(self, tag, sp):
+        """scipy matrix -> dense torch cuda tensor, cached by object identity
+        (M_add/C_add are rebuilt per substep call; the transfer is ~4 MB)."""
+        gt = self._gpu_init()
+        key, mat = getattr(self, "_gcm_" + tag, (None, None))
+        if key == id(sp) and mat is not None:
+            return mat
+        dense = np.asarray(sp.todense()) if hasattr(sp, "todense") else np.asarray(sp)
+        mat = gt["torch"].as_tensor(dense, dtype=gt["torch"].float64, device=gt["dev"])
+        setattr(self, "_gcm_" + tag, (id(sp), mat))
+        return mat
 
     def Q_int(self, q_np):
         qw = self._wpq(q_np)
@@ -619,6 +710,134 @@ def host_newmark_step(model, q, dq, dt, F_const,
     return q_new, dq_new
 
 
+def gpu_implicit_step(model, q, dq, a, dt, F_const, presc=None,
+                      gamma=0.6, newton_tol=1e-8, max_newton=8, beta_R=1e-3,
+                      M_add=None, C_add=None):
+    """100% GPU twin of host_implicit_step (2026-07-09 perf): dense tangent
+    assembled on device (warp scatter of the SAME element blocks), torch
+    Cholesky on the Jacobi-scaled free-free block (latched tangent is PSD +
+    M/(beta dt^2) PD -> SPD), Newton/line-search resident on device. Scheme,
+    predictors, tolerances, trust cap, backtracking and acceptance mirror the
+    host path line-for-line — a converged substep is the same solution."""
+    torch = model._gpu_init()["torch"]
+    gt = model._gpu_init()
+    dev = gt["dev"]
+
+    def T(x):
+        return torch.as_tensor(np.asarray(x, dtype=np.float64), device=dev)
+
+    ndof = model.ndof
+    free = gt["free"]
+    beta = 0.25 * (gamma + 0.5) ** 2
+    MemC = getattr(model, "MemC", None)
+    if MemC is not None:
+        model._latch_soft(q)
+    try:
+        M = gt["M"]
+        if M_add is not None:
+            M = M - model._gpu_cache_mat("madd", M_add)
+        q_t, dq_t, a_t, F_t = T(q), T(dq), T(a), T(F_const)
+        q_pred = q_t + dt * dq_t + dt * dt * (0.5 - beta) * a_t
+        dq_pred = dq_t + dt * (1 - gamma) * a_t
+        q1 = q_pred.clone()
+        pd_t = qb_t = dqb_t = ddqb_t = None
+        if presc is not None:
+            pd, qb, dqb, ddqb = presc
+            pd_t = torch.as_tensor(np.asarray(pd), dtype=torch.long, device=dev)
+            qb_t, dqb_t, ddqb_t = T(qb), T(dqb), T(ddqb)
+            q1[pd_t] = qb_t
+        a1 = (q1 - q_pred) / (beta * dt * dt)
+        if presc is not None:
+            a1[pd_t] = ddqb_t
+        scale = max(1.0, float(np.linalg.norm(F_const)))
+        Cd = beta_R * model.K_dense_t(q, symmetrize=True, latch=False)
+        if C_add is not None:
+            Cd = Cd + model._gpu_cache_mat("cadd", C_add)
+        cache = getattr(model, "_mn_gpu_cache", None)
+        chol, dsc = (cache if cache is not None else (None, None))
+        rn_prev = None
+        mcoef = 1.0 / (beta * dt * dt)
+        ccoef = gamma / (beta * dt)
+        for it in range(max_newton):
+            v1 = dq_pred + gamma * dt * a1
+            r = F_t - model.Q_int_t(q1) - M @ a1 - Cd @ v1
+            rf = r.index_select(0, free)
+            rn = float(torch.linalg.vector_norm(rf))
+            if not np.isfinite(rn):
+                rn = np.inf                                  # reject cleanly
+                break
+            if rn < newton_tol * scale:
+                break
+            if chol is None or (rn_prev is not None and rn > 0.5 * rn_prev):
+                K = model.K_dense_t(q1.cpu().numpy(), symmetrize=True, latch=False)
+                S = K + mcoef * M + ccoef * Cd
+                Sff = S.index_select(0, free).index_select(1, free)
+                dsc = 1.0 / torch.sqrt(torch.clamp(Sff.diagonal(), min=1e-300))
+                Ssc = Sff * dsc[:, None] * dsc[None, :]
+                try:
+                    chol = torch.linalg.cholesky(Ssc)
+                except Exception:
+                    try:                                     # PSD nicked by roundoff
+                        eye = torch.eye(Ssc.shape[0], dtype=Ssc.dtype, device=dev)
+                        chol = torch.linalg.cholesky(Ssc + 1e-10 * eye)
+                    except Exception:                        # singular from a bad state
+                        rn = np.inf
+                        break
+            rn_prev = rn
+            dq1 = dsc * torch.cholesky_solve((dsc * rf)[:, None], chol)[:, 0]
+            mx = float(dq1.abs().max())
+            if mx > 1e-2:
+                dq1 = dq1 * (1e-2 / mx)
+            best = None
+            for step_ in (1.0, 0.5, 0.25):
+                q_try = q1.clone()
+                q_try[free] += step_ * dq1
+                a_try = (q_try - q_pred) / (beta * dt * dt)
+                if presc is not None:
+                    a_try[pd_t] = ddqb_t
+                v_try = dq_pred + gamma * dt * a_try
+                r_try = F_t - model.Q_int_t(q_try) - M @ a_try - Cd @ v_try
+                rn_try = float(torch.linalg.vector_norm(r_try.index_select(0, free)))
+                if not np.isfinite(rn_try):
+                    continue
+                if best is None or rn_try < best[0]:
+                    best = (rn_try, q_try, a_try)
+                if rn_try < rn:
+                    break
+            if best is None:
+                rn = np.inf
+                break
+            _, q1, a1 = best
+        model._mn_gpu_cache = (chol, dsc) if chol is not None else None
+        converged = bool(np.isfinite(rn) and rn < 1e-4 * scale)
+        dq1_vec = dq_pred + gamma * dt * a1
+        if presc is not None:
+            q1[pd_t] = qb_t
+            dq1_vec[pd_t] = dqb_t
+    finally:
+        if MemC is not None:
+            MemC.unfreeze_branches()
+    return (q1.cpu().numpy(), dq1_vec.cpu().numpy(), a1.cpu().numpy(), converged)
+
+
+def _resolve_step():
+    """Pick the structural stepper once: GPU twin when FLUX_STRUCT_GPU=1 (default)
+    and torch+cuda import cleanly; host scipy path otherwise/as fallback."""
+    global _STEP_FN
+    if _STEP_FN is not None:
+        return _STEP_FN
+    fn = host_implicit_step
+    if STRUCT_GPU:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                fn = gpu_implicit_step
+        except Exception:
+            fn = host_implicit_step
+    _STEP_FN = fn
+    return fn
+
+
 def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
                        gamma=0.6, newton_tol=1e-8, max_newton=8, beta_R=1e-3,
                        M_add=None, C_add=None):
@@ -676,6 +895,17 @@ def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
             # under-relaxed the lagged provider cannot supply it — implicit
             # treatment stops the ring the aero would physically kill.
             Cd = Cd + C_add
+        # (2026-07-09 perf, profiled) MODIFIED Newton: the tangent factorization was
+        # 44% of the whole recording (39k splu calls = one per iteration) while at
+        # substep dt~1ms the tangent barely moves. The LU is only the ITERATION
+        # DIRECTION — residual, tolerances and acceptance below are untouched, so a
+        # converged substep is the same solution. Freeze the factorization within
+        # the substep (seeded from the previous substep's cache) and refactor only
+        # on stall (residual not halved) — stalling repeatedly degrades gracefully
+        # to full Newton.
+        cache = getattr(model, "_mn_cache", None)
+        lu, dsc = (cache if cache is not None else (None, None))
+        rn_prev = None
         for it in range(max_newton):
             v1 = dq_pred + gamma * dt * a1
             r = F_const - model.Q_int(q1) - M @ a1 - Cd @ v1
@@ -685,17 +915,19 @@ def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
                 break
             if rn < newton_tol * scale:
                 break
-            K = model.K_csc(q1, symmetrize=True, latch=False)
-            S = (K + M / (beta * dt * dt)
-                 + (gamma / (beta * dt)) * Cd)[free][:, free].tocsc()
-            dsc = 1.0 / np.sqrt(np.maximum(S.diagonal(), 1e-300))
-            Dsc = diags(dsc)
-            try:
-                lu = splu((Dsc @ S @ Dsc).tocsc())
-                dq1 = dsc * lu.solve(dsc * r[free])
-            except RuntimeError:                             # singular from a bad state
-                rn = np.inf
-                break
+            if lu is None or (rn_prev is not None and rn > 0.5 * rn_prev):
+                K = model.K_csc(q1, symmetrize=True, latch=False)
+                S = (K + M / (beta * dt * dt)
+                     + (gamma / (beta * dt)) * Cd)[free][:, free].tocsc()
+                dsc = 1.0 / np.sqrt(np.maximum(S.diagonal(), 1e-300))
+                Dsc = diags(dsc)
+                try:
+                    lu = splu((Dsc @ S @ Dsc).tocsc())
+                except RuntimeError:                         # singular from a bad state
+                    rn = np.inf
+                    break
+            rn_prev = rn
+            dq1 = dsc * lu.solve(dsc * r[free])
             # trust-region-ish cap: dynamic substep displacements are ~v*dt
             # (mm scale); a wild Newton direction on a near-degenerate sliver
             # must not leave the physical neighborhood.
@@ -724,6 +956,7 @@ def host_implicit_step(model, q, dq, a, dt, F_const, presc=None,
                 rn = np.inf
                 break
             _, q1, a1 = best
+        model._mn_cache = (lu, dsc) if lu is not None else None
         converged = bool(np.isfinite(rn) and rn < 1e-4 * scale)
         dq1_vec = dq_pred + gamma * dt * a1
         if presc is not None:
@@ -905,7 +1138,7 @@ class WingEntry:
         (acute wrinkle/sliver events at flapping speed) must never be accepted."""
         qb, dqb, ddqb = self._cb(t1)
         try:
-            q1, dq1, a1, ok = host_implicit_step(
+            q1, dq1, a1, ok = _resolve_step()(
                 self.m, self.q, self.dq, self.a, t1 - t0, f,
                 presc=(self.pd, qb, dqb, ddqb), M_add=M_add, C_add=C_add)
         except RuntimeError:
