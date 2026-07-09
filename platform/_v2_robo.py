@@ -374,6 +374,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   les_pre=False,           # (C7 2026-07-04) 'hirato' realized LE suction keyed on the PRE-constraint A0pre
                   #   (crit-capped), consistent with the vnf excess + faure gate; fixes the subcritical post-solve A0
                   #   collapse under sustained shedding (discrete-ring over-suppression artifact). See S4 block.
+                  les_sep='plateau',       # (2026-07-09 GAP-f2) chordwise LE suction on SEPARATED (LESP-supercritical)
+                  #   strips: 'plateau' = held at the crit value (LDVM legacy, Katz-1981 postulate); 'zero' = collapses
+                  #   to 0 (Narsipur et al. 2020 JFM 900 A25: viscous LESP -> near-zero at LE separation, Re 1e4-1e5);
+                  #   'polhamus' = magnitude conserved but ROTATED to the panel normal (vortex force, NASA TN D-3767)
+                  #   -> chordwise thrust still 0 while separated, lift keeps the separated-flow contribution.
+                  #   The held plateau rides the local dynamic pressure ~f^2 = fictitious flapping thrust
+                  #   (docs/diag/gap_thrust_f2.md: les carries 95% of the model's f^2 thrust slope).
                   fp_lev=False, lev_kv=4.62, lev_trans_deg=15.0,
                   # --- 2026-06-27 first-principles LESP-LEV: orthogonal MODE switches (candidate-model matrix) ---
                   lev_shed_mode='none',    # 'none'|'kelvin'(explicit excess)|'varA0'(Modulation Eq.11-12)|'kinematic'(legacy)|'hirato'(FAITHFUL Fig.6 implicit LESP=LESP_crit constraint solve)
@@ -1105,6 +1112,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # -> F_A ~ Vle_m^2 ~ f^2 even when saturated. Using Vle_m^2 (both factors LOCAL) is the correct
             # quadratic scaling; the earlier rho*U_inf*Vle_m mix gave only ~f^1. This is the f^2 propulsion.
             sa_s = np.sin(aeff_s)                              # saturated LE-suction parameter A0 = sin(a_crit) max
+            sup_le = np.abs(aeff) > a_crit                     # separated-strip detector (geometric fallback)
+            sgn_le = np.sign(sa)
             if lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato'):
                 # S4 (Hirato Eq.20): realized LE suction caps at the FIRST-PRINCIPLES A0 (from bound circulation),
                 # bounded by a0_crit; the EXCESS above a0_crit is what S3 sheds into the LEV (no double-count).
@@ -1116,7 +1125,20 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # consistent closure, no new constants): suction = crit-capped attached-flow value while shedding.
                 A0f = hirato_A0pre if (les_pre and lev_shed_mode == 'hirato' and hirato_A0pre is not None) else A0
                 sa_s = np.clip(A0f, -a0_crit, a0_crit)
+                sup_le = np.abs(A0f) > a0_crit                 # separated = LESP supercritical (the ansari shed gate)
+                sgn_le = np.sign(A0f)
             dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
+            if les_sep != 'plateau':
+                # (2026-07-09 GAP-f2 fix) the LDVM "suction held at crit while shedding" is the unproven Katz-1981
+                # postulate; viscously the LE suction COLLAPSES when the LE separates (Narsipur 2020 JFM 900 A25).
+                # 'polhamus': the retained (crit-capped) magnitude rotates onto the panel normal -> vortex force
+                # (continuous in |F|, chordwise thrust -> 0); 'zero': hard collapse (Narsipur ablation).
+                if les_sep == 'polhamus':
+                    dNp = dTs * sup_le
+                    Fp = (dNp * sgn_le)[:, None] * nle
+                    Lh_vtx[t] += float(np.sum(Fp[:, 2])); Xh_vtx[t] += float(np.sum(Fp[:, 0]))
+                    Fzb_tot[t] += float(np.sum(Fp[:, 2])); Fxb_tot[t] += float(np.sum(Fp[:, 0]))
+                dTs = dTs * (~sup_le)
             if les_att and fsep_le is not None:
                 # (H10) realized suction only on the ATTACHED fraction: fsep->0 at deep stall kills the fictional
                 # mid-stroke suction pulses (Fig16: measured thrust has none); the lost suction is the vnf's job.

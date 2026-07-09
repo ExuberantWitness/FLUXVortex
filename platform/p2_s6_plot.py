@@ -40,7 +40,7 @@ def main():
         U, f, tw = (float(x) for x in k.split("_"))
         pts[(U, f, tw)] = v
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axes = plt.subplots(3, 2, figsize=(12, 12))
     # (a) L,T vs twist @ U8 f2.3
     tws = sorted(tw for (U, f, tw) in pts if U == 8.0 and f == 2.3)
     for ax, comp, idx in ((axes[0, 0], "L", 0), (axes[0, 1], "T", 1)):
@@ -77,7 +77,25 @@ def main():
         ax.set_xlabel("扑动频率 (Hz)"); ax.set_ylabel(f"{comp} (N)")
         ax.legend(fontsize=7); ax.grid(alpha=0.3)
         ax.set_title(f"Fig18 型:{comp} vs 频率 @tw0(×= 实测)", fontsize=10)
-    fig.suptitle("P2-S6 柔性翼 Fig17/18 复现(K0 闭合回放)vs 刚性 vs 实测")
+    # (c) Fig19-style: L,T vs freq at AoA=5 (the only AoA with flexible data —
+    # AoA 0/10/15 lines deferred by user decision), measured = 19|a/b|5
+    for ax, comp, idx in ((axes[2, 0], "L", 0), (axes[2, 1], "T", 1)):
+        fs = sorted(f for (U, f, tw) in pts if U == 8.0 and tw == 0.0)
+        if fs:
+            ax.plot(fs, [pts[(8.0, f, 0.0)]["flex"][idx] for f in fs],
+                    "-o", color="#b3382e", label="柔性 U8/AoA5")
+            ax.plot(fs, [pts[(8.0, f, 0.0)]["rigid"][idx] for f in fs],
+                    "--s", color="#b3382e", alpha=0.5, label="刚性")
+        for pan in ("a", "b"):
+            mk = f"19|{pan}|5"
+            if mk in meas and meas[mk].get("kind") == comp:
+                ax.plot(meas[mk]["x"], meas[mk]["exp"], "k-x", lw=1.2,
+                        label="实测(Fig19, AoA5)")
+        ax.set_xlabel("扑动频率 (Hz)"); ax.set_ylabel(f"{comp} (N)")
+        ax.legend(fontsize=8); ax.grid(alpha=0.3)
+        ax.set_title(f"Fig19 型:{comp} vs 频率 @AoA5(其余 AoA 线未跑,已拍板搁置)",
+                     fontsize=10)
+    fig.suptitle("P2-S6 柔性翼 Fig17/18/19 复现(K0 闭合回放)vs 刚性 vs 实测")
     fig.tight_layout()
     out = os.path.join(DOCS, "p2_s6_fig1718.png")
     fig.savefig(out, dpi=150)
