@@ -571,6 +571,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   geo_stall_peak=False,    # False=instantaneous psi(t) each step; True=cycle-peak |psi| amplitude
                   geo_stall_vec=False,     # (C8) Kirchhoff factor scales the strip Bernoulli force VECTOR (pressure-differential
                   #   collapse, both lift AND its backward tilt at deep twist) instead of the legacy +z-only removal
+                  kirch_tw=False,          # (2026-07-10 案A 变体B, research_bern_twist.md M1) LB/Kirchhoff attenuation
+                  #   applied ONLY to the TWIST-induced share of the circulatory pressure (first-order incidence
+                  #   split: dp_c' = dp_c*(1-(1-fac)*psi_t/alpha_eff), fac=((1+sqrt(fsep))/2)^2 from the LAGGED
+                  #   flow-incidence separation state at 3c/4). tw0 forces untouched BY CONSTRUCTION (psi_t=0);
+                  #   the full-force variant (kirch_cn) failed the tw0/lift regression gates (measured: lift 5.9->2.9).
+                  #   Constants unchanged: alpha_ss/width (NACA-2406) + fsep_tau=4.5 (GK literature).
                   kirch_cn=False,          # (H10) alpha_eff-Kirchhoff CN factor on the CIRCULATORY Bernoulli pressure, vectorial,
                   kirch_blend=False,       # (P1 2026-07-05) DOUBLE-COUNT FIX: blend attached Bernoulli + flat-plate CN by the
                   #   (lagged) separated fraction (1-fsep) into ONE consistent force vector (replace, not add). The flat-plate
@@ -687,6 +693,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lcl = wp.zeros(nls, dtype=V3, device=dev); lcr = wp.zeros(nls, dtype=V3, device=dev)   # cur LE-shed corners
     lev_first = 1                                               # 1 until the first LEV row is shed
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
+    fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
     # (ANSARI / Hirato Eq.7) parametric LEV sheet OVER the suction surface: each ring stored by its strip index,
     # chordwise fraction f (0=LE, grows aft as it convects), and strength. Lifted off the surface by lev_rollh*f
     # (roll-up). Anchored at the LE, NOT convected into the TEV wake -> sits over the wing, induces on bound+force.
@@ -987,7 +994,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # the vnf normal force, which is already k_v-capped). (3) vnf unchanged (Polhamus branch is the separated-
         # flow limit). Quasi-steady limitation (no dynamic-stall lag; would need new time constants) -> documented.
         fsep_le = None
-        if kirch_cn or les_att or prof_drag or kirch_blend:   # separation state consumers (incl. P1 kirch_blend)
+        if kirch_cn or kirch_tw or les_att or prof_drag or kirch_blend:   # separation state consumers (incl. P1 kirch_blend)
             vr_k = np.asarray(Vinf) - vcn                                   # kinematic relative flow (no induction)
             nn_k = nrm.numpy()
 
@@ -1046,6 +1053,36 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             fsep_cn = _fsep_row(min(int(round(0.75 * nc)), nc - 1))
             fac_cn = np.tile(((1.0 + np.sqrt(fsep_cn)) / 2.0) ** 2, nc)     # Kirchhoff CN factor, per strip
             Fb = (dp_c * fac_cn + dp_a)[:, None] * area[:, None] * nrm.numpy()
+        elif kirch_tw:
+            # (2026-07-10 案A 变体B, research_bern_twist.md M1) the separated-state circulatory SENSITIVITY is
+            # over-predicted ~1/fac (Kirchhoff bound 2.8x at the floor) -> the model over-relieves the load that
+            # feathering twist removes. Correct ONLY the twist-induced share via the first-order incidence split
+            # dp_c' = dp_c * (1 - (1-fac) * psi_t/alpha_34): tw0 identical by construction (psi_t = 0); the
+            # full-force gate (kirch_cn) is measured to kill the flapping main lift (5.9 -> 2.9) and is rejected.
+            dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
+            dp_a = ug.RHO * dGdt                                            # added mass: survives separation
+            dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
+            i34 = min(int(round(0.75 * nc)), nc - 1)
+            sl34 = slice(i34 * ns, (i34 + 1) * ns)
+            v34 = vr_k[sl34]; n34 = nn_k[sl34]
+            sa34 = np.sum(v34 * n34, axis=1) / (np.linalg.norm(v34, axis=1) + 1e-9)
+            a34 = np.arcsin(np.clip(sa34, -0.999, 0.999))                   # SIGNED 3c/4 strip incidence
+            fsep_cn = _fsep_row(i34)
+            if fsep_lag:                                                    # same GK lag, own state (3c/4 row)
+                Ur34 = np.linalg.norm(v34, axis=1) + 1e-9
+                c34 = tcn.reshape(nc, ns).sum(0)
+                tau34 = fsep_tau * c34 / (2.0 * Ur34)
+                if fsep_state_cn is None:
+                    fsep_state_cn = fsep_cn.copy()
+                else:
+                    fsep_state_cn = fsep_state_cn + (fsep_cn - fsep_state_cn) * np.clip(dt / tau34, 0.0, 1.0)
+                fsep_cn = fsep_state_cn
+            fac_tw = ((1.0 + np.sqrt(fsep_cn)) / 2.0) ** 2
+            psi_t = A_t * yfrac * np.sin(Om * (t * dt) + phi)               # geometric twist pitch (= geo_stall's)
+            a_gd = np.where(np.abs(a34) < 0.05, np.sign(a34) * 0.05 + (a34 == 0) * 0.05, a34)
+            ratio = np.clip(psi_t / a_gd, -1.0, 1.0)                        # twist share of the 3c/4 incidence
+            w_tw = np.tile(1.0 - (1.0 - fac_tw) * ratio, nc)                # tw0 -> exactly 1
+            Fb = (dp_c * w_tw + dp_a)[:, None] * area[:, None] * nrm.numpy()
         else:
             dp = np.clip(dp, -8.0 * q_ref, 8.0 * q_ref)
             Fb = dp[:, None] * area[:, None] * nrm.numpy()
@@ -1294,12 +1331,36 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # postulate; viscously the LE suction COLLAPSES when the LE separates (Narsipur 2020 JFM 900 A25).
                 # 'polhamus': the retained (crit-capped) magnitude rotates onto the panel normal -> vortex force
                 # (continuous in |F|, chordwise thrust -> 0); 'zero': hard collapse (Narsipur ablation).
-                if les_sep == 'polhamus':
-                    dNp = dTs * sup_le
+                # 'kt' (2026-07-10 案B step-3): Carlson NASA TP-1500 ATTAINABLE-thrust split — the separated-strip
+                #   chordwise suction keeps the attainable fraction K_T (closed form, eqs 8-10: local Mach from
+                #   Vle, strip Reynolds, geometry tau/c + r/c; NO free constants) and the unattainable (1-K_T)
+                #   rotates to the panel normal (same vortex-force bookkeeping as 'polhamus'). K_T -> 1 attached,
+                #   ~0.2-0.5 at deep flapping incidence. EXTRAPOLATION NOTE: our section (tau/c=0.028, r/tau=0.5)
+                #   sits outside the TP-1500 correlation range (tau 6-18%c, r/tau 2-16%) — documented, not tuned.
+                if les_sep == 'kt':
+                    Mn_s = np.clip(Vle_m / 340.0, 1e-3, 0.5)
+                    Rn_s = np.maximum(Vle_m * c_le / 15.06e-6, 1.0)
+                    expn = 0.05 + 0.35 * (1.0 - Mn_s) ** 2
+                    cplim = (-2.0 / (1.4 * Mn_s ** 2)
+                             * (Rn_s * 1e-6 / (Rn_s * 1e-6 + 10.0 ** (4.0 - 3.0 * Mn_s))) ** expn)
+                    g_ = 1.4 * np.abs(cplim) * np.sqrt(np.maximum(1.0 - Mn_s ** 2, 1e-6))
+                    Me_s = (np.sqrt(2.0) / g_) * np.sqrt(np.sqrt(1.0 + g_ ** 2) - 1.0)
+                    ct_th = 2.0 * np.pi * np.maximum(np.sin(aeff) ** 2, 1e-6)      # theoretical 2D ct at local incidence
+                    KT = np.minimum(1.0, (2.0 * (1.0 - Me_s ** 2) / np.maximum(Me_s, 1e-6))
+                                    * ((0.028 * 0.0139 ** 0.4) / ct_th) ** 0.6)     # tau/c, r/c: section geometry
+                    keep = np.where(sup_le, KT, 1.0)                               # split only on separated strips
+                    dNp = dTs * (1.0 - keep)
                     Fp = (dNp * sgn_le)[:, None] * nle
                     Lh_vtx[t] += float(np.sum(Fp[:, 2])); Xh_vtx[t] += float(np.sum(Fp[:, 0]))
                     Fzb_tot[t] += float(np.sum(Fp[:, 2])); Fxb_tot[t] += float(np.sum(Fp[:, 0]))
-                dTs = dTs * (~sup_le)
+                    dTs = dTs * keep
+                else:
+                    if les_sep == 'polhamus':
+                        dNp = dTs * sup_le
+                        Fp = (dNp * sgn_le)[:, None] * nle
+                        Lh_vtx[t] += float(np.sum(Fp[:, 2])); Xh_vtx[t] += float(np.sum(Fp[:, 0]))
+                        Fzb_tot[t] += float(np.sum(Fp[:, 2])); Fxb_tot[t] += float(np.sum(Fp[:, 0]))
+                    dTs = dTs * (~sup_le)
             if les_att and fsep_le is not None:
                 # (H10) realized suction only on the ATTACHED fraction: fsep->0 at deep stall kills the fictional
                 # mid-stroke suction pulses (Fig16: measured thrust has none); the lost suction is the vnf's job.
