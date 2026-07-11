@@ -661,7 +661,6 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Lh = np.zeros(N); Xh = np.zeros(N); Ph = np.zeros(N); Lkjh = np.zeros(N)
     Lh_imp = np.zeros(N); Xh_imp = np.zeros(N)        # unsteady-Bernoulli surface-pressure force (captures LEV)
     Lh_vimp = np.zeros(N); Xh_vimp = np.zeros(N)       # (H16) LEV VORTEX-IMPULSE force (Li/Feng): F = -d/dt[rho*Sum(Gamma*A)]
-    I_LEV_prev = None                                   #   previous step's LEV impulse (ansari sheet); None -> F=0 step 0
     Fxb_tot = np.zeros(N); Fzb_tot = np.zeros(N)      # TOTAL body-frame force per step (sum of ALL force vectors:
     #   Bernoulli + LE-suction + friction + form-drag + vortex) -> the clean body force to rotate into wind axes
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
@@ -698,6 +697,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     # chordwise fraction f (0=LE, grows aft as it convects), and strength. Lifted off the surface by lev_rollh*f
     # (roll-up). Anchored at the LE, NOT convected into the TEV wake -> sits over the wing, induces on bound+force.
     lev_aj = np.zeros(0, np.int64); lev_af = np.zeros(0); lev_ag = np.zeros(0)
+    lev_ids = np.zeros(0, np.int64); lev_id_next = 0        # per-ring identity (material impulse accounting)
+    imp_prev = None                                         # (ids, Gamma*Avec) of the previous step's ledger
     Vlev_a = wp.zeros(npan, dtype=V3, device=dev)              # LEV-sheet induced velocity at collocations
     lev_frame_rings = np.zeros((0, 4, 3)); lev_frame_g = np.zeros(0)   # LEV-sheet geometry for viz frames
     for t in range(N):
@@ -1189,11 +1190,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 lev_af = lev_af + (U * dt) / np.maximum(c_strip[lev_aj], 1e-9)   # chordwise convection (fraction of chord)
                 keep = lev_af < lev_fmax
                 lev_aj = lev_aj[keep]; lev_af = lev_af[keep]; lev_ag = lev_ag[keep]
+                lev_ids = lev_ids[keep]
             js = np.where(np.abs(A0) > a0_crit)[0]                       # supercritical strips -> shed a new LEV ring at the LE
             if len(js) > 0:
                 lev_aj = np.concatenate([lev_aj, js.astype(np.int64)])
                 lev_af = np.concatenate([lev_af, np.zeros(len(js))])
                 lev_ag = np.concatenate([lev_ag, (lev_sign * lev_str_fp[js]).astype(float)])
+                lev_ids = np.concatenate([lev_ids, lev_id_next + np.arange(len(js), dtype=np.int64)])
+                lev_id_next += len(js)
         if lev_impulse and use_ansari and len(lev_aj) > 0:
             # (H16 Li/Feng vortex-impulse) LEV force = -d/dt[rho * Sum_j Gamma_j * A_j], A_j = vector area of the
             # quad ring. Grid-INDEPENDENT (no surface-pressure resolution) -> the DSV lift emerges without the
@@ -1210,12 +1214,26 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             a0v = LElv + f0v * chlv + hkv * n_kv; a1v = LErv + f0v * chrrv + hkv * n_kv
             a2v = a1v + dchv * chrrv; a3v = a0v + dchv * chlv
             Avec = 0.5 * (np.cross(a0v, a1v) + np.cross(a1v, a2v) + np.cross(a2v, a3v) + np.cross(a3v, a0v))
-            I_LEV = ug.RHO * np.sum(lev_ag[:, None] * Avec, axis=0)        # (3,) half-wing LEV impulse
-            if I_LEV_prev is not None:
-                Fvi = -(I_LEV - I_LEV_prev) / max(dt, 1e-15)
+            # (2026-07-11 案LEV, MATERIAL impulse accounting) the legacy ledger-difference
+            # F = -(I_ledger(t)-I_ledger(t-dt))/dt mixes ring BIRTHS and DROPS into the derivative;
+            # for a (statistically) periodic ledger its cycle mean is IDENTICALLY ZERO — measured:
+            # T_vimp = 0.000 at every twist, std 0.36N, 96% steps nonzero (periodic-derivative null).
+            # Physical bookkeeping (Li/Feng impulse theory; Otomo 2021 vortex-impulse practice):
+            #   survivors: -rho*Gamma*(A_t - A_{t-dt})/dt   (deformation/rotation of the SAME ring)
+            #   births:    -rho*Gamma*A_born/dt             (LE vorticity creation reacts on the wing)
+            #   drops:     EXCLUDED                         (impulse advects away with the fluid)
+            GA = lev_ag[:, None] * Avec                                    # per-ring Gamma*Avec (n,3)
+            dI = np.zeros(3)
+            if imp_prev is not None:
+                ids_p, GA_p = imp_prev
+                common, ia, ib = np.intersect1d(lev_ids, ids_p, return_indices=True)
+                dI += (GA[ia] - GA_p[ib]).sum(axis=0)                      # survivors: material change
+                born = ~np.isin(lev_ids, common)
+                dI += GA[born].sum(axis=0)                                 # births: created from zero
+                Fvi = -ug.RHO * dI / max(dt, 1e-15)
                 Lh_vimp[t] = float(Fvi[2]); Xh_vimp[t] = float(Fvi[0])
                 Fzb_tot[t] += Lh_vimp[t]; Fxb_tot[t] += Xh_vimp[t]
-            I_LEV_prev = I_LEV.copy()
+            imp_prev = (lev_ids.copy(), GA.copy())
         if part_lev and np_part > 0:   # rVPM LEV force via QUASI-STEADY KUTTA-JOUKOWSKI on the OVER-WING LEV.
             # The full vortex-impulse sum(x x alpha) is WILD because it accumulates ALL shed particles -> the
             # far-wake convection term rho*U*sum(alpha) grows unbounded. The physical LEV lift is the KJ of the
