@@ -49,6 +49,7 @@ import wing_mesh as wmesh                                    # noqa: E402
 
 STRUCT_GPU = os.environ.get("FLUX_STRUCT_GPU", "1") == "1"   # 100% GPU structural solve
 _STEP_FN = None                                              # resolved lazily (torch probe)
+_MN_STALL = float(os.environ.get("FLUX_MN_STALL", "0.5"))   # modified-Newton refactor threshold
 
 
 @wp.kernel
@@ -278,8 +279,19 @@ class WingModel:
         if getattr(self, "_gt", None) is not None:
             return self._gt
         dev = torch.device("cuda")
+        # (2026-07-11 perf) run ALL warp launches on torch's current stream: same-stream
+        # ordering makes the per-call cross-stream fences in Q_int_t/K_dense_t unnecessary
+        # (profiled ~20% of the step in sync + launch overhead at ~20 calls/substep).
+        fence = True
+        if os.environ.get("FLUX_STREAM_UNIFY", "1") == "1":
+            try:
+                wp.set_stream(wp.stream_from_torch(torch.cuda.current_stream()),
+                              device=self.device)
+                fence = False
+            except Exception:
+                pass                                         # unify failed: KEEP fences
         gt = {
-            "torch": torch, "dev": dev,
+            "torch": torch, "dev": dev, "fence": fence,
             "M": torch.as_tensor(np.asarray(self.M.todense()),
                                  dtype=torch.float64, device=dev),
             "free": torch.as_tensor(self.free, dtype=torch.long, device=dev),
@@ -295,14 +307,17 @@ class WingModel:
 
     def Q_int_t(self, q_t):
         """Internal force as a torch cuda tensor (zero-copy from the warp
-        element kernels; branch-free exact forces, same as Q_int). Explicit
-        stream fences both ways: torch and warp run on different CUDA streams."""
+        element kernels; branch-free exact forces, same as Q_int). Warp runs
+        on torch's stream (see _gpu_init) -> same-stream ordering, no fences;
+        if stream unification failed, gt['fence'] keeps the explicit barriers."""
         gt = self._gpu_init()
-        gt["torch"].cuda.synchronize()                       # torch writes to q_t done
+        if gt["fence"]:
+            gt["torch"].cuda.synchronize()
         qw = wp.from_torch(q_t.reshape(1, -1).contiguous(), dtype=cfg.DTYPE)
         Qb = kb.beam_internal_force(qw, self.BeamC)
         Qm = km.membrane_internal_force(qw, self.MemC)
-        wp.synchronize_device(self.device)                   # warp kernels done
+        if gt["fence"]:
+            wp.synchronize_device(self.device)
         return wp.to_torch(Qb)[0] + wp.to_torch(Qm)[0]
 
     def K_dense_t(self, q_np, symmetrize=True, latch=False):
@@ -335,8 +350,9 @@ class WingModel:
                   inputs=[Kb, gt["eb"]], outputs=[Kd], device=self.device)
         wp.launch(_scatter_dense_kernel, dim=(Km_.shape[1], nbm, nbm),
                   inputs=[Km_, gt["em"]], outputs=[Kd], device=self.device)
-        wp.synchronize_device(self.device)                   # fence before torch reads
-        return wp.to_torch(Kd)
+        if gt["fence"]:
+            wp.synchronize_device(self.device)
+        return wp.to_torch(Kd)                               # same stream as torch: no fence needed
 
     def _gpu_cache_mat(self, tag, sp):
         """scipy matrix -> dense torch cuda tensor, cached by object identity
@@ -768,7 +784,10 @@ def gpu_implicit_step(model, q, dq, a, dt, F_const, presc=None,
                 break
             if rn < newton_tol * scale:
                 break
-            if chol is None or (rn_prev is not None and rn > 0.5 * rn_prev):
+            if chol is None or (rn_prev is not None and rn > _MN_STALL * rn_prev):
+                # (2026-07-11 perf) refresh threshold: 0.85 tried and REVERTED (isolation A/B: stale-J
+                # cost +48s in extra iterations vs -20s factorization saved). 0.5 keeps trajectories
+                # bit-identical. FLUX_MN_STALL overrides for experiments.
                 K = model.K_dense_t(q1.cpu().numpy(), symmetrize=True, latch=False)
                 S = K + mcoef * M + ccoef * Cd
                 Sff = S.index_select(0, free).index_select(1, free)
