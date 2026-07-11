@@ -34,8 +34,12 @@ _p = os.path.join(DOCS, "s6_results_lessep.json")
 if os.path.exists(_p):
     for k, v in json.load(open(_p)).items():
         if v.get("cfg") == CFG and "flex" in v:
-            U, f, tw = (float(x) for x in k.split("|")[-1].split("_"))
-            PTS[(U, f, tw)] = v
+            parts = k.split("|")[-1].split("_")
+            aoa = 5.0
+            if parts and parts[-1].startswith("aoa"):
+                aoa = float(parts.pop()[3:])
+            U, f, tw = (float(x) for x in parts)
+            PTS[(U, f, tw, aoa)] = v
 
 FREQS = [1.4, 1.7, 2.0, 2.3, 2.6]
 FCOL = {1.4: "#4477aa", 1.7: "#66ccee", 2.0: "#228833", 2.3: "#cc3311",
@@ -70,6 +74,8 @@ def draw_meas(ax, key, color, label=None):
 
 
 def draw_model(ax, x, cond, idx, mkey, color):
+    if len(cond) == 3:
+        cond = cond + (5.0,)
     v = PTS.get(cond)
     if v is None:
         return
@@ -155,9 +161,10 @@ def fig19():
     for a in (0, 5, 10, 15):
         draw_meas(axT, f"19|a|{a}", ACOL[a], f"实测 AoA={a}")
         draw_meas(axL, f"19|b|{a}", ACOL[a], f"实测 AoA={a}")
-    for fr in FREQS:                               # model exists only at AoA=5
-        draw_model(axT, fr, (8.0, fr, 0.0), 1, "19|a|5", ACOL[5])
-        draw_model(axL, fr, (8.0, fr, 0.0), 0, "19|b|5", ACOL[5])
+    for a in (0, 5, 10, 15):                       # 全 AoA 族(B线解锁)
+        for fr in FREQS:
+            draw_model(axT, fr, (8.0, fr, 0.0, float(a)), 1, f"19|a|{a}", ACOL[a])
+            draw_model(axL, fr, (8.0, fr, 0.0, float(a)), 0, f"19|b|{a}", ACOL[a])
     for ax, ttl in ((axT, "(a) T vs 频率(各攻角)"),
                     (axL, "(b) L vs 频率(各攻角)")):
         ax.set_xlabel("扑动频率 (Hz)"); ax.set_ylabel("N")
@@ -175,7 +182,7 @@ def fig19():
         ax.grid(alpha=0.3); ax.set_title(ttl)
         legend_common(ax)
     fig.suptitle(f"Fig19 严格复现 — 模型=AoA5° 线 [{CFG} 闭合]"
-                 "(f2.6 扭转行录音进行中;AoA 0/10/15 行需改录音管线,已拍板搁置)\n"
+                 "(AoA 0/5/10/15 频率线全族;f2.6 tw45 与 AoA 扭转行未录)\n"
                  f"升力 MAE: {_mae(0)}   |   推力 MAE: {_mae(1)}")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig19.png"), dpi=150)
