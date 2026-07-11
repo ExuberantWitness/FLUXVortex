@@ -24,7 +24,7 @@ rcParams["axes.unicode_minus"] = False
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DOCS = os.path.join(_HERE, "docs")
 MEAS = json.load(open(os.path.join(DOCS, "repro_data.json")))
-CFG = "H16KTi"
+CFG = "H16KTv"
 
 PTS = {}
 for k, v in json.load(open(os.path.join(DOCS, "s6_results_lessep.json"))).items():

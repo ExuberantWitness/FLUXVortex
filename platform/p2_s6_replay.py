@@ -39,8 +39,10 @@ CHORD, AOA_DEG = 0.287, 5.0
 AMP_DEG = 45.0
 
 
-def _npz_path(U, freq, tw=0.0):
+def _npz_path(U, freq, tw=0.0, aoa=None):
     suf = f"_tw{tw:g}" if tw else ""
+    if aoa is not None and abs(float(aoa) - AOA_DEG) > 1e-9:
+        suf += f"_aoa{float(aoa):g}"
     return os.path.join(DOCS, f"s6_defl_U{U:g}_f{freq:g}{suf}.npz")
 
 
@@ -93,7 +95,7 @@ class TwistTopKin:
 
 
 def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
-           ckpt_every=15):
+           ckpt_every=15, aoa_deg=None):
     """S5 coupled run; record aero-grid (du, dv) vs rigid frame per window.
     tw_deg > 0: mechanism twist (root pitch about the main spar, TwistTopKin);
     the du/dv reference is then the production LINEAR-twist rigid field so
@@ -110,7 +112,8 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
     from newton_pc.adapters.flap import FlapUVLMProvider, NodalForceSet
 
     period = 1.0 / freq
-    alpha = np.deg2rad(AOA_DEG)
+    aoa_deg = AOA_DEG if aoa_deg is None else float(aoa_deg)   # (B线 普适) AoA 参数化
+    alpha = np.deg2rad(aoa_deg)
     dtw = (CHORD / 8) / U
     substeps = 40
     n_windows = int(round(n_cycles * period / dtw))
@@ -189,7 +192,7 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
         c_, s_ = np.cos(th), np.sin(th)
         R = np.array([[1, 0, 0], [0, c_, -s_], [0, s_, c_]])
         return (g.reshape(-1, 3) @ R.T).reshape(ns_ + 1, nc_ + 1, 3)
-    ckpt_path = _npz_path(U, freq, tw_deg) + ".ckpt"
+    ckpt_path = _npz_path(U, freq, tw_deg, aoa_deg) + ".ckpt"
     ts, dus, dvs, lifts, thrusts, iters = [], [], [], [], [], []
     w_start = 0
     if resume and os.path.exists(resume):
@@ -255,7 +258,7 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
             print(f"  w={w:3d}/{n_windows} t={t:.3f}s it={s.iterations:2d} "
                   f"L={lifts[-1]:+7.2f} |du|max={np.abs(du).max()*1e3:5.1f}mm "
                   f"[{_time.time()-t0_:.0f}s]", flush=True)
-    np.savez(_npz_path(U, freq, tw_deg), ts=np.array(ts), dus=np.array(dus),
+    np.savez(_npz_path(U, freq, tw_deg, aoa_deg), ts=np.array(ts), dus=np.array(dus),
              dvs=np.array(dvs), lifts=np.array(lifts),
              thrusts=np.array(thrusts), iters=np.array(iters),
              period=period, phase0=period / 4.0, fail=str(fail),
@@ -266,7 +269,7 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
         print(f"  cycle-mean (last cycle, x2 half-wing): "
               f"2L={2*np.mean(lifts[-wpc:]):+.2f} N  "
               f"2T={2*np.mean(thrusts[-wpc:]):+.2f} N")
-    print(f"recorded {len(ts)} windows -> {_npz_path(U, freq, tw_deg)}  "
+    print(f"recorded {len(ts)} windows -> {_npz_path(U, freq, tw_deg, aoa_deg)}  "
           f"(iters mean {np.mean(iters):.1f}, fail={fail})")
 
 
@@ -318,18 +321,19 @@ class DeformInterp:
                 self._resample(dv).transpose(1, 0, 2))
 
 
-def replay(U, freq, tw=0.0, cfg_name="K0", nc=12, ns=16, n_cycle=4):
+def replay(U, freq, tw=0.0, cfg_name="K0", nc=12, ns=16, n_cycle=4, aoa_deg=None):
     from _v2_robo import gpu_run_twist
     sys.path.insert(0, _HERE)
     from _v2_repro_nc12 import CFG_PRESETS, spc_of
     kw = dict(CFG_PRESETS[cfg_name])
     spc = spc_of(U, freq)
-    hook = DeformInterp(_npz_path(U, freq, tw), nc, ns)
-    out_flex = gpu_run_twist(U=U, aoa_deg=AOA_DEG, freq=freq, twist_amp_deg=tw,
+    aoa = AOA_DEG if aoa_deg is None else float(aoa_deg)
+    hook = DeformInterp(_npz_path(U, freq, tw, aoa), nc, ns)
+    out_flex = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, twist_amp_deg=tw,
                              twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                              steps_per_cycle=spc, wake_rows=spc,
                              deform_hook=hook, **kw)
-    out_rig = gpu_run_twist(U=U, aoa_deg=AOA_DEG, freq=freq, twist_amp_deg=tw,
+    out_rig = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, twist_amp_deg=tw,
                             twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                             steps_per_cycle=spc, wake_rows=spc, **kw)
     Lf, Tf = float(out_flex["L_wind"]), float(out_flex["T_wind"])
