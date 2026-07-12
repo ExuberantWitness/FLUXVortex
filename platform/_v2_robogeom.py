@@ -45,8 +45,17 @@ def robowing_real(nc, ns, half_span=HALF_SPAN, camber_m=0.02, camber_p=0.40, cos
     gap; the two wings do NOT meet at the centerline). Wing-local chord uses y-root_off; stored y is assembly."""
     yl = np.linspace(0.0, half_span, ns + 1)     # wing-local span (root=0 -> tip), for chord/camber
     cy = chord_at(yl)
-    xf = (0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, nc + 1))) if cosine_chord
-          else np.linspace(0.0, 1.0, nc + 1))
+    # chordwise spacing law (grid_study.md 2026-07-12): True/'cosine' = full cosine (LE+TE quadratic
+    # clustering — TE panel ~c·(pi/2nc)^2 collapses onto the near-singular fresh wake under flapping,
+    # lift diverges with nc); False/'uniform' = c/nc (converges, but the 24mm LE panel @nc12 degrades
+    # the A0/LESP->les-suction thrust chain); 'le' = half-cosine 1-cos(pi·s/2) (LE clustering FINER
+    # than full cosine, TE panel ~(pi/2)·c/nc even larger than uniform — both channels safe).
+    if cosine_chord == 'le':
+        xf = 1.0 - np.cos(0.5 * np.pi * np.linspace(0.0, 1.0, nc + 1))
+    elif cosine_chord in (True, 'cosine'):
+        xf = 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, nc + 1)))
+    else:
+        xf = np.linspace(0.0, 1.0, nc + 1)
     zc = naca_camber(xf, camber_m, camber_p)
     C = np.zeros((nc + 1, ns + 1, 3))
     for j in range(ns + 1):
