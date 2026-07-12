@@ -597,6 +597,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3,
+                  cp_cap=8.0,              # per-panel |Cp| clamp vs q_ref (near-field artifact guard). DIAG: the
+                  #   bound-sheet LE pressure peak is PHYSICAL and grows ~1/sqrt(dx_LE) under chordwise refinement;
+                  #   a fixed cap clips it progressively harder as nc grows (lift-vs-nc divergence suspect, 案升力
+                  #   分辨率子案 2026-07-12). Parametrized for the convergence audit; default unchanged.
                   pitch_ramp=False, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0,   # HIRATO pitch-ramp validation (Fig.9/11)
                   deform_hook=None):   # (P2-S6) flexible-wing REPLAY: callable t -> (du, dv) added to the
                   #   rigid-kinematic corners/velocities, shapes (nc+1, ns+1, 3). The S5 coupled solve
@@ -1032,19 +1036,19 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # double-count. prof_drag is gated OFF below when kirch_blend is on.
             dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
             dp_a = ug.RHO * dGdt
-            dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
+            dp_c = np.clip(dp_c, -cp_cap * q_ref, cp_cap * q_ref); dp_a = np.clip(dp_a, -cp_cap * q_ref, cp_cap * q_ref)
             dp_att = dp_c + dp_a                                              # attached Bernoulli pressure
             vr_k = np.asarray(Vinf) - vcn; vrm_k = np.linalg.norm(vr_k, axis=1) + 1e-9
             sa_k = np.sum(vr_k * nrm.numpy(), axis=1) / vrm_k                 # sin(aeff) per panel (kinematic)
             dp_fp = q_ref * (cd_form * sa_k ** 2) * np.sign(sa_k)             # flat-plate CN pressure (along +n)
-            dp_fp = np.clip(dp_fp, -8.0 * q_ref, 8.0 * q_ref)
+            dp_fp = np.clip(dp_fp, -cp_cap * q_ref, cp_cap * q_ref)
             fsep_p = np.tile(fsep_le, nc)                                     # per-panel separated fraction (panel p -> strip j=p%ns)
             dp_blend = fsep_p * dp_att + (1.0 - fsep_p) * dp_fp
             Fb = dp_blend[:, None] * area[:, None] * nrm.numpy()
         elif kirch_cn:
             dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
             dp_a = ug.RHO * dGdt                                            # added mass: survives separation
-            dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
+            dp_c = np.clip(dp_c, -cp_cap * q_ref, cp_cap * q_ref); dp_a = np.clip(dp_a, -cp_cap * q_ref, cp_cap * q_ref)
             # CIRCULATORY loading gate at the 3/4-CHORD row: the classic unsteady thin-airfoil result — the
             # circulatory load follows the effective incidence at 3c/4, which carries the PITCH-RATE term
             # theta_dot*(3c/4 - x_ea)/V that the LE row misses. At tw45 mid-stroke the section is kinematically
@@ -1062,7 +1066,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # full-force gate (kirch_cn) is measured to kill the flapping main lift (5.9 -> 2.9) and is rejected.
             dp_c = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy)
             dp_a = ug.RHO * dGdt                                            # added mass: survives separation
-            dp_c = np.clip(dp_c, -8.0 * q_ref, 8.0 * q_ref); dp_a = np.clip(dp_a, -8.0 * q_ref, 8.0 * q_ref)
+            dp_c = np.clip(dp_c, -cp_cap * q_ref, cp_cap * q_ref); dp_a = np.clip(dp_a, -cp_cap * q_ref, cp_cap * q_ref)
             i34 = min(int(round(0.75 * nc)), nc - 1)
             sl34 = slice(i34 * ns, (i34 + 1) * ns)
             v34 = vr_k[sl34]; n34 = nn_k[sl34]
@@ -1085,7 +1089,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             w_tw = np.tile(1.0 - (1.0 - fac_tw) * ratio, nc)                # tw0 -> exactly 1
             Fb = (dp_c * w_tw + dp_a)[:, None] * area[:, None] * nrm.numpy()
         else:
-            dp = np.clip(dp, -8.0 * q_ref, 8.0 * q_ref)
+            dp = np.clip(dp, -cp_cap * q_ref, cp_cap * q_ref)
             Fb = dp[:, None] * area[:, None] * nrm.numpy()
         # ---- STALL: the attached UVLM has no separation -> at high |alpha_eff| (deep stall on the +-45
         # flap strokes, tip alpha_eff reaches +-40-50deg) it over-predicts the force (BOTH the downstroke
