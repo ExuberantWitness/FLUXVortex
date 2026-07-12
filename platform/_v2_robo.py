@@ -551,6 +551,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   STRONG bounded induction (recovers Polhamus vortex lift) while large/far rings stay smooth. r_c<0.5*ring.
                   lev_overlap=1.0,         # (STAB) LEV core = overlap × shed-spacing (∝U·dt & strip width) -> shrinks as grid refines, never near-singular
                   lev_consistent=True,     # apply the adaptive core in solve+force too (not just convect) -> grid-CONVERGENT LEV (vs singular drift/blow-up)
+                  tev_core=0.0,            # (案升力分辨率子案 2026-07-12) TEV near-wake Lamb-Oseen core in SOLVE+FORCE,
+                  #   = tev_core x local ring mean-edge (resolution-adaptive, SAME rule as lev_core_ring). Under
+                  #   flapping the near-wake rings carry uncancelled dG/dt circulation; sampling their singular
+                  #   field at collocations diverges the bound solve with nc (bern nc8->16: -5.6N; static immune,
+                  #   ddG=0 cancels). The FRESHEST tev_fresh rows keep the near-singular treatment: their TE-shared
+                  #   filament must cancel against the SINGULAR bound lattice or the Kutta condition softens
+                  #   (archived -30% C_N failure). 0 = off (bit-identical legacy path).
+                  tev_fresh=1,             #   number of freshest shed rows kept near-singular (Kutta zone)
                   lev_sub=1,               # (FINE) spanwise sub-rings of LEV per strip (lev_sub=5 -> 5× finer LEV sheet, independent of wing grid)
                   wake_f32=True,           # (2026-07-09 perf) N² wake-induction kernels in fp32 ARITHMETIC (state
                   #   stays fp64; positions update in fp64). GeForce fp64 = 1/64 fp32 throughput -> the dominant
@@ -597,6 +605,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3,
+                  cosine_chord=True,       # (网格无关性研究 2026-07-12) chordwise spacing law passthrough. Cosine
+                  #   clusters LE/TE quadratically: TE panel ~c·(pi/2nc)^2 -> the TE-row collocation collapses
+                  #   onto the near-singular fresh-wake rows quadratically with nc (lift-vs-nc divergence
+                  #   amplifier under flapping). uniform = c/nc (linear).
                   cp_cap=8.0,              # per-panel |Cp| clamp vs q_ref (near-field artifact guard). DIAG: the
                   #   bound-sheet LE pressure peak is PHYSICAL and grows ~1/sqrt(dx_LE) under chordwise refinement;
                   #   a fixed cap clips it progressively harder as nc grows (lift-vs-nc divergence suspect, 案升力
@@ -616,7 +628,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     dev = cfg.DEVICE; NP = cfg.NP_DTYPE
     # real_geom=True -> REAL RoboEagle planform (raked TE, measured chord(y)) + NACA-2406 camber, LE at
     # x=0 / TE at x=+c (chord in +x = flow dir, Vinf=+x flows LE->TE). Else flat rectangular wing.
-    C0 = (rg.robowing_real(nc, ns, half_span, root_off=root_off) if real_geom
+    C0 = (rg.robowing_real(nc, ns, half_span, root_off=root_off, cosine_chord=cosine_chord) if real_geom
           else ffv.flat_wing(nc, ns, chord, half_span)); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
     A_f = np.radians(flap_amp_deg); A_t = np.radians(twist_amp_deg); phi = np.radians(twist_phase_deg)
     Om = 2.0 * np.pi * freq; x_ea = 0.25 * chord
@@ -705,10 +717,33 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     imp_prev = None                                         # (ids, Gamma*Avec) of the previous step's ledger
     Vlev_a = wp.zeros(npan, dtype=V3, device=dev)              # LEV-sheet induced velocity at collocations
     lev_frame_rings = np.zeros((0, 4, 3)); lev_frame_g = np.zeros(0)   # LEV-sheet geometry for viz frames
+    use_tevcore = tev_core > 0.0
     for t in range(N):
         wcore_dev = None; wcore_force_dev = None; wcore_conv_dev = None
-        if use_wcore and nw > 0:                                # per-ring core: LEV gets a core, TEV = standard
+        if (use_wcore or use_tevcore) and nw > 0:               # per-ring core: LEV gets a core, TEV = standard
             islev_np = np.asarray(lev_born[:nw]) >= 0
+            tev_base = max(0.5 * lev_roll_core * chord, 1e-4)   # legacy near-singular TEV solve/force treatment
+            if use_tevcore:
+                # (分辨率子案) aged TEV rows get a van-Garrel core. NOTE the kernels' delta is DIMENSIONLESS
+                # (cr2 += delta^2*|r0|^2, i.e. effective core radius = delta x SEGMENT length): delta_ring =
+                # tev_core x (streamwise spacing)/(span edge) puts the SPAN filaments' effective core at
+                # tev_core x streamwise spacing — smoothing the between-filament sampling oscillation that
+                # biases fine-grid collocations (the nc divergence) without touching the sheet's macroscopic
+                # field. The freshest tev_fresh rows use delta=0 (EXACTLY singular): even a 'tiny' absolute
+                # floor (1.4mm as dimensionless 0.0014 -> 0.07mm on a 50mm span edge) cuts the attached TE
+                # filament's induction ~80% at the cosine-nc16 TE collocation (0.7mm) and collapses the
+                # STATIC solve (validated failure: 16.92->4.84N A/A).
+                wrn_t = wr.numpy()[:nw]
+                stream_t = 0.5 * (np.linalg.norm(wrn_t[:, 2] - wrn_t[:, 1], axis=1)
+                                  + np.linalg.norm(wrn_t[:, 0] - wrn_t[:, 3], axis=1))
+                span_t = 0.5 * (np.linalg.norm(wrn_t[:, 1] - wrn_t[:, 0], axis=1)
+                                + np.linalg.norm(wrn_t[:, 3] - wrn_t[:, 2], axis=1)) + 1e-12
+                fresh_t = np.zeros(nw, bool); fresh_t[max(0, nw - tev_fresh * shed_per):] = True
+                # fresh delta=1e-4 (5um effective on a 50mm edge): physically singular, numerically restores
+                # the ~1e-10 cr2 guard the plain singular kernel carries (the cored kernel's guard is 1e-18)
+                tev_arr = np.where(fresh_t, 1e-4, tev_core * stream_t / span_t)
+            else:
+                tev_arr = np.full(nw, tev_base)
             if lev_core_ring > 0.0:
                 # (HIRATO Eq.25) per-ring Lamb-Oseen core = lev_core_ring × LOCAL ring size (mean edge length). The
                 # compressed near-LE rings are SMALL -> small core -> STRONG bounded induction (recovers vortex lift);
@@ -721,14 +756,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # attached-UVLM baseline that uses the singular ring_vel — WAKE_CORE on the TEV softens the Kutta
                 # condition and drops the baseline C_N ~30%). The Lamb-Oseen per-ring core applies ONLY to the LEV.
                 # CONVECTION keeps WAKE_CORE on the TEV for free-wake stability.
-                tev_solve = max(0.5 * lev_roll_core * chord, 1e-4)
-                cc_np = np.where(islev_np, levc, tev_solve).astype(NP)         # rhs + force: TEV ~ singular (baseline-correct)
+                cc_np = np.where(islev_np, levc, tev_arr).astype(NP)           # rhs + force: TEV fresh~singular, aged cored (tev_core)
                 cf_np = cc_np
                 cconv_np = np.where(islev_np, levc, ug.WAKE_CORE).astype(NP)   # convect: TEV = WAKE_CORE (stability)
             else:
                 # SOLVE/convect core (stabilizing, resolution-adaptive) and FORCE core (small, for held-lift sharpness)
-                cc_np = np.where(islev_np, lev_core_abs, ug.WAKE_CORE).astype(NP)
-                cf_np = np.where(islev_np, lev_core_force, ug.WAKE_CORE).astype(NP)
+                tev_legacy = tev_arr if use_tevcore else np.full(nw, ug.WAKE_CORE)
+                cc_np = np.where(islev_np, lev_core_abs, tev_legacy).astype(NP)
+                cf_np = np.where(islev_np, lev_core_force, tev_legacy).astype(NP)
                 cconv_np = cc_np
             wcore_dev = wp.array(cc_np, dtype=DTYPE, device=dev)
             wcore_force_dev = wp.array(cf_np, dtype=DTYPE, device=dev)
@@ -768,7 +803,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # CONSISTENT resolution-adaptive core in the SOLVE too (toggle lev_consistent): regularizes the singular
         # LEV→bound feedback that makes nc/ns NON-convergent. The core shrinks as the grid refines -> the result
         # CONVERGES to a grid-independent value (vs the singular kernel which drifts 7→3 with nc + blows up).
-        if use_wcore and nw > 0 and lev_consistent:
+        if ((use_wcore and lev_consistent) or use_tevcore) and nw > 0:
             if wake_f32:
                 wp.launch(_rhs_base_k, dim=npan, inputs=[col, nrm, Vw, vcol], outputs=[rhs], device=dev)
                 wp.launch(_rhs_wake_chunk_wcore_f32, dim=(npan, _NCH),
@@ -944,7 +979,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         Vwk = wp.zeros(npan, dtype=V3, device=dev)
         # FORCE induction: cored (consistent with solve+convect) so the held-lift contribution CONVERGES with grid
         # instead of drifting with the singular near field. Same adaptive core shrinks toward the singular limit as refined.
-        if use_wcore and nw > 0 and lev_consistent:
+        if ((use_wcore and lev_consistent) or use_tevcore) and nw > 0:
             if wake_f32:
                 wp.launch(_col_wake_chunk_wcore_f32, dim=(npan, _NCH),
                           inputs=[col, wr, wg, wcore_dev, nw, _NCH], outputs=[Vwk], device=dev)
