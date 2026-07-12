@@ -277,7 +277,7 @@ class DeformInterp:
     """Phase-periodic time interpolation + bilinear (xf, y) grid resampling of
     the recorded deformation, aligned to gpu_run_twist's theta = A sin(Om t)."""
 
-    def __init__(self, npz, nc_to, ns_to, half_span=0.8):
+    def __init__(self, npz, nc_to, ns_to, half_span=0.8, cosine_chord=True):
         d = np.load(npz)
         self.period = float(d["period"])
         self.phase0 = float(d["phase0"])                     # record started at top
@@ -290,7 +290,13 @@ class DeformInterp:
         self.du = dus[keep][order]
         self.dv = dvs[keep][order]
         xf_s, ys_s = d["xf"], d["ys"]
-        xf_t = 0.5 * (1 - np.cos(np.linspace(0, np.pi, nc_to + 1)))
+        # target chordwise fractions MUST match the aero mesh's spacing law (robowing_real)
+        if cosine_chord == 'le':
+            xf_t = 1.0 - np.cos(0.5 * np.pi * np.linspace(0, 1, nc_to + 1))
+        elif cosine_chord in (True, 'cosine'):
+            xf_t = 0.5 * (1 - np.cos(np.linspace(0, np.pi, nc_to + 1)))
+        else:
+            xf_t = np.linspace(0.0, 1.0, nc_to + 1)
         ys_t = np.linspace(0, half_span, ns_to + 1)
         # bilinear weights source->target (separable)
         self.wx = self._lin_w(xf_s, xf_t)                    # (nc_to+1, nc_s+1)
@@ -328,7 +334,8 @@ def replay(U, freq, tw=0.0, cfg_name="K0", nc=12, ns=16, n_cycle=4, aoa_deg=None
     kw = dict(CFG_PRESETS[cfg_name])
     spc = spc_of(U, freq)
     aoa = AOA_DEG if aoa_deg is None else float(aoa_deg)
-    hook = DeformInterp(_npz_path(U, freq, tw, aoa), nc, ns)
+    hook = DeformInterp(_npz_path(U, freq, tw, aoa), nc, ns,
+                        cosine_chord=kw.get('cosine_chord', True))
     out_flex = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, twist_amp_deg=tw,
                              twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                              steps_per_cycle=spc, wake_rows=spc,
