@@ -27,7 +27,7 @@ rcParams["axes.unicode_minus"] = False
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DOCS = os.path.join(_HERE, "docs")
 MEAS = json.load(open(os.path.join(DOCS, "repro_data.json")))
-CFG = "H16KTv"                                     # current best (kt + material impulse + vectorial geo-stall)
+CFG = "H16KTvL"                                     # current best (kt + material impulse + vectorial geo-stall)
 
 PTS = {}
 _p = os.path.join(DOCS, "s6_results_lessep.json")
