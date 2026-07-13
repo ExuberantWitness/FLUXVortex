@@ -36,14 +36,19 @@ for p in (_ROOT, _HERE, os.path.join(_ROOT, "src")):
 DOCS = os.path.join(_HERE, "docs")
 D_STAR = 3.78e-3
 CHORD, AOA_DEG = 0.287, 5.0
-AMP_DEG = 45.0
+# (v2 2026-07-13, kinematics_audit.md) paper amplitude labels are PEAK-TO-PEAK
+# (Fig10 measured: label 45 flap -> +-22.5 deg, label 25 twist -> +-12.5 deg).
+# AMP_DEG is the flap HALF-amplitude actually applied; tw labels stay peak-to-peak
+# throughout (TwistTopKin already used beta = tw/2; the aero rigid baseline and
+# du/dv reference now use tw/2 too). v1 files (s6_defl_*, +-45 flap) are retired.
+AMP_DEG = 22.5
 
 
 def _npz_path(U, freq, tw=0.0, aoa=None):
     suf = f"_tw{tw:g}" if tw else ""
     if aoa is not None and abs(float(aoa) - AOA_DEG) > 1e-9:
         suf += f"_aoa{float(aoa):g}"
-    return os.path.join(DOCS, f"s6_defl_U{U:g}_f{freq:g}{suf}.npz")
+    return os.path.join(DOCS, f"s6v2_defl_U{U:g}_f{freq:g}{suf}.npz")
 
 
 X_MAIN = 0.08858                     # main-spar line (m aft of LE), assembly v3
@@ -179,7 +184,8 @@ def record(U, freq, tw_deg=0.0, n_cycles=2.0, rc0_scale=1.0, resume=None,
     xe_st = _rg.axis_x(ys_st)[:, None]
     yfrac = (ys_st / 0.8)[:, None]
     om_ = 2.0 * np.pi / period
-    tw_rad = np.deg2rad(tw_deg)
+    tw_rad = 0.5 * np.deg2rad(tw_deg)   # (v2) reference field tip amplitude = tw/2
+    # (peak-to-peak label): matches the replay rigid baseline gpu_run_twist(tw/2)
 
     def rigid_ref(t):
         th = kin.angles(t)[0]
@@ -336,11 +342,14 @@ def replay(U, freq, tw=0.0, cfg_name="K0", nc=12, ns=16, n_cycle=4, aoa_deg=None
     aoa = AOA_DEG if aoa_deg is None else float(aoa_deg)
     hook = DeformInterp(_npz_path(U, freq, tw, aoa), nc, ns,
                         cosine_chord=kw.get('cosine_chord', True))
-    out_flex = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, twist_amp_deg=tw,
+    # (v2) amplitude labels are peak-to-peak: flap half-amp AMP_DEG, twist tip tw/2
+    out_flex = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, flap_amp_deg=AMP_DEG,
+                             twist_amp_deg=0.5 * tw,
                              twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                              steps_per_cycle=spc, wake_rows=spc,
                              deform_hook=hook, **kw)
-    out_rig = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, twist_amp_deg=tw,
+    out_rig = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, flap_amp_deg=AMP_DEG,
+                            twist_amp_deg=0.5 * tw,
                             twist_phase_deg=90.0, nc=nc, ns=ns, n_cycle=n_cycle,
                             steps_per_cycle=spc, wake_rows=spc, **kw)
     Lf, Tf = float(out_flex["L_wind"]), float(out_flex["T_wind"])
