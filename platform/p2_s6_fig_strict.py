@@ -27,7 +27,8 @@ rcParams["axes.unicode_minus"] = False
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DOCS = os.path.join(_HERE, "docs")
 MEAS = json.load(open(os.path.join(DOCS, "repro_data.json")))
-CFG = "H16KTvL"                                     # current best (kt + material impulse + vectorial geo-stall)
+CFG = "H16KTvL2"    # v2 baseline: correct kinematics (flap ±22.5, tw label=peak-to-peak)
+                    # + correct pairing (Fig18/19 freq lines measured at tw22.5, kinematics_audit.md)
 
 PTS = {}
 _p = os.path.join(DOCS, "s6_results_lessep.json")
@@ -114,8 +115,8 @@ def fig17():
         ax.set_xlabel("扭转幅值 (deg)"); ax.set_ylabel("N")
         ax.grid(alpha=0.3); ax.set_title(ttl)
         legend_common(ax)
-    fig.suptitle(f"Fig17 严格复现 — U=8, AoA=5°, 模型点=f2.3 行 [{CFG} 闭合]"
-                 "(tw45 录音失败未画,已立案)\n"
+    fig.suptitle(f"Fig17 严格复现 v2 — U=8, AoA=5°, f2.3 行 [{CFG}] "
+                 "(正确口径: 扑±22.5°, tw标签=峰-峰; tw45 已解锁)\n"
                  f"升力 MAE: {_mae(0)}   |   推力 MAE: {_mae(1)}")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig17.png"), dpi=150)
@@ -130,9 +131,9 @@ def fig18():
         draw_meas(axT, f"18|a|{U}", UCOL[U], f"实测 U={U:g}")
         draw_meas(axL, f"18|b|{U}", UCOL[U], f"实测 U={U:g}")
         for fr in FREQS:
-            draw_model(axT, fr, (U, fr, 0.0), 1, f"18|a|{U}", UCOL[U])
-            draw_model(axL, fr, (U, fr, 0.0), 0, f"18|b|{U}", UCOL[U])
-    for ax, ttl in ((axT, "(a) T vs 频率 @tw0"), (axL, "(b) L vs 频率 @tw0")):
+            draw_model(axT, fr, (U, fr, 22.5), 1, f"18|a|{U}", UCOL[U])
+            draw_model(axL, fr, (U, fr, 22.5), 0, f"18|b|{U}", UCOL[U])
+    for ax, ttl in ((axT, "(a) T vs 频率 @tw22.5"), (axL, "(b) L vs 频率 @tw22.5")):
         ax.set_xlabel("扑动频率 (Hz)"); ax.set_ylabel("N")
         ax.grid(alpha=0.3); ax.set_title(ttl)
         legend_common(ax)
@@ -146,8 +147,8 @@ def fig18():
         ax.set_xlabel("扭转幅值 (deg)"); ax.set_ylabel("N")
         ax.grid(alpha=0.3); ax.set_title(ttl)
         legend_common(ax)
-    fig.suptitle(f"Fig18 严格复现 — AoA=5° [{CFG} 闭合]"
-                 "(U10 录音失败未画,已立案)\n"
+    fig.suptitle(f"Fig18 严格复现 v2 — AoA=5° [{CFG}] "
+                 "(频率线实测条件=tw22.5, 模型同配对; kinematics_audit)\n"
                  f"升力 MAE: {_mae(0)}   |   推力 MAE: {_mae(1)}")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig18.png"), dpi=150)
@@ -163,8 +164,8 @@ def fig19():
         draw_meas(axL, f"19|b|{a}", ACOL[a], f"实测 AoA={a}")
     for a in (0, 5, 10, 15):                       # 全 AoA 族(B线解锁)
         for fr in FREQS:
-            draw_model(axT, fr, (8.0, fr, 0.0, float(a)), 1, f"19|a|{a}", ACOL[a])
-            draw_model(axL, fr, (8.0, fr, 0.0, float(a)), 0, f"19|b|{a}", ACOL[a])
+            draw_model(axT, fr, (8.0, fr, 22.5, float(a)), 1, f"19|a|{a}", ACOL[a])
+            draw_model(axL, fr, (8.0, fr, 22.5, float(a)), 0, f"19|b|{a}", ACOL[a])
     for ax, ttl in ((axT, "(a) T vs 频率(各攻角)"),
                     (axL, "(b) L vs 频率(各攻角)")):
         ax.set_xlabel("扑动频率 (Hz)"); ax.set_ylabel("N")
@@ -181,8 +182,8 @@ def fig19():
         ax.set_xlabel("扭转幅值 (deg)"); ax.set_ylabel("N")
         ax.grid(alpha=0.3); ax.set_title(ttl)
         legend_common(ax)
-    fig.suptitle(f"Fig19 严格复现 — 模型=AoA5° 线 [{CFG} 闭合]"
-                 "(AoA 0/5/10/15 频率线全族;f2.6 tw45 与 AoA 扭转行未录)\n"
+    fig.suptitle(f"Fig19 严格复现 v2 — [{CFG}] "
+                 "(频率线=tw22.5 正确配对; c/d 面板原文标注不自洽仅供参考)\n"
                  f"升力 MAE: {_mae(0)}   |   推力 MAE: {_mae(1)}")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig19.png"), dpi=150)
