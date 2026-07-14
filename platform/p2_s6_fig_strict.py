@@ -27,7 +27,7 @@ rcParams["axes.unicode_minus"] = False
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DOCS = os.path.join(_HERE, "docs")
 MEAS = json.load(open(os.path.join(DOCS, "repro_data.json")))
-CFG = "H16KTvL2"    # v2 baseline: correct kinematics (flap ±22.5, tw label=peak-to-peak)
+CFG = "H16pltL2"    # v2 baseline: correct kinematics (flap ±22.5, tw label=peak-to-peak)
                     # + correct pairing (Fig18/19 freq lines measured at tw22.5, kinematics_audit.md)
 
 PTS = {}
