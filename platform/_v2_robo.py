@@ -520,6 +520,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   (crit-capped), consistent with the vnf excess + faure gate; fixes the subcritical post-solve A0
                   #   collapse under sustained shedding (discrete-ring over-suppression artifact). See S4 block.
                   les_sep='plateau',       # (2026-07-09 GAP-f2) chordwise LE suction on SEPARATED (LESP-supercritical)
+                  les_free=False,          # (T1 DIAG) uncapped-A0 suction counterfactual (diagnostic only)
                   #   strips: 'plateau' = held at the crit value (LDVM legacy, Katz-1981 postulate); 'zero' = collapses
                   #   to 0 (Narsipur et al. 2020 JFM 900 A25: viscous LESP -> near-zero at LE separation, Re 1e4-1e5);
                   #   'polhamus' = magnitude conserved but ROTATED to the panel normal (vortex force, NASA TN D-3767)
@@ -1379,7 +1380,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # the PRE-constraint A0pre — the SAME quantity that sizes the vnf excess and the faure gate (one
                 # consistent closure, no new constants): suction = crit-capped attached-flow value while shedding.
                 A0f = hirato_A0pre if (les_pre and lev_shed_mode == 'hirato' and hirato_A0pre is not None) else A0
-                sa_s = np.clip(A0f, -a0_crit, a0_crit)
+                # (T1 DIAG 2026-07-14) les_free: counterfactual UNCAPPED suction (A0 not clipped at a0_crit in the
+                # SUCTION channel only; shedding gate untouched) — quantifies the static-ceiling share of the
+                # missing thrust f-growth (gap_t1_thrust_growth.md §2). Diagnostic, not production.
+                sa_s = A0f if les_free else np.clip(A0f, -a0_crit, a0_crit)
                 sup_le = np.abs(A0f) > a0_crit                 # separated = LESP supercritical (the ansari shed gate)
                 sgn_le = np.sign(A0f)
             dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
