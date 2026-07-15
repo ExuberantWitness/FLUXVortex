@@ -521,6 +521,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   collapse under sustained shedding (discrete-ring over-suppression artifact). See S4 block.
                   les_sep='plateau',       # (2026-07-09 GAP-f2) chordwise LE suction on SEPARATED (LESP-supercritical)
                   les_free=False,          # (T1 DIAG) uncapped-A0 suction counterfactual (diagnostic only)
+                  fn_Tstar=4.0,            # (R2) LEV optimal formation number T* gating suction collapse (Gharib
+                  #   lineage; flapping-wing LEV pinch-off: Onoue & Breuer 2016 3.7±0.3 -> 4.0; literature, not fit)
                   #   strips: 'plateau' = held at the crit value (LDVM legacy, Katz-1981 postulate); 'zero' = collapses
                   #   to 0 (Narsipur et al. 2020 JFM 900 A25: viscous LESP -> near-zero at LE separation, Re 1e4-1e5);
                   #   'polhamus' = magnitude conserved but ROTATED to the panel normal (vortex force, NASA TN D-3767)
@@ -709,6 +711,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lcl = wp.zeros(nls, dtype=V3, device=dev); lcr = wp.zeros(nls, dtype=V3, device=dev)   # cur LE-shed corners
     lev_first = 1                                               # 1 until the first LEV row is shed
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
+    fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
     fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
     # (ANSARI / Hirato Eq.7) parametric LEV sheet OVER the suction surface: each ring stored by its strip index,
     # chordwise fraction f (0=LE, grows aft as it convects), and strength. Lifted off the surface by lev_rollh*f
@@ -1387,7 +1390,21 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 sup_le = np.abs(A0f) > a0_crit                 # separated = LESP supercritical (the ansari shed gate)
                 sgn_le = np.sign(A0f)
             dTs = np.pi * les_eta * ug.RHO * c_le * dy_le * (Vle_m ** 2) * (sa_s ** 2)
-            if les_sep != 'plateau':
+            if les_sep == 'plateau_fn':
+                # (R2 2026-07-15, research_lev_closure.md) VORTEX-FORMATION-NUMBER gate — the published
+                # transition between the two suction schools: while a strip's LESP is supercritical the LEV
+                # feeds and the chordwise suction HOLDS at the critical plateau (Katz-1981 / standard Ramesh
+                # LDVM) — but only within the feeding window T_hat = ∫u_LE dt / c < T* (optimal vortex
+                # formation number, Gharib lineage; flapping-wing LEV: Onoue & Breuer 3.7±0.3 -> T*=4.0).
+                # Past T* the vortex pinches off and the chordwise suction COLLAPSES (Narsipur 2020).
+                # Reset when the strip falls subcritical (feeding stops -> reattachment; A0* hysteresis is
+                # the optional R3 refinement). Inert at moderate feathering (window never reached within a
+                # half-stroke), auto-collapse at deep feathering. Zero fitted constants.
+                if fn_state is None:
+                    fn_state = np.zeros(ns)
+                fn_state = np.where(sup_le, fn_state + Vle_m * dt / np.maximum(c_le, 1e-9), 0.0)
+                dTs = np.where(fn_state >= fn_Tstar, 0.0, dTs)
+            elif les_sep != 'plateau':
                 # (2026-07-09 GAP-f2 fix) the LDVM "suction held at crit while shedding" is the unproven Katz-1981
                 # postulate; viscously the LE suction COLLAPSES when the LE separates (Narsipur 2020 JFM 900 A25).
                 # 'polhamus': the retained (crit-capped) magnitude rotates onto the panel normal -> vortex force
