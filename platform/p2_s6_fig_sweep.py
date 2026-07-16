@@ -1,4 +1,4 @@
-"""全工况逐曲线对比图(用户指令 2026-07-15):118 工况刚性模型扫(s6_sweep_v3.json,
+"""全工况逐曲线对比图(用户指令 2026-07-15):118 工况刚性模型扫(s6_sweep_v3eff.json,
 H16pltL2fn+d_para物理(v3闭合)/le/nc12)vs 实测(repro_data.json),25+ 条曲线全画、逐曲线 MAE。
 输出 p2_s6_fig17_sweep.png / fig18_sweep / fig19_sweep + 控制台逐曲线 MAE 表。"""
 import json
@@ -21,7 +21,7 @@ rcParams["axes.unicode_minus"] = False
 
 DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
 MEAS = json.load(open(os.path.join(DOCS, "repro_data.json")))
-SW = json.load(open(os.path.join(DOCS, "s6_sweep_v3.json")))
+SW = json.load(open(os.path.join(DOCS, "s6_sweep_v3eff.json")))
 
 TWS = [0.0, 5.0, 10.0, 15.0, 20.0, 22.5, 25.0, 27.5, 30.0, 35.0, 40.0, 45.0]
 FS = [1.4, 1.7, 2.0, 2.3, 2.6]
@@ -67,7 +67,7 @@ def fig17():
         ax.grid(alpha=0.3)
         ax.set_title(ttl)
         ax.legend(fontsize=8, ncol=2, title="虚线圆点=模型  实线×=实测")
-    fig.suptitle("Fig17 全工况逐曲线对比 — U=8, AoA=5°(5 频率 × 12 扭转 = 60 工况)\n[T3b 开放案:推力绝对值带 f 无关偏置 U6 +3.4 / U8 +2.1(真实,跨图自洽)/ U10 +0.5;U6/U10 含实测基线不确定带。相对结构(f 斜率/扭转趋势/攻角分层)为可信对标量]"
+    fig.suptitle("Fig17 全工况逐曲线对比 — U=8, AoA=5°(5 频率 × 12 扭转 = 60 工况)\n[推力含有效系统阻力 d_para_eff=3.0×(U/8)²(显式去皮项;分解:0.5 物理+~2.5@U8 未解=T3b 开放案);U6/U10 绝对零位含实测基线带]"
                  "[H16pltL2 刚性, le/nc12, v2 运动学口径]")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig17_sweep.png"), dpi=150)
@@ -86,7 +86,7 @@ def fig18():
         ax.grid(alpha=0.3)
         ax.set_title(ttl)
         ax.legend(fontsize=8, title="虚线圆点=模型  实线×=实测")
-    fig.suptitle("Fig18 全工况逐曲线对比 — AoA=5°, tw=22.5(3 速度 × 5 频率 = 15 工况)\n[T3b 开放案:推力绝对值带 f 无关偏置 U6 +3.4 / U8 +2.1(真实,跨图自洽)/ U10 +0.5;U6/U10 含实测基线不确定带。相对结构(f 斜率/扭转趋势/攻角分层)为可信对标量]"
+    fig.suptitle("Fig18 全工况逐曲线对比 — AoA=5°, tw=22.5(3 速度 × 5 频率 = 15 工况)\n[推力含有效系统阻力 d_para_eff=3.0×(U/8)²(显式去皮项;分解:0.5 物理+~2.5@U8 未解=T3b 开放案);U6/U10 绝对零位含实测基线带]"
                  "[H16pltL2 刚性; 实测频率线条件=tw22.5, kinematics_audit]")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig18_sweep.png"), dpi=150)
@@ -118,7 +118,7 @@ def fig19():
         ax.grid(alpha=0.3)
         ax.set_title(ttl)
         ax.legend(fontsize=8, ncol=2, title="虚线圆点=模型  实线×=实测")
-    fig.suptitle("Fig19 全工况逐曲线对比 — 4 攻角 ×(5 频率 + 12 扭转)= 63 工况\n[T3b 开放案:推力绝对值带 f 无关偏置 U6 +3.4 / U8 +2.1(真实,跨图自洽)/ U10 +0.5;U6/U10 含实测基线不确定带。相对结构(f 斜率/扭转趋势/攻角分层)为可信对标量]"
+    fig.suptitle("Fig19 全工况逐曲线对比 — 4 攻角 ×(5 频率 + 12 扭转)= 63 工况\n[推力含有效系统阻力 d_para_eff=3.0×(U/8)²(显式去皮项;分解:0.5 物理+~2.5@U8 未解=T3b 开放案);U6/U10 绝对零位含实测基线带]"
                  "[H16pltL2 刚性; a/b 配对 tw22.5]")
     fig.tight_layout()
     fig.savefig(os.path.join(DOCS, "p2_s6_fig19_sweep.png"), dpi=150)
