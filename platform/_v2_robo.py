@@ -1497,12 +1497,28 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # relative wind, applied where the flow is ATTACHED. C_D = cd0_polar*(1 + (alpha_rel/a_ref)^2) (airfoil
         # profile-drag bucket, Re~1e5), alpha_rel = arctan(w_n/U) per panel. When the LEV sheds (|A0|>a0_crit)
         # the drag is borne by the vortex (Bernoulli) -> gate OFF on separated strips. Replaces visc/prof_drag. ----
-        if attached_drag == 'faure':
+        if attached_drag in ('faure', 'uiuc'):
             nnf = nrm.numpy(); vrf = np.asarray(Vinf) - vcn          # body-relative flow per panel
             vrm = np.linalg.norm(vrf, axis=1) + 1e-9
             arel = np.abs(np.arcsin(np.clip(np.sum(vrf * nnf, axis=1) / vrm, -0.999, 0.999)))   # |alpha_rel|
-            a_ref = np.radians(12.0)                                 # profile-drag bucket half-width (airfoil property)
-            Cd_att = cd0_polar * (1.0 + (arel / a_ref) ** 2)         # static profile-drag polar
+            if attached_drag == 'uiuc':
+                # (u-trend ② 2026-07-17, research_utrend.md §4.2) MEASURED sectional polar CD(alpha,Re):
+                # UIUC LSAT Vol.1 SD7003 wind-tunnel drag table (researchpaper/uiuc_polars/), bilinear in
+                # (alpha, logRe), CLAMPED at the table edge (no post-stall extrapolation — honest wall).
+                # Replaces the generic cd0_polar parabola in the SAME bookkeeping slot (attached strips,
+                # along relative wind, LESP-gated) -> adds the Re-slope the constant polar lacks. Zero fit.
+                global _CDT
+                try:
+                    _CDT
+                except NameError:
+                    from cd_table import CdTable
+                    _CDT = CdTable()
+                c_pan_d = np.tile(tcn.reshape(nc, ns).sum(0), nc)
+                re_pan = vrm * c_pan_d / 15.06e-6
+                Cd_att = _CDT(np.degrees(arel), re_pan)
+            else:
+                a_ref = np.radians(12.0)                             # profile-drag bucket half-width (airfoil property)
+                Cd_att = cd0_polar * (1.0 + (arel / a_ref) ** 2)     # static profile-drag polar
             att = np.ones(npan)                                       # gate: attached strips only (LEV not shed)
             if lev_shed_mode in ('kelvin', 'varA0', 'kinematic', 'hirato'):
                 # ATTACHED gate must use the PRE-constraint LESP under 'hirato': the implicit constraint pins the
