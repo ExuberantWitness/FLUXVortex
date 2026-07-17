@@ -612,6 +612,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   clusters LE/TE quadratically: TE panel ~c·(pi/2nc)^2 -> the TE-row collocation collapses
                   #   onto the near-singular fresh-wake rows quadratically with nc (lift-vs-nc divergence
                   #   amplifier under flapping). uniform = c/nc (linear).
+                  sep_drag=False,          # (u-trend ②) separated-strip flat-plate drag CD90_AR*sin^2 in the faure/uiuc slot
                   cp_cap=8.0,              # per-panel |Cp| clamp vs q_ref (near-field artifact guard). DIAG: the
                   #   bound-sheet LE pressure peak is PHYSICAL and grows ~1/sqrt(dx_LE) under chordwise refinement;
                   #   a fixed cap clips it progressively harder as nc grows (lift-vs-nc divergence suspect, 案升力
@@ -1528,6 +1529,17 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 A0_gate = hirato_A0pre if (faure_gate_pre and lev_shed_mode == 'hirato' and hirato_A0pre is not None) else A0
                 att = (np.abs(A0_gate) < a0_crit) if faure_gate_pre else (np.abs(A0_gate) <= a0_crit)
                 att = np.tile(att.astype(NP), nc)                # panel p uses strip j=p%ns gate (attached only)
+            if sep_drag:
+                # (u-trend ② 补漏 2026-07-17) SEPARATED-strip drag bookkeeping: the att gate switches the
+                # attached polar OFF on LESP-supercritical strips under "drag borne by the vortex" — but no
+                # vortex channel books cycle-mean drag (audited hole). Book the separated-state flat-plate
+                # drag CD90_AR*sin^2(alpha_rel) there (Hoerner 2D 1.98 x finite-AR -> 1.20 @AR6, verified
+                # research_caseA_redirect.md R1; DRAG-only along relative wind — the lift-redirection
+                # variant kirch_blend failed and is NOT used). Dynamic share carries the U-trend
+                # (longer/deeper feeding windows at low U). Zero fitted constants.
+                cd_sep = 1.20 * np.sin(arel) ** 2
+                Cd_att = Cd_att * att + cd_sep * (1.0 - att)
+                att = np.ones(npan)
             Dfa = 0.5 * ug.RHO * vrm[:, None] * Cd_att[:, None] * area[:, None] * att[:, None] * vrf  # along rel. wind
             Lh_pd[t] += float(np.sum(Dfa[:, 2])); Xh_pd[t] += float(np.sum(Dfa[:, 0]))
             Fzb_tot[t] += float(np.sum(Dfa[:, 2])); Fxb_tot[t] += float(np.sum(Dfa[:, 0]))
