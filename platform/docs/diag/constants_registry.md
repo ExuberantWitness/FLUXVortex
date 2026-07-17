@@ -18,3 +18,10 @@
 
 **修订史**:2026-07-14 五层初版(会话内);07-16 三轨研究后:d_para 物理化、
 a0_crit 降级为有效参数、新增 fn_Tstar、T3b 开案。
+
+**v4 修订(2026-07-17)**:③ 建模选择 attached_drag 'faure'(cd0_polar=0.018 抛物桶,
+无锚二次外推)**退役** → **'uiuc'**(UIUC LSAT SD7003 实测极曲线 + Hoerner/Lindenburg
+CD90_AR=1.20 后失速延拓,researchpaper/uiuc_polars/,零拟合);cd0_polar 常数退出生产。
+①' 文献常数新增:CD90_AR=1.20(Hoerner 1.98×AR 修正,案A R1 核实)。
+u-trend 战果:①相位账收案(90°±15°,±0.05N);②极曲线换产;sep_drag 门控否决留档。
+开放:T3b(普适 +2.2N@U8 偏置 + U 斜率,f/tw 无关);③拱度 DOF(柔性份额 +0.13 下限)。
