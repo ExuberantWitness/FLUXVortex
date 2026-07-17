@@ -78,3 +78,29 @@ if __name__ == "__main__":
     for re in (1.1e5, 1.5e5, 1.9e5):
         print(f"Re={re:.0f}: CD(0°)={t(0, re):.4f} CD(5°)={t(5, re):.4f} "
               f"CD(9°)={t(9, re):.4f} CD(12°|clamp)={t(12, re):.4f}")
+
+
+class CdTableP(CdTable):
+    """复合极曲线:表域内 UIUC 实测;表缘外接 Hoerner/Lindenburg 后失速形
+    CD = CD_edge(Re) + CD90_AR·(sin²α − sin²α_edge),C0 连续。
+    CD90_AR = 1.98(2D 平板,Hoerner)× 有限展弦比修正 → ≈1.20 @AR=6
+    (Lindenburg StC / research_caseA_redirect.md R1 已核实)。零拟合。"""
+
+    CD90_AR = 1.20
+
+    def __call__(self, alpha_deg, re):
+        a = np.abs(np.asarray(alpha_deg, float))
+        base = CdTable.__call__(self, a, re)
+        edge = self.alphas[-1]
+        over = a > edge
+        if np.any(over):
+            cd_edge = CdTable.__call__(self, np.full_like(a, edge), re)
+            s2 = np.sin(np.radians(a)) ** 2 - np.sin(np.radians(edge)) ** 2
+            base = np.where(over, cd_edge + self.CD90_AR * np.maximum(s2, 0.0), base)
+        return base
+
+
+if __name__ == "__main__" and True:
+    tp = CdTableP()
+    for a in (5, 9, 12, 20, 30, 40):
+        print(f"  复合 CD({a}°, 1.5e5) = {tp(a, 1.5e5):.4f}")

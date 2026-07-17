@@ -1511,7 +1511,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 try:
                     _CDT
                 except NameError:
-                    from cd_table import CdTable
+                    from cd_table import CdTableP as CdTable
                     _CDT = CdTable()
                 c_pan_d = np.tile(tcn.reshape(nc, ns).sum(0), nc)
                 re_pan = vrm * c_pan_d / 15.06e-6
