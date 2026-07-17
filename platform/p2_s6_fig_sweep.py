@@ -1,5 +1,5 @@
-"""全工况逐曲线对比图(用户指令 2026-07-15):118 工况刚性模型扫(s6_sweep_v3eff.json,
-H16pltL2fn+d_para物理(v3闭合)/le/nc12)vs 实测(repro_data.json),25+ 条曲线全画、逐曲线 MAE。
+"""全工况逐曲线对比图(用户指令 2026-07-15):118 工况刚性模型扫(s6_sweep_v4eff.json,
+H16pltL2fn+d_para物理(v4闭合(uiuc极曲线))/le/nc12)vs 实测(repro_data.json),25+ 条曲线全画、逐曲线 MAE。
 输出 p2_s6_fig17_sweep.png / fig18_sweep / fig19_sweep + 控制台逐曲线 MAE 表。"""
 import json
 import os
@@ -21,7 +21,7 @@ rcParams["axes.unicode_minus"] = False
 
 DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
 MEAS = json.load(open(os.path.join(DOCS, "repro_data.json")))
-SW = json.load(open(os.path.join(DOCS, "s6_sweep_v3eff.json")))
+SW = json.load(open(os.path.join(DOCS, "s6_sweep_v4eff.json")))
 
 TWS = [0.0, 5.0, 10.0, 15.0, 20.0, 22.5, 25.0, 27.5, 30.0, 35.0, 40.0, 45.0]
 FS = [1.4, 1.7, 2.0, 2.3, 2.6]
