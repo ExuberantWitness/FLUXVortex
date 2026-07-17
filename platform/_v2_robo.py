@@ -613,6 +613,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   onto the near-singular fresh-wake rows quadratically with nc (lift-vs-nc divergence
                   #   amplifier under flapping). uniform = c/nc (linear).
                   sep_drag=False,          # (u-trend ②) separated-strip flat-plate drag CD90_AR*sin^2 in the faure/uiuc slot
+                  vnf_kelvin=False,        # (L2) vnf excess normal force on the KELVIN path (DSV cycle-mean lift;
+                  #   Polhamus-saturated, zero new constants); disables the impulse force accumulation (single
+                  #   accounting). See gap_l2_liftgrowth.md.
                   cp_cap=8.0,              # per-panel |Cp| clamp vs q_ref (near-field artifact guard). DIAG: the
                   #   bound-sheet LE pressure peak is PHYSICAL and grows ~1/sqrt(dx_LE) under chordwise refinement;
                   #   a fixed cap clips it progressively harder as nc grows (lift-vs-nc divergence suspect, 案升力
@@ -1276,7 +1279,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 dI += GA[born].sum(axis=0)                                 # births: created from zero
                 Fvi = -ug.RHO * dI / max(dt, 1e-15)
                 Lh_vimp[t] = float(Fvi[2]); Xh_vimp[t] = float(Fvi[0])
-                Fzb_tot[t] += Lh_vimp[t]; Fxb_tot[t] += Xh_vimp[t]
+                if not vnf_kelvin:
+                    # (L2 2026-07-17) single LEV-force accounting: with vnf_kelvin the DSV force is closed
+                    # by the vnf excess normal force (Polhamus/hirato closure) — the impulse ledger provably
+                    # under-delivers the cycle-mean DSV lift (vimp ~ -0.2..-0.7N, anti-phased; gap_l2 case).
+                    # Channel stays as DIAGNOSTIC only. Closure selection, not stacking (no double count).
+                    Fzb_tot[t] += Lh_vimp[t]; Fxb_tot[t] += Xh_vimp[t]
             imp_prev = (lev_ids.copy(), GA.copy())
         if part_lev and np_part > 0:   # rVPM LEV force via QUASI-STEADY KUTTA-JOUKOWSKI on the OVER-WING LEV.
             # The full vortex-impulse sum(x x alpha) is WILD because it accumulates ALL shed particles -> the
@@ -1446,7 +1454,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 dTs = dTs * fsep_le
             Fs = -dTs[:, None] * tcle                         # forward (-chordwise) suction force vector
             Lh_les[t] = float(np.sum(Fs[:, 2])); Xh_les[t] = float(np.sum(Fs[:, 0]))
-            if lev_vnf and lev_shed_mode == 'hirato':
+            if lev_vnf and (lev_shed_mode == 'hirato' or vnf_kelvin):
                 # (HIRATO force closure) the LE suction capped at a0_crit -> the UNREALIZABLE excess (A0^2 - a0_crit^2)
                 # reappears as a force NORMAL to the wing (the LEV vortex lift). Same Garrick coefficient pi*rho*c*U^2
                 # as the suction, so the split is continuous at A0=a0_crit (no discontinuity). This is the vortex lift
