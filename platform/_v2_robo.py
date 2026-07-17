@@ -1464,6 +1464,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # the constraint, so A0_post^2 - a0_crit^2 == 0. A0pre^2 - a0_crit^2 is the physical unrealized suction.
                 A0x = hirato_A0pre if hirato_A0pre is not None else A0
                 exc2 = np.maximum(A0x ** 2 - a0_crit ** 2, 0.0)                       # capped (excess) suction parameter^2
+                if vnf_kelvin and les_sep == 'plateau_fn' and fn_state is not None:
+                    # (L2 iter-2) the vnf normal force follows the VORTEX LIFECYCLE: active only inside the
+                    # feeding window T_hat < T* (same formation-number gate as the chordwise suction, R2);
+                    # past pinch-off the DSV convects away and its wing-normal force collapses with it.
+                    # Fixes the uniform mid-aoa over-supply of the ungated variant (battery 2026-07-17).
+                    exc2 = exc2 * (fn_state < fn_Tstar)
                 # POLHAMUS / FLAT-PLATE SATURATION (no free coeff): A0pre comes from the LEV-free VIRTUAL solve — a
                 # potential-flow fiction at deep stall (can reach 2-3 at large twist+flap) whose square EXPLODES the
                 # rotated force. The realizable separated-flow normal force saturates at the Polhamus finite-wing
