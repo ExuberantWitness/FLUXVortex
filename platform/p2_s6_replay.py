@@ -354,6 +354,11 @@ def replay(U, freq, tw=0.0, cfg_name="K0", nc=12, ns=16, n_cycle=4, aoa_deg=None
                             steps_per_cycle=spc, wake_rows=spc, **kw)
     Lf, Tf = float(out_flex["L_wind"]), float(out_flex["T_wind"])
     Lr, Tr = float(out_rig["L_wind"]), float(out_rig["T_wind"])
+    # (案D-aero 护栏 2026-07-17) deep-twist silent corruption guard: the le-grid aero can
+    # diverge without tripping any fail path (tw45: +90N). Physical range for this wing
+    # is |F| < 30N — beyond that the replay is corrupt, raise instead of returning garbage.
+    if max(abs(Lf), abs(Tf), abs(Lr), abs(Tr)) > 30.0:
+        raise RuntimeError(f"replay corrupt (|F|>30N): flex L={Lf:.1f} T={Tf:.1f} rigid L={Lr:.1f} T={Tr:.1f}")
     print(f"S6 replay U={U} f={freq} tw={tw} [{cfg_name}]: "
           f"flex L={Lf:+.3f} T={Tf:+.3f} | rigid L={Lr:+.3f} T={Tr:+.3f} | "
           f"dL={Lf-Lr:+.3f} dT={Tf-Tr:+.3f}")
