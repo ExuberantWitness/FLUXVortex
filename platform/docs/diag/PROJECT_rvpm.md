@@ -37,7 +37,23 @@
 零拟合(常数=文献);每级门禁带 canonical 案定量目标;失败如实入档;
 电池参照同口径铁律;网格收敛状态标注。
 
+## 架构裁定回填(2026-07-18,research_rvpm_arch.md,28 CONFIRMED)
+
+- **历史悬案结案**:"DSV 未涌现"= 公式缺陷非分辨率——经典 VPM dσ/dt=0 违反
+  角动量+质量守恒(固有不稳)+ 无 impulse-matching 喂涡 + 零散度控制,三病因
+  各有零拟合修复;
+- **架构**:束缚 UVLM+LESP 门原样保留;粒子只进 RHS 不进 AIC(DUST 模式);
+  TE 经 ≥1 排隐式环缓冲后按弧长比例转粒子(永不在 TE 面对裸粒子);
+- **LEV 喂入**:每步一粒、1/3 放置、2×2 闭式(A0 钉 crit+Kelvin)定强、
+  σ=1.3×脱落间距、环量冻结;
+- **输运**:rVPM f=0, g=1/5(σ 演化 + transposed 拉伸)+ 动态 C_d SFS
+  (Re1.5e5 必开)+ corrected-Pedrizzetti 散度松弛;f=g=0 一键消融证涌现归因;
+- **力评估**:束缚格 KJ + 粒子诱导入 V;Noca 通量式仅诊断;
+- **数值**:LSRK3 + 直算 N²(1e4-1e5 粒子在发表包络内),FMM 延后;
+  autodiff 三对撞点已配光滑替身方案;
+- **验证梯定量目标**:S1 涡环自诱导/leapfrog(+cVPM 爆断消融);S3 2D ramp
+  Case A/B/C + SD7003 CL 环(峰 2.3-2.4 @α≈21°);S5 dL/df +1.5-1.9 N/Hz 涌现。
+
 ## 状态
 
-架构文献 workflow 运行中(research_rvpm_arch.md 待产);S1 可与文献并行起步
-(涡拉伸与经典验证案不依赖架构裁定)。
+S1 实现中(rVPM 输运核:σ 演化+transposed 拉伸+RK3)。
