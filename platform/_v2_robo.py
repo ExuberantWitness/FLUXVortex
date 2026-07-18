@@ -1248,10 +1248,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 if lev_prev_it[j] == t - 1 and lev_prev_idx[j] >= 0:
                     prev = pp_np[lev_prev_idx[j]]
                     pos = le_mid + (prev - le_mid) / 3.0             # continuing event: 1/3 rule
-                    spc_loc = float(np.linalg.norm(pos - prev))
                 else:
                     pos = le_mid + 0.5 * vr_le[j] * dt               # new event: LE + 0.5*v_le*dt
-                    spc_loc = U * dt
+                # sigma = 1.3 x LOCAL shedding spacing = |v_le,rel|*dt (shear-layer travel per step).
+                # NOT the distance to the convected previous particle: on a PLUNGING wing the LE sweeps
+                # at several m/s, that distance balloons -> fat core -> dA0 -> 0 -> pin strength diverges
+                # (t=40 blow-up fingerprint, RVPM_DBG trace 2026-07-18).
+                spc_loc = float(np.linalg.norm(vr_le[j])) * dt
                 sgp = 1.3 * max(spc_loc, 0.25 * U * dt)
                 ii = j + ns * np.arange(nc)                          # strip-j collocation indices
                 dx = colm[ii] - pos[None, :]
@@ -1263,6 +1266,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 if abs(dA0) < 1e-10:
                     continue
                 gL = (np.sign(A0[j]) * a0_crit - A0[j]) / dA0        # pin post-shed A0 at +-crit
+                # KELVIN-CONSERVATIVE ceiling (same physics as the production kelvin mode): the shed
+                # circulation cannot exceed the supercritical-excess LE circulation. Exact thin-airfoil
+                # conversion dGamma = dA0 * U_rel * c * (th1 + sin th1) — no 1.13 grid factor.
+                gexc = (np.abs(A0[j]) - a0_crit) * Urel_le[j] * c_strip[j] * (th1 + np.sin(th1))
+                gL = float(np.clip(gL, -gexc, gexc))
                 pp_np[np_part] = pos; pa_np[np_part] = gL * s_vec; ps_np[np_part] = sgp
                 lev_prev_idx[j] = np_part; lev_prev_it[j] = t
                 np_part += 1
@@ -1270,6 +1278,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 pp = wp.array(pp_np, dtype=V3, device=dev)
                 pa = wp.array(pa_np, dtype=V3, device=dev)
                 ps = wp.array(ps_np, dtype=DTYPE, device=dev)
+            if os.environ.get("RVPM_DBG") and t % 10 == 0:
+                gLs = float(np.sum(np.linalg.norm(pa_np[max(0, np_part - len(sup)):np_part], axis=1)))
+                print(f"[rvpm t={t:3d}] np={np_part:4d} sup={len(sup):2d} |A0|max={np.abs(A0).max():.3f} "
+                      f"step_sum|aL|={gLs:.3f} Fz={Fzb_tot[t]:+.1f}", flush=True)
         # ---- LEV shed strength per strip (placed by _shed_lev_sat_kernel at the LE, enters wake -> rhs +
         # Bernoulli surface force, so the LEV LIFT/DRAG is per-panel and NOT double-counted). Three modes. ----
         # KELVIN-CONSERVATIVE bound on the shed strength: the LEV ring we add to the wake is NOT removed from the
