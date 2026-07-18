@@ -1280,8 +1280,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 ps = wp.array(ps_np, dtype=DTYPE, device=dev)
             if os.environ.get("RVPM_DBG") and t % 10 == 0:
                 gLs = float(np.sum(np.linalg.norm(pa_np[max(0, np_part - len(sup)):np_part], axis=1)))
+                amx = float(np.max(np.linalg.norm(pa_np[:np_part], axis=1))) if np_part else 0.0
+                smn = float(np.min(ps_np[:np_part])) if np_part else 0.0
                 print(f"[rvpm t={t:3d}] np={np_part:4d} sup={len(sup):2d} |A0|max={np.abs(A0).max():.3f} "
-                      f"step_sum|aL|={gLs:.3f} Fz={Fzb_tot[t]:+.1f}", flush=True)
+                      f"step_sum|aL|={gLs:.3f} |a|max={amx:.3f} sig_min={smn:.4f} "
+                      f"Fz={Fzb_tot[t]:+.1f}", flush=True)
         # ---- LEV shed strength per strip (placed by _shed_lev_sat_kernel at the LE, enters wake -> rhs +
         # Bernoulli surface force, so the LEV LIFT/DRAG is per-panel and NOT double-counted). Three modes. ----
         # KELVIN-CONSERVATIVE bound on the shed strength: the LEV ring we add to the wake is NOT removed from the
