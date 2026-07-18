@@ -56,21 +56,70 @@ def ring_field_vel(X, rings, gamma, npan, wr, wg, nw, Vinf, dev):
     return Vout.numpy().astype(np.float64)
 
 
-def rvpm_step(X, G, sig, ringvel_fn, dt, f=0.0, g=0.2, relax=0.3):
+ZETA0 = 0.06349363593424097          # zeta(0) = (2pi)^{-3/2}, Gaussian-erf kernel family
+
+
+def _sfs_estr(X, G, sig, J, S):
+    """E_str pairwise pass (FLOWVPM_subfilterscale_models.jl Estr_direct, transposed):
+    E_p = sum_q [zeta0*exp(-r^2/(2 sig_q^2))/sig_q^3] * (J_p - J_q)^T Gamma_q.
+    MUST run after J is fully reduced (structural, per FLOWVPM). Y_q = J_q^T Gamma_q == S_q.
+    Chunked over target rows to bound the (n,n) temporaries."""
+    n = len(X)
+    E = np.empty_like(G)
+    inv2s = 1.0 / (2.0 * sig * sig)                              # source sigma_q
+    ws3 = ZETA0 / (sig ** 3)
+    CH = max(1, int(4.0e6 / max(n, 1)))
+    for s in range(0, n, CH):
+        dx = X[s:s + CH, None, :] - X[None, :, :]
+        r2 = np.einsum("pqi,pqi->pq", dx, dx)
+        W = ws3[None, :] * np.exp(-r2 * inv2s[None, :])          # (chunk, n)
+        WG = W @ G                                               # sum_q w Gamma_q
+        E[s:s + CH] = np.einsum("nji,nj->ni", J[s:s + CH], WG) - W @ S
+    return E
+
+
+def ring_field_jac(X, sig, ringvel_fn):
+    """Ring/bound-field velocity Jacobian at particle positions by central differences
+    (h = 0.05*sigma_p per particle, reusing the existing ring kernel — no new constants).
+    Returns (n,3,3) J[i,j] = du_i/dx_j. The wall/bound strain OPPOSES the coherent
+    same-sign particle-particle strain near the surface (image effect) — omitting it was
+    the S3a increment note; the sigma-collapse cascade called it due."""
+    n = len(X)
+    J = np.empty((n, 3, 3))
+    h = 0.05 * sig
+    for j in range(3):
+        dP = np.zeros_like(X); dP[:, j] = h
+        up = ringvel_fn(X + dP); um = ringvel_fn(X - dP)
+        J[:, :, j] = (up - um) / (2.0 * h)[:, None]
+    return J
+
+
+def rvpm_step(X, G, sig, ringvel_fn, dt, f=0.0, g=0.2, relax=0.3, sfs_cs=1.0,
+              ring_strain=True):
     """One LSRK3 step of the rVPM transport in the full field.
 
     X,G,sig: numpy (n,3),(n,3),(n,) particle positions / vortex moments / cores.
     ringvel_fn(X) -> (n,3) freestream+ring-induced velocity at positions X.
     Returns updated (X, G, sig). f=0, g=1/5 conservation-derived (rvpm-02);
-    relax = corrected-Pedrizzetti rlxf (0.3/step, particle-field omega)."""
+    relax = corrected-Pedrizzetti rlxf (0.3/step, particle-field omega).
+    sfs_cs: constant-coefficient SFS (FLOWVPM SFS_Cs_nobackscatter alias, Cs=1.0)
+    with backscatter clipping C=0 where Cs*(Gamma.E)<0 (purely dissipative);
+    with f=0 the SFS enters ONLY dGamma/dt (not Z, not the sigma eq) as
+    -C*E*sigma_p^3/zeta0. sfs_cs=0 disables (S1 laminar-ring behavior)."""
     qX = np.zeros_like(X); qG = np.zeros_like(G); qs = np.zeros_like(sig)
     for a, b in zip(_LSRK3_A, _LSRK3_B):
         u = ringvel_fn(X) + velocity_from_particles_gpu(X, X, G, sig)
-        J = jacobian_from_particles_gpu(X, G, X, G, sig)          # particle-part strain only
+        J = jacobian_from_particles_gpu(X, G, X, G, sig)          # particle-field strain
+        if ring_strain and len(X) > 0:
+            J = J + ring_field_jac(X, sig, ringvel_fn)            # + ring/bound-field strain (FD)
         S = np.einsum("nji,nj->ni", J, G)                          # transposed: (grad u)^T . Gamma
         g2 = np.einsum("ni,ni->n", G, G) + EPS_G2
         Z = ((f + g) / (1.0 + 3.0 * f)) * np.einsum("ni,ni->n", S, G) / g2
         dG = S - 3.0 * Z[:, None] * G
+        if sfs_cs > 0.0 and len(X) > 1:
+            E = _sfs_estr(X, G, sig, J, S)
+            Cd = np.where(np.einsum("ni,ni->n", G, E) * sfs_cs < 0.0, 0.0, sfs_cs)
+            dG = dG - (Cd * sig ** 3 / ZETA0)[:, None] * E
         ds = -sig * Z
         qX = a * qX + dt * u
         qG = a * qG + dt * dG
@@ -94,7 +143,7 @@ if __name__ == "__main__":
     zero = lambda P: np.zeros_like(P)
     t0 = time.time()
     for _ in range(50):
-        X, G, sig = rvpm_step(X, G, sig, zero, 0.02)
+        X, G, sig = rvpm_step(X, G, sig, zero, 0.02, sfs_cs=0.0)   # SFS off = S1 laminar ladder
         X2, G2, s2 = step_lsrk3(X2, G2, s2, 0.02)
     d = np.max(np.abs(X - X2))
     print(f"(1) vs S1 step_lsrk3 after 50 steps: max|dX|={d:.2e} (expect ~0)  "
