@@ -605,6 +605,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
                   d0_drag=0.0,
                   part_lev=False, lev_cons=False, lev_core=0.10, lev_sig0=0.5, lev_owin=2.0,
+                  part_mode='kinematic',   # 'kinematic' legacy shed | 'rvpm' (S3b): A0-pin closed-form strength
+                  #   (needs a0_mode='downwash'), 1/3 placement, sigma=1.3x local shed spacing, frozen circulation
+                  part_transport='euler',  # 'euler' legacy advect kernel | 'rvpm' (S3a): LSRK3 + transposed
+                  #   stretching + sigma evolution + corrected-Pedrizzetti in the full field (rvpm3d.py)
                   sym=False, root_off=0.0, stall=False, stall_deg=12.0,
                   vortex=False, k_vortex=2.0, dstall=False, ds_crit_deg=14.0, ds_tv=0.40, ds_k=1.0,
                   ds_delay=18, frames_out=None, frame_skip=3,
@@ -676,6 +680,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     I_lev_prev = np.zeros(3); I_lev_have = False         # previous LE-referenced LEV impulse (for -dI/dt force)
     SIG0 = DTYPE(lev_sig0 * U * dt); PCORE = DTYPE(lev_core)   # LEV particle core (smaller -> stronger induction)
     sin_crit_p = DTYPE(np.sin(np.radians(lesp_crit_deg)))
+    # (S3b rvpm feeding) numpy source-of-truth mirrors + per-strip shed-event trackers
+    pp_np = np.zeros((pmax, 3)); pa_np = np.zeros((pmax, 3)); ps_np = np.zeros(pmax)
+    lev_prev_idx = np.full(ns, -1, dtype=int); lev_prev_it = np.full(ns, -99, dtype=int)
     # --- coherent-core LEV (N-LEV merging, N=1 per strip): ONE smooth merged ring/strip (CPU state) ---
     lev_cen = np.zeros((ns, 3)); lev_gam = np.zeros(ns); lev_gam_raw = np.zeros(ns)
     lev_rw = wp.zeros((ns, 4), dtype=V3, device=dev); lev_gw = wp.zeros(ns, dtype=DTYPE, device=dev)
@@ -1223,6 +1230,46 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             th1 = np.arccos(np.clip(1.0 - 2.0 * xref_frac, -1.0, 1.0))
             A0 = 1.13 * Gamma_ref / (Urel_le * c_strip * (th1 + np.sin(th1)) + 1e-12)   # finite-wing LESP per strip
         A0 = np.clip(np.nan_to_num(A0, nan=0.0, posinf=0.0, neginf=0.0), -3.0, 3.0)   # guard near-field blow-up
+        # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
+        # strip per step; strength from the A0-PIN closed form (A0 is a LINEAR functional of the rhs in
+        # 'downwash' mode, and the particle enters the rhs directly -> per-strip 1x1 solve, no AIC
+        # inverse; cross-strip coupling neglected = increment note); 1/3 placement toward the previous
+        # (convected) particle; sigma = 1.3 x local shed spacing; circulation FROZEN after birth. ====
+        if part_lev and part_mode == 'rvpm':
+            assert a0_mode == 'downwash', "part_mode='rvpm' requires a0_mode='downwash'"
+            from scipy.special import erf as _erf
+            colm = col.numpy(); nrmm = nrm.numpy(); rrN = rings.numpy()
+            sup = np.where(np.abs(A0) > a0_crit)[0]
+            for j in sup:
+                if np_part >= pmax:
+                    break
+                r0 = rrN[j, 0]; r1 = rrN[j, 1]
+                le_mid = 0.5 * (r0 + r1); s_vec = r1 - r0            # LE edge (spanwise, full length)
+                if lev_prev_it[j] == t - 1 and lev_prev_idx[j] >= 0:
+                    prev = pp_np[lev_prev_idx[j]]
+                    pos = le_mid + (prev - le_mid) / 3.0             # continuing event: 1/3 rule
+                    spc_loc = float(np.linalg.norm(pos - prev))
+                else:
+                    pos = le_mid + 0.5 * vr_le[j] * dt               # new event: LE + 0.5*v_le*dt
+                    spc_loc = U * dt
+                sgp = 1.3 * max(spc_loc, 0.25 * U * dt)
+                ii = j + ns * np.arange(nc)                          # strip-j collocation indices
+                dx = colm[ii] - pos[None, :]
+                r = np.sqrt(np.sum(dx * dx, 1) + 1e-20); rb = r / sgp
+                gg = _erf(rb * 0.7071067811865476) - 0.7978845608028654 * rb * np.exp(-0.5 * rb * rb)
+                vv = (-0.07957747154594767 * gg / (r ** 3))[:, None] * np.cross(dx, s_vec[None, :])
+                dW = -np.sum(vv * nrmm[ii], 1)                       # unit-strength downwash column
+                dA0 = -np.sum(wq[:, j] * dW) / (np.pi * Urel_le[j] + 1e-12)
+                if abs(dA0) < 1e-10:
+                    continue
+                gL = (np.sign(A0[j]) * a0_crit - A0[j]) / dA0        # pin post-shed A0 at +-crit
+                pp_np[np_part] = pos; pa_np[np_part] = gL * s_vec; ps_np[np_part] = sgp
+                lev_prev_idx[j] = np_part; lev_prev_it[j] = t
+                np_part += 1
+            if len(sup):
+                pp = wp.array(pp_np, dtype=V3, device=dev)
+                pa = wp.array(pa_np, dtype=V3, device=dev)
+                ps = wp.array(ps_np, dtype=DTYPE, device=dev)
         # ---- LEV shed strength per strip (placed by _shed_lev_sat_kernel at the LE, enters wake -> rhs +
         # Bernoulli surface force, so the LEV LIFT/DRAG is per-panel and NOT double-counted). Three modes. ----
         # KELVIN-CONSERVATIVE bound on the shed strength: the LEV ring we add to the wake is NOT removed from the
@@ -1716,7 +1763,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         elif real_lev:   # original (mesh-dependent) ring LEV
             wp.launch(_shed_lev_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, nw + ns,
                       DTYPE(np.sin(np.radians(lesp_crit_deg))), DTYPE(lev_klev)], outputs=[wr, wg], device=dev)
-        if part_lev:   # PARTICLE leading-edge vortex: shed one spanwise particle/strip at the LE (delayed-Kutta gprev)
+        if part_lev and part_mode != 'rvpm':   # legacy PARTICLE LEV shed (kinematic strength, sin-crit gate)
             wp.launch(shed_lev_particles_kernel, dim=ns, inputs=[rings, nrm, vcol, gprev, Vw, ns, np_part,
                       sin_crit_p, DTYPE(lev_klev), SIG0, PCORE, sa_prev_p], outputs=[pp, pa, ps], device=dev)
             np_part += ns
@@ -1762,7 +1809,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             lev_born = lev_born[off:]; lev_s0 = lev_s0[off:]   # keep S5 hold state aligned with the shifted wake
         else:
             nw = nw_new
-        if part_lev and np_part > 0:   # advect LEV particles in the FULL local field (bound+TEV+mutual) -> rollup
+        if part_lev and np_part > 0 and part_transport == 'rvpm':
+            # S3a rVPM transport (rvpm3d): LSRK3 + transposed stretching + sigma evolution +
+            # corrected-Pedrizzetti; advection in the full field (rings frozen within the step).
+            import rvpm3d                                            # lazy (rvpm3d imports this module)
+            _rfn = lambda P: rvpm3d.ring_field_vel(P, rings, gamma, npan, wr, wg, nw, Vw, dev)
+            Xn, Gn, Sn = rvpm3d.rvpm_step(pp_np[:np_part], pa_np[:np_part], ps_np[:np_part],
+                                          _rfn, dt)
+            pp_np[:np_part] = Xn; pa_np[:np_part] = Gn; ps_np[:np_part] = Sn
+            pp = wp.array(pp_np, dtype=V3, device=dev)
+            pa = wp.array(pa_np, dtype=V3, device=dev)
+            ps = wp.array(ps_np, dtype=DTYPE, device=dev)
+        elif part_lev and np_part > 0:   # legacy Euler advect (bound+TEV+mutual) -> rollup
             wp.launch(advect_particle_kernel, dim=np_part, inputs=[pp, pa, ps, np_part, rings, gamma, npan,
                       wr, wg, nw, Vw, DTYPE(dt)], outputs=[pp_new], device=dev)
             wp.copy(pp, pp_new, count=np_part)
