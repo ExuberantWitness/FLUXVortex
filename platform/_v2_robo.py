@@ -1006,6 +1006,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                       dim=npan, inputs=[col, wr, wg, nw], outputs=[Vwk], device=dev)
         cc = rings.numpy(); g = gamma.numpy().reshape(-1); gp = gprev.numpy().reshape(-1)
         Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
+        if part_lev and lev_cons and np_part > 0:
+            # convention C completion (S3b force audit 2026-07-19): the particles already reduce
+            # the bound circulation via the rhs fold-in; their OWN induced velocity at the surface
+            # (the LEV suction) must enter the Bernoulli dp too — same Vpart snapshot as the solve.
+            Vcol = Vcol + Vpart.numpy()
         if lev_merge:
             Vcol = Vcol + Vlev.numpy()                                  # coherent LEV core induction (Bernoulli)
         if use_ansari and not lev_impulse:
@@ -1293,6 +1298,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 pp = wp.array(pp_np, dtype=V3, device=dev)
                 pa = wp.array(pa_np, dtype=V3, device=dev)
                 ps = wp.array(ps_np, dtype=DTYPE, device=dev)
+            if os.environ.get("RVPM_SNAP") and t % 20 == 0 and np_part > 0:
+                np.savez(f"{os.environ['RVPM_SNAP']}_t{t:04d}.npz",
+                         pp=pp_np[:np_part], pa=pa_np[:np_part], ps=ps_np[:np_part],
+                         rings=rings.numpy(), A0=A0)
             if os.environ.get("RVPM_DBG") and t % 10 == 0:
                 gLs = float(np.sum(np.linalg.norm(pa_np[max(0, np_part - len(sup)):np_part], axis=1)))
                 amx = float(np.max(np.linalg.norm(pa_np[:np_part], axis=1))) if np_part else 0.0
