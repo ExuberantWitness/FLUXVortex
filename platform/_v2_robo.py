@@ -673,7 +673,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     tcl = wp.zeros(ns, dtype=V3, device=dev); tcr = wp.zeros(ns, dtype=V3, device=dev)   # cur TE corners
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev); gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev); nw = 0
     # --- LEV vortex-particle field (parallel to the TEV ring wake; vec3d vortex moment, NOT scalar) ---
-    pmax = N * ns + ns; np_part = 0                  # one particle per strip per step + slack
+    pmax = N * ns * 8 + ns; np_part = 0              # up to 8 spanwise sub-particles/strip/step (rvpm)
     pp = wp.zeros(pmax, dtype=V3, device=dev); pa = wp.zeros(pmax, dtype=V3, device=dev)
     ps = wp.zeros(pmax, dtype=DTYPE, device=dev); pp_new = wp.zeros(pmax, dtype=V3, device=dev)
     sa_prev_p = wp.zeros(ns, dtype=DTYPE, device=dev)   # previous |sin a_eff| per strip (LESP-rate shed gate)
@@ -1256,11 +1256,24 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # (t=40 blow-up fingerprint, RVPM_DBG trace 2026-07-18).
                 spc_loc = float(np.linalg.norm(vr_le[j])) * dt
                 sgp = 1.3 * max(spc_loc, 0.25 * U * dt)
+                # SPANWISE SUBDIVISION (A5-C6 Fu-Laurendeau scale consistency): one particle per 5cm
+                # strip with a 2cm chordwise-derived core violates spanwise overlap (sigma/d=0.4<<1.3)
+                # -> spurious axial strain -> spurious Z -> core collapse (RVPM_DBG sigma_min trace).
+                # Subdivide the LE edge so sub-spacing <= shed spacing (isotropic overlap); circulation
+                # split equally and FROZEN (total unchanged). Cap 8 = pmax sizing (logged, not silent).
+                wlen = float(np.linalg.norm(s_vec))
+                n_sub = int(np.clip(np.ceil(wlen / max(spc_loc, 1e-6)), 1, 8))
+                off = pos - le_mid                                   # placement offset off the LE line
+                fr = (np.arange(n_sub) + 0.5) / n_sub
+                base = r0[None, :] + fr[:, None] * s_vec[None, :] + off[None, :]   # (n_sub,3)
+                if np_part + n_sub > pmax:
+                    break
                 ii = j + ns * np.arange(nc)                          # strip-j collocation indices
-                dx = colm[ii] - pos[None, :]
-                r = np.sqrt(np.sum(dx * dx, 1) + 1e-20); rb = r / sgp
+                dx = colm[ii][:, None, :] - base[None, :, :]         # (nc, n_sub, 3)
+                r = np.sqrt(np.sum(dx * dx, 2) + 1e-20); rb = r / sgp
                 gg = _erf(rb * 0.7071067811865476) - 0.7978845608028654 * rb * np.exp(-0.5 * rb * rb)
-                vv = (-0.07957747154594767 * gg / (r ** 3))[:, None] * np.cross(dx, s_vec[None, :])
+                vv = np.sum((-0.07957747154594767 * gg / (r ** 3))[:, :, None]
+                            * np.cross(dx, (s_vec / n_sub)[None, None, :]), axis=1)   # unit-gL velocity
                 dW = -np.sum(vv * nrmm[ii], 1)                       # unit-strength downwash column
                 dA0 = -np.sum(wq[:, j] * dW) / (np.pi * Urel_le[j] + 1e-12)
                 if abs(dA0) < 1e-10:
@@ -1271,9 +1284,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # conversion dGamma = dA0 * U_rel * c * (th1 + sin th1) — no 1.13 grid factor.
                 gexc = (np.abs(A0[j]) - a0_crit) * Urel_le[j] * c_strip[j] * (th1 + np.sin(th1))
                 gL = float(np.clip(gL, -gexc, gexc))
-                pp_np[np_part] = pos; pa_np[np_part] = gL * s_vec; ps_np[np_part] = sgp
-                lev_prev_idx[j] = np_part; lev_prev_it[j] = t
-                np_part += 1
+                sl = slice(np_part, np_part + n_sub)
+                pp_np[sl] = base; pa_np[sl] = (gL / n_sub) * s_vec[None, :]; ps_np[sl] = sgp
+                lev_prev_idx[j] = np_part + n_sub // 2               # track the MID sub-particle
+                lev_prev_it[j] = t
+                np_part += n_sub
             if len(sup):
                 pp = wp.array(pp_np, dtype=V3, device=dev)
                 pa = wp.array(pa_np, dtype=V3, device=dev)
@@ -1832,6 +1847,40 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Xn, Gn, Sn = rvpm3d.rvpm_step(pp_np[:np_part], pa_np[:np_part], ps_np[:np_part],
                                           _rfn, dt)
             pp_np[:np_part] = Xn; pa_np[:np_part] = Gn; ps_np[:np_part] = Sn
+            # SURFACE GUARD (hybrid particle-panel standard practice, H4/DUST family): the discrete
+            # lattice enforces no-penetration only AT collocations — during the upstroke the wing
+            # sweeps through its own LEV cloud and particles leak between collocations into the
+            # ring near-field -> near-singular strain, dt*|J|>1 stiff blow-up (t=160 fingerprint).
+            # Push any particle closer than d_min=0.5*sigma+WAKE_CORE to its nearest collocation
+            # OUT along that panel's normal to d_min. Geometric no-penetration floor, no constants
+            # beyond the particle's own core scale.
+            colm2 = col.numpy()
+            dmin = 0.3 * ps_np[:np_part]                 # below the 0.5*v_le*dt birth offset scale
+            # nearest collocation distance per particle (chunked):
+            ndist = np.empty(np_part)
+            CHG = 4096
+            Pcur = pp_np[:np_part]
+            for s0 in range(0, np_part, CHG):
+                dxs = Pcur[s0:s0 + CHG, None, :] - colm2[None, :, :]
+                dd = np.einsum("pqi,pqi->pq", dxs, dxs)
+                ndist[s0:s0 + CHG] = np.sqrt(np.min(dd, 1))
+            # ABSORB surface-penetrating particles (DUST-family practice): the lattice enforces
+            # no-penetration only at collocations; a particle leaking inside sits in the ring
+            # near-field -> dt*|J|>1 stiff blow-up. A snap-out guard CLUSTERS particles on the
+            # collocation normals (coincident pairs -> singular mutual strain, worse). Deleting
+            # models absorption into the boundary layer; removed circulation is bounded per step.
+            # far-field cull (wake-truncation legality, cf. max_wake rings): particles convected
+            # past 4 chords downstream contribute nothing to the LEV gate physics; bounds the
+            # N^2 transport cost. Tracked prev-particle indices remapped (-1 -> new shed event).
+            keep = (pp_np[:np_part, 0] < 4.0 * chord) & (ndist >= dmin)
+            if not keep.all():
+                nk = int(keep.sum())
+                remap = -np.ones(np_part, dtype=int)
+                remap[np.where(keep)[0]] = np.arange(nk)
+                pp_np[:nk] = pp_np[:np_part][keep]; pa_np[:nk] = pa_np[:np_part][keep]
+                ps_np[:nk] = ps_np[:np_part][keep]
+                lev_prev_idx = np.where(lev_prev_idx >= 0, remap[np.maximum(lev_prev_idx, 0)], -1)
+                np_part = nk
             pp = wp.array(pp_np, dtype=V3, device=dev)
             pa = wp.array(pa_np, dtype=V3, device=dev)
             ps = wp.array(ps_np, dtype=DTYPE, device=dev)

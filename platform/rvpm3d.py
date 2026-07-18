@@ -106,6 +106,22 @@ def rvpm_step(X, G, sig, ringvel_fn, dt, f=0.0, g=0.2, relax=0.3, sfs_cs=1.0,
     with backscatter clipping C=0 where Cs*(Gamma.E)<0 (purely dissipative);
     with f=0 the SFS enters ONLY dGamma/dt (not Z, not the sigma eq) as
     -C*E*sigma_p^3/zeta0. sfs_cs=0 disables (S1 laminar-ring behavior)."""
+    # CFL-type stiffness guard: during wing/cloud re-encounters the local strain rate
+    # max|S|/|Gamma| can exceed 1/dt (explicit blow-up). Probe the strain once and
+    # substep dt/k with k = ceil(dt*smax/0.3), capped 16 (standard explicit-integrator
+    # stability bound, not a physics constant).
+    Jp = jacobian_from_particles_gpu(X, G, X, G, sig)
+    Sp = np.einsum("nji,nj->ni", Jp, G)
+    smax = float(np.max(np.linalg.norm(Sp, axis=1)
+                        / (np.linalg.norm(G, axis=1) + 1e-30))) if len(X) else 0.0
+    ksub = int(np.clip(np.ceil(dt * smax / 0.3), 1, 16))
+    dts = dt / ksub
+    for _ in range(ksub):
+        X, G, sig = _lsrk3_once(X, G, sig, ringvel_fn, dts, f, g, relax, sfs_cs, ring_strain)
+    return X, G, sig
+
+
+def _lsrk3_once(X, G, sig, ringvel_fn, dt, f, g, relax, sfs_cs, ring_strain):
     qX = np.zeros_like(X); qG = np.zeros_like(G); qs = np.zeros_like(sig)
     for a, b in zip(_LSRK3_A, _LSRK3_B):
         u = ringvel_fn(X) + velocity_from_particles_gpu(X, X, G, sig)
