@@ -196,8 +196,11 @@ class LDVM2D:
                 self.gam_lost += float(np.sum(arr_g[:k]))
                 del arr_x[:k], arr_y[:k], arr_g[:k]
 
+        # cumulative bound circulation up to x_ref (production Hirato-Eq.6 A0-extraction audit)
+        xmid = 0.5 * (self.xs[1:] + self.xs[:-1])
+        gcum01 = float(np.sum(bv[xmid <= 0.10 * c]))
         return dict(CLf=cn * ca + cs * sa, CDf=cn * sa - cs * ca, CNf=cn, CSf=cs,
-                    A0=AF[0], AF=AF, dAF=dAF, gamb=float(np.sum(bv)),
+                    A0=AF[0], AF=AF, dAF=dAF, gamb=float(np.sum(bv)), gcum01=gcum01,
                     lesp=a0, n_lev=len(self.lx), n_tev=len(self.tx))
 
 

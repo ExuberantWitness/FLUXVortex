@@ -1199,6 +1199,23 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             dx1 = tcnm2[0]                                  # first (LE-most) panel chord per strip
             th1 = np.arccos(np.clip(1.0 - 2.0 * dx1 / (c_strip + 1e-12), -1.0, 1.0))   # per-strip (→0 as Δx1→0)
             A0 = 1.13 * gm2[0] / (Urel_le * c_strip * (th1 + np.sin(th1)) + 1e-12)
+        elif a0_mode == 'downwash':
+            # S2-EXACT LESP (2026-07-18 backport, research_rvpm_s2cases.md): A0 = -(1/pi)∫(W/U)dθ
+            # per strip from the solver's OWN rhs (= -(Vinf+V_wake-vcol)·n̂ at collocation = the
+            # thin-airfoil downwash functional W, wake/LEV-sheet fold-in included). Literature-exact
+            # (Ramesh/UNSflow update_a0anda1) — no 1.13 grid factor, no x_ref truncation. S2 audit:
+            # Eq.6-xref reads +12% (flat steady — the 1.13 itself), +18-26% (camber), and
+            # 0.37→-0.14→0.67 (heavy LEV wake) vs exact — dynamically distorted exactly where the
+            # gate matters. θ from the strip's own 3/4-panel collocation stations, bin-edge weights
+            # extended to [0,π] (Σw=π exact, S2 quadrature family).
+            rhs2 = rhs.numpy().reshape(nc, ns)
+            xcol = cumpos - 0.25 * tcnm2                   # 3/4-panel collocation chord position
+            thc = np.arccos(np.clip(1.0 - 2.0 * xcol / (c_strip[None, :] + 1e-12), -1.0, 1.0))
+            ed = np.concatenate([np.zeros((1, ns)), 0.5 * (thc[1:] + thc[:-1]),
+                                 np.full((1, ns), np.pi)], axis=0)
+            wq = np.diff(ed, axis=0)                       # (nc, ns), Σ_i wq = π per strip
+            A0 = -np.sum(wq * rhs2, axis=0) / (np.pi * Urel_le + 1e-12)
+            th1 = np.arccos(np.clip(1.0 - 2.0 * 0.10, -1.0, 1.0))   # for the legacy dG1 conversion below
         else:                                              # 'xref': cumulative bound circ up to FIXED x_ref=0.10c (nc-robust legacy)
             xref_frac = 0.10
             i_ref = np.argmax(cumpos >= (xref_frac * c_strip)[None, :], axis=0)   # first panel reaching x_ref per strip
