@@ -600,6 +600,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   grid-INDEPENDENT (no surface-pressure resolution). Replaces the Vlev_a->Vcol Bernoulli contribution (which
                   #   under-resolves the LEV at coarse nc) -> the LEV lift emerges without the unstable LESP-constraint fold.
                   fsep_tau=4.5,            #   tau_star, LITERATURE airfoil dynamic-stall constant (GK-family ~3-9; NOT a RoboEagle fit)
+                  gk_stall=False,          # (病灶#1 2026-07-19) FULL Goman-Khrabrov dynamic-stall delay on geo_stall: the missing
+                  #   tau2*psidot term (static-stall-angle SHIFT) that makes lift GROW with frequency. v4's geo_stall_vec gates the
+                  #   Kirchhoff separation by the GEOMETRIC pitch (frequency-INDEPENDENT by design) -> zero dL/df. gk_stall shifts the
+                  #   stall input by tau2*psi_dot (psi_dot = A_t*yfrac*Om*cos, ANALYTIC, ~f) + tau1 relaxation. Ayancik-Mulleners 2022
+                  #   JFM 942:A38 constants (tau1=4.24 c/U; tau2=[4.24+0.0815*r^-7/9] c/U, r=reduced pitch rate). Zero new fitted consts.
+                  gk_tau1=4.24, gk_c2=0.0815, gk_rfloor=0.02,   # Ayancik-Mulleners generalized-GK power-law (r_floor guards r->0 blowup)
                   fric_drag=False,         # Fix2: flap-velocity^2 friction drag (turbulent flat-plate Cf; reuses visc structure)
                   cf_mode='turbulent',     # 'turbulent'(0.074/Re^0.2) | 'laminar'(1.328/sqrt Re)
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
@@ -722,6 +728,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lcl = wp.zeros(nls, dtype=V3, device=dev); lcr = wp.zeros(nls, dtype=V3, device=dev)   # cur LE-shed corners
     lev_first = 1                                               # 1 until the first LEV row is shed
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
+    gk_X = None                                                 # (病灶#1) full-GK dynamic-stall separation state (per strip)
     fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
     fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
     # (ANSARI / Hirato Eq.7) parametric LEV sheet OVER the suction surface: each ring stored by its strip index,
@@ -1173,9 +1180,35 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # KIRCHHOFF trailing-edge separation: f = separation point (1=attached, 0=fully separated), drops over
             # [alpha_ss, alpha_ss+width]; CL factor = ((1+sqrt f)/2)^2 (1 attached, 0.25 fully separated -> bounded,
             # plateaus at the flat-plate lift; does NOT vanish). loss_frac = 1 - factor (0..0.75), ~linear past stall.
-            fsep = np.clip(1.0 - (psi_abs - ass) / np.radians(geo_stall_width), 0.0, 1.0)
-            fsep = np.where(psi_abs <= ass, 1.0, fsep)
-            loss_frac = 1.0 - ((1.0 + np.sqrt(fsep)) / 2.0) ** 2               # 0 attached (twist=0), ->0.75 separated
+            if gk_stall:
+                # (病灶#1) FULL Goman-Khrabrov with TRUE TIME DELAY. The static geometric-stall gate above has no
+                # frequency term -> dL/df=0. GK evaluates the Kirchhoff separation at the DELAYED incidence
+                # psi(t - tau2) (static-stall-angle delay), then tau1-relaxes. A first-order alpha-tau2*alphadot
+                # is WRONG here: Om*tau2 ~ 1.9 (not <<1), so it amplitudes the swing 2.15x (deeper stall, dL/df
+                # MORE negative — smoke 2026-07-19) instead of phase-delaying. The true delay leaves the amplitude
+                # unchanged and shifts phase: at the incidence peak the delayed value is the smaller pre-peak angle
+                # -> peak stall RELIEVED, more so at higher f (larger phase lag) -> mean lift GROWS with frequency
+                # (Chiereghin-Cleaver-Gursul 2019, alpha-gated). tau1/tau2 = Ayancik-Mulleners 2022 power-law.
+                c_st_geo = tcn.reshape(nc, ns).sum(0)                          # per-strip chord
+                psi_sgn = aoa_rad + psi_t                                      # SIGNED geometric section incidence
+                if gk_X is None:                                              # motion-fixed per-strip delay (once)
+                    psidot_pk = np.abs(A_t * yfrac * Om)                       # peak geometric pitch rate (~f)
+                    r_pk = np.maximum(psidot_pk * c_st_geo / (2.0 * max(U, 1e-6)), gk_rfloor)
+                    tau2 = (gk_tau1 + gk_c2 * r_pk ** (-7.0 / 9.0)) * c_st_geo / max(U, 1e-6)
+                    gk_ndelay = np.clip(np.round(tau2 / dt).astype(int), 0, N - 1)
+                    gk_tau1_st = gk_tau1 * c_st_geo / max(U, 1e-6)
+                    gk_hist = np.zeros((N, ns))
+                    gk_X = np.ones(ns)
+                gk_hist[t] = psi_sgn
+                psi_del = np.abs(gk_hist[np.maximum(t - gk_ndelay, 0), np.arange(ns)])
+                fsep_qs = np.clip(1.0 - (psi_del - ass) / np.radians(geo_stall_width), 0.0, 1.0)
+                fsep_qs = np.where(psi_del <= ass, 1.0, fsep_qs)
+                gk_X = gk_X + (fsep_qs - gk_X) * (1.0 - np.exp(-dt / np.maximum(gk_tau1_st, 1e-9)))
+                loss_frac = 1.0 - ((1.0 + np.sqrt(gk_X)) / 2.0) ** 2
+            else:
+                fsep = np.clip(1.0 - (psi_abs - ass) / np.radians(geo_stall_width), 0.0, 1.0)
+                fsep = np.where(psi_abs <= ass, 1.0, fsep)
+                loss_frac = 1.0 - ((1.0 + np.sqrt(fsep)) / 2.0) ** 2           # 0 attached (twist=0), ->0.75 separated
             if geo_stall_vec:
                 # (C8 2026-07-04) VECTORIAL Kirchhoff: separation collapses the surface-pressure DIFFERENTIAL, i.e.
                 # the strip's whole Bernoulli force VECTOR (normal-directed) — not just its +z projection. At deep
