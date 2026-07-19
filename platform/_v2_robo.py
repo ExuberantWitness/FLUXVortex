@@ -701,6 +701,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     #   Bernoulli + LE-suction + friction + form-drag + vortex) -> the clean body force to rotate into wind axes
     Lh_vis = np.zeros(N); Xh_vis = np.zeros(N)         # DeLaurier viscous friction drag (strip, Re-based Blasius)
     Lh_pd = np.zeros(N); Xh_pd = np.zeros(N)           # separated-flow form/pressure drag (high-alpha, viscous-origin)
+    _UT_LOG = []                                        # (T1b) per-step phase diagnostic (UTREND_DBG)
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
     Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
     Lh_ds = np.zeros(N)                                 # dynamic-stall LEV lift (sustains the downstroke plateau)
@@ -1693,6 +1694,16 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Dfa = 0.5 * ug.RHO * vrm[:, None] * Cd_att[:, None] * area[:, None] * att[:, None] * vrf  # along rel. wind
             Lh_pd[t] += float(np.sum(Dfa[:, 2])); Xh_pd[t] += float(np.sum(Dfa[:, 0]))
             Fzb_tot[t] += float(np.sum(Dfa[:, 2])); Fxb_tot[t] += float(np.sum(Dfa[:, 0]))
+            if os.environ.get("UTREND_DBG"):
+                # (T1b 病灶#2) per-step per-strip phase diagnostic: alpha_rel, att gate, and the
+                # separation-drag potential the att gate ZEROS OUT (cd_sep=1.20 sin^2 on gated strips).
+                # Reveals WHERE (phase x span) the U6 deep-stall drag the model misses actually lives.
+                arel_s = arel.reshape(nc, ns).mean(0)                      # per-strip |alpha_rel|
+                att_s = att.reshape(nc, ns).mean(0)                        # per-strip attached fraction
+                cd_gated = 1.20 * np.sin(arel) ** 2 * (1.0 - att)         # gated-out sep drag coeff
+                xgated = 0.5 * ug.RHO * vrm * cd_gated * area * vrf[:, 0]  # streamwise gated drag/panel
+                _UT_LOG.append((t, float(np.degrees(np.mean(arel_s))),
+                                float(np.mean(att_s)), float(np.sum(xgated))))
         # ---- HIGH-ALPHA VORTEX NORMAL FORCE (Polhamus leading-edge-suction analogy). When the flow
         # separates at high |alpha_eff| (the +-45 flap mid-strokes, alpha_eff ~ 45deg), the lost LE suction
         # reappears as a force NORMAL to the wing: C_Nv = k_v sin^2(a) cos(a). The SAME normal force projects
@@ -1971,6 +1982,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     L_bodyf = Fz_body;              T_bodyf = -Fx_body                               # BODY frame lift / thrust
     L_windf = Fz_body * _ca - Fx_body * _sa                                          # WIND frame lift (_|_ freestream)
     T_windf = -(Fx_body * _ca + Fz_body * _sa)                                       # WIND frame thrust (// freestream)
+    if os.environ.get("UTREND_DBG") and _UT_LOG:
+        np.save(os.environ["UTREND_DBG"], np.array(_UT_LOG))   # (t, mean|arel|deg, mean_att, sum_xgated)
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
                 Fx_body=Fx_body, Fz_body=Fz_body, L_body=L_bodyf, T_body_f=T_bodyf,
                 L_wind=L_windf, T_wind=T_windf,                                       # rotated wind-axes lift/thrust
