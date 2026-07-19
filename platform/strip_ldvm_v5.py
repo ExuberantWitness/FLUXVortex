@@ -1,4 +1,5 @@
-"""v5 candidate closure: strip-wise LDVM DELTA channel (2026-07-19, user-approved).
+"""[工具箱备用 2026-07-19:非生产路径,主线 = v4 + 记分卡 GAP 闭环]
+v5 candidate closure: strip-wise LDVM DELTA channel (2026-07-19, user-approved).
 
 Architecture: the 3D UVLM attached base stays untouched; per spanwise strip run the
 S2-faithful LDVM2D (ldvm_fourier.py — Fourier bound layer, pre-LEV rate semantics,

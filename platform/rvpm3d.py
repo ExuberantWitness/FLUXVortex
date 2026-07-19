@@ -1,4 +1,6 @@
-"""rVPM 3D particle transport for the production lattice (S3, PROJECT_rvpm).
+"""[CLOSED 2026-07-19 用户裁定:rVPM 精度不可用,彻底关闭;本文件保留不维护]
+
+rVPM 3D particle transport for the production lattice (S3, PROJECT_rvpm).
 
 Revives the `part_lev` particle path of _v2_robo with the rVPM upgrades
 (research_rvpm_arch.md V4/V6): transport = f=0, g=1/5 (transposed stretching +
