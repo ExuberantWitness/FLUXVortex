@@ -124,3 +124,27 @@ UTREND_DBG 逐步导出 U6/8/10 @f1.4/tw22.5 的分离阻潜力(两种门):
   根部为 0 → 根部无 feathering → α_rel 展向平均只 12.4→9.4° → 不够塌。
 - **下一查**:模型 twist 展向分布(∝y/span)是否偏离机构真身(若真身全展更均匀 →
   可修 bug);否则 dT/dU 主份额=柔性 camber(候选2,需 FSI,非 rigid v4 增量)。
+
+## ★重大更正:实测翼是刚性的 + twist 线性(源论文核实,2026-07-20)
+
+读源论文(Meng2025 Drones 9,535)机构设计章:
+- **p.4**:"this study specifically designed and manufactured a **RIGID flapping wing**...
+  to **eliminate the interference of wing flexibility**"——实测翼刚性,专门隔离 twist 独立影响。
+- **p.7**:"the twist mechanism is modeled as **symmetric LINEAR twist**...with maximized
+  wing rigidity as a key constraint"——twist 展向线性(root→tip),刚性约束。
+- Fig3/4(root12°/mid25°/tip43°)是**鸟**(生物)的展向分布,非 RoboEagle。
+
+**两个连锁结论**:
+1. `twisted_corners` 的 ψ=A_t·(y/span)·sin(∝y/span 展向线性)**正确,非 bug**——论文
+   明文 symmetric linear twist。twist 分布修正候选关闭。
+2. **柔性候选全部作废**:病灶#1"柔性被动扭转"、本案 research_utrend **候选2"柔性 camber
+   自适应"(+0.13~0.4)**——实测翼刚性,柔性份额不存在。库内柔性 FSI 回放不该进对标。
+
+**dT/dU 归因坍缩**:原候选逐一倒下——1b 分离阻(诊断证伪不塌缩)、3a 相位(=0)、
+候选2 柔性(论文证伪不存在)、twist 分布(论文证伪非bug)、3b M&W(无系数)。
+**research_utrend 份额预算(两大主犯=柔性camber+分离阻塌缩)整体建立在错误柔性假设上,
+失效。** dT/dU +0.78 缺口在纯刚性框架下需**重新归因**:
+- 隐含 CD 0.35 @α12° 不物理(Hoerner CD90 只 1.20,CD/sin²α=7.6 远超)→"隐含 CD 塌缩"
+  是总系统缺口误归翼面,非真实翼面分离阻;
+- 天平无机构 tare(p.4 确认)、机构风阻 ∝U²——实测侧系统效应待重查;
+- 或存在未识别的纯刚性气动机理(需重新调研,原调研基于柔性假设已失效)。
