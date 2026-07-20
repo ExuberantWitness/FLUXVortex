@@ -1288,9 +1288,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 _lb_pol = StaticPolar()
                 lb_strips = [LBDynStrip(_lb_pol, lesp_crit=lb_lesp_crit, eta=lb_eta,
                                         Tp=lb_Tp, Tf=lb_Tf, Tv=lb_Tv, Tvl=lb_Tvl) for _ in range(ns)]
-            vr_le_s = (np.asarray(Vinf) - vcn)[:ns]            # LE-row body-relative flow per strip
-            sa_le = np.sum(vr_le_s, axis=1) / (np.linalg.norm(vr_le_s, axis=1) + 1e-9)  # signed sin a_eff
-            aeff_le = np.arcsin(np.clip(sa_le, -0.999, 0.999))
+            # effective AoA from LESP (A0) inversion, NOT the LE-row panel incidence sa_le: the latter
+            # treats plunge as pitch and hits 87deg on the +-22.5 flap (over-separates). A0 is the
+            # thin-airfoil LESP ~ sin(aeff-a0); inverting gives the physical section AoA (~23deg).
+            aeff_le = np.array([np.arcsin(np.clip(A0[j], -0.999, 0.999)) + lb_strips[j].a0
+                                for j in range(ns)])
             lb_f2 = np.ones(ns); lb_CNv = np.zeros(ns); lb_CT = np.zeros(ns)
             for j in range(ns):
                 rj = lb_strips[j].step(float(aeff_le[j]), float(A0[j]),
@@ -1309,14 +1311,15 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             dFv = -np.tile(loss_frac, nc)[:, None] * Fb
             Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
             Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
-            vr_lb = (np.asarray(Vinf) - vcn); vrm_lb = np.linalg.norm(vr_lb, axis=1) + 1e-9
-            qdyn_lb = 0.5 * ug.RHO * vrm_lb ** 2
-            cpan_lb = np.tile(tcn.reshape(nc, ns).sum(0), nc)
-            dy_lb = 2.0 * half_span / ns                                        # per-strip width (scalar, broadcasts)
-            dF_lev = (qdyn_lb * np.tile(lb_CNv, nc) * cpan_lb * dy_lb)[:, None] * nnp
-            Lh_vtx[t] = float(np.sum(dF_lev[:, 2])); Xh_vtx[t] = float(np.sum(dF_lev[:, 0]))
+            # LEV vortex lift + tangential CT drag: SECTION forces summed per strip (no tiling to
+            # chordwise panels - that would multiply by nc). qdyn on the per-strip LE relative speed.
+            qdyn_le = 0.5 * ug.RHO * Urel_le ** 2                               # per-strip dynamic pressure
+            dy_lb = 2.0 * half_span / ns                                        # per-strip width
+            lev_z = qdyn_le * lb_CNv * c_strip * dy_lb                          # per-strip LEV lift (+ = lift)
+            Lh_vtx[t] = float(np.sum(lev_z))
+            Xh_vtx[t] = float(np.sum(-lev_z * np.sin(aeff_le)))                 # LEV normal-force x-projection
             Fzb_tot[t] += Lh_vtx[t]; Fxb_tot[t] += Xh_vtx[t]
-            dD_ct = qdyn_lb * np.tile(np.abs(lb_CT), nc) * cpan_lb * dy_lb
+            dD_ct = qdyn_le * np.abs(lb_CT) * c_strip * dy_lb                   # per-strip tangential drag
             Xh_pd[t] = float(-np.sum(dD_ct))
             Fxb_tot[t] += Xh_pd[t]
         # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
