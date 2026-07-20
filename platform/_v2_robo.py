@@ -606,6 +606,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   stall input by tau2*psi_dot (psi_dot = A_t*yfrac*Om*cos, ANALYTIC, ~f) + tau1 relaxation. Ayancik-Mulleners 2022
                   #   JFM 942:A38 constants (tau1=4.24 c/U; tau2=[4.24+0.0815*r^-7/9] c/U, r=reduced pitch rate). Zero new fitted consts.
                   gk_tau1=4.24, gk_c2=0.0815, gk_rfloor=0.02,   # Ayancik-Mulleners generalized-GK power-law (r_floor guards r->0 blowup)
+                  lb_closure=False,        # (L-B 2026-07-20) Leishman-Beddoes dynamic-stall closure replacing
+                  #   geo_stall's static Kirchhoff with TIME-LAGGED f2 (Tp/Tf) + LEV vortex lift CNv (Tv/Tvl) +
+                  #   tangential-suction sqrt(f2) decay. Per-strip LBDynStrip states (lb_dyn.py). Zero-fit
+                  #   (research_lb_formula.md): Tp/Tf/Tv/Tvl NACA0012 lit defaults; f_qs from S0 polar inversion;
+                  #   eta=0.95; LESP_crit existing. Replaces gk_stall/geo_stall_vec when on. Default OFF = v4 bit-exact.
+                  lb_lesp_crit=0.18, lb_eta=0.95, lb_Tp=1.7, lb_Tf=3.0, lb_Tv=6.0, lb_Tvl=6.0,
                   fric_drag=False,         # Fix2: flap-velocity^2 friction drag (turbulent flat-plate Cf; reuses visc structure)
                   cf_mode='turbulent',     # 'turbulent'(0.074/Re^0.2) | 'laminar'(1.328/sqrt Re)
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
@@ -729,6 +735,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lcl = wp.zeros(nls, dtype=V3, device=dev); lcr = wp.zeros(nls, dtype=V3, device=dev)   # cur LE-shed corners
     lev_first = 1                                               # 1 until the first LEV row is shed
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
+    lb_strips = None                                            # (L-B) per-strip LBDynStrip dynamic-stall states
     gk_X = None                                                 # (病灶#1) full-GK dynamic-stall separation state (per strip)
     fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
     fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
@@ -1269,6 +1276,49 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             th1 = np.arccos(np.clip(1.0 - 2.0 * xref_frac, -1.0, 1.0))
             A0 = 1.13 * Gamma_ref / (Urel_le * c_strip * (th1 + np.sin(th1)) + 1e-12)   # finite-wing LESP per strip
         A0 = np.clip(np.nan_to_num(A0, nan=0.0, posinf=0.0, neginf=0.0), -3.0, 3.0)   # guard near-field blow-up
+        # ==== L-B dynamic-stall closure (lb_closure, 2026-07-20, research_lb_formula.md) ====
+        # Per-strip signed effective AoA from the LE-row kinematic flow, advance LBDynStrip states,
+        # get the lagged separation f2 + LEV vortex lift CNv + tangential CT. These feed the force
+        # section below (dynamic f2 replaces static geo_stall loss_frac; CNv/CT added as increments).
+        lb_f2 = None; lb_CNv = None; lb_CT = None
+        if lb_closure:
+            from lb_dyn import LBDynStrip
+            from lb_static import StaticPolar
+            if lb_strips is None:
+                _lb_pol = StaticPolar()
+                lb_strips = [LBDynStrip(_lb_pol, lesp_crit=lb_lesp_crit, eta=lb_eta,
+                                        Tp=lb_Tp, Tf=lb_Tf, Tv=lb_Tv, Tvl=lb_Tvl) for _ in range(ns)]
+            vr_le_s = (np.asarray(Vinf) - vcn)[:ns]            # LE-row body-relative flow per strip
+            sa_le = np.sum(vr_le_s, axis=1) / (np.linalg.norm(vr_le_s, axis=1) + 1e-9)  # signed sin a_eff
+            aeff_le = np.arcsin(np.clip(sa_le, -0.999, 0.999))
+            lb_f2 = np.ones(ns); lb_CNv = np.zeros(ns); lb_CT = np.zeros(ns)
+            for j in range(ns):
+                rj = lb_strips[j].step(float(aeff_le[j]), float(A0[j]),
+                                       float(Urel_le[j]), float(c_strip[j]), dt)
+                lb_f2[j] = rj["f2"]; lb_CNv[j] = rj["CNv"]; lb_CT[j] = rj["CT"]
+            if os.environ.get("LB_DBG") and t % max(steps_per_cycle // 4, 1) == 0:
+                lev_n = int(np.sum(np.array([s.lev_active_prev for s in lb_strips])))
+                print(f"[lb t={t:4d}] |A0|max={np.abs(A0).max():.3f} (crit {lb_lesp_crit}) "
+                      f"lev_active {lev_n}/{ns} | aeff_max={np.degrees(np.abs(aeff_le)).max():.0f}deg "
+                      f"f2_mean={lb_f2.mean():.2f} CNv_max={np.abs(lb_CNv).max():.3f}", flush=True)
+            # ---- L-B force increments on Fb (mutually exclusive with geo_stall; cruise-invariant as
+            # f2->1/CNv->0/CT small in attached flow). (1) vectorial Kirchhoff scaling by dynamic f2;
+            # (2) LEV vortex lift CNv along panel normal; (3) tangential CT suction decay as drag. ----
+            nnp = nrm.numpy()
+            loss_frac = 1.0 - ((1.0 + np.sqrt(lb_f2)) / 2.0) ** 2
+            dFv = -np.tile(loss_frac, nc)[:, None] * Fb
+            Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
+            Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
+            vr_lb = (np.asarray(Vinf) - vcn); vrm_lb = np.linalg.norm(vr_lb, axis=1) + 1e-9
+            qdyn_lb = 0.5 * ug.RHO * vrm_lb ** 2
+            cpan_lb = np.tile(tcn.reshape(nc, ns).sum(0), nc)
+            dy_lb = 2.0 * half_span / ns                                        # per-strip width (scalar, broadcasts)
+            dF_lev = (qdyn_lb * np.tile(lb_CNv, nc) * cpan_lb * dy_lb)[:, None] * nnp
+            Lh_vtx[t] = float(np.sum(dF_lev[:, 2])); Xh_vtx[t] = float(np.sum(dF_lev[:, 0]))
+            Fzb_tot[t] += Lh_vtx[t]; Fxb_tot[t] += Xh_vtx[t]
+            dD_ct = qdyn_lb * np.tile(np.abs(lb_CT), nc) * cpan_lb * dy_lb
+            Xh_pd[t] = float(-np.sum(dD_ct))
+            Fxb_tot[t] += Xh_pd[t]
         # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
         # strip per step; strength from the A0-PIN closed form (A0 is a LINEAR functional of the rhs in
         # 'downwash' mode, and the particle enters the rhs directly -> per-strip 1x1 solve, no AIC
