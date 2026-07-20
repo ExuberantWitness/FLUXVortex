@@ -1695,15 +1695,19 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             Lh_pd[t] += float(np.sum(Dfa[:, 2])); Xh_pd[t] += float(np.sum(Dfa[:, 0]))
             Fzb_tot[t] += float(np.sum(Dfa[:, 2])); Fxb_tot[t] += float(np.sum(Dfa[:, 0]))
             if os.environ.get("UTREND_DBG"):
-                # (T1b 病灶#2) per-step per-strip phase diagnostic: alpha_rel, att gate, and the
-                # separation-drag potential the att gate ZEROS OUT (cd_sep=1.20 sin^2 on gated strips).
-                # Reveals WHERE (phase x span) the U6 deep-stall drag the model misses actually lives.
-                arel_s = arel.reshape(nc, ns).mean(0)                      # per-strip |alpha_rel|
-                att_s = att.reshape(nc, ns).mean(0)                        # per-strip attached fraction
-                cd_gated = 1.20 * np.sin(arel) ** 2 * (1.0 - att)         # gated-out sep drag coeff
-                xgated = 0.5 * ug.RHO * vrm * cd_gated * area * vrf[:, 0]  # streamwise gated drag/panel
+                # (T1b 病灶#2) per-step per-strip phase diagnostic. Two separation-drag potentials:
+                # (a) LESP-att-gated (what the current att硬门 zeros); (b) KIRCHHOFF-gated via the
+                # continuous separation fraction (1-fsep) on alpha_rel — what T2's sep_drag_gk uses.
+                # The two阈值 are NOT aligned (Explore audit): LESP att_frac~0.9-1.0 vs Kirchhoff sees
+                # the high-alpha_rel strips as partly separated. (b) is the true relaxation-share test.
+                arel_s = arel.reshape(nc, ns).mean(0)
+                cd_att_p = 1.20 * np.sin(arel) ** 2                        # Hoerner sep-drag coeff/panel
+                x_lesp = 0.5 * ug.RHO * vrm * cd_att_p * (1.0 - att) * area * vrf[:, 0]  # LESP-gated
+                ass_k = np.radians(geo_stall_deg); wid_k = np.radians(max(geo_stall_width, 1e-6))
+                sepf = np.clip((arel - ass_k) / wid_k, 0.0, 1.0)          # Kirchhoff separated fraction
+                x_kir = 0.5 * ug.RHO * vrm * cd_att_p * sepf * area * vrf[:, 0]          # Kirchhoff-gated
                 _UT_LOG.append((t, float(np.degrees(np.mean(arel_s))),
-                                float(np.mean(att_s)), float(np.sum(xgated))))
+                                float(np.sum(x_lesp)), float(np.sum(x_kir))))
         # ---- HIGH-ALPHA VORTEX NORMAL FORCE (Polhamus leading-edge-suction analogy). When the flow
         # separates at high |alpha_eff| (the +-45 flap mid-strokes, alpha_eff ~ 45deg), the lost LE suction
         # reappears as a force NORMAL to the wing: C_Nv = k_v sin^2(a) cos(a). The SAME normal force projects
