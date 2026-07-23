@@ -612,6 +612,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   (research_lb_formula.md): Tp/Tf/Tv/Tvl NACA0012 lit defaults; f_qs from S0 polar inversion;
                   #   eta=0.95; LESP_crit existing. Replaces gk_stall/geo_stall_vec when on. Default OFF = v4 bit-exact.
                   lb_lesp_crit=0.18, lb_eta=0.95, lb_Tp=1.7, lb_Tf=3.0, lb_Tv=6.0, lb_Tvl=6.0,
+                  lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
+                  #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
+                  #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
                   fric_drag=False,         # Fix2: flap-velocity^2 friction drag (turbulent flat-plate Cf; reuses visc structure)
                   cf_mode='turbulent',     # 'turbulent'(0.074/Re^0.2) | 'laminar'(1.328/sqrt Re)
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
@@ -736,6 +739,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lev_first = 1                                               # 1 until the first LEV row is shed
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
     lb_strips = None                                            # (L-B) per-strip LBDynStrip dynamic-stall states
+    _LB_DIAG = []                                               # (L-B S-cal1) per-step aeff/fqs/f2/chop accumulator
     gk_X = None                                                 # (病灶#1) full-GK dynamic-stall separation state (per strip)
     fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
     fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
@@ -1293,11 +1297,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # thin-airfoil LESP ~ sin(aeff-a0); inverting gives the physical section AoA (~23deg).
             aeff_le = np.array([np.arcsin(np.clip(A0[j], -0.999, 0.999)) + lb_strips[j].a0
                                 for j in range(ns)])
-            lb_f2 = np.ones(ns); lb_CNv = np.zeros(ns); lb_CT = np.zeros(ns)
+            lb_f2 = np.ones(ns); lb_CNv = np.zeros(ns); lb_CT = np.zeros(ns); lb_fqs = np.ones(ns)
+            aeff_sep = aeff_le - lb_a3d                                   # 2D->3D stall-delay shift (sep judgment only)
             for j in range(ns):
-                rj = lb_strips[j].step(float(aeff_le[j]), float(A0[j]),
+                rj = lb_strips[j].step(float(aeff_sep[j]), float(A0[j]),
                                        float(Urel_le[j]), float(c_strip[j]), dt)
-                lb_f2[j] = rj["f2"]; lb_CNv[j] = rj["CNv"]; lb_CT[j] = rj["CT"]
+                lb_f2[j] = rj["f2"]; lb_CNv[j] = rj["CNv"]; lb_CT[j] = rj["CT"]; lb_fqs[j] = rj["f_qs"]
+            if os.environ.get("LB_DIAG") and t >= N - steps_per_cycle:
+                _LB_DIAG.append((np.degrees(aeff_le), lb_fqs.copy(), lb_f2.copy()))
             if os.environ.get("LB_DBG") and t % max(steps_per_cycle // 4, 1) == 0:
                 lev_n = int(np.sum(np.array([s.lev_active_prev for s in lb_strips])))
                 print(f"[lb t={t:4d}] |A0|max={np.abs(A0).max():.3f} (crit {lb_lesp_crit}) "
@@ -2041,6 +2048,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     T_windf = -(Fx_body * _ca + Fz_body * _sa)                                       # WIND frame thrust (// freestream)
     if os.environ.get("UTREND_DBG") and _UT_LOG:
         np.save(os.environ["UTREND_DBG"], np.array(_UT_LOG))   # (t, mean|arel|deg, mean_att, sum_xgated)
+    if os.environ.get("LB_DIAG") and _LB_DIAG:
+        arr = np.array(_LB_DIAG)                                # (nstep, ns, 3): aeff_deg, f_qs, f2
+        np.save(os.environ["LB_DIAG"], arr)
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
                 Fx_body=Fx_body, Fz_body=Fz_body, L_body=L_bodyf, T_body_f=T_bodyf,
                 L_wind=L_windf, T_wind=T_windf,                                       # rotated wind-axes lift/thrust
