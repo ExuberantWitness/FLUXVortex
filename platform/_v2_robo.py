@@ -1298,11 +1298,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             aeff_le = np.array([np.arcsin(np.clip(A0[j], -0.999, 0.999)) + lb_strips[j].a0
                                 for j in range(ns)])
             lb_f2 = np.ones(ns); lb_CNv = np.zeros(ns); lb_CT = np.zeros(ns); lb_fqs = np.ones(ns)
+            lb_CNf = np.zeros(ns)
             aeff_sep = aeff_le - lb_a3d                                   # 2D->3D stall-delay shift (sep judgment only)
             for j in range(ns):
                 rj = lb_strips[j].step(float(aeff_sep[j]), float(A0[j]),
                                        float(Urel_le[j]), float(c_strip[j]), dt)
                 lb_f2[j] = rj["f2"]; lb_CNv[j] = rj["CNv"]; lb_CT[j] = rj["CT"]; lb_fqs[j] = rj["f_qs"]
+                lb_CNf[j] = rj["CNf"]
             if os.environ.get("LB_DIAG") and t >= N - steps_per_cycle:
                 _LB_DIAG.append((np.degrees(aeff_le), lb_fqs.copy(), lb_f2.copy()))
             if os.environ.get("LB_DBG") and t % max(steps_per_cycle // 4, 1) == 0:
@@ -1315,17 +1317,23 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # (2) LEV vortex lift CNv along panel normal; (3) tangential CT suction decay as drag. ----
             nnp = nrm.numpy()
             loss_frac = 1.0 - ((1.0 + np.sqrt(lb_f2)) / 2.0) ** 2
-            dFv = -np.tile(loss_frac, nc)[:, None] * Fb
-            Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
-            Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
-            # LEV vortex lift + tangential CT drag: SECTION forces summed per strip (no tiling to
-            # chordwise panels - that would multiply by nc). qdyn on the per-strip LE relative speed.
+            # HYBRID (user-approved 2026-07-23): the chopped-off separated part is REPLACED by the L-B
+            # section force (quasi-steady circulatory x Kirchhoff + LEV, NO Theodorsen decay), not dropped.
+            # UVLM keeps 3D fidelity where attached; separated strips get the dynamic-stall section force
+            # (canonical proves removing Theodorsen gives the positive dL/df slope). Per strip:
+            #   F_strip = F_UVLM*Kirchhoff + F_LB_section*loss_frac
+            # i.e. add loss_frac*(F_LB_section - F_UVLM) to the UVLM force; the -loss_frac*Fb chop below
+            # removes loss_frac*F_UVLM, then we add back loss_frac*F_LB_section.
             qdyn_le = 0.5 * ug.RHO * Urel_le ** 2                               # per-strip dynamic pressure
             dy_lb = 2.0 * half_span / ns                                        # per-strip width
-            lev_z = qdyn_le * lb_CNv * c_strip * dy_lb                          # per-strip LEV lift (+ = lift)
-            Lh_vtx[t] = float(np.sum(lev_z))
-            Xh_vtx[t] = float(np.sum(-lev_z * np.sin(aeff_le)))                 # LEV normal-force x-projection
-            Fzb_tot[t] += Lh_vtx[t]; Fxb_tot[t] += Xh_vtx[t]
+            F_LB_strip = qdyn_le * (lb_CNf + lb_CNv) * c_strip * dy_lb          # L-B section normal force (per strip)
+            dFv = -np.tile(loss_frac, nc)[:, None] * Fb                         # remove loss_frac of UVLM
+            # add back loss_frac * F_LB_section, distributed over the strip's nc panels along panel normal
+            F_LB_panel = np.tile((loss_frac * F_LB_strip) / nc, nc)[:, None] * nnp
+            dFv = dFv + F_LB_panel
+            Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
+            Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
+            # tangential CT drag: SECTION force summed per strip (suction decay -> drag).
             dD_ct = qdyn_le * np.abs(lb_CT) * c_strip * dy_lb                   # per-strip tangential drag
             Xh_pd[t] = float(-np.sum(dD_ct))
             Fxb_tot[t] += Xh_pd[t]
