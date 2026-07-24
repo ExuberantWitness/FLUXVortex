@@ -626,6 +626,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   literature precedent (L-B CNv and LDVM shed-vortex lift both carry memory); this is
                   #   the Tv-finite version, magnitude-driven (avoids the signed CNv symmetric-flap
                   #   cancellation). False = instantaneous (Tv->0 limit, recorded approximation).
+                  lb_cds_f2gate=False,   # (2026-07-24) gate the ds drive by the separated fraction
+                  #   loss_frac = 1-Kn: L-B's own vortex-lift form is Cv = CNc*(1-Kn) — vortex lift
+                  #   accompanies TE separation, suction overshoot alone (|A0|>crit at aoa0 mid-stroke,
+                  #   measured flat there) must NOT trigger it. Fixes the aoa0 gating leak.
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -1363,6 +1367,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # separation (max(0,|A0|-crit)=0 when attached). Per strip along panel normal.
             if lb_cds > 0.0:
                 dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip drive
+                if lb_cds_f2gate:
+                    dCN_drive = dCN_drive * loss_frac       # L-B Cv = CNc*(1-Kn): vortex lift
+                    #   accompanies TE separation; suction overshoot alone must not trigger (aoa0 leak)
                 if lb_cds_mem:
                     # accumulated (Tv memory): state relaxes toward drive over lb_Tv semi-chords
                     if lb_ds_state is None:
