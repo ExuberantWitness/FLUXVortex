@@ -1407,9 +1407,16 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                     Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2]))
                 else:
                     Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
-            # tangential CT drag: SECTION force summed per strip (suction decay -> drag).
-            dD_ct = qdyn_le * np.abs(lb_CT) * c_strip * dy_lb                   # per-strip tangential drag
-            Xh_pd[t] = float(-np.sum(dD_ct))
+            # tangential suction-LOSS drag (2026-07-24 sign/bookkeeping fix): the UVLM bound force
+            # already books the FULL attached LE suction (forward). L-B's physical content is the
+            # suction DECAY eta*CLa*alpha^2*(1-sqrt(f2)) — a DRAG increment (+Fx = drag). The old
+            # form booked the full decayed suction |CT| = eta*CLa*alpha^2*sqrt(f2) as a FORWARD
+            # force (Xh_pd = -sum) = suction double-count, ~+2.0/+4.2N spurious thrust at f1.4/f2.6,
+            # aoa-independent, ~f^2 (alpha^2 plunge) — the audited "chop x-projection" hole was
+            # actually THIS. Attached f2->1 gives zero, deep stall f2->0 gives the full suction loss.
+            cla_lb = np.array([s.cla for s in lb_strips])
+            dD_ct = qdyn_le * lb_eta * cla_lb * aeff_sep ** 2 * (1.0 - np.sqrt(np.clip(lb_f2, 0.0, 1.0))) * c_strip * dy_lb
+            Xh_pd[t] = float(np.sum(dD_ct))                                     # +Fx = drag (suction loss)
             Fxb_tot[t] += Xh_pd[t]
         # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
         # strip per step; strength from the A0-PIN closed form (A0 is a LINEAR functional of the rhs in
