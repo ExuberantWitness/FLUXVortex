@@ -630,6 +630,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   loss_frac = 1-Kn: L-B's own vortex-lift form is Cv = CNc*(1-Kn) — vortex lift
                   #   accompanies TE separation, suction overshoot alone (|A0|>crit at aoa0 mid-stroke,
                   #   measured flat there) must NOT trigger it. Fixes the aoa0 gating leak.
+                  lb_cds_zonly=False,    # (2026-07-24) apply the ds enhancement to the LIFT channel
+                  #   only (body z), not along the panel normal: L-B is a small-flap-angle bookkeeping
+                  #   (helicopter rotors) where normal ≈ lift direction; at ±22.5deg flap the normal's
+                  #   x-projection adds +3..+7N spurious thrust (measured dT/df is only +0.7..+1.6 and
+                  #   v4 already matches it). Drag bookkeeping stays with the CT term. Recorded
+                  #   approximation, NOT a fit.
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -1382,7 +1388,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                     dCN_ds = dCN_drive
                 F_ds_strip = qdyn_le * dCN_ds * c_strip * dy_lb
                 F_ds_panel = np.tile(F_ds_strip / nc, nc)[:, None] * nnp
-                Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
+                if lb_cds_zonly:
+                    # lift channel only (L-B small-angle bookkeeping; CT carries the drag side)
+                    Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2]))
+                else:
+                    Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
             # tangential CT drag: SECTION force summed per strip (suction decay -> drag).
             dD_ct = qdyn_le * np.abs(lb_CT) * c_strip * dy_lb                   # per-strip tangential drag
             Xh_pd[t] = float(-np.sum(dD_ct))
