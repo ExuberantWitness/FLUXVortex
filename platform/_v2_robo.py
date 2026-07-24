@@ -636,6 +636,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   x-projection adds +3..+7N spurious thrust (measured dT/df is only +0.7..+1.6 and
                   #   v4 already matches it). Drag bookkeeping stays with the CT term. Recorded
                   #   approximation, NOT a fit.
+                  lb_chop_zonly=False,   # (2026-07-24) lift-channel-only L-B closure: chop (and hybrid
+                  #   replacement) applied to the lift channel only; thrust channel inherited from the
+                  #   UVLM (v4 band). See the dFv application site for the full rationale.
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -1366,7 +1369,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             F_LB_panel = np.tile((lb_hybrid * loss_frac * F_LB_strip) / nc, nc)[:, None] * nnp
             dFv = dFv + F_LB_panel
             Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
-            Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
+            if lb_chop_zonly:
+                # (2026-07-24) LIFT-CHANNEL-ONLY L-B closure: the 2D section model books the
+                # separation dynamics in the lift direction (small-angle L-B bookkeeping, same
+                # convention as lb_cds_zonly); the UVLM keeps the thrust/propulsion channel
+                # intact (v4 thrust already in the measured band). The chop's x-projection
+                # removed loss_frac of the FLAPPING PROPULSION circulation component (+4.2N
+                # spurious thrust @f2.6, aoa-independent, ~f^2) which flat-plate form drag
+                # (~1-3N physical) cannot refill -> the x-chop is outside the section model's
+                # validity at +-22.5deg flap. Thrust channel inherited from v4 UVLM.
+                Fzb_tot[t] += Lh_stall[t]
+            else:
+                Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
             # DYNAMIC-STALL LIFT ENHANCEMENT (restructure): additive lift ~ A0 overshoot above crit,
             # which grows with k (validated: |A0| peak 0.419->0.466 over k 0.16->0.29). Provides the
             # positive dL/df slope WITHOUT depressing the mean level (decoupled from the chop). Gated by
