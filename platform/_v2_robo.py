@@ -1407,15 +1407,17 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                     Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2]))
                 else:
                     Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
-            # tangential suction-LOSS drag (2026-07-24 sign/bookkeeping fix): the UVLM bound force
-            # already books the FULL attached LE suction (forward). L-B's physical content is the
-            # suction DECAY eta*CLa*alpha^2*(1-sqrt(f2)) — a DRAG increment (+Fx = drag). The old
-            # form booked the full decayed suction |CT| = eta*CLa*alpha^2*sqrt(f2) as a FORWARD
-            # force (Xh_pd = -sum) = suction double-count, ~+2.0/+4.2N spurious thrust at f1.4/f2.6,
-            # aoa-independent, ~f^2 (alpha^2 plunge) — the audited "chop x-projection" hole was
-            # actually THIS. Attached f2->1 gives zero, deep stall f2->0 gives the full suction loss.
+            # tangential suction bookkeeping CONSISTENT with the chopped UVLM force (2026-07-24):
+            # the vectorial chop already removes loss_frac of the bound force including its attached
+            # LE-suction share, leaving (1-loss_frac) = ((1+sqrt(f2))/2)^2 of the attached suction.
+            # The physical post-stall suction is sqrt(f2) of attached (Bangga Eq.19). The consistent
+            # increment = [sqrt(f2) - ((1+sqrt(f2))/2)^2] * eta*CLa*alpha^2 = -(1-sqrt(f2))^2/4 * ...
+            # — a small DRAG (+Fx). Supersedes two earlier wrong forms: (i) |CT| as forward force
+            # (suction double-count, +3.6N spurious thrust), (ii) full (1-sqrt(f2)) suction loss
+            # (ignores the chop's suction share, ~5x over-drag at aoa15). Attached f2->1 gives zero.
             cla_lb = np.array([s.cla for s in lb_strips])
-            dD_ct = qdyn_le * lb_eta * cla_lb * aeff_sep ** 2 * (1.0 - np.sqrt(np.clip(lb_f2, 0.0, 1.0))) * c_strip * dy_lb
+            sqf2 = np.sqrt(np.clip(lb_f2, 0.0, 1.0))
+            dD_ct = qdyn_le * lb_eta * cla_lb * aeff_sep ** 2 * (1.0 - sqf2) ** 2 / 4.0 * c_strip * dy_lb
             Xh_pd[t] = float(np.sum(dD_ct))                                     # +Fx = drag (suction loss)
             Fxb_tot[t] += Xh_pd[t]
         # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
