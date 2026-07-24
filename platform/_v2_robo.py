@@ -612,9 +612,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   (research_lb_formula.md): Tp/Tf/Tv/Tvl NACA0012 lit defaults; f_qs from S0 polar inversion;
                   #   eta=0.95; LESP_crit existing. Replaces gk_stall/geo_stall_vec when on. Default OFF = v4 bit-exact.
                   lb_lesp_crit=0.18, lb_eta=0.95, lb_Tp=1.7, lb_Tf=3.0, lb_Tv=6.0, lb_Tvl=6.0,
+                  lb_hybrid=1.0,         # (restructure) F_LB section-force replacement weight: 1=hybrid (chopped
+                  #   part replaced by L-B section force), 0=pure chop (loss removed only). Decoupling test.
+                  lb_cds=0.0,            # (restructure 2026-07-23) dynamic-stall lift enhancement coefficient:
+                  #   dCN_ds = lb_cds*max(0,|A0|-crit) per strip, additive lift increasing with k (A0 overshoot
+                  #   grows with k, validated). Decouples slope (this term) from level (the chop). 0=off.
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
+                  lb_cla3d=False,        # (2026-07-24) Prandtl finite-wing lift-slope reduction on the L-B
+                  #   polar: CLa_3D = CLa_2D/(1+CLa_2D/(pi*AR)), AR from run geometry. The 2D section judge
+                  #   over-separates on a finite wing; this reduces loss_frac smoothly (unlike the lb_a3d
+                  #   angle shift, which cliffs). Scales f inversion + CNf reconstruction consistently.
                   fric_drag=False,         # Fix2: flap-velocity^2 friction drag (turbulent flat-plate Cf; reuses visc structure)
                   cf_mode='turbulent',     # 'turbulent'(0.074/Re^0.2) | 'laminar'(1.328/sqrt Re)
                   drag_polar=False, cd0_polar=0.018, oswald=0.85,
@@ -1289,7 +1298,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             from lb_dyn import LBDynStrip
             from lb_static import StaticPolar
             if lb_strips is None:
-                _lb_pol = StaticPolar()
+                if lb_cla3d:
+                    s_wing_lb = float(np.sum(c_strip) * (2.0 * half_span / ns))
+                    ar_lb = (2.0 * half_span) ** 2 / s_wing_lb
+                else:
+                    ar_lb = 0.0
+                _lb_pol = StaticPolar(cla3d_ar=ar_lb)
                 lb_strips = [LBDynStrip(_lb_pol, lesp_crit=lb_lesp_crit, eta=lb_eta,
                                         Tp=lb_Tp, Tf=lb_Tf, Tv=lb_Tv, Tvl=lb_Tvl) for _ in range(ns)]
             # effective AoA from LESP (A0) inversion, NOT the LE-row panel incidence sa_le: the latter
@@ -1306,7 +1320,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 lb_f2[j] = rj["f2"]; lb_CNv[j] = rj["CNv"]; lb_CT[j] = rj["CT"]; lb_fqs[j] = rj["f_qs"]
                 lb_CNf[j] = rj["CNf"]
             if os.environ.get("LB_DIAG") and t >= N - steps_per_cycle:
-                _LB_DIAG.append((np.degrees(aeff_le), lb_fqs.copy(), lb_f2.copy()))
+                _LB_DIAG.append((np.degrees(aeff_le), lb_fqs.copy(), lb_f2.copy(), A0.copy()))
             if os.environ.get("LB_DBG") and t % max(steps_per_cycle // 4, 1) == 0:
                 lev_n = int(np.sum(np.array([s.lev_active_prev for s in lb_strips])))
                 print(f"[lb t={t:4d}] |A0|max={np.abs(A0).max():.3f} (crit {lb_lesp_crit}) "
@@ -1329,10 +1343,19 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             F_LB_strip = qdyn_le * (lb_CNf + lb_CNv) * c_strip * dy_lb          # L-B section normal force (per strip)
             dFv = -np.tile(loss_frac, nc)[:, None] * Fb                         # remove loss_frac of UVLM
             # add back loss_frac * F_LB_section, distributed over the strip's nc panels along panel normal
-            F_LB_panel = np.tile((loss_frac * F_LB_strip) / nc, nc)[:, None] * nnp
+            F_LB_panel = np.tile((lb_hybrid * loss_frac * F_LB_strip) / nc, nc)[:, None] * nnp
             dFv = dFv + F_LB_panel
             Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
             Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
+            # DYNAMIC-STALL LIFT ENHANCEMENT (restructure): additive lift ~ A0 overshoot above crit,
+            # which grows with k (validated: |A0| peak 0.419->0.466 over k 0.16->0.29). Provides the
+            # positive dL/df slope WITHOUT depressing the mean level (decoupled from the chop). Gated by
+            # separation (max(0,|A0|-crit)=0 when attached). Per strip along panel normal.
+            if lb_cds > 0.0:
+                dCN_ds = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip enhancement
+                F_ds_strip = qdyn_le * dCN_ds * c_strip * dy_lb
+                F_ds_panel = np.tile(F_ds_strip / nc, nc)[:, None] * nnp
+                Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
             # tangential CT drag: SECTION force summed per strip (suction decay -> drag).
             dD_ct = qdyn_le * np.abs(lb_CT) * c_strip * dy_lb                   # per-strip tangential drag
             Xh_pd[t] = float(-np.sum(dD_ct))

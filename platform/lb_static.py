@@ -32,7 +32,8 @@ def _sd7003_blocks():
 class StaticPolar:
     """Full-angle static CL/CD polar + Kirchhoff f(alpha) inversion. Vectorized over alpha."""
 
-    def __init__(self, cd90_ar=1.20, camber_a0l_deg=-1.5, blend_deg=3.0, re_target=1.5e5):
+    def __init__(self, cd90_ar=1.20, camber_a0l_deg=-1.5, blend_deg=3.0, re_target=1.5e5,
+                 cla3d_ar=0.0):
         blocks = _sd7003_blocks()
         self.res = np.array([b[0] for b in blocks])
         # pick the Re block nearest re_target, interpolate CL vs alpha onto a common grid
@@ -50,6 +51,13 @@ class StaticPolar:
         # attached slope (max CL/alpha in the linear region) + zero-lift angle
         att = (self.att_alpha > -3) & (self.att_alpha < 6)
         self.cla = float(np.polyfit(np.radians(self.att_alpha[att]), self.att_cl[att], 1)[0])
+        if cla3d_ar > 0.0:
+            # (2026-07-24) Prandtl finite-wing lift-slope reduction, CLa_3D = CLa_2D/(1+CLa_2D/(pi*AR))
+            # (Anderson Fund. Aero; lifting-line, elliptic loading). The L-B polar is 2D (SD7003);
+            # on a finite wing the section judge over-separates because the 2D polar ignores the
+            # downwash-induced incidence loss. Scales BOTH the f inversion and the CNf/Kirchhoff
+            # reconstruction consistently. Literature-anchored (AR from geometry), zero-fit.
+            self.cla = self.cla / (1.0 + self.cla / (np.pi * float(cla3d_ar)))
         self.a0 = float(np.radians(camber_a0l_deg))             # camber zero-lift (NACA2406 proxy)
         self.stall_edge = float(self.att_alpha[np.argmax(self.att_cl)])   # ~10.5 deg
         self.cd90 = float(cd90_ar)
