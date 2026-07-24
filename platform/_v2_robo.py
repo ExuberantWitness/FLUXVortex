@@ -617,6 +617,15 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lb_cds=0.0,            # (restructure 2026-07-23) dynamic-stall lift enhancement coefficient:
                   #   dCN_ds = lb_cds*max(0,|A0|-crit) per strip, additive lift increasing with k (A0 overshoot
                   #   grows with k, validated). Decouples slope (this term) from level (the chop). 0=off.
+                  #   Literature anchor (2026-07-24): L-B/Bangga vortex increment dCNv~0.4-0.7 peak
+                  #   (NACA0012 deep dynamic stall, McAlister-Carr) -> cds~2-4 at crit=0.18; guardrail
+                  #   dCN_ds,peak <= 0.8. k-scaling: Ericsson-Reding linear-in-pitch-rate then saturating.
+                  lb_cds_mem=False,      # (2026-07-24) literature-faithful ACCUMULATED form: first-order
+                  #   relaxation of the enhancement state toward the instantaneous drive with semi-chord
+                  #   time constant lb_Tv=6 (L-B vortex passage). The purely instantaneous form has NO
+                  #   literature precedent (L-B CNv and LDVM shed-vortex lift both carry memory); this is
+                  #   the Tv-finite version, magnitude-driven (avoids the signed CNv symmetric-flap
+                  #   cancellation). False = instantaneous (Tv->0 limit, recorded approximation).
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -748,6 +757,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lev_first = 1                                               # 1 until the first LEV row is shed
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
     lb_strips = None                                            # (L-B) per-strip LBDynStrip dynamic-stall states
+    lb_ds_state = None                                          # (L-B) per-strip accumulated ds-enhancement state (Tv memory)
     _LB_DIAG = []                                               # (L-B S-cal1) per-step aeff/fqs/f2/chop accumulator
     gk_X = None                                                 # (病灶#1) full-GK dynamic-stall separation state (per strip)
     fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
@@ -1352,7 +1362,17 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # positive dL/df slope WITHOUT depressing the mean level (decoupled from the chop). Gated by
             # separation (max(0,|A0|-crit)=0 when attached). Per strip along panel normal.
             if lb_cds > 0.0:
-                dCN_ds = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip enhancement
+                dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip drive
+                if lb_cds_mem:
+                    # accumulated (Tv memory): state relaxes toward drive over lb_Tv semi-chords
+                    if lb_ds_state is None:
+                        lb_ds_state = np.zeros(ns)
+                    ds_semi = Urel_le * dt / (0.5 * c_strip + 1e-12)           # semi-chords this step
+                    beta = 1.0 - np.exp(-ds_semi / lb_Tv)
+                    lb_ds_state += (dCN_drive - lb_ds_state) * beta
+                    dCN_ds = lb_ds_state
+                else:
+                    dCN_ds = dCN_drive
                 F_ds_strip = qdyn_le * dCN_ds * c_strip * dy_lb
                 F_ds_panel = np.tile(F_ds_strip / nc, nc)[:, None] * nnp
                 Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
