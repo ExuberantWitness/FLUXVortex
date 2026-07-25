@@ -639,6 +639,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lb_chop_zonly=False,   # (2026-07-24) lift-channel-only L-B closure: chop (and hybrid
                   #   replacement) applied to the lift channel only; thrust channel inherited from the
                   #   UVLM (v4 band). See the dFv application site for the full rationale.
+                  lb_ct=True,            # (2026-07-25) CT suction-loss drag term on/off. OFF for the
+                  #   candidate-E architecture (lift channel = L-B z-closure, thrust = 100% v4): the
+                  #   term's alpha^2 ~ f^2 growth flattens the dT/df slope (measured thrust rises
+                  #   with f; the f-independent T3b offset is an OPEN case, not to be absorbed).
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -1370,15 +1374,17 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             dFv = dFv + F_LB_panel
             Lh_stall[t] = float(np.sum(dFv[:, 2])); Xh_stall[t] = float(np.sum(dFv[:, 0]))
             if lb_chop_zonly:
-                # (2026-07-24) LIFT-CHANNEL-ONLY L-B closure: the 2D section model books the
-                # separation dynamics in the lift direction (small-angle L-B bookkeeping, same
-                # convention as lb_cds_zonly); the UVLM keeps the thrust/propulsion channel
-                # intact (v4 thrust already in the measured band). The chop's x-projection
-                # removed loss_frac of the FLAPPING PROPULSION circulation component (+4.2N
-                # spurious thrust @f2.6, aoa-independent, ~f^2) which flat-plate form drag
-                # (~1-3N physical) cannot refill -> the x-chop is outside the section model's
-                # validity at +-22.5deg flap. Thrust channel inherited from v4 UVLM.
-                Fzb_tot[t] += Lh_stall[t]
+                # (2026-07-24/25) LIFT-CHANNEL-ONLY L-B closure, applied along the WIND-LIFT
+                # direction (-sin aoa, 0, cos aoa): T_wind contribution = -(Fx*ca+Fz*sa) =
+                # -(-F*sa*ca + F*ca*sa) = 0 EXACTLY at any aoa (body-z application leaked
+                # F*sin(aoa) into thrust: +1.5N at aoa15). The 2D section model books the
+                # separation dynamics in the lift direction (small-angle L-B bookkeeping);
+                # the UVLM keeps the thrust/propulsion channel bit-exact (v4 band, dT/df
+                # r~0.995 preserved). The chop's full x-projection removed loss_frac of the
+                # FLAPPING PROPULSION circulation component (+4.2N spurious thrust @f2.6) —
+                # outside the section model's validity at +-22.5deg flap.
+                _caL = np.cos(np.radians(aoa_deg)); _saL = np.sin(np.radians(aoa_deg))
+                Fzb_tot[t] += Lh_stall[t] * _caL; Fxb_tot[t] += -Lh_stall[t] * _saL
             else:
                 Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
             # DYNAMIC-STALL LIFT ENHANCEMENT (restructure): additive lift ~ A0 overshoot above crit,
@@ -1403,8 +1409,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 F_ds_strip = qdyn_le * dCN_ds * c_strip * dy_lb
                 F_ds_panel = np.tile(F_ds_strip / nc, nc)[:, None] * nnp
                 if lb_cds_zonly:
-                    # lift channel only (L-B small-angle bookkeeping; CT carries the drag side)
-                    Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2]))
+                    # wind-lift direction only (exactly zero thrust contamination at any aoa;
+                    # L-B small-angle bookkeeping)
+                    _Fds = float(np.sum(F_ds_panel[:, 2]))
+                    Fzb_tot[t] += _Fds * np.cos(np.radians(aoa_deg))
+                    Fxb_tot[t] += -_Fds * np.sin(np.radians(aoa_deg))
                 else:
                     Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
             # tangential suction bookkeeping CONSISTENT with the chopped UVLM force (2026-07-24):
@@ -1418,8 +1427,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             cla_lb = np.array([s.cla for s in lb_strips])
             sqf2 = np.sqrt(np.clip(lb_f2, 0.0, 1.0))
             dD_ct = qdyn_le * lb_eta * cla_lb * aeff_sep ** 2 * (1.0 - sqf2) ** 2 / 4.0 * c_strip * dy_lb
-            Xh_pd[t] = float(np.sum(dD_ct))                                     # +Fx = drag (suction loss)
-            Fxb_tot[t] += Xh_pd[t]
+            if lb_ct:
+                Xh_pd[t] = float(np.sum(dD_ct))                                 # +Fx = drag (suction loss)
+                Fxb_tot[t] += Xh_pd[t]
         # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
         # strip per step; strength from the A0-PIN closed form (A0 is a LINEAR functional of the rhs in
         # 'downwash' mode, and the particle enters the rhs directly -> per-strip 1x1 solve, no AIC
