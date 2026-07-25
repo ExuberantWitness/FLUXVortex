@@ -643,6 +643,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   candidate-E architecture (lift channel = L-B z-closure, thrust = 100% v4): the
                   #   term's alpha^2 ~ f^2 growth flattens the dT/df slope (measured thrust rises
                   #   with f; the f-independent T3b offset is an OPEN case, not to be absorbed).
+                  lb_cds_signed=False,   # (2026-07-25) SIGNED vortex-force drive sign(A0)*excess:
+                  #   the LEV forms on the opposite side on the upstroke -> force flips -> symmetric
+                  #   cancellation at aoa0 (measured +0.06), aoa-bias asymmetry kept at aoa15.
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -1393,6 +1396,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # separation (max(0,|A0|-crit)=0 when attached). Per strip along panel normal.
             if lb_cds > 0.0:
                 dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip drive
+                if lb_cds_signed:
+                    # (2026-07-25) SIGNED vortex-force drive: on the upstroke the effective
+                    # incidence reverses -> the LEV forms on the OTHER side -> the force
+                    # flips sign. Magnitude drive on the (z>0 always) panel normal adds +z on
+                    # BOTH half-strokes = the aoa0 leak (model +1.69 slope vs measured +0.06).
+                    # sign(A0)*excess cancels under symmetric plunge (aoa0 physics) while
+                    # keeping the aoa-biased asymmetry at aoa15. Applied along panel normal.
+                    dCN_drive = dCN_drive * np.sign(A0)
                 if lb_cds_f2gate:
                     dCN_drive = dCN_drive * loss_frac       # L-B Cv = CNc*(1-Kn): vortex lift
                     #   accompanies TE separation; suction overshoot alone must not trigger (aoa0 leak)
