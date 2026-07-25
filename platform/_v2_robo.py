@@ -2137,6 +2137,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     L_bodyf = Fz_body;              T_bodyf = -Fx_body                               # BODY frame lift / thrust
     L_windf = Fz_body * _ca - Fx_body * _sa                                          # WIND frame lift (_|_ freestream)
     T_windf = -(Fx_body * _ca + Fz_body * _sa)                                       # WIND frame thrust (// freestream)
+    # (2026-07-25) per-step INSTANTANEOUS wind-frame forces, BOTH wings (Fxb_tot/Fzb_tot are
+    # single-wing; body force = 2x, cf. _robmean). Fig16 instantaneous-trace comparison;
+    # lift-drag blending diagnosis under twist.
+    _Fxb_inst = 2.0 * Fxb_tot + float(D_para) * _ca; _Fzb_inst = 2.0 * Fzb_tot + float(D_para) * _sa
+    L_inst = _Fzb_inst * _ca - _Fxb_inst * _sa
+    T_inst = -(_Fxb_inst * _ca + _Fzb_inst * _sa)
     if os.environ.get("UTREND_DBG") and _UT_LOG:
         np.save(os.environ["UTREND_DBG"], np.array(_UT_LOG))   # (t, mean|arel|deg, mean_att, sum_xgated)
     if os.environ.get("LB_DIAG") and _LB_DIAG:
@@ -2145,6 +2151,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
                 Fx_body=Fx_body, Fz_body=Fz_body, L_body=L_bodyf, T_body_f=T_bodyf,
                 L_wind=L_windf, T_wind=T_windf,                                       # rotated wind-axes lift/thrust
+                L_inst=L_inst, T_inst=T_inst,                                         # per-step instantaneous wind forces
                 L_bern=L_bern, T_bern=-Fx_bern, Lh_bern=Lh_imp, Xh_bern=Xh_imp,   # Bernoulli force (captures LEV)
                 L_visc=L_vis, D_visc=Fx_vis, T_lesp=-Fx_les,                      # friction (drag>0); LE suction (thrust)
                 D_prof=2.0 * np.mean(Xh_pd[last]),                                # separated-flow form drag (>0 = drag)
