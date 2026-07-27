@@ -1,5 +1,12 @@
 # FLUXV RoboEagle 气动模型 — Claim Chain 树
 
+> **代码本体（2026-07-27 用户裁定重构）**: 仿真结构已重构为 claim chain 树形式。
+> `platform/claim_nodes/*.yaml` = DevReady 资产（id/claim/state/freeze/evidence/refs/memory/guard/children）；
+> `platform/claim_dag.py` = ClaimNode + ClaimDAG（遍历/验证/修改检查）。
+> **修改规则**: validated 节点（N1/N4）freeze 禁改；已证伪节点（N5/N6）禁重走；
+> partial/open 节点可动但需证据+归因（四步流程）。
+> 本文档 = 树的人类可读视图，代码本体 = 树的机器可执行形式。
+
 > 纪律(memory [[feedback_claim_chain_research]],用户裁定 2026-07-26):
 > 模型 = 命题树。每个节点带证据状态;一切修改 = 树的有证据改写;validated 节点 = 不可动空间。
 > 状态:`✓validated` `~partial` `○open` `✗falsified(部分或全部)` `∎dead-end 留档`。
@@ -87,3 +94,6 @@ R: UVLM + L-B 修正层在 4 参数空间(f/tw/aoa/U)复现 RoboEagle 实测 L/D
   aoa5/U 全族近缓存)。LB_DIAG2 归因:hybrid 满额回补(N2.4 嫌疑)+ ds 幅值驱动(N3.1)。
   已排除:网格/spc/sym/swept_axis/a0_mode/a3d/cla3d/cds=0/f2gate/signed/运动学幅值全组合。
   主嫌 = 07-25 调用含 lb_lesp_crit=0.23(未记录)。**118 重扫阻塞于 E1 裁决**。
+- 2026-07-27: **代码本体重构完成**(521c523,用户裁定"仿真结构必须重构为 claim chain 树形式"):
+  `claim_nodes/*.yaml` DevReady 资产 + `claim_dag.py` DAG 本体。修改规则:
+  validated 节点(N1/N4)freeze 禁改;已证伪节点(N5/N6)禁重走;partial/open 节点可动但需证据+归因。
