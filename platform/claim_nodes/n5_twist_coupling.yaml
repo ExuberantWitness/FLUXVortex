@@ -1,0 +1,31 @@
+id: N5
+title: 扭转耦合响应
+claim: >
+  扭转扫升力形状：模型升力随扭转单调升（chop-release 嫌疑），实测 tw15-22 峰后滚落。
+  归因未定（独立节点 vs N2/N3 派生），Phase C-① 通道归因先判，禁先修。
+state: falsified
+freeze: false
+evidence:
+  - "platform/docs/diag/research_symmetry_break.md (tw15-22 峰后滚落)"
+  - "Fig17b/Fig19d 扭转扫: 模型 tw45 +9.98/+8.61 vs 实测 +6.06/+8.80"
+refs:
+  - "twist_amp_deg (扭转幅值, 标称=峰-峰半幅)"
+  - "twist_phase_deg=90 (扭转相位 +90, 用户裁定)"
+  - "Fig17b/Fig19d 扭转扫数据"
+memory:
+  - "feedback_claim_chain_research.md (归因未定前禁修改)"
+guard:
+  - id: n5_twist_shape
+    metric: "tw15-22 峰后滚落形状"
+    band: "实测 tw15-22 峰后滚落, 模型单调升 (D3 病灶)"
+    rule: "Phase C-① 通道归因先判, 禁先修"
+falsified_when: "模型升力随扭转单调升 vs 实测峰后滚落 → 已证伪, Phase C 归因未定"
+depends_on: ["N1", "N2", "N3"]
+provides_to: []
+children: []
+version: "v4.1 (2026-07-26 晋升)"
+changed: "2026-07-27 (D3 病灶入树)"
+notes: |
+  N5 是已证伪节点（D3 病灶）。模型升力随扭转单调升（chop-release 嫌疑），实测 tw15-22 峰后滚落。
+  归因未定：独立节点 vs N2/N3 派生。Phase C-① 通道归因先判，禁先修。
+  Phase A 改 N2.2 簿记会改变扭转响应基线 → C 必须在 A/B 定稿后重基线。

@@ -1,0 +1,37 @@
+id: N1
+title: UVLM 附着流主引擎
+claim: >
+  非定常涡格法（UVLM）作为附着流主引擎，以真实 RoboEagle 平面形状（raked TE, NACA-2406 camber）
+  求解环量与附加质量。静态对标 96%（稳态 5deg 6.87N vs 实测 6.65N）；引擎对 FLUXVortex
+  已验证 UVLM 0.1% 差（c285608）；le 网格生产区间（nc4-8）收敛；尾迹 1 周期截断充分（推力免疫、升力 ±4% 有界）；
+  运动学 v2 口径（标称幅值=峰-峰半幅）。k = 0.13-0.39（超 L-B 验证带 2-6×，红线外推但沿用）。
+state: validated
+freeze: true
+evidence:
+  - "guardrails.json r[L]=+5.3736/r[T]=+8.6010 (cruise point)"
+  - "platform/docs/diag/gap_lift.md 静态 96%"
+  - "platform/docs/diag/kinematics_audit.md 运动学口径 v2"
+  - "platform/docs/diag/grid_study.md le 网格收敛"
+  - "platform/docs/diag/research_symmetry_break.md 尾迹 1 周期截断"
+refs:
+  - "robowing_real.py (raked TE + NACA-2406 camber)"
+  - "diff_uvlm_unsteady_gpu.py (Warp GPU UVLM solver)"
+  - "le grid production interval (nc=4..8, spc=60·nc)"
+  - "wake 1 flap-period truncation (㊾)"
+memory:
+  - "project_fluxv_robowing_aero_calib.md ㊶-㊽ (le 网格/运动学 v2/静态 96%)"
+  - "project_fluxv_rvpm_ladder.md (S1/S2 已验证, 生产闭合回移植 S2)"
+  - "feedback_baseline_reproducibility.md (晋升验证流程)"
+guard:
+  - id: n1_cruise
+    metric: "r['L_wind'] + r['T_wind']"
+    band: "+5.3736 ±0.15, +8.6010 ±0.15 (cruise point U8/aoa5/f2.3/tw22.5)"
+    rule: "compare_models.py 守卫值不变即合法"
+falsified_when: "guardrail 数值越带（r[L] ±0.15 外）→ validated 自动转 ~partial，需开案"
+depends_on: []
+provides_to: ["N2", "N3", "N4", "N5"]
+version: "v4.1 (2026-07-26 晋升)"
+changed: "2026-07-26 (H16pltL2 -> H16+plateau_fn+fsep_lag+geo_stall_vec+le+d_para0.5+uiuc)"
+notes: |
+  N1 是 validated 不可动空间（红线的树解释）。一切修改必须落在 N2/N3/N4/N5 修正层，禁碰 UVLM 本体。
+  残留案例：E1/E2 角区不可复现不是 N1 病（验证区 N1 全对），是 N2.4/N3.1 修正层调用未落档。

@@ -1,0 +1,32 @@
+id: N4
+title: 推力簿记（CT 吸力一致式）
+claim: >
+  CT 吸力簿记与砍量一致：一致形式 −(1−√f2)²/4·ηCLaα²（砍量已留 ((1+√f2)/2)² 份额，推导严格零新常数）。
+  v4 时代双重记账（旧码把衰减后全吸力|CT|当前推加，+3.6N 假推力）已证伪；
+  完整 (1−√f2) 形式过拖阻 5× 证伪。候选 F 中 CT off，但诊断是地基。
+state: validated
+freeze: true
+evidence:
+  - "platform/docs/diag/research_symmetry_break.md (CT 一致簿记推导)"
+  - "platform/docs/diag/gap_thrust_f2.md (CT 双计 +3.6N 证伪)"
+  - "platform/docs/diag/research_lb_formula.md (Bangga Eq.19, η=0.95)"
+refs:
+  - "lb_dyn.py LBDynStrip.step (CT = -eta*CLa*alpha_eff^2*sqrt(f2))"
+  - "research_symmetry_break.md (CT 一致簿记推导)"
+  - "research_lb_formula.md (Bangga Eq.19)"
+memory:
+  - "feedback_baseline_reproducibility.md (晋升验证流程)"
+guard:
+  - id: n4_thrust_consistency
+    metric: "推力簿记不重不漏"
+    band: "CT 一致形式 −(1−√f2)²/4·ηCLaα²（候选 F 中 CT off，但诊断是地基）"
+    rule: "完整 (1−√f2) 形式过拖阻 5× 证伪，禁重走"
+falsified_when: "双计（|CT| 前向记账 +3.6N）→ 已证伪，禁重走"
+depends_on: ["N1", "N2"]
+provides_to: []
+children: []
+version: "v4.1 (2026-07-26 晋升)"
+changed: "2026-07-26 (CT off，但诊断是地基)"
+notes: |
+  N4 是 validated-诊断节点（候选 F 中 CT off，但诊断是地基）。CT 一致形式是唯一不重不漏的簿记，
+  完整 (1−√f2) 形式过拖阻 5× 已证伪。Phase A 若需分离压差阻，从 N2.2 走，不从这里开。

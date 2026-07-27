@@ -1,0 +1,54 @@
+id: N3
+title: ds 涡升增强（LEV 均值升力）
+claim: >
+  动态失速 LEV 周期平均升力，dCN_ds = cds·max(0,|A0|−crit) 幅值驱动，Tv=6 记忆累积，
+  面板法向施加。频率越高前缘涡越强来不及脱落（实测升力随 f 升），幅值驱动防对称扑动
+  正负半周抵消（符号驱动候选 G 证伪：aoa0 过抵消 −0.77、aoa5 斜率被杀）。
+state: partial
+freeze: false
+evidence:
+  - "platform/docs/diag/research_symmetry_break.md 候选 F (cds=2.5, mem)"
+  - "platform/docs/diag/research_lb_formula.md (A.3: Tv=6 记忆, L-B/Bangga)"
+  - "lb_dyn.py LBDynStrip (Tv=6 记忆累积, Tv→0 极限=瞬时式)"
+refs:
+  - "lb_dyn.py LBDynStrip.step (Tv=6 记忆累积)"
+  - "research_lb_formula.md A.3 (Bangga Eqs 21-27, Tv/Tvl)"
+  - "research_symmetry_break.md 候选 F (cds=2.5, panel-normal, Tv-mem)"
+memory:
+  - "feedback_claim_chain_research.md (四步流程)"
+guard:
+  - id: n3_dldf
+    metric: "dL/df Pearson 相关"
+    band: ">= 0.9 (v4.1 +0.93)"
+    rule: "trend_metrics.py 六族轨迹矩阵"
+  - id: n3_corner_leak
+    metric: "aoa0/U6 角区升力偏差"
+    band: "aoa0 +1.69 (v4.1), U6 +1.5 (v4.1) — 已知泄漏,Phase B 靶点"
+    rule: "趋势捕获率不恶化"
+falsified_when: "dL/df Pearson < 0.9 → validated 自动转 ~partial"
+depends_on: ["N1", "N2"]
+provides_to: ["N5"]
+children:
+  - id: N3.1
+    title: "幅值驱动 max(0,|A0|−crit)"
+    claim: "幅值驱动防对称扑动抵消，符号驱动候选 G 证伪。"
+    state: partial
+    freeze: false
+    evidence: ["research_symmetry_break.md 候选 F (cds=2.5) / 候选 G (signed 证伪)"]
+  - id: N3.2
+    title: "Tv=6 记忆累积"
+    claim: "Tv=6 记忆累积（L-B/Bangga 先例），瞬时式 = Tv→0 极限。"
+    state: validated
+    freeze: true
+    evidence: ["research_lb_formula.md A.3 (Tv=6)"]
+  - id: N3.3
+    title: "面板法向施加 = 涡诱导阻"
+    claim: "面板法向施加 = 物理涡力方向，高攻角法向后倾的 x 分量自然形成涡诱导阻。"
+    state: validated
+    freeze: true
+    evidence: ["research_symmetry_break.md (aoa15 推力 +2.3→+0.4 来源)"]
+version: "v4.1 (2026-07-26 晋升)"
+changed: "2026-07-26 (候选 F 晋升)"
+notes: |
+  N3 主节点 validated，N3.1 partial（角区过供，Phase B 靶点），N3.2/N3.3 validated。
+  已知泄漏：aoa0 +1.69（实测 +0.06）、U6 +1.5 —— Phase B 门控判据（形成数 + 相干性）。

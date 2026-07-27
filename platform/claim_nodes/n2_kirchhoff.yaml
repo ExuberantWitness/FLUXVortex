@@ -1,0 +1,62 @@
+id: N2
+title: Kirchhoff 分离砍量（L-B 双时滞）
+claim: >
+  以 L-B 双时滞（Tp=1.7 压力滞后 + Tf=3.0 分离点滞后）替代 v4 静态几何失速（geo_stall），
+  从静态极曲线反演分离点 f2，给失速后升力提供动态形状（dL/df Pearson −0.07→+0.93 治愈）。
+  砍量方向 = 全局风升力向（lb_chop_zonly），污染精确为零（L_wind 与 T_wind 正交）。
+state: partial
+freeze: false
+evidence:
+  - "platform/docs/diag/research_symmetry_break.md dL/df 治愈 Pearson −0.07→+0.93"
+  - "platform/docs/diag/research_lb_formula.md (Tp=1.7, Tf=3.0, Tv=6.0, Tvl=6.0)"
+  - "lb_static.py (S0: UIUC SD7003 实测极曲线 + flat-plate Newtonian 后失速)"
+refs:
+  - "lb_dyn.py LBDynStrip (Tp/Tf 双时滞 + Tv/Tvl 涡衰减)"
+  - "lb_static.py StaticPolar (UIUC SD7003 实测极曲线 + flat-plate Newtonian CD90_AR=1.20)"
+  - "research_lb_formula.md (Bangga 2020 Eqs 10-19, Tp/Tf/Tv/Tvl 常数表)"
+  - "research_static_polar.md (NACA2406 全角极曲线文献基础)"
+memory:
+  - "feedback_claim_chain_research.md (四步流程)"
+  - "feedback_baseline_reproducibility.md (晋升验证流程)"
+guard:
+  - id: n2_dldf
+    metric: "dL/df Pearson 相关"
+    band: ">= 0.9 (v4 −0.07 → v4.1 +0.93)"
+    rule: "trend_metrics.py 六族轨迹矩阵"
+  - id: n2_cruise_invariant
+    metric: "巡航点 L/T 不变"
+    band: "+5.3736 ±0.15, +8.6010 ±0.15"
+    rule: "compare_models.py 守卫值"
+falsified_when: "dL/df Pearson < 0.9 或 巡航点 L/T 越带 → validated 自动转 ~partial"
+depends_on: ["N1"]
+provides_to: ["N3", "N5"]
+children:
+  - id: N2.1
+    title: "f(α) 零拟合反演 + Tp/Tf 双时滞"
+    claim: "静态极曲线反演分离点 f2（UIUC SD7003 实测 + flat-plate Newtonian），Tp=1.7/Tf=3.0 双时滞。"
+    state: validated
+    freeze: true
+    evidence: ["research_lb_formula.md A.2", "lb_static.py StaticPolar"]
+  - id: N2.2
+    title: "砍量方向 = 全局风升力向"
+    claim: "砍量沿风升力方向施加（lb_chop_zonly），污染精确为零。"
+    state: falsified
+    freeze: false
+    evidence: ["research_symmetry_break.md D1 证伪（构造性零推力污染=丢分离压差阻）"]
+  - id: N2.3
+    title: "a3d 2D→3D 失速移位"
+    claim: "a3d 分离判断 α 下移（有效参数，禁跨截面外推）。"
+    state: open
+    freeze: false
+    evidence: ["research_caseA_redirect.md (有效参数, 禁跨截面外推, ㊹)"]
+  - id: N2.4
+    title: "hybrid 回补无 Kirchhoff 衰减"
+    claim: "hybrid 回补过准定常截面力（满额无衰减），导致角区双计。"
+    state: falsified
+    freeze: false
+    evidence: ["LB_DIAG2 通道分解 (aoa15 角区 +4.6N/周期均)"]
+version: "v4.1 (2026-07-26 晋升)"
+changed: "2026-07-27 (N2.4 E1 病灶入树)"
+notes: |
+  N2 主节点 validated，但 N2.2/N2.4 是已证伪节点（方向错/双计），N2.3 open（有效参数）。
+  Phase A 的靶点是 N2.2（分离压差阻），不是 N2 整体。

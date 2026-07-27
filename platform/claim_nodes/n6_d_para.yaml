@@ -1,0 +1,30 @@
+id: N6
+title: d_para 钝体阻
+claim: >
+  d_para 机构钝体阻（支撑板 + rig + 扑动周期分离），物理值 0.5×(U/8)²（照片正算∩滑翔极曲线双锚）。
+  对 T3b 证伪：∝U² 方向反（T3b 指纹随 U 衰减，零交叉 ≈U10）。
+state: dead_end
+freeze: true
+evidence:
+  - "platform/docs/diag/gap_t3_dpara.md (d_para=0.5, 机构钝体物理值)"
+  - "platform/docs/diag/claim_tree.md (N6 ∎对 T3b 证伪)"
+refs:
+  - "d_para=0.5 (机构钝体物理值, 照片正算∩滑翔极曲线双锚)"
+  - "gap_t3_dpara.md (T3b 开放案)"
+memory:
+  - "feedback_baseline_reproducibility.md (晋升验证流程)"
+guard:
+  - id: n6_dpara_physics
+    metric: "d_para 物理值"
+    band: "0.5×(U/8)² (照片正算∩滑翔极曲线双锚)"
+    rule: "T3b 指纹随 U 衰减, ∝U² 方向反, 对 T3b 证伪"
+falsified_when: "d_para=3.0 判死, ∝U² 方向反, 对 T3b 证伪 → ∎死路留档"
+depends_on: ["N1"]
+provides_to: []
+children: []
+version: "v4.1 (2026-07-26 晋升)"
+changed: "2026-07-17 (d_para=3.0 判死) / 2026-07-26 (T3b 证伪复核)"
+notes: |
+  N6 是 dead-end 节点（对 T3b 证伪，∎死路留档）。d_para=3.0 判死，物理值 0.5×(U/8)²。
+  T3b 指纹随 U 衰减（零交叉 ≈U10），∝U² 方向反，不是 T3b 的机理。
+  T3b 普适 +2.2N@U8 偏置（f/tw 无关，机理未明）→ Phase A 走 N2.2 分离压差阻，不走 d_para。
