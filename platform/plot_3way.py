@@ -5,8 +5,8 @@ from matplotlib.lines import Line2D
 os.chdir("/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV")
 DOCS="platform/docs"
 M=json.load(open(f"{DOCS}/repro_data.json"))
-SW4=json.load(open(f"{DOCS}/s6_sweep_v4.json"))
-SWF=json.load(open(f"{DOCS}/s6_sweep_candF.json"))
+SW4=json.load(open(f"{DOCS}/s6_sweep_v4_legacy.json"))   # v4 legacy baseline
+SWF=json.load(open(f"{DOCS}/s6_sweep_v41.json"))         # v4.1 production (promoted candidate F)
 TWS=[0.,5.,10.,15.,20.,22.5,25.,27.5,30.,35.,40.,45.]; FS=[1.4,1.7,2.0,2.3,2.6]
 FCOL={1.4:"#4477aa",1.7:"#66ccee",2.0:"#228833",2.3:"#cc3311",2.6:"#aa3377"}
 UCOL={6.:"#228833",8.:"#cc3311",10.:"#4477aa"}

@@ -503,6 +503,14 @@ def _place_rings_kernel(src: wp.array(dtype=V3, ndim=2), sg: wp.array(dtype=DTYP
 def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   flap_amp_deg=45.0, twist_amp_deg=22.5, twist_phase_deg=90.0,   # +90: twist LEADS flap 90deg
                   # (paper double-crank: psi~cos(wt), nose-down on downstroke = washout of the deep-stall AoA)
+                  closure='v41',           # (v4.1 promoted 2026-07-26) PRODUCTION closure preset:
+                  #   'v41'      = candidate F = wind-lift-direction chop + ds panel-normal(cds=2.5, Tv-mem)
+                  #                + CT OFF + sep_drag OFF. Cured dL/df (Pearson -0.07 -> +0.93);
+                  #                118-pt lift MAE 0.56 (v4 1.10), thrust MAE 1.09 (v4 1.59).
+                  #                Known residuals (claim_tree.md): D1 thrust drag deficit (N2.2),
+                  #                D2 ds corner oversupply (N3.1), D3 twist lift shape (N5).
+                  #   'v4_legacy'= pre-v4.1 closure (static geo_stall_vec Kirchhoff + uiuc polar).
+                  #   Explicit flags below (lb_closure/lb_cds/...) OVERRIDE the preset.
                   freq=2.0, n_cycle=5, steps_per_cycle=40, wake_rows=50, rk2=False, te_traj=False,
                   swept_axis=False, real_geom=False, real_lev=False, lev_sat=False, lev_merge=False, lev_tau=0.20,
                   lev_detach_deg=90.0,
@@ -572,15 +580,15 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lev_fmax=1.4,            # drop LEV rings once they convect past this chord fraction (detach off the TE)
                   lev_sign=1.0,            # LEV circulation sign vs bound (+1 = same sign -> adds lift; test both)
                   lev_le_off=0.0,          # LEV sheet ORIGIN = the geometric leading-edge POINT (physically correct: the shear layer separates at the sharp LE, then rolls up above the surface). Stability comes from the convect core, not an offset.
-                  attached_drag='none',    # 'none'|'faure'(static C_D(α_rel))|'legacy'(old visc/prof_drag)
+                  attached_drag=None,      # 'none'|'faure'(static C_D(α_rel))|'legacy'(old visc/prof_drag)
                   vnf_sat=True,            # (A/B) Polhamus/flat-plate saturation of the vnf excess (min branch); False = pure pi branch
                   faure_gate_pre=True,     # (A/B) faure attached gate uses PRE-constraint A0pre strict < ; False = legacy post-A0 <=
                   # --- 2026-06-30 additive empirical-residual corrections (default OFF; physics-anchored) ---
-                  geo_stall=False,         # Fix1: quasi-steady GEOMETRIC-pitch static stall lift loss (twist-driven, freq-independent)
+                  geo_stall=None,          # Fix1: quasi-steady GEOMETRIC-pitch static stall lift loss (twist-driven, freq-independent)
                   geo_stall_deg=12.0,      # static stall angle alpha_ss (NACA-2406 @ Re~1e5; airfoil property)
                   geo_stall_width=16.0,    # separation-spread angle: alpha past stall over which TE separation goes full (airfoil property)
                   geo_stall_peak=False,    # False=instantaneous psi(t) each step; True=cycle-peak |psi| amplitude
-                  geo_stall_vec=False,     # (C8) Kirchhoff factor scales the strip Bernoulli force VECTOR (pressure-differential
+                  geo_stall_vec=None,      # (C8) Kirchhoff factor scales the strip Bernoulli force VECTOR (pressure-differential
                   #   collapse, both lift AND its backward tilt at deep twist) instead of the legacy +z-only removal
                   kirch_tw=False,          # (2026-07-10 案A 变体B, research_bern_twist.md M1) LB/Kirchhoff attenuation
                   #   applied ONLY to the TWIST-induced share of the circulatory pressure (first-order incidence
@@ -606,44 +614,44 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   stall input by tau2*psi_dot (psi_dot = A_t*yfrac*Om*cos, ANALYTIC, ~f) + tau1 relaxation. Ayancik-Mulleners 2022
                   #   JFM 942:A38 constants (tau1=4.24 c/U; tau2=[4.24+0.0815*r^-7/9] c/U, r=reduced pitch rate). Zero new fitted consts.
                   gk_tau1=4.24, gk_c2=0.0815, gk_rfloor=0.02,   # Ayancik-Mulleners generalized-GK power-law (r_floor guards r->0 blowup)
-                  lb_closure=False,        # (L-B 2026-07-20) Leishman-Beddoes dynamic-stall closure replacing
+                  lb_closure=None,         # (L-B 2026-07-20) Leishman-Beddoes dynamic-stall closure replacing
                   #   geo_stall's static Kirchhoff with TIME-LAGGED f2 (Tp/Tf) + LEV vortex lift CNv (Tv/Tvl) +
                   #   tangential-suction sqrt(f2) decay. Per-strip LBDynStrip states (lb_dyn.py). Zero-fit
                   #   (research_lb_formula.md): Tp/Tf/Tv/Tvl NACA0012 lit defaults; f_qs from S0 polar inversion;
                   #   eta=0.95; LESP_crit existing. Replaces gk_stall/geo_stall_vec when on. Default OFF = v4 bit-exact.
                   lb_lesp_crit=0.18, lb_eta=0.95, lb_Tp=1.7, lb_Tf=3.0, lb_Tv=6.0, lb_Tvl=6.0,
-                  lb_hybrid=1.0,         # (restructure) F_LB section-force replacement weight: 1=hybrid (chopped
+                  lb_hybrid=None,         # (restructure) F_LB section-force replacement weight: 1=hybrid (chopped
                   #   part replaced by L-B section force), 0=pure chop (loss removed only). Decoupling test.
-                  lb_cds=0.0,            # (restructure 2026-07-23) dynamic-stall lift enhancement coefficient:
+                  lb_cds=None,            # (restructure 2026-07-23) dynamic-stall lift enhancement coefficient:
                   #   dCN_ds = lb_cds*max(0,|A0|-crit) per strip, additive lift increasing with k (A0 overshoot
                   #   grows with k, validated). Decouples slope (this term) from level (the chop). 0=off.
                   #   Literature anchor (2026-07-24): L-B/Bangga vortex increment dCNv~0.4-0.7 peak
                   #   (NACA0012 deep dynamic stall, McAlister-Carr) -> cds~2-4 at crit=0.18; guardrail
                   #   dCN_ds,peak <= 0.8. k-scaling: Ericsson-Reding linear-in-pitch-rate then saturating.
-                  lb_cds_mem=False,      # (2026-07-24) literature-faithful ACCUMULATED form: first-order
+                  lb_cds_mem=None,      # (2026-07-24) literature-faithful ACCUMULATED form: first-order
                   #   relaxation of the enhancement state toward the instantaneous drive with semi-chord
                   #   time constant lb_Tv=6 (L-B vortex passage). The purely instantaneous form has NO
                   #   literature precedent (L-B CNv and LDVM shed-vortex lift both carry memory); this is
                   #   the Tv-finite version, magnitude-driven (avoids the signed CNv symmetric-flap
                   #   cancellation). False = instantaneous (Tv->0 limit, recorded approximation).
-                  lb_cds_f2gate=False,   # (2026-07-24) gate the ds drive by the separated fraction
+                  lb_cds_f2gate=None,   # (2026-07-24) gate the ds drive by the separated fraction
                   #   loss_frac = 1-Kn: L-B's own vortex-lift form is Cv = CNc*(1-Kn) — vortex lift
                   #   accompanies TE separation, suction overshoot alone (|A0|>crit at aoa0 mid-stroke,
                   #   measured flat there) must NOT trigger it. Fixes the aoa0 gating leak.
-                  lb_cds_zonly=False,    # (2026-07-24) apply the ds enhancement to the LIFT channel
+                  lb_cds_zonly=None,    # (2026-07-24) apply the ds enhancement to the LIFT channel
                   #   only (body z), not along the panel normal: L-B is a small-flap-angle bookkeeping
                   #   (helicopter rotors) where normal ≈ lift direction; at ±22.5deg flap the normal's
                   #   x-projection adds +3..+7N spurious thrust (measured dT/df is only +0.7..+1.6 and
                   #   v4 already matches it). Drag bookkeeping stays with the CT term. Recorded
                   #   approximation, NOT a fit.
-                  lb_chop_zonly=False,   # (2026-07-24) lift-channel-only L-B closure: chop (and hybrid
+                  lb_chop_zonly=None,   # (2026-07-24) lift-channel-only L-B closure: chop (and hybrid
                   #   replacement) applied to the lift channel only; thrust channel inherited from the
                   #   UVLM (v4 band). See the dFv application site for the full rationale.
-                  lb_ct=True,            # (2026-07-25) CT suction-loss drag term on/off. OFF for the
+                  lb_ct=None,            # (2026-07-25) CT suction-loss drag term on/off. OFF for the
                   #   candidate-E architecture (lift channel = L-B z-closure, thrust = 100% v4): the
                   #   term's alpha^2 ~ f^2 growth flattens the dT/df slope (measured thrust rises
                   #   with f; the f-independent T3b offset is an OPEN case, not to be absorbed).
-                  lb_cds_signed=False,   # (2026-07-25) SIGNED vortex-force drive sign(A0)*excess:
+                  lb_cds_signed=None,   # (2026-07-25) SIGNED vortex-force drive sign(A0)*excess:
                   #   the LEV forms on the opposite side on the upstroke -> force flips -> symmetric
                   #   cancellation at aoa0 (measured +0.06), aoa-bias asymmetry kept at aoa15.
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
@@ -690,6 +698,37 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
       strip whose |sin a_eff| exceeds lesp_crit_deg (the LESP criterion), then convects + induces freely
       like the TEV wake. lev_klev scales the shed strength. (Viscous term added separately, Re-based.)"""
     dev = cfg.DEVICE; NP = cfg.NP_DTYPE
+    # ---- PRODUCTION CLOSURE PRESETS (v4.1 promoted 2026-07-26, claim_tree.md). lb_* signature
+    # defaults are None = "take from preset"; any flag passed explicitly overrides the preset.
+    # 'v41'       = frozen candidate F: L-B dynamic-stall closure, chop along WIND-LIFT direction
+    #               (exactly zero thrust contamination at any aoa), ds vortex lift along panel
+    #               normal (cds=2.5, Tv-mem accumulated) = physical vortex-induced drag, CT off,
+    #               sep_drag off. Cured dL/df (Pearson -0.07 -> +0.93); lift MAE 0.56 (v4 1.10),
+    #               thrust MAE 1.09 (v4 1.59) on the 118 grid.
+    # 'v4_legacy' = pre-v4.1 closure: static geo_stall_vec Kirchhoff + uiuc measured polar.
+    _CLOSURES = {
+        'v41': dict(lb_closure=True, lb_hybrid=1.0, lb_cds=2.5, lb_cds_mem=True,
+                    lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
+                    lb_chop_zonly=True, lb_ct=False,
+                    geo_stall=False, geo_stall_vec=False, attached_drag='uiuc'),
+        'v4_legacy': dict(lb_closure=False, lb_hybrid=1.0, lb_cds=0.0, lb_cds_mem=False,
+                          lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
+                          lb_chop_zonly=False, lb_ct=True,
+                          geo_stall=False, geo_stall_vec=True, attached_drag='uiuc'),
+    }
+    _pre = _CLOSURES[closure]
+    if lb_closure is None: lb_closure = _pre['lb_closure']
+    if lb_hybrid is None: lb_hybrid = _pre['lb_hybrid']
+    if lb_cds is None: lb_cds = _pre['lb_cds']
+    if lb_cds_mem is None: lb_cds_mem = _pre['lb_cds_mem']
+    if lb_cds_f2gate is None: lb_cds_f2gate = _pre['lb_cds_f2gate']
+    if lb_cds_zonly is None: lb_cds_zonly = _pre['lb_cds_zonly']
+    if lb_cds_signed is None: lb_cds_signed = _pre['lb_cds_signed']
+    if lb_chop_zonly is None: lb_chop_zonly = _pre['lb_chop_zonly']
+    if lb_ct is None: lb_ct = _pre['lb_ct']
+    geo_stall = _pre['geo_stall'] if geo_stall is None else geo_stall
+    geo_stall_vec = _pre['geo_stall_vec'] if geo_stall_vec is None else geo_stall_vec
+    attached_drag = _pre['attached_drag'] if attached_drag is None else attached_drag
     # real_geom=True -> REAL RoboEagle planform (raked TE, measured chord(y)) + NACA-2406 camber, LE at
     # x=0 / TE at x=+c (chord in +x = flow dir, Vinf=+x flows LE->TE). Else flat rectangular wing.
     C0 = (rg.robowing_real(nc, ns, half_span, root_off=root_off, cosine_chord=cosine_chord) if real_geom
@@ -779,6 +818,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lb_strips = None                                            # (L-B) per-strip LBDynStrip dynamic-stall states
     lb_ds_state = None                                          # (L-B) per-strip accumulated ds-enhancement state (Tv memory)
     _LB_DIAG = []                                               # (L-B S-cal1) per-step aeff/fqs/f2/chop accumulator
+    _LB_DIAG2 = []                                              # (2026-07-27) per-step correction-channel decomposition
     gk_X = None                                                 # (病灶#1) full-GK dynamic-stall separation state (per strip)
     fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
     fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
@@ -1351,6 +1391,17 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 lb_CNf[j] = rj["CNf"]
             if os.environ.get("LB_DIAG") and t >= N - steps_per_cycle:
                 _LB_DIAG.append((np.degrees(aeff_le), lb_fqs.copy(), lb_f2.copy(), A0.copy()))
+            if os.environ.get("LB_DIAG2") and t >= N - steps_per_cycle:
+                # (2026-07-27 aoa15 病灶归因) per-step CHANNEL decomposition of the correction
+                # layer: (chop z-sum, hybrid addback z-sum, ds z-sum, loss_frac, Fb_strip_z,
+                # F_LB_strip) — distinguishes "chop removes too little" from "addback adds
+                # too much" from "ds oversupplies".
+                _chz = float(np.sum((-np.tile(loss_frac, nc)[:, None] * Fb)[:, 2]))
+                _hbz = float(np.sum(F_LB_panel[:, 2]))
+                _dsz = float(np.sum(F_ds_panel[:, 2])) if lb_cds > 0.0 else 0.0
+                _LB_DIAG2.append((_chz, _hbz, _dsz, loss_frac.copy(),
+                                  Fb.reshape(nc, ns, 3)[:, :, 2].sum(0).copy(),
+                                  F_LB_strip.copy()))
             if os.environ.get("LB_DBG") and t % max(steps_per_cycle // 4, 1) == 0:
                 lev_n = int(np.sum(np.array([s.lev_active_prev for s in lb_strips])))
                 print(f"[lb t={t:4d}] |A0|max={np.abs(A0).max():.3f} (crit {lb_lesp_crit}) "
@@ -1360,6 +1411,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # f2->1/CNv->0/CT small in attached flow). (1) vectorial Kirchhoff scaling by dynamic f2;
             # (2) LEV vortex lift CNv along panel normal; (3) tangential CT suction decay as drag. ----
             nnp = nrm.numpy()
+            F_ds_panel = np.zeros_like(Fb)                             # default (diag2 reads it)
             loss_frac = 1.0 - ((1.0 + np.sqrt(lb_f2)) / 2.0) ** 2
             # HYBRID (user-approved 2026-07-23): the chopped-off separated part is REPLACED by the L-B
             # section force (quasi-steady circulatory x Kirchhoff + LEV, NO Theodorsen decay), not dropped.
@@ -2169,6 +2221,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     if os.environ.get("LB_DIAG") and _LB_DIAG:
         arr = np.array(_LB_DIAG)                                # (nstep, ns, 3): aeff_deg, f_qs, f2
         np.save(os.environ["LB_DIAG"], arr)
+    if os.environ.get("LB_DIAG2") and _LB_DIAG2:
+        np.save(os.environ["LB_DIAG2"], np.array(
+            [(c, h, d) for (c, h, d, _l, _f, _s) in _LB_DIAG2]))        # (nstep, 3) channel z-sums
+        np.save(os.environ["LB_DIAG2"] + ".arr", np.array(
+            [(c, h, d) + tuple(l) + tuple(f) + tuple(s)
+             for (c, h, d, l, f, s) in _LB_DIAG2]))                       # + loss_frac/Fb_z/F_LB per strip
     return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
                 Fx_body=Fx_body, Fz_body=Fz_body, L_body=L_bodyf, T_body_f=T_bodyf,
                 L_wind=L_windf, T_wind=T_windf,                                       # rotated wind-axes lift/thrust

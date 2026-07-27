@@ -307,13 +307,13 @@ def selfcheck(out):
 
 
 if __name__ == "__main__":
-    # 默认口径 = 生产真身 s6_sweep_v4.json(d_para=0.5,机构钝体物理值 + Blasius visc,
+    # 默认口径 = 生产真身 s6_sweep_v41.json(2026-07-26 晋升的候选 F)。旧 v4 = s6_sweep_v4_legacy.json(d_para=0.5,机构钝体物理值 + Blasius visc,
     # 滑翔锚验证成立,gap_t3_dpara.md)。s6_sweep_v4eff.json(d_para=3.0)是 T3 案卷
     # 判废的补偿显示口径:它把 dT/dU 从生产真身的 −0.195 虚放大到 −0.82(纯 U² 惩罚
     # 伪影,非模型缺陷)——不作趋势评估基线,仅供旧图对照。
-    default = os.path.join(DOCS, "s6_sweep_v4.json")
+    default = os.path.join(DOCS, "s6_sweep_v41.json")   # v4.1 production (promoted 2026-07-26)
     path = sys.argv[1] if len(sys.argv) > 1 else default
     tag = sys.argv[2] if len(sys.argv) > 2 else None
     out = scorecard(path, tag=tag)
-    if os.path.basename(path) == "s6_sweep_v4.json":
+    if os.path.basename(path) == "s6_sweep_v4_legacy.json":   # self-check gate = v4 LEGACY disease fingerprint
         selfcheck(out)
