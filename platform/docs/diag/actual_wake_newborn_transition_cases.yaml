@@ -1,0 +1,191 @@
+artifact: actual_wake_newborn_transition_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c1
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2b
+  - N3.1j3b6d18c2b3b2a
+  - N3.1j3b6d18c2b3b2b
+status: executed_go
+stage: S3y_actual_attachment_release_and_newborn_state_injection
+role: no_force_topology_change_and_state_injection_oracle
+
+question: >
+  Can the newest body-essential row of the frozen two-band actual wake be
+  released with the one-sided physical sheet-normal velocity, while a new
+  body-essential row and two explicit newborn P2 temporal rows are added in
+  an exact chronological P1/P2 injection, without constructing a zero-area
+  initial band or inferring/averaging any scalar state?
+
+cause_from_s3x:
+  data_fingerprint:
+    - >
+      S3x is second order only at fixed band_count=2; every trajectory keeps
+      the newest P1/P2 row body-essential.
+    - >
+      In the actual S3n state, the prescribed static-body attachment speed is
+      exactly 0 while the free-wake P1 speed reaches 0.1157398671.
+    - >
+      Appending a newborn band after S3x with identical released/current body
+      edges fails deterministically as a degenerate triangle.
+    - >
+      Reclassifying the retiring edge only for a one-sided actual-velocity
+      extrapolation gives nonzero normal release speeds from 0.0054881 to
+      0.1924193; therefore a physical finite band exists without a geometric
+      epsilon or smoothing.
+    - >
+      MaterialWakeHistory.append exists, but no operator changes the old
+      body row into an internal/free row, creates the new body row, or maps
+      the old 45 P2 DOFs into the enlarged 63-DOF chronological state.
+  node: N3.1j3b6d18c2b3b3b2c1
+  movable_space: >
+    Add only a typed attachment-release projector and an exact chronological
+    P1/P2 augmentation map around the frozen S3s/S3t/S3x operators. The
+    newborn midpoint/current P2 rows must be explicit inputs. No spatial
+    operator, stage equation, pressure, force, load target, epsilon offset,
+    smoothing or damping may change.
+  classification: missing_boundary_role_transition_and_P2_state_injection
+
+primary_evidence:
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for Unsteady Aerodynamic
+      Analysis with Relaxed Wakes, 2021, sections 2.1.3, 3.2 and 3.3.
+    implication: >
+      New wake elements occupy the region between previous and current
+      shedding-edge locations; the gapless sheet carries circulation
+      continuously from the body into the wake.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28.
+    doi: https://doi.org/10.3390/aerospace9010028
+    implication: >
+      A new row is created each step, its strength is assigned in that step
+      and thereafter retains material identity while coefficients account
+      for wake stretching.
+  - source: >
+      Roccia et al., Wind Energy Science 9 (2024), Appendix C2.
+    doi: https://doi.org/10.5194/wes-9-385-2024
+    implication: >
+      After circulation is solved, the wake is convected and new segments
+      are propagated; the previous-time branch permits an explicit geometry
+      transition but does not justify scalar interpolation.
+  - source: >
+      Dumoulin, Eldredge & Chatelain, Journal of Fluid Mechanics 977 (2023)
+      A22, equations 2.4-2.7.
+    doi: https://doi.org/10.1017/jfm.2023.997
+    implication: >
+      Shed-sheet strength is a coupled unknown constrained by body
+      no-through-flow, Kelvin conservation and an unsteady Kutta condition;
+      it is not an average of old and new body values.
+
+candidate_rewrite: >
+  Extrapolate the one-sided physical normal speed at the retiring attachment
+  using the same owner-aware vertex-star identity as S3t, but do not prescribe
+  body kinematics on that retiring row. Move that row to a finite released
+  position, duplicate a new current body row, append one band, and construct
+  exact old-P1/P2-to-augmented permutations from chronological integer
+  identities. Require the newborn middle and current P2 rows as named inputs.
+
+canonical:
+  initial_state: "base_solution.wake_history from frozen S3n"
+  initial_counts:
+    band_count: 2
+    span_vertex_count: 5
+    global_P1_dof_count: 15
+    global_P2_dof_count: 45
+  augmented_counts:
+    band_count: 3
+    global_P1_dof_count: 20
+    global_P2_dof_count: 63
+    old_P1_injected_dof_count: 15
+    old_P2_injected_dof_count: 45
+    newborn_P2_dof_count: 18
+  release:
+    timestep: 0.01
+    stage_fractions: [0.5, 1.0]
+    geometry_gauge: "one-sided vertex-star normal velocity"
+    current_body_edge: "frozen canonical body cut"
+  scalar_counterfactual:
+    upstream_row: "exact old body-attachment trace"
+    midpoint_row: "explicit deterministic nonconstant input"
+    current_row: "explicit deterministic nonconstant input"
+    inference_allowed: false
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, -0.7, 0.4]
+    rotation_deg: 29.0
+    translation: [0.3, -0.5, 0.8]
+
+required_identities:
+  - "retiring attachment receives a nonzero one-sided actual normal speed"
+  - "release speed has zero tangential component in the frozen geometry gauge"
+  - "naive coincident-edge append fails before any solve"
+  - "half/full newborn bands have positive area without an epsilon offset"
+  - "old P1/P2 states inject exactly into the enlarged chronological state"
+  - "old body attachment becomes an internal seam and the new row becomes body-essential"
+  - "newborn upstream row equals the released old trace exactly"
+  - "explicit midpoint/current rows round-trip without inference or averaging"
+  - "history seams, P2 permutation and face_mu remain exact"
+  - "the complete transition is rigid-frame covariant"
+  - "invalid traces, topology identities and coincident edges fail closed"
+
+thresholds:
+  release_speed_abs_min: 1.0e-3
+  release_tangential_velocity_abs_max: 2.0e-14
+  release_projection_rank_deficiency_max: 0
+  release_projection_condition_number_max: 1.0e4
+  naive_coincident_append_failure_count_min: 1
+  minimum_half_stage_face_area_min: 1.0e-7
+  minimum_full_stage_face_area_min: 2.0e-7
+  P1_injection_abs_max: 0.0
+  P2_injection_abs_max: 2.0e-15
+  chronological_seam_abs_max: 2.0e-15
+  P2_roundtrip_abs_max: 2.0e-15
+  boundary_role_overlap_count_max: 0
+  rigid_geometry_abs_max: 2.0e-14
+  rigid_release_velocity_abs_max: 2.0e-13
+  rigid_topology_mismatch_count_max: 0
+  invalid_transition_failure_count_min: 3
+  inferred_scalar_count_max: 0
+  epsilon_offset_abs_max: 0.0
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  go: >
+    Every release, finite-area, injection, role, seam, rigid and fail-closed
+    gate passes. Validate only the topology-changing release/newborn state
+    injection, then authorize a separate coupled newborn midpoint/full
+    algebraic and material-time gate.
+  no_go: >
+    Preserve the failed release DOF, map, role or seam. Do not add a
+    geometric epsilon, average scalar rows, reuse body velocity for the
+    released row, smooth the wake, relax a threshold or consult a load target.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate does not solve newborn midpoint/current strength, advance more
+  than one insertion event, compute pressure/force/LESP, compare experiments
+  or activate production.
+
+execution:
+  result: GO
+  result_file: actual_wake_newborn_transition_results.json
+  passed_checks: 10
+  total_checks: 10
+  aggregate_metrics:
+    release_speed_abs_min: 0.005488075034531551
+    release_speed_abs_max: 0.19241925019518838
+    release_tangential_velocity_abs_max: 6.992893892674703e-18
+    release_projection_condition_number_max: 13.37650684135031
+    release_projection_pointwise_relative_residual_max: 68.79708102290975
+    minimum_half_stage_face_area: 6.859127706070952e-06
+    minimum_full_stage_face_area: 1.3717861146016946e-05
+    P1_injection_abs_max: 0.0
+    P2_injection_abs_max: 0.0
+    chronological_seam_abs_max: 0.0
+    P2_roundtrip_abs_max: 0.0
+    rigid_release_velocity_abs_max: 6.661338147750939e-16
+    invalid_transition_failure_count: 3
+  claim_effect: >
+    The preregistered topology/role/state-injection gate passes, but the
+    retained release-fit residual is not a spatial-convergence result.
+    Keep the broad parent partial; validate only the typed kinematic and
+    chronological injection identities, and require a separate one-sided
+    boundary-limit convergence gate before coupled newborn time marching.

@@ -1,0 +1,54 @@
+artifact: vortex_entrainment_sheet_equation_oracle
+date_preregistered: "2026-07-27"
+claim_node: N2.6c2b
+scope:
+  allowed:
+    - "Off-sheet vortex/source surface influence from DeVoria-Mohseni Eq.15"
+    - "Local VES mass and momentum residuals from Eqs.6-7"
+    - "Named circulation, mass, momentum and entrainment release ledger"
+  forbidden:
+    - "LESP, BEF, force, pressure-error or experimental-target calibration"
+    - "A smooth-leading-edge release closure"
+    - "On-sheet self-advection or an empirical vortex/source core"
+    - "Changing N1, unified Bernoulli pressure or frozen DDE identities"
+cases:
+  - id: orthogonal_vortex_entrainment_influence
+    gates:
+      forbidden_component_error: 1.0e-13
+      superposition_error: 1.0e-13
+      nonzero_vortex_signal: true
+      nonzero_entrainment_signal: true
+  - id: proper_rotation_covariance
+    gates:
+      velocity_rotation_error: 2.0e-13
+  - id: source_monopole_far_field
+    gates:
+      relative_far_field_error: 2.0e-4
+  - id: local_mass_momentum_balance
+    gates:
+      mass_residual: 1.0e-13
+      momentum_residual: 1.0e-13
+      omitted_entrainment_residual_minimum: 1.0e-3
+      omitted_pressure_residual_minimum: 1.0e-3
+  - id: conventional_vortex_sheet_limit
+    gates:
+      velocity_limit_error: 1.0e-13
+      mass_residual: 1.0e-13
+      momentum_residual: 1.0e-13
+  - id: named_release_junction
+    gates:
+      maximum_conservation_residual: 1.0e-13
+      omitted_channel_residual_minimum: 1.0e-3
+promotion:
+  go_if:
+    - "Every equation, covariance, far-field, degeneration and ledger gate passes"
+    - "No target force, smoothing parameter or on-sheet regularization exists"
+  claim_if_passed: >
+    A vortex-entrainment companion state is numerically distinguishable from
+    the DDE vortex substate and can carry named mass, momentum and entrainment
+    conservation without a force target.
+  must_not_claim:
+    - "N2.6b4 reconstructs the required near-wall field"
+    - "The smooth leading-edge release state is predicted"
+    - "The free VES self-advection or unified pressure is production-ready"
+    - "V4.1 accuracy has improved"

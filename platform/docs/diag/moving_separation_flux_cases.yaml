@@ -1,0 +1,83 @@
+version: 1
+date_preregistered: "2026-07-28"
+frozen_before_implementation: true
+claim_node: N2.6c2c1
+scope: >
+  Surface Reynolds-transport identity for already-known IBL storage and
+  physical flux across an oriented separation curve moving relative to the
+  material wing surface; not a separation or VES-release closure.
+authority:
+  primary_sources:
+    - title: >
+        Transport relations for surface integrals arising in the formulation
+        of balance laws for evolving fluid interfaces
+      authors: "Cermelli, Fried & Gurtin"
+      venue: "Journal of Fluid Mechanics 544 (2005), 339-351"
+      doi: "10.1017/S0022112005006695"
+      identity: >
+        Surface transport theorem for an evolving subsurface with a boundary
+        moving relative to the surface normal trajectories.
+    - title: >
+        The vortex-entrainment sheet in an inviscid fluid: theory and
+        separation at a sharp edge
+      authors: "DeVoria & Mohseni"
+      venue: "Journal of Fluid Mechanics 866 (2019), 660-688"
+      doi: "10.1017/jfm.2019.134"
+      limit: >
+        The published release construction is for a sharp edge; smooth-surface
+        moving separation was explicitly deferred and is not imported here.
+claim_under_test: >
+  For a material surface conservation law with storage U and tangential flux
+  F, the outward flux across a curve whose signed speed relative to the
+  material surface is c_rel equals (F dot nu - c_rel U) ds. Applied to the
+  exact IBL skeleton this yields only momentum-defect and energy-defect rates.
+forbidden_inputs:
+  - LESP
+  - BEF
+  - lift
+  - thrust
+  - force
+  - pressure_residual
+  - target_load
+  - gamma_release
+  - entrainment_release
+  - sheet_core_radius
+cases:
+  - id: stationary_boundary_reduction
+    gates:
+      momentum_error: 1.0e-14
+      energy_error: 1.0e-14
+  - id: planar_expanding_and_contracting_control_region
+    gates:
+      expanding_inventory_residual: 1.0e-14
+      contracting_inventory_residual: 1.0e-14
+  - id: spherical_cap_moving_latitude
+    gates:
+      momentum_inventory_residual: 1.0e-13
+      energy_inventory_residual: 1.0e-13
+  - id: physical_flux_plus_boundary_sweep
+    gates:
+      momentum_superposition_error: 1.0e-14
+      energy_superposition_error: 1.0e-14
+  - id: proper_rotation_objectivity
+    gates:
+      momentum_rotation_error: 2.0e-13
+      energy_invariance_error: 2.0e-13
+  - id: orientation_reversal
+    gates:
+      momentum_antisymmetry_error: 1.0e-14
+      energy_antisymmetry_error: 1.0e-14
+  - id: invalid_inputs
+    gates:
+      rejected_count: 4
+go:
+  identity: >
+    Every manufactured gate passes without pressure, force, release amplitude,
+    or target data entering the operator.
+  physical_promotion: false
+no_go:
+  - "Calling IBL defect flux a complete newborn VES state"
+  - "Inferring c_rel, conormal, or edge measure from a load residual"
+  - "Importing sharp-edge shedding angle or strength to a smooth leading edge"
+  - "Advancing N2.6c2c without qualified near-wall field evidence"
+

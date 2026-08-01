@@ -1,0 +1,145 @@
+artifact: wake_tangential_gauge_transport_preregistration
+date_preregistered: "2026-07-28"
+claim_nodes:
+  - N3.1j3b6d18c2b1
+  - N3.1j3b6d18c2b2
+depends_on_claims:
+  - N3.1j3b6d18c2a
+  - N3.1j4c5
+  - N3.1j4c6
+status: executed_go
+stage: S3i_tangential_gauge_material_transport_identity
+role: no_force_manufactured_ALE_identity_oracle
+
+question: >
+  When the computational wake mesh uses only the physical normal velocity
+  plus a chosen tangential gauge, is freezing P2 potential-jump coefficients
+  sufficient; or must the scalar material invariant obey the ALE transport
+  equation d_mu/dt|mesh + (u_t-w_mesh_t).grad_s(mu)=0?
+
+cause_from_s3h:
+  data_fingerprint:
+    - "N3.1j4c1 falsified a globally continuous full-vector P1 sheet-velocity projection"
+    - "N3.1j4c5/c6 validated only the normal geometry velocity and explicitly left tangential reparameterization separate"
+    - "MaterialWakeBand.material_update freezes potential_jump_rows whenever geometry moves"
+    - "a stationary planar sheet with u_s=0.3*sin(pi*s), u_r=-0.2*sin(pi*r), T=0.2 and the canonical P2 mu0 gives 0.0567519 max error if normal-only geometry also freezes mu"
+  node: N3.1j3b6d18c2b
+  movable_space: >
+    Only the kinematic relationship among fluid sheet-average velocity,
+    computational tangential gauge and material potential-jump transport may
+    change. The validated normal-geometry field, body/wake strength equation,
+    source/doublet kernels, attachment, pressure and force paths are frozen.
+  classification: missing_tangential_gauge_material_transport_component
+
+primary_evidence:
+  - source: >
+      Ambrose & Masmoudi, Well-Posedness of 3D Vortex Sheets with Surface
+      Tension, Communications in Mathematical Sciences 5 (2007), 391-430
+    url: >
+      https://archive.intlpress.com/site/pub/files/_fulltext/journals/cms/2007/0005/0002/CMS-2007-0005-0002-a009.pdf
+    implication: >
+      A surface evolves as X_t=U*n+V1*t1+V2*t2; its tangential velocities
+      reparameterize the surface and may be selected independently of the
+      normal geometric velocity.
+  - source: >
+      Flow interactions and forward flight dynamics of tandem flapping wings,
+      Journal of Fluid Mechanics (2026), equations 2.15-2.17
+    url: >
+      https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/flow-interactions-and-forward-flight-dynamics-of-tandem-flapping-wings/6248B3BA0B6D58CF2EF029E1ECEB3314
+    implication: >
+      The Birkhoff-Rott mean velocity advances a Lagrangian free sheet while
+      the unnormalised circulation is a material variable and is conserved.
+  - source: >
+      Ambrose, The Velocity Field and Birkhoff-Rott Integral for Nondecaying,
+      Nonperiodic Vortex Sheets, SIAM J. Applied Mathematics 85 (2025)
+    url: https://doi.org/10.1137/24M164848X
+    implication: >
+      The sheet velocity has a continuous normal component but tangential
+      one-sided velocities jump; a numerical tangential gauge must not be
+      silently identified with material transport.
+  - source: >
+      Krebs dissertation (2021), sections 3.2-3.3
+    implication: >
+      Wake vertices relax with local velocity and old wake strength remains
+      material; surface/newborn-wake strength is re-solved after relaxation.
+
+candidate_rewrite: >
+  Let u_bar be the sheet-average fluid velocity and let
+  w_mesh=(u_bar.n)n+w_gauge_t be the chosen computational geometry velocity.
+  The wake potential jump is a scalar material invariant and therefore obeys
+  d_mu/dt|mesh + (u_bar_t-w_gauge_t).grad_s(mu)=0. Freezing coefficients is
+  valid only in the Lagrangian gauge w_gauge_t=u_bar_t.
+
+canonical:
+  surface:
+    coordinate_domain: "[0,1]x[0,1]"
+    embedding: "[s,r,0]"
+    evaluation_grid: [41, 39]
+    evaluation_margin: 0.025
+  time:
+    start: 0.0
+    end: 0.2
+  material_velocity:
+    equation: "[a*sin(pi*s), b*sin(pi*r), 0]"
+    a: 0.3
+    b: -0.2
+  material_potential_jump:
+    equation: "0.15+0.4*s+0.2*r+0.3*s*r+0.25*s^2-0.1*r^2"
+  gauges:
+    eulerian_fraction: 0.0
+    intermediate_fraction: 0.37
+    lagrangian_fraction: 1.0
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, 0.7, -0.3]
+    rotation_deg: 37.0
+    translation: [-0.4, 0.6, 0.2]
+
+required_identities:
+  - "the exact Lagrangian map conserves mu on every material trajectory"
+  - "each gauge satisfies d_mu/dt|mesh+(u_t-w_mesh_t).grad_s(mu)=0"
+  - "Eulerian, intermediate and Lagrangian gauges describe the same scalar field"
+  - "the scalar transport identity is unchanged by a generic rigid transform"
+  - "normal-only geometry plus frozen mu exhibits the preregistered nonzero counterexample"
+  - "boundary material velocity is zero, so the counterexample is not an attachment failure"
+  - "no strength solve, pressure, force, LESP, core, smoothing or target load enters"
+
+thresholds:
+  material_trajectory_mu_abs_max: 5.0e-14
+  ale_transport_residual_abs_max: 5.0e-14
+  cross_gauge_scalar_abs_max: 5.0e-14
+  rigid_frame_residual_abs_max: 5.0e-14
+  boundary_velocity_abs_max: 5.0e-14
+  naive_frozen_mu_abs_error_min: 0.05
+
+decision:
+  go: >
+    All ALE/material/gauge/objectivity identities pass and the naive frozen
+    counterexample exceeds its lower bound. Falsify c2b1, validate only the
+    continuum identity in c2b2, and authorize a later discrete P2 transport
+    convergence gate.
+  no_go: >
+    Any identity failure blocks the rewrite. Do not alter the velocity
+    amplitudes, final time, thresholds, P2 field, normal geometry operator,
+    timestep, core, smoothing, pressure or force target.
+  production_activation_allowed: false
+
+scope_limit: >
+  This is an exact manufactured continuum identity. It does not validate a
+  discrete P2 transport scheme, actual body/wake-induced velocity,
+  post-relaxation strength equilibrium, pressure, force, LEV or production.
+
+execution:
+  date: "2026-07-28"
+  result_file: wake_tangential_gauge_transport_results.json
+  decision: GO
+  aggregate_metrics:
+    material_trajectory_mu_abs_max: 4.440892098500626e-16
+    ale_transport_residual_abs_max: 1.6653345369377348e-16
+    cross_gauge_scalar_abs_max: 4.440892098500626e-16
+    rigid_frame_residual_abs_max: 3.0357660829594124e-16
+    boundary_velocity_abs_max: 3.6739403974420595e-17
+    naive_frozen_mu_abs_error: 0.056751900102840924
+  claim_effect: >
+    Falsify/freeze c2b1 and validate/freeze only the continuum ALE identity
+    in c2b2. Authorize a separate discrete P2 transport gate; do not activate
+    actual induced velocity, pressure, force or production.

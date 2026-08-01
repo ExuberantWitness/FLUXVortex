@@ -1,6 +1,8 @@
 """Reproduce Hirato et al. 2019 (J.Aircraft) Fig.15 CASE 1: SD7003 RECTANGULAR wing, AR=6, pure PITCH
 RAMP 0->45deg about c/4 at reduced rate K=adot*c/(2U)=0.3, Re=20000, LESP_crit=0.27.
-Compares LEV-ON (faithful vortex-sheet, lev_place='wake') vs LEV-OFF (attached UVLM).
+Compares the historical experimental LEV branch vs LEV-OFF (attached UVLM).
+The branch is not equation-faithful Hirato; see
+docs/diag/research_n3_hirato_equation_audit_20260727.md.
 Expected (paper Fig.15a): apparent-mass C_L spike at t*~1 (ramp start), C_L rises with alpha; LEV onset ~t*=1.6
 REDUCES the lift-growth rate vs LEV-off (which keeps climbing); peak C_L ~4.
 
@@ -29,7 +31,8 @@ tstar = np.arange(N) * dt * U / CHORD      # nondimensional time per step
 
 COMMON = dict(U=U, aoa_deg=0.0, freq=FREQ, n_cycle=NCYC, steps_per_cycle=SPC, wake_rows=min(SPC, 220),
               nc=NC, ns=NS, chord=CHORD, half_span=HALF_SPAN, flap_amp_deg=0.0, twist_amp_deg=0.0,
-              real_geom=False, sym=True, tc_thick=TC,       # sym=True: root symmetry plane -> full AR=6 wing (paper Case 1)
+              real_geom=False, section_geometry='sd7003', sym=True, tc_thick=TC,
+              # sym=True: root symmetry plane -> full AR=6 wing (paper Case 1)
               pitch_ramp=True, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0)
 
 def alpha_of_tstar(ts):

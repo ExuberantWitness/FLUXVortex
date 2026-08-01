@@ -1,0 +1,181 @@
+artifact: actual_wake_linearized_dae_time_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b
+counterfactual_claim_node: N3.1j3b6d18c2b3b3c
+depends_on_claims:
+  - N3.1j3b6d18c2b3b2b
+  - N3.1j3b6d18c2b3b3a
+  - N3.1j3b6d18c2b3a
+status: executed_explicit_go
+stage: S3v_actual_fixed_geometry_linearized_DAE_time_method_gate
+role: no_force_local_time_discretization_oracle
+
+question: >
+  On the same validated actual S3n/S3t state, after exactly reconstructing
+  the algebraic map from all 36 free material-P2 DOFs to the nine body-trace
+  DOFs and using the actual four-channel relative-tangential M,C operator,
+  does a constraint-consistent explicit midpoint method retain second order
+  and the algebraic/weak constraints over the frozen short-time window? If
+  it does, a nonlinear geometry fixed point is not yet justified; implicit
+  trapezoidal remains a same-order counterfactual reference.
+
+cause_from_s3u:
+  data_fingerprint:
+    - "actual M_fb/M_ff infinity-norm ratio is 0.146536"
+    - >
+      a deterministic interior P2 perturbation changes the algebraic body
+      trace by 9.22456e-3 with 2.71e-14 linearity error
+    - "the correct free block residual is 3.26e-16"
+    - "full-rate-then-endpoint-clamp leaves normalized residual 1.0"
+  node: N3.1j3b6d18c2b3b3b
+  movable_space: >
+    Build an exact local algebraic response matrix by unit-basis
+    superposition of the frozen actual-boundary solve. Reuse the S3t
+    owner-aware actual M,C matrices. Compare only constraint-consistent
+    explicit midpoint and implicit trapezoidal time discretizations against
+    a matrix-exponential solution. Geometry, physical velocity and all
+    matrices stay frozen during each trajectory.
+  classification: missing_constraint_consistent_time_discretization
+
+primary_evidence:
+  - source: >
+      Arnold, Strehmel & Weiner, Numerische Mathematik 64 (1993) 409-432.
+    doi: https://doi.org/10.1007/BF01388697
+    implication: >
+      A half-explicit RK method can inherit the explicit RK order for a
+      non-stiff index-1 DAE when algebraic stage components are solved
+      consistently.
+  - source: >
+      Vijalapura, Strain & Govindjee, JCP 203 (2005) 305-320.
+    doi: https://doi.org/10.1016/j.jcp.2004.08.015
+    implication: >
+      Naive sequential splitting is not an admissible second-order
+      comparator because it suffers DAE order reduction.
+  - source: >
+      Roccia et al., Wind Energy Science 9 (2024), Appendix C2.
+    doi: https://doi.org/10.5194/wes-9-385-2024
+    implication: >
+      Previous-time explicit wake propagation is a legitimate non-iterative
+      branch; present/averaged-time methods require iteration.
+  - source: >
+      Kovacs & Power Guerra, IMA Journal of Numerical Analysis 36 (2016).
+    doi: https://doi.org/10.1093/imanum/dru056
+    implication: >
+      Implicit algebraically stable/stiffly accurate RK methods provide the
+      relevant evolving-surface reference when stiffness or stability, not
+      endpoint load fit, requires an implicit branch.
+
+canonical:
+  state: "base_solution.wake_history from the frozen S3n actual snapshot"
+  free_to_body_map:
+    construction: >
+      Set each free global-P2 DOF to base+1 in turn, solve the unchanged
+      actual-boundary equation, and subtract the base body trace. This is
+      exact affine superposition, not a small finite-difference Jacobian.
+    verification_counterfactual: >
+      Deterministic signed combination cos((i+1)*sqrt(2)) over every free
+      DOF; compare a direct actual solve with G*y+c.
+  physical_operator:
+    geometry: frozen
+    velocity: "S3t four-channel actual field minus normal-only mesh velocity"
+    triangle_quadrature_order: 4
+    body_orders: [24, 36]
+    wake_orders: [24, 36]
+    edge_quadrature: target_sinh_analytic_sheet
+  reduced_DAE:
+    algebraic_constraint: "g=G*y+c"
+    differential_equation: >
+      (M_ff+M_fb*G)*y_dot =
+      -(C_ff+C_fb*G)*y-C_fb*c
+    initial_state: "base actual free-P2 state"
+  time:
+    start: 0.0
+    end: 0.05
+    step_families: [2, 4, 8, 16]
+    exact_reference: "augmented affine matrix exponential"
+  explicit_candidate:
+    method: "constraint-consistent explicit midpoint / HERK local equivalent"
+    algebraic_stage: "g_stage=G*y_stage+c at every stage and endpoint"
+  implicit_counterfactual:
+    method: "implicit trapezoidal on the same reduced affine DAE"
+    algebraic_stage: "g_endpoint=G*y_endpoint+c"
+
+required_identities:
+  - "all 36 free basis directions produce one finite affine algebraic map"
+  - "the affine map reconstructs base and a signed direct-solve counterfactual"
+  - "the effective differential mass matrix is full rank"
+  - "both methods satisfy algebraic and free weak residuals"
+  - "explicit midpoint is second-order against the exact affine solution"
+  - "implicit trapezoidal is second-order against the same exact solution"
+  - "the coarsest explicit stability-polynomial defect is bounded"
+  - "explicit and implicit finest trajectories agree within the frozen tolerance"
+  - "no geometry update, fitted damping, load target or structural state enters"
+
+thresholds:
+  algebraic_base_reconstruction_abs_max: 2.0e-12
+  algebraic_counterfactual_reconstruction_abs_max: 2.0e-11
+  actual_boundary_relative_weak_residual_max: 2.0e-12
+  effective_mass_rank_deficiency_max: 0
+  effective_mass_condition_number_max: 1.0e6
+  algebraic_constraint_abs_max: 2.0e-12
+  free_weak_normalized_residual_max: 2.0e-11
+  explicit_time_cauchy_ratio_min: 3.4
+  implicit_time_cauchy_ratio_min: 3.4
+  explicit_finest_relative_error_max: 0.01
+  implicit_finest_relative_error_max: 0.01
+  coarsest_explicit_polynomial_defect_max: 0.10
+  finest_explicit_implicit_relative_difference_max: 0.02
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  explicit_go: >
+    Both exact-map and both-method gates pass, and the explicit midpoint
+    candidate passes its Cauchy, exact-error and local stability-defect
+    gates. Authorize only a nonlinear previous-time/stage-resolve prototype;
+    do not close the implicit claim or activate production.
+  implicit_only: >
+    The affine map and implicit gates pass but the explicit time/stability
+    gate fails. Preserve the explicit failure and preregister a nonlinear
+    present/averaged residual solve.
+  no_go: >
+    Algebraic-map, mass, weak, exact-reference or both-method failure keeps
+    both candidates open. Do not add damping, change the window, relax a
+    threshold or consult force.
+  production_activation_allowed: false
+
+scope_limit: >
+  This local gate freezes geometry and physical velocity. It does not prove
+  the fully nonlinear actual-wake geometry/scalar evolution, stiffness over
+  a flap cycle, newborn topology, unified pressure, force or production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_wake_linearized_dae_time_results.json
+  decision: EXPLICIT-GO
+  passed_checks: 10
+  total_checks: 10
+  aggregate_metrics:
+    basis_solve_count: 36
+    algebraic_base_reconstruction_abs_max: 0.0
+    algebraic_counterfactual_reconstruction_abs_max: 1.7486012637846216e-15
+    actual_boundary_relative_weak_residual_max: 4.318307213274675e-16
+    effective_mass_rank_deficiency: 0
+    effective_mass_condition_number: 11.455796460245594
+    reduced_spectral_radius: 16.367765406231
+    algebraic_constraint_abs_max: 0.0
+    free_weak_normalized_residual_max: 5.908092687220494e-16
+    explicit_time_cauchy_ratio_min: 4.00359116731206
+    implicit_time_cauchy_ratio_min: 3.966118449831383
+    explicit_finest_relative_error: 1.456455066666778e-05
+    implicit_finest_relative_error: 7.257925633926332e-06
+    coarsest_explicit_polynomial_defect: 0.011866285797405325
+    finest_explicit_implicit_relative_difference: 2.182247547734329e-05
+    input_state_mutation_abs_max: 0.0
+  retained_diagnostics:
+    geometry_projection_residual_fraction: 0.5519790136217941
+    actual_relative_velocity_normal_component_max: 0.32951703677650945
+  claim_effect: >
+    Validate and freeze only the exact fixed-geometry actual affine DAE map
+    and its local explicit-midpoint time oracle. Advance to a nonlinear
+    previous-time/stage-algebraic-resolve prototype. Keep the implicit branch
+    open as a nonlinear stiffness/failure fallback and keep production off.

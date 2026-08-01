@@ -1,0 +1,120 @@
+artifact: n1_to_actual_thickness_shell_read_only_adapter
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6c
+status: preregistered_before_implementation
+purpose: >
+  Convert three consecutive frozen-N1 step snapshots into an audited incident
+  velocity ledger and an objective NACA-2406 dual-side wall.  The adapter is
+  diagnostic-only: it may read N1 bound circulation and pre-shed wake state,
+  but it may not change the N1 solve, wake, force, or V4.1 closure.
+
+identity:
+  snapshot_time: >
+    State after the current bound solve and pressure evaluation, before the
+    current trailing-edge row is shed and before wake convection.
+  bound_strength: >
+    The cumulative vortex-ring gamma stored by N1, not the chordwise net
+    circulation used only by the Kutta-Joukowski force kernel.
+  production_symmetry:
+    bound: "direct half-wing rings plus orientation-correct reflected image"
+    wake: "direct pre-shed wake only; no reflected wake in frozen N1"
+  physical_symmetry_candidate: >
+    A reflected-wake field may be reported as a separate counterfactual
+    residual.  It must never be folded into production_identity.
+  v41_default_arithmetic:
+    bound: "fp64 singular ring kernel, cross-product denominator floor 1e-10"
+    wake: "fp32 singular ring kernel, cross-product denominator floor 1e-10"
+    per_ring_core: "none when lev_shed_mode=none and tev_core=0"
+
+required_snapshot_channels:
+  - t
+  - bound
+  - gam
+  - corners
+  - corner_velocity
+  - collocation_points
+  - panel_normals
+  - collocation_velocity
+  - wake_induced_velocity
+  - wr
+  - wg
+  - wtype
+  - nc
+  - ns
+
+cases:
+  G2a_snapshot_contract:
+    gates:
+      - "all arrays finite and shapes agree with nc/ns"
+      - "three snapshots are consecutive and equally spaced"
+      - "wake ring and strength counts agree"
+      - "unknown arithmetic/core conventions fail explicitly"
+      - "adapter input arrays are bitwise unchanged"
+  G2b_manufactured_ring_oracle:
+    comparison: >
+      Evaluate direct and reflected rings at off-sheet points against the
+      actual Warp production kernels, separately for fp64 and fp32 arithmetic.
+    thresholds:
+      fp64_velocity_max_relative_error: 2.0e-12
+      fp32_velocity_max_relative_error: 2.0e-5
+  G2c_production_collocation_replay:
+    definitions:
+      incident: "Vinf + bound_direct + bound_image_if_sym + wake_direct"
+      wall: "captured N1 collocation_velocity"
+      residual: "n dot (incident - wall)"
+    thresholds:
+      max_captured_wake_velocity_relative_error_fp64: 2.0e-11
+      max_captured_wake_velocity_relative_error_fp32: 3.0e-5
+      max_normal_residual_relative_fp64: 2.0e-10
+      max_normal_residual_relative_fp32: 8.0e-5
+  G2d_actual_shell_kinematics:
+    construction: >
+      Reuse validated N2.6d2a on the three mean-surface snapshots with the
+      NACA-2406 material half-thickness; map upper/lower node velocities to
+      the closed N2.6d1 shell without changing the mean surface.
+    thresholds:
+      max_mean_surface_change: 0.0
+      max_material_pairing_error: 5.0e-15
+      max_closed_mesh_boundary_edges: 0
+      max_closed_mesh_nonmanifold_edges: 0
+      max_wall_velocity_node_mapping_error: 2.0e-12
+  G2e_symmetry_role_separation:
+    gates:
+      - "production_identity excludes mirrored wake exactly"
+      - "physical_symmetry_candidate reports mirrored-wake delta separately"
+      - "changing the candidate role cannot change the frozen snapshot"
+
+representative_case:
+  closure: v41
+  U: 8.0
+  aoa_deg: 15.0
+  freq: 2.6
+  flap_amp_deg: 22.5
+  twist_amp_deg: 11.25
+  twist_phase_deg: 90.0
+  nc: 4
+  ns: 8
+  real_geom: true
+  sym: true
+  frame_skip: 1
+  lev_shed_mode: none
+  tev_core: 0.0
+
+go_if:
+  - "G2a through G2e pass without changing an aerodynamic formula"
+  - "representative N1 result fields are bitwise identical with and without snapshot capture"
+  - "production and physical-symmetry identities remain separately labelled"
+
+no_go:
+  - "inferring missing core radii or arithmetic modes from the data"
+  - "using the physical-symmetry candidate to make the production replay pass"
+  - "using chordwise net circulation as a bound-ring field strength"
+  - "using only freestream or geometry to form the actual-shell Neumann RHS"
+  - "writing the source solution, pressure, or force back into N1"
+  - "changing N1, N2, N3, N4, N5, or N6 production force contributions"
+
+promotion:
+  if_passed: >
+    N3.1j3b6c may consume a frozen-N1 velocity snapshot on the actual shell
+    as a diagnostic boundary condition.  This does not validate a thick-body
+    Kutta condition, unified pressure, or production force.

@@ -1,0 +1,98 @@
+version: 1
+as_of: "2026-07-28"
+claim_node: "N3.1i1d2"
+purpose: >
+  Freeze the first independent surface-pressure observation contract before
+  comparing any FLUXV prediction.  This is a data-ledger and falsification
+  gate, not a pressure surrogate, hidden-vortex-state inverse, or coefficient
+  calibration route.
+
+asset:
+  id: "four_tu_du97w300_vortex_generator_v2"
+  persistent_id: "doi:10.4121/374c2baa-aca1-487e-8463-6ef167569be7.v2"
+  related_paper: "doi:10.5194/wes-11-1971-2026"
+  archive_url: "https://data.4tu.nl/file/374c2baa-aca1-487e-8463-6ef167569be7/0efff785-7e18-47eb-8395-67f1c4ae7c18"
+  archive_size_bytes: 1706315457
+  archive_md5: "171d4e6b76f82cb3c464916a21aeddb0"
+  archive_entry_count: 120
+  license: "CC BY-SA 4.0"
+  role: "out-of-domain dynamic pressure/load falsification only"
+  target_domain_match: false
+  reasons_out_of_domain:
+    - "Re=1e6"
+    - "DU-97-W-300 thick section"
+    - "forced transition and optional vortex generators"
+
+selection:
+  transition: "forced"
+  configurations: ["novg", "VG1", "VG2", "VG3", "VG4"]
+  frequencies_hz: ["0.5", "1", "2"]
+  mean_aoa_deg: 10
+  amplitude_deg: 10
+  expected_case_count: 15
+  representation: "phase-averaged mean/std over 150 pitching cycles"
+  coordinate_member: "unsteady/DU97W300_interpcoords.txt"
+  cp_mean_prefix: "unsteady/cp/uncorrected/phaseaveraged/mean"
+  cp_std_prefix: "unsteady/cp/uncorrected/phaseaveraged/std"
+  force_prefix: "unsteady/forces/uncorrected/phaseaveraged"
+
+data_identity:
+  coordinate_count: 244
+  contour_order:
+    - "upper surface: leading edge to upper trailing edge, indices 0..121"
+    - "lower surface: lower trailing edge to leading edge, indices 122..243"
+  blunt_trailing_edge_base_segment: [121, 122]
+  inference_boundary: >
+    The README calls the force coefficients pressure-derived but does not state
+    whether the blunt trailing-edge base face is integrated.  The guard must
+    report both ledgers.  Excluding only segment 121->122 is an observed
+    representation identity if it reduces the tangential-force residual for
+    every case; it is not a tunable aerodynamic correction.
+  published_force_columns:
+    - "Cn_unc"
+    - "Ct_unc"
+    - "Cm_LE_unc"
+
+surface_pressure_ledger:
+  pressure_force_convention: "clockwise profile; force on body"
+  profile_segments: "all adjacent coordinate pairs except 121->122"
+  formulas:
+    Cn: "-sum(0.5*(Cp_i+Cp_j)*(x_j-x_i))"
+    Ct: "+sum(0.5*(Cp_i+Cp_j)*(y_j-y_i))"
+    Cm_LE: "+sum(0.5*(Cp_i+Cp_j)*(x_mid*dx+y_mid*dy))"
+  note: >
+    Cm_LE follows the sign printed in the archive.  The formulas reconstruct
+    a two-dimensional pressure-profile ledger; they do not add viscous skin
+    friction, VG force, wake-rake drag, or a trailing-edge base-pressure model.
+
+deterministic_identity_gates:
+  phase_and_aoa_serialization_abs: 1.0e-8
+  normal_force_roundtrip_abs: 1.0e-8
+  trailing_edge_identity: >
+    For every case, RMS(Ct_profile-Ct_published) must be lower when the single
+    blunt trailing-edge base segment is excluded than when it is included.
+  report_without_threshold:
+    - "Ct profile round-trip max/RMS/bias"
+    - "Cm_LE profile round-trip max/RMS/bias"
+    - "phase-mean Cp standard deviation"
+  reason_no_physical_tolerance: >
+    The archive provides cycle standard deviation but no complete propagated
+    measurement uncertainty for Cp-to-force integration.  Therefore Ct/Cm
+    residuals are reported, not converted into a post-hoc physical pass band.
+
+model_falsification_gate:
+  status: "not_executed"
+  required_model_output:
+    - "side-resolved panel coordinates and Cp at all phases"
+    - "one conservative projection to the published 244-point profile"
+    - "pressure-integrated Cn/Ct/Cm_LE from the same projected field"
+  forbidden_inputs:
+    - "published Cp as a model state input"
+    - "published force or moment as a model state input"
+    - "pressure residual used to tune LESPcrit, cds, Tv, Tvl, or sheet strength"
+    - "structural response"
+  promotion_rules:
+    unified_pressure_output: "may be falsified but not yet promoted"
+    spatial_vortex_state: "must remain unpromoted"
+    production_formula: "must remain unchanged"
+

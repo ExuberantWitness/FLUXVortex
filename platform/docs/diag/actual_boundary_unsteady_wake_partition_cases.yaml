@@ -1,0 +1,134 @@
+artifact: actual_boundary_unsteady_wake_partition_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18a
+depends_on_claims:
+  - N3.1j3b6d17
+  - N3.1j4b5a
+status: executed_go_after_preregistration
+stage: S3d_unsteady_old_wake_known_newest_trace_unknown_partition
+role: no_force_affine_equation_and_kelvin_ledger_oracle
+
+question: >
+  Can an unsteady actual-boundary solve keep all previously shed material P2
+  traces immutable on the known right-hand side while coupling only the
+  newest band's current trace to the current body cut jump, with the newest
+  previous/middle traces supplied explicitly by their own stage history?
+
+cause_from_s3c:
+  validated: >
+    N3.1j3b6d17 validates shape-regular multi-band spatial equations only
+    when every band uses the same steady trace.
+  missing: >
+    The current equation implementation rewrites every wake band to the
+    current body jump and therefore cannot represent streamwise strength
+    changes or material Kelvin memory.
+  classification: missing_known_old_state_vs_current_unknown_partition
+
+primary_evidence:
+  - source: >
+      Krebs dissertation (2021), section 2.1.3 and section 3.3
+    implication: >
+      In time-dependent solutions, individual wake-element strengths remain
+      constant once shed; old strengths vary streamwise and influence the
+      current flow-tangency solve.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28,
+      DOI 10.3390/aerospace9010028
+    implication: >
+      Surface and newly created wake strengths are intertwined within the
+      current step, but already shed material elements retain their own
+      history.
+  - source: >
+      Katz & Plotkin, Low-Speed Aerodynamics, 2nd ed., unsteady panel-method
+      wake marching
+    implication: >
+      Previously shed wake singularities are known influences in the current
+      boundary-condition solve; only newly shed circulation is tied to the
+      current bound solution.
+
+canonical:
+  body_cut_and_spatial_grid: "frozen S3c body and 0.5c shape-regular bands"
+  quadrature_order: 10
+  freestream:
+    speed: 1.0
+    alpha_deg: 5.0
+  span_trace_basis: "g(y)=1-y^2 at the nine TE P2 nodes"
+  fixed_old_band:
+    previous_edge_x: 2.0
+    current_edge_x: 1.5
+    explicit_rows: ["0.20*g", "0.30*g", "0.40*g"]
+  active_newest_band:
+    previous_edge_x: 1.5
+    current_edge_x: 1.0
+    explicit_known_rows: ["0.40*g", "0.10*g"]
+    unknown_current_row: "J_cut * mu_body_current"
+  history_counterfactual:
+    fixed_old_rows: ["-0.20*g", "-0.30*g", "-0.40*g"]
+    active_known_rows: ["-0.40*g", "-0.10*g"]
+  zero_history_comparator:
+    fixed_old_rows: ["0*g", "0*g", "0*g"]
+    active_known_rows: ["0*g", "0*g"]
+
+required_identities:
+  - "old band input rows are bitwise unchanged after each solve"
+  - "old-current and active-previous interface traces match exactly"
+  - "active current row equals current body cut jump"
+  - "only body potential/current active row are unknown; old wake is affine RHS"
+  - "matrix is full rank and weak residual passes for all three histories"
+  - "current body jump changes under the signed old-history counterfactual"
+  - "affine superposition in incident and known history passes"
+  - "tip jumps and all material interfaces remain exact"
+  - "no pressure, force, LESP, prescribed current circulation or regularizer enters"
+
+thresholds:
+  old_state_mutation_abs_max: 0.0
+  history_interface_abs_max: 0.0
+  active_attachment_abs_max: 1.0e-12
+  independent_old_wake_unknown_count_max: 0
+  rank_deficiency_max: 0
+  normalized_weak_residual_max: 1.0e-10
+  condition_number_max: 1.0e4
+  counterfactual_current_jump_difference_min: 1.0e-4
+  affine_superposition_abs_max: 1.0e-10
+  tip_jump_abs_max: 1.0e-12
+
+decision:
+  go: >
+    Every immutable-state, affine partition, rank, interface and
+    counterfactual gate passes. GO validates only the old-known/new-current
+    equation ledger and authorizes a later explicit midpoint/time-convergence
+    gate.
+  no_go: >
+    Any mutation of old traces, failure to consume history, hidden wake
+    unknown, rank loss or interface mismatch blocks the route. Do not infer a
+    midpoint, prescribe current circulation, regularize, fit force or relax a
+    tolerance.
+  production_activation_allowed: false
+
+scope_limit: >
+  The previous and middle active rows are explicit canonical inputs, not a
+  validated time integrator. This gate does not validate predictor-corrector
+  convergence, wake geometry advection, pressure, force, finite base, LEV or
+  production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_unsteady_wake_partition_results.json
+  stage_decision: GO
+  metrics:
+    old_state_mutation_abs_max: 0.0
+    history_interface_abs_max: 0.0
+    active_attachment_abs_max: 0.0
+    independent_old_wake_unknown_count_max: 0
+    rank_deficiency_max: 0
+    normalized_weak_residual_max: 9.80486454756553e-16
+    condition_number_max: 110.82093333072251
+    counterfactual_current_jump_difference: 0.11031767335186957
+    affine_superposition_abs_max: 4.649058915617843e-16
+    tip_jump_abs_max: 0.0
+    known_wake_rhs_norm: 5.770657005624702e-04
+  interpretation: >
+    Old material traces can remain immutable known RHS data while only the
+    newest current row is eliminated into the current body equation. The
+    result validates the affine Kelvin ledger but not the origin or accuracy
+    of the explicit previous/middle stage rows.

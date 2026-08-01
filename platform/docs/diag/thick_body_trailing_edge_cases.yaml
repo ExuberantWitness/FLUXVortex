@@ -1,0 +1,238 @@
+artifact: actual_thickness_trailing_edge_residual_suite
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6c3
+status: preregistered_before_residual_implementation
+question: >
+  Does the circulation and single thin-lattice rear-line wake prescribed by
+  frozen N1
+  satisfy an admissible unsteady trailing-edge condition on the actual
+  NACA-2406 shell with a finite base thickness?
+
+geometry_identity:
+  airfoil: NACA-2406
+  thickness_polynomial: "standard open-TE coefficient -0.1015"
+  half_base_thickness_over_chord: 0.00063
+  full_base_thickness_over_chord: 0.00126
+  root_chord_m: 0.287
+  root_base_thickness_m: 0.00036162
+  topology: >
+    Two distinct upper/lower trailing-edge corner lines joined by a solid
+    base face; this is not one cusped or finite-angle sharp edge.
+
+primary_evidence:
+  - source: "Kemp, NASA TM-80104 (1979), NASA/NTRS 19790016785"
+    implication: >
+      Blunt-TE panel models B-1, B-2 and B-3 respectively impose a bisector
+      direction condition, two corner direction conditions, and nonlinear
+      equality of upper/lower corner pressure.  They are alternative
+      closures, not algebraically identical.
+  - source: "Kemp, NASA TM-80104 (1979), blunt-TE source budget"
+    implication: >
+      Net source strength corresponds to mass emerging from the numerical
+      trailing-edge closure; Kemp explicitly removes its force increment
+      because a real separated wake does not add that mass.
+  - source: "Xia & Mohseni, JFM 830 (2017), doi:10.1017/jfm.2017.513"
+    implication: >
+      Even for one finite-angle sharp edge, an unsteady sheet direction,
+      strength and relative velocity require Kutta plus circulation, mass
+      and momentum conservation; an arbitrary bisector/tangent direction is
+      not a general unsteady identity.
+  - source: "Wang, Abdel-Maksoud & Song, Ocean Engineering 130 (2017), doi:10.1016/j.oceaneng.2016.12.009"
+    implication: >
+      Morino's linear wake-doublet identity can retain a nonphysical TE
+      pressure mismatch; pressure Kutta is a nonlinear coupled circulation
+      condition, not a post-processing scalar.
+  - source: "Poling & Telionis, AIAA Journal 24 (1986), doi:10.2514/3.9244"
+    implication: >
+      Classical unsteady Kutta behavior fails in measured high-frequency
+      trailing-edge flow, so one residual cannot be treated as universal
+      outside its qualified regime.
+
+residual_ledger:
+  R_geometry:
+    definition: >
+      Preserve and report the two corner lines, base face, base thickness
+      and first-wake spacing; do not silently collapse them to the N1
+      rear bound-ring line.  Report that line's exact quarter-last-panel
+      offset from the geometric trailing edge.
+  R_pressure:
+    definition: >
+      Spanwise upper-minus-lower total pressure at paired TE-adjacent
+      material points after all potential rates and velocities have been
+      combined in one Bernoulli evaluation.
+    status: blocked_until_material_potential_history
+  R_direction:
+    definition: >
+      In the plane normal to the local TE span, report outgoing relative
+      velocity normal to (a) the local upper tangent, (b) lower tangent and
+      (c) their bisector.  These are separate Kemp B-1/B-2 diagnostics.
+  R_flux:
+    definition: >
+      Report closed-shell incident Neumann compatibility and solved source
+      flux.  No net numerical source may be reinterpreted as real wake mass,
+      thrust, lift or base pressure.
+  R_wake_formation:
+    definition: >
+      Compare the frozen single rear-ring-line N1 wake with the two-corner
+      blunt topology.  Any proposed replacement must close sheet direction,
+      strength and relative motion together with circulation, mass and
+      momentum; it may not tune a wake angle.
+
+diagnostic_extension_preregistered_before_implementation:
+  id: K4a_channel_flux_and_filament_shell_topology
+  question: >
+    Is the nonzero closed-shell incident flux caused by one identifiable N1
+    field channel and does that channel contain an active singular filament
+    that pierces or lies on the actual shell?
+  fixed_field_channels:
+    - freestream
+    - bound_direct
+    - bound_image
+    - wake_direct
+    - wake_image_candidate
+  flux_outputs:
+    - "signed integral of each channel dot outward area-normal"
+    - "production sum reconstructed only from freestream+bound_direct+bound_image+wake_direct"
+    - "physical symmetry candidate reported separately by adding wake_image_candidate"
+    - "same ledger on every preregistered shell refinement"
+  filament_identity:
+    definition: >
+      Expand each vortex ring into its four oriented segments, merge only
+      geometrically coincident segments using a machine-precision topology
+      tolerance, and sum their signed circulation.  Cancelled zero-net
+      segments are reported separately and are not active singular support.
+    channels:
+      - bound_direct
+      - bound_image
+      - wake_direct
+      - wake_image_candidate
+    required_outputs:
+      - raw_segment_count
+      - active_unique_segment_count
+      - cancelled_unique_segment_count
+      - inside_inside_segment_count
+      - outside_outside_segment_count
+      - boundary_endpoint_segment_count
+      - proper_shell_piercing_segment_count
+      - proper_shell_intersection_count
+      - minimum_active_segment_to_shell_distance
+      - circulation_weighted_piercing_fraction
+  mutually_exclusive_diagnoses:
+    H_quadrature_only: >
+      All active singular filaments are strictly inside or outside without
+      piercing/touching the shell, and the offending channel flux converges
+      monotonically to zero under shell refinement.
+    H_representation_incompatible: >
+      An active frozen-N1 filament pierces or lies on the actual shell, or
+      the offending channel flux remains nonconvergent.  A conditioned
+      source solve at shell centroids then cannot qualify a unified pressure
+      model without an explicit thin-lattice/actual-thickness coupling claim.
+  decision:
+    go: >
+      Continue the frozen-N1 thick-shell shadow only if H_quadrature_only is
+      supported and a topology-aware convergence guard removes the flux
+      without altering any field or geometry.
+    no_go: >
+      If H_representation_incompatible is supported, keep pressure
+      activation false, classify the route as a wrong representation
+      component, and open an N1-interface/freeze review rather than fitting
+      a core, offset, source flux, or tolerance.
+  forbidden:
+    - "moving the shell or vortex lattice"
+    - "adding a vortex core to make the audit pass"
+    - "dropping an offending channel"
+    - "loosening a topology tolerance from aerodynamic results"
+    - "interpreting numerical closed-surface flux as physical mass or force"
+
+canonical_cases:
+  K0_cusped_static_limit:
+    purpose: >
+      Verify that the residual suite reduces to finite velocity and zero TE
+      pressure jump when upper and lower corner lines coincide.
+  K1_finite_angle_sharp_unsteady:
+    purpose: >
+      Verify the Xia-Mohseni coupled sheet-formation identities; pressure
+      continuity alone must not claim a unique sheet angle or strength.
+  K2_blunt_steady_kemp_comparator:
+    alternatives:
+      - B1_bisector_direction
+      - B2_two_corner_direction
+      - B3_nonlinear_pressure_equality
+    purpose: >
+      Demonstrate that the three residuals remain separately observable and
+      that no source-flux force is accepted.
+  K3_open_to_closed_naca2406_limit:
+    geometry_fractions: [1.0, 0.5, 0.25, 0.0]
+    purpose: >
+      Diagnose whether the frozen-N1 conditioned shadow converges smoothly
+      as the standard NACA base thickness approaches the sharp limit.  This
+      continuation is a diagnostic, not a thickness fit.
+  K4_roboeagle_representative:
+    case:
+      U: 8.0
+      aoa_deg: 15.0
+      freq: 2.6
+      flap_amp_deg: 22.5
+      twist_amp_deg: 11.25
+      nc: 4
+      ns: 8
+      closure: v41
+    required_outputs:
+      - R_geometry
+      - R_pressure
+      - R_direction
+      - R_flux
+      - R_wake_formation
+
+decision:
+  go_condition: >
+    All residuals converge under time/surface refinement, pressure and
+    direction conditions are mutually compatible, no artificial source mass
+    is needed, and frozen N1 remains unchanged.
+  coupled_research_condition: >
+    If pressure equality, direction, source compatibility or wake topology
+    systematically conflict, the missing component is a coupled
+    actual-thickness trailing-edge/base-wake state.  It must be opened as a
+    new claim; N3 may not repair it with a scalar correction.
+  stop_condition: >
+    If satisfying the qualified residuals necessarily changes frozen N1
+    circulation, stop the shadow route and open an explicit N1-freeze review.
+
+no_go:
+  - "declaring thin-wing Kutta automatically valid on the blunt shell"
+  - "using only pressure equality to infer a unique unsteady wake direction"
+  - "fitting base thickness, wake angle, source flux, or a Kutta constant"
+  - "converting numerical source flux into aerodynamic force"
+  - "adding an empirical base-pressure force before a separate N2 claim"
+  - "changing production circulation or wake in this residual suite"
+
+execution_record_2026_07_28:
+  result_artifact: n1_thick_shell_adapter_results.json
+  K4a_channel_flux:
+    freestream: -3.469446951953614e-17
+    bound_direct: 0.061030321621282774
+    bound_image: -0.03123059841538274
+    wake_direct: -7.05953583081077e-05
+    production_total: 0.029729127847591977
+    wall_volume: -7.4812342644586804e-06
+  K4a_active_filament_topology:
+    bound_direct_piercing_segments: 16
+    bound_direct_face_roles:
+      root_cap: 5
+      tip_cap: 4
+      trailing_base: 9
+    bound_image_piercing_segments: 1
+    bound_image_face_roles:
+      root_cap: 1
+      trailing_base: 1
+    wake_direct_piercing_segments: 0
+  refinement_observation: >
+    Bound direct/image flux is nonmonotone and remains O(1e-2 to 1e-1)
+    from 158 to 1246 shell faces; wake and wall channels are orders of
+    magnitude smaller.
+  diagnosis: H_representation_incompatible
+  decision: >
+    The read-only N1 replay adapter remains qualified, but direct raw-ring
+    Neumann conditioning is NO-GO and N3.1j3b6c is falsified/frozen.
+    Continue only through preregistered N3.1j3b6d actual-boundary
+    source-doublet/wake re-representation.

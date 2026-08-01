@@ -1,0 +1,143 @@
+artifact: constrained_material_wake_advection_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2a
+depends_on_claims:
+  - N3.1j3b6d18c1a
+  - N3.1j4c6
+status: executed_go
+stage: S3h_body_attached_material_wake_heun_semantics
+role: no_force_manufactured_constrained_geometry_integrator
+
+question: >
+  Can a material-wake Heun step advance all free history vertices while
+  imposing the named newest edge from prescribed body-cut kinematics exactly,
+  without changing old strengths or breaking chronological seams, and retain
+  second-order convergence and rigid-frame objectivity?
+
+cause_from_s3g:
+  data_fingerprint:
+    - "S3g now allows arbitrary moved wake geometry to re-enter the actual-boundary equation"
+    - "advance_assembly_normal_geometry_heun updates every assembly vertex"
+    - "no current runtime operator prescribes the newest wake edge from the current body cut at both Heun stages"
+  node: N3.1j3b6d18c2
+  movable_space: >
+    Only the geometry time integrator's essential boundary constraint and
+    explicit chronological seam handling may change. Material P2 strengths,
+    oriented attachment, actual-boundary equations, quadrature, pressure and
+    force paths are frozen.
+  classification: missing_body_attached_boundary_condition_in_wake_relaxation
+
+primary_evidence:
+  - source: >
+      Krebs dissertation (2021), figures 3.1 and 3.4, sections 3.2-3.3
+    implication: >
+      New material wake elements occupy the region between consecutive
+      trailing-edge positions, while already shed wake vertices relax with
+      local velocity and retain their strengths.
+  - source: >
+      Three-dimensional unsteady panel method formulation, Energies 14
+      (2021) 8080
+    implication: >
+      A new row is shed at the trailing edge, its strength equals the
+      trailing-edge bound strength, and older wake panels retain circulation
+      while their corner points convect.
+  - source: >
+      Katz & Plotkin, Low-Speed Aerodynamics, 2nd ed.
+    implication: >
+      Wake marching separates the prescribed current shedding edge from
+      previously shed free-wake geometry.
+  - source: >
+      N3.1j4c5/c6 validated Heun and explicit material seams
+    implication: >
+      The unconstrained free-geometry RK2 and Kelvin identities are frozen
+      upstream components; only the body-attached essential boundary is new.
+
+candidate_rewrite: >
+  At each Heun stage, a named velocity provider advances only free material
+  vertices. The newest current edge is overwritten by the prescribed body
+  cut at the stage time, not averaged with free-wake velocity. Duplicated
+  chronological seam vertices must receive identical provider velocities;
+  mismatch fails before update.
+
+canonical:
+  initial_history: "S3g curved two-band P2 material wake"
+  time:
+    start: 0.0
+    end: 0.2
+    step_families: [2, 4, 8]
+  manufactured_free_velocity:
+    equation: "v(x,t)=A*x+b(t)"
+    A:
+      - [0.0, 0.15, 0.0]
+      - [-0.10, 0.0, 0.05]
+      - [0.02, 0.0, -0.08]
+    b: "[0.03*cos(t), -0.02*sin(t), 0.04]"
+  prescribed_body_cut_translation:
+    equation: "[0.04*sin(2t), 0.02*(1-cos(t)), 0.03*t]"
+    rotation: "none in base case"
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, 0.7, -0.3]
+    rotation_deg: 37.0
+    translation: [-0.4, 0.6, 0.2]
+    transformed_velocity_law: "A'=R*A*R^T; b'=R*b-A'*translation"
+  mismatch_counterfactual:
+    perturbation: "add 1e-3 to one duplicate seam velocity"
+    expected: "fail before geometry update"
+
+required_identities:
+  - "input history and every material P2 row remain bitwise unchanged"
+  - "newest current edge equals the prescribed body cut at every completed step"
+  - "all old-to-new chronological seam positions remain exact"
+  - "duplicate seam velocities are identical or the step fails closed"
+  - "free-vertex Heun trajectories show second-order Cauchy contraction"
+  - "rigidly transformed history, body path and velocity law give the transformed trajectory"
+  - "all band faces remain finite, non-inverted and above the area floor"
+  - "no actual-boundary strength update, pressure, force, LESP, core, smoothing or target enters"
+
+thresholds:
+  input_geometry_mutation_abs_max: 0.0
+  material_strength_mutation_abs_max: 0.0
+  attached_edge_abs_max: 1.0e-14
+  history_seam_abs_max: 1.0e-14
+  seam_velocity_abs_max: 1.0e-14
+  free_vertex_time_cauchy_ratio_min: 3.5
+  free_vertex_finest_relative_change_max: 0.01
+  rigid_frame_max_abs_difference: 1.0e-11
+  minimum_face_area_ratio_min: 0.90
+  mismatch_failure_count_min: 1
+
+decision:
+  go: >
+    Every attachment, seam, Kelvin, time-order, objectivity, area and failure
+    gate passes. GO validates only the constrained material-geometry
+    integrator and may authorize a later physical velocity/equilibrium gate.
+  no_go: >
+    Any failed identity blocks composition. Do not average the body edge with
+    free velocity, weld by proximity, change material rows, smooth geometry,
+    tune dt, relax thresholds or use pressure/force targets.
+  production_activation_allowed: false
+
+scope_limit: >
+  The free velocity is manufactured. This gate does not validate the actual
+  body+wake induced velocity, post-relaxation equilibrium, moving-body
+  pressure, LEV, aerodynamic force or production.
+
+execution:
+  date: "2026-07-28"
+  result_file: constrained_material_wake_advection_results.json
+  decision: GO
+  aggregate_metrics:
+    input_geometry_mutation_abs_max: 0.0
+    material_strength_mutation_abs_max: 0.0
+    attached_edge_abs_max: 0.0
+    history_seam_abs_max: 0.0
+    seam_velocity_abs_max: 0.0
+    free_vertex_time_cauchy_ratio: 3.9953388401472645
+    free_vertex_finest_relative_change: 1.6099266938964086e-05
+    rigid_frame_max_abs_difference: 8.881784197001252e-16
+    minimum_face_area_ratio: 0.958422642101842
+    mismatch_failure_count: 1
+  claim_effect: >
+    Validate and freeze only N3.1j3b6d18c2a. Keep c2b open because no
+    actual body/wake-induced velocity, coupled strength equilibrium,
+    pressure or force has entered this gate.

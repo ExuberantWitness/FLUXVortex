@@ -1,0 +1,46 @@
+version: 1
+frozen_before_adjacent_frame_extraction: true
+scope: >
+  Non-promotion temporal-interpolation pre-gate on the independent Edinburgh
+  Otomo 32-degree symmetric pitching PIV archive.
+source:
+  persistent_id: "doi:10.7488/ds/7677"
+  archive: "32_sym.zip"
+  remote_size_bytes: 455779667
+  frame_count: 1666
+  declared_time_step_seconds: 0.006
+  center_frame: 833
+  symmetric_strides: [1, 2, 4]
+  columns: [x, y, u, v]
+forbidden_inputs:
+  - lift
+  - drag
+  - pressure
+  - LESP
+  - V4.1_residual
+  - structural_state
+metrics:
+  midpoint_error: >
+    RMS(q_center - 0.5*(q_center_minus_stride +
+    q_center_plus_stride)) for q in {u,v}.
+  persistence_error: >
+    0.5*(RMS(q_center-q_center_minus_stride) +
+    RMS(q_center-q_center_plus_stride)).
+  midpoint_to_persistence_ratio: "midpoint_error/persistence_error"
+go:
+  - "all seven frames exist, have exactly four columns and finite values"
+  - "x/y coordinates agree across frames to max absolute tolerance 1e-12"
+  - "for both u and v, stride-1 midpoint_to_persistence_ratio is below 1"
+  - "for both u and v, midpoint_error is nondecreasing for strides 1,2,4"
+no_go:
+  - "coordinate drift or implicit remeshing"
+  - "non-finite velocity samples"
+  - "midpoint interpolation no better than one-sided persistence at stride 1"
+  - "non-monotone midpoint error under increasing time separation"
+interpretation:
+  go_role: >
+    The released Eulerian frame sequence is numerically usable for a
+    two-dimensional real-field temporal interpolation stress test.
+  forbidden_promotion: >
+    Passing does not validate near-wall flow maps, material backbones,
+    target-Re transfer, three-dimensional crossflow, or aerodynamic loads.

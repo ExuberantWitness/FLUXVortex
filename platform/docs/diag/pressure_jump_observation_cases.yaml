@@ -1,0 +1,75 @@
+version: 1
+as_of: "2026-07-28"
+claim_nodes:
+  nonuniqueness: "N3.1j3b4"
+  observation_identity: "N3.1j3b5"
+purpose: >
+  Decide which part of a public thick-airfoil side-resolved pressure field is
+  observable by the current thin lifting-surface pressure-jump model.  The
+  gate must not infer two absolute side pressures or profile drag from a
+  pressure jump.
+
+source_contract: "unified_pressure_observation_cases.yaml"
+source_result: "unified_pressure_observation_results.json"
+asset:
+  persistent_id: "doi:10.4121/374c2baa-aca1-487e-8463-6ef167569be7.v2"
+  archive_url: "https://data.4tu.nl/file/374c2baa-aca1-487e-8463-6ef167569be7/0efff785-7e18-47eb-8395-67f1c4ae7c18"
+  archive_size_bytes: 1706315457
+  archive_entry_count: 120
+
+selection:
+  configurations: ["novg", "VG1", "VG2", "VG3", "VG4"]
+  frequencies_hz: ["0.5", "1", "2"]
+  expected_case_count: 15
+  coordinate_member: "unsteady/DU97W300_interpcoords.txt"
+  cp_mean_prefix: "unsteady/cp/uncorrected/phaseaveraged/mean"
+  force_prefix: "unsteady/forces/uncorrected/phaseaveraged"
+
+pairing_identity:
+  side_point_count: 122
+  upper_profile_order: "xup1..xup122, LE to TE"
+  lower_archive_order: "xlo122..xlo1, TE to LE"
+  lower_pairing_operation: "reverse lower archive order"
+  pressure_jump_definition: "delta_Cp = Cp_lower - Cp_upper"
+  model_orientation_requirement: >
+    A future FLUXV adapter must identify minus/plus with physical lower/upper
+    sides before comparing signs; absolute-value matching is forbidden.
+  normal_force_formula: >
+    Cn_jump = sum(0.5*(delta_Cp_i+delta_Cp_j)*(x_j-x_i))
+
+common_mode_counterexample:
+  definition: "g(x,phase)=0.2*sin(phase)*(x-0.5)"
+  operation: "add the same paired g to Cp_upper and Cp_lower"
+  invariants:
+    - "delta_Cp is unchanged"
+    - "Cn_jump is unchanged"
+  expected_noninvariant:
+    - "thick-profile Ct changes because the upper/lower surface slopes differ"
+    - "thick-profile Cm_LE may change"
+  interpretation: >
+    The common mode is an analytic nonuniqueness witness, not a proposed
+    aerodynamic correction and not an admissible model parameter.
+
+deterministic_gates:
+  paired_x_max_abs: 1.0e-14
+  published_Cn_roundtrip_abs: 1.0e-8
+  jump_common_mode_invariance_abs: 1.0e-12
+  Cn_common_mode_invariance_abs: 1.0e-12
+  Ct_counterexample_min_change: 1.0e-3
+
+decision_boundary:
+  may_validate:
+    - "gauge-free delta_Cp(x,phase)"
+    - "normal force reconstructed from the same delta_Cp"
+  may_not_validate:
+    - "absolute Cp_upper or Cp_lower"
+    - "thick-profile tangential pressure force"
+    - "mean pressure or Bernoulli gauge"
+    - "hidden spatial vortex state"
+  missing_for_full_side_pressure:
+    - "actual-thickness upper/lower aerodynamic surface"
+    - "mean surface potential and its physical time derivative"
+    - "source/doublet or equivalent no-penetration thickness solution"
+    - "viscous/separated pressure contribution and uncertainty qualification"
+  production_formula_changed: false
+

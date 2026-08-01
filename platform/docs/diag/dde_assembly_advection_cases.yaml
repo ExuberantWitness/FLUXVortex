@@ -1,0 +1,32 @@
+schema_version: 1
+title: "N3.1j4c6 explicit-interface assembly dynamic equivalence gate"
+role: >
+  Isolate whether splitting the already validated nonzero-dihedral cylinder
+  into named axial patches changes the no-core vertex-star normal dynamics.
+  The monolithic surface, P2 strengths, collocation points, quadrature,
+  normal gauge, and Heun integrator are identical. Only explicit patch
+  duplication and interface welding are introduced.
+cylinder:
+  radius: 1.0
+  length: 1.0
+  circumferential_nodes: 8
+  axial_cells: 2
+  axial_phase_increment_fraction: 0.5
+  potential_jump: "mu=y(1-y)"
+self_induced_case:
+  final_time: 0.005
+  steps: [1, 2, 4]
+  line_quadrature_order: 128
+  tangential_gauge: zero
+  split: "one named patch per axial cell"
+guards:
+  initial_velocity_max_abs_difference: 2.0e-10
+  final_geometry_max_abs_difference: 2.0e-10
+  assembly_time_cauchy_ratio_min: 3.5
+  seam_geometry_gap_max: 1.0e-12
+  potential_jump_residual_max: 1.0e-12
+promotion_boundary: >
+  Passing validates only representation invariance of the short-time CPU
+  reference under explicit axial patch splitting. It does not validate
+  bound-surface solving, newborn mid-time shedding strengths, long wake
+  roll-up, pressure, force, a GPU kernel, or production use.

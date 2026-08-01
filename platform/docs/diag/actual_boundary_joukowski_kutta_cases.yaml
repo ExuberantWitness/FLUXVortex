@@ -1,0 +1,231 @@
+artifact: actual_boundary_joukowski_kutta_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+status: preregistered_before_implementation
+stage: S2b_sharp_trailing_edge_kutta_pressure
+role: analytic_lifting_body_bridge
+
+question: >
+  After S2a proves that prescribed circulation requires a classified
+  potential cut, can the same curved P2 trace determine circulation from a
+  sharp trailing-edge Kutta condition and recover the analytic surface
+  velocity, pressure and force of a finite-thickness lifting body?
+
+cause_from_S2a:
+  known: >
+    A duplicated cut trace carries a prescribed Gamma and recovers the
+    circular-cylinder Kutta-Joukowski force.
+  missing: >
+    The cylinder has no trailing edge, so Gamma was supplied rather than
+    selected by a Kutta condition.  That result cannot qualify a body-wake
+    solve or the NACA-2406 finite base.
+  direct_3d_decision: NO-GO_before_sharp_edge_bridge
+
+primary_evidence:
+  - source: "Erickson, NASA TP-2995 (1990)"
+    implication: >
+      Lifting panel methods require an explicit potential jump/wake and a
+      Kutta condition; higher-order surface representation does not select
+      circulation by itself.
+  - source: >
+      Hwang, Computer Methods in Applied Mechanics and Engineering 190
+      (2000), DOI 10.1016/S0045-7825(00)00182-1
+    implication: >
+      Joukowski and van-de-Vooren airfoils provide analytic Dirichlet
+      boundary-element references and expose singular/near-singular
+      high-order quadrature behavior at sharp trailing edges.
+  - source: >
+      Xia & Mohseni, Journal of Fluid Mechanics 830 (2017),
+      DOI 10.1017/jfm.2017.513
+    implication: >
+      For a cusped trailing edge the newborn sheet direction is known and
+      the Kutta condition is the appropriate isolated bridge; finite-angle
+      edges additionally require circulation, mass and momentum coupling.
+  - source: >
+      Le Provost et al., Journal of Fluid Mechanics 977 (2023),
+      DOI 10.1017/jfm.2023.997
+    implication: >
+      No-through-flow, Kelvin and unsteady Kutta equations form one system;
+      passing a steady sharp-edge canonical cannot qualify finite-angle
+      shedding or material wake evolution.
+
+canonical:
+  mapping: "z=zeta+b^2/zeta"
+  circle_center: [-0.08, 0.0]
+  mapping_parameter_b: 1.0
+  circle_radius_identity: "R=b-center_x=1.08, so zeta=b is the cusp"
+  freestream_speed: 1.0
+  density: 1.0
+  angle_of_attack_deg: 5.0
+  kutta_circulation_identity: "Gamma_K=-4*pi*R*U*sin(alpha)"
+  cut_location: "theta=0=2*pi at the mapped trailing-edge cusp"
+  p2_panel_counts: [32, 64, 128, 256]
+  quadrature_order: 16
+  gauge_shift: 7.25
+
+analytic_oracles:
+  complex_potential: >
+    W=U*exp(-i*alpha)*w + U*exp(i*alpha)*R^2/w
+    - i*Gamma_K/(2*pi)*log(w/R), where w=zeta-zeta_center.
+  mapped_velocity: >
+    dW/dz=(dW/dzeta)/(1-b^2/zeta^2); the numerator and mapping derivative
+    both vanish at the cusp under Gamma_K, leaving a finite Kutta limit.
+  pressure: "Cp=1-|dW/dz|^2/U^2"
+  force_axes: >
+    Integrate pressure once on the mapped body, then project onto freestream
+    drag and left-normal lift.  D=0 and L=-rho*U*Gamma_K.
+
+thresholds:
+  cut_jump_relative_error_max: 1.0e-13
+  circulation_relative_error_max: 1.0e-13
+  analytic_kutta_numerator_absolute_max: 1.0e-13
+  finest_surface_velocity_rms_error_max: 0.01
+  finest_surface_Cp_rms_error_max: 0.03
+  finest_lift_relative_error_max: 0.005
+  finest_drag_absolute_max: 0.002
+  finest_trailing_side_Cp_mismatch_max: 0.02
+  gauge_velocity_absolute_change_max: 1.0e-12
+  gauge_force_absolute_change_max: 1.0e-12
+  velocity_Cp_and_lift_errors_monotone: true
+
+decision:
+  go: >
+    All frozen topology, Kutta, pressure, force, gauge and refinement gates
+    pass.  This qualifies only the steady sharp/cusped lifting-body bridge
+    and permits a separately preregistered finite-angle/base wake stage.
+  no_go: >
+    A failed gate returns to trace differentiation, cusp regularity, Kutta
+    sign or pressure integration.  It does not authorize a trailing-edge
+    epsilon, circulation fit, core, pressure correction or threshold change.
+  scope_limit: >
+    Passing does not qualify unsteady Kelvin shedding, finite-angle or blunt
+    base closure, three-dimensional finite-wing wake, LEV release, material
+    pressure history, N1 compatibility or production loads.
+
+forbidden:
+  - "choosing Gamma from a target lift or pressure curve"
+  - "cutting the body anywhere except the mapped trailing-edge cusp"
+  - "adding a trailing-edge epsilon or singularity core"
+  - "integrating a separate circulation force in addition to pressure"
+  - "calling this a finite-base, three-dimensional or production model"
+
+S2b_initial_execution_2026_07_28:
+  result_artifact: actual_boundary_joukowski_kutta_results.json
+  stage_decision: NO-GO
+  passed:
+    - "cut jump and circulation"
+    - "analytic Kutta numerator"
+    - "surface velocity/Cp RMS"
+    - "pressure-only lift and drag"
+    - "velocity/Cp/lift monotone refinement"
+    - "gauge force invariance"
+  failed:
+    gauge_velocity:
+      actual: 8.418500341278445e-10
+      threshold: 1.0e-12
+    trailing_side_Cp:
+      actual: 0.10957413266975613
+      threshold: 0.02
+  fingerprint:
+    finest_global_velocity_rms: 0.0006811911822202743
+    finest_global_Cp_rms: 0.001246596139221132
+    exact_nearest_quadrature_trailing_side_Cp_mismatch: 1.936422849913022e-05
+    ordinary_P2_nearest_quadrature_trailing_side_Cp_mismatch: 0.10957413266975613
+    interpretation: >
+      The physical analytic Kutta solution is continuous across the cusp,
+      while the ordinary endpoint P2 derivative fails only at the nearest
+      cusp quadrature points.  Both dphi/dtheta and dz/dtheta have a common
+      first-order zero there; differentiating unconstrained endpoint P2
+      interpolants and dividing them creates a localized 0/0 amplification.
+      Adding a constant gauge before this division exposes the same
+      cancellation defect.  This is a boundary-basis/numerical-identity
+      failure, not evidence against the Kutta condition.
+
+S2b1_preregistered_after_failure_before_implementation:
+  claim: >
+    The two panels incident on the classified cusp require a Kutta-enriched
+    trace basis that preserves their endpoint/midpoint/far-end values while
+    imposing the known common derivative zero on both geometry and
+    potential.  All other panels remain ordinary P2.  Every potential
+    derivative must be evaluated from local gauge-free differences.
+  first_cusp_panel_basis: >
+    For tau in [0,1] with the cusp at tau=0, interpolate p0,pm,p1 using
+    N0=1-7*tau^2+6*tau^3, Nm=8*tau^2-8*tau^3,
+    N1=-tau^2+2*tau^3.  This satisfies p'(0)=0 exactly.
+  last_cusp_panel_basis: >
+    Mirror the same basis with s=1-tau and reversed endpoint roles, so
+    p'(1)=0 exactly.
+  gauge_free_derivative: >
+    Evaluate every local potential derivative from values minus one local
+    anchor.  Partition of unity then removes a constant gauge before any
+    division by the arc Jacobian.
+  unchanged:
+    - "mapping, alpha, Gamma_K and cut location"
+    - "32/64/128/256 panel family and quadrature order 16"
+    - "all original S2b thresholds"
+    - "one Bernoulli pressure and one body-pressure integral"
+    - "no TE epsilon, core, force fit or pressure correction"
+  go: >
+    Re-run the complete unchanged S2b gate.  All checks, including gauge
+    velocity and trailing-side Cp, must pass.  Passing qualifies only this
+    sharp-cusp enriched trace identity.
+  no_go: >
+    Any remaining failure keeps S2b NO-GO.  Do not add mesh levels, relax
+    thresholds, delete cusp quadrature points or replace the failed checks
+    with global averages.
+
+S2b1_execution_and_S2b2_preregistration_2026_07_28:
+  S2b1_execution:
+    stage_decision: NO-GO
+    fixed_without_threshold_change:
+      trailing_side_Cp_before: 0.10957413266975613
+      trailing_side_Cp_after: 1.9417236199914534e-05
+      threshold: 0.02
+    remaining_failure:
+      gauge_velocity_absolute_change: 1.4425793892769434e-11
+      threshold: 1.0e-12
+    diagnosis: >
+      Local anchoring is algebraically gauge free, but adding a large gauge
+      into every stored nodal floating-point value and subtracting it later
+      has already discarded low bits.  The cusp arc Jacobian then amplifies
+      that roundoff.  The potential gauge is a separate null-space state,
+      not part of the differentiable trace coefficients.
+  S2b2_preregistered_before_implementation:
+    claim: >
+      Store the scalar potential gauge separately from the gauge-free trace
+      coefficients.  Surface differentiation consumes only the gauge-free
+      coefficients; potential evaluation may add the gauge afterward.
+    unchanged:
+      - "S2b1 Kutta-enriched cusp basis"
+      - "all physical formulas, parameters, meshes and quadrature"
+      - "all original thresholds and checks"
+      - "pressure and force integration"
+    go: >
+      Re-run the complete original S2b gate.  Gauge velocity must pass
+      without changing any other result beyond floating roundoff.
+    no_go: >
+      Any failure keeps S2b NO-GO and blocks finite-base continuation.
+
+S2b2_execution_2026_07_28:
+  result_artifact: actual_boundary_joukowski_kutta_results.json
+  stage_decision: GO
+  production_activation_allowed: false
+  aggregate_metrics:
+    cut_jump_relative_error_max: 0.0
+    circulation_relative_error_max: 1.1263201351013955e-15
+    analytic_kutta_numerator_absolute: 0.0
+    finest_surface_velocity_rms_error: 1.6341994256720827e-05
+    finest_surface_Cp_rms_error: 4.078207243976538e-05
+    finest_lift_relative_error: 4.891852382774633e-11
+    finest_drag_absolute: 8.005693330481733e-11
+    finest_trailing_side_Cp_mismatch: 1.9417236199914534e-05
+    gauge_velocity_absolute_change_max: 0.0
+    gauge_force_absolute_change_max: 0.0
+  interpretation: >
+    The classified cut plus analytic sharp-edge Kutta condition selects
+    circulation and produces a convergent single pressure ledger on a
+    finite-thickness cusped lifting body.  The cusp needs an enriched trace
+    basis carrying the common derivative zero, and the scalar potential
+    gauge must remain separate from differentiable trace coefficients.
+    This GO does not transfer to a finite-angle/blunt base or a material
+    three-dimensional wake.

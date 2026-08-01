@@ -1,0 +1,40 @@
+artifact: implicit_claim_group_solver_semantics
+date_preregistered: "2026-07-27"
+claim_node: N3.1j4b5c
+scope:
+  allowed:
+    - "Named state and residual block assembly"
+    - "Analytic block Jacobians"
+    - "Unweighted physical-scale normalization"
+    - "Backtracking Newton least-squares updates"
+  forbidden:
+    - "Any FLUXV physical closure, pressure or force output"
+    - "Regularization, smoothing or tuneable block weights"
+    - "LESP amplitude, target lift or target thrust residuals"
+cases:
+  - id: exact_linear_three_block
+    gates:
+      state_error: 1.0e-12
+      max_normalized_residual: 1.0e-12
+  - id: nonlinear_three_way_coupling
+    gates:
+      state_error: 1.0e-10
+      max_normalized_residual: 1.0e-10
+      maximum_iterations: 12
+  - id: named_permutation_invariance
+    gates:
+      named_state_difference: 1.0e-12
+  - id: failure_semantics
+    gates:
+      rank_deficiency_must_raise: true
+      forbidden_residual_must_raise: true
+promotion:
+  go_if:
+    - "All manufactured solver-semantic gates pass"
+  claim_if_passed: >
+    An implicit claim group can solve and audit a named coupled residual
+    without order dependence, target forces or regularization.
+  must_not_claim:
+    - "The N1-N2.6-N3 physical residual has been assembled"
+    - "Any spatial vortex, pressure or load result is validated"
+

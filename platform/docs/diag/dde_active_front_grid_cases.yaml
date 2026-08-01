@@ -1,0 +1,39 @@
+schema_version: 1
+title: "N3.1j4b4 active-front terminated P-R first-sheet grid gate"
+role: >
+  Follow the b3 free-tip incompatibility without changing LESPcrit or adding
+  smoothing. The analytic A0 profile crosses LESPcrit at a fixed span edge.
+  The LEV patch exists only on the root-connected active component and has
+  zero potential jump at that physical active-front boundary.
+grid:
+  nc: 4
+  ns: [4, 8, 16]
+geometry:
+  chord: 1.0
+  half_span: 3.0
+  pitch_deg: 15.0
+active_front_span_fraction: 0.5
+time_step: 0.02
+u_infinity: 1.0
+preconstraint_a0_root: 0.34
+lesp_crit: 0.27
+line_quadrature_order: 96
+trace_samples: 129
+field_probes:
+  chord_fraction: 0.25
+  span_fractions: [0.1, 0.3, 0.45]
+  normal_offset: 0.2
+guards:
+  active_front_location_error_max: 1.0e-12
+  inactive_gamma_max: 1.0e-12
+  lesp_active_residual_max: 1.0e-10
+  lesp_condition_number_max: 1.0e3
+  trace_cauchy_ratio_min: 1.5
+  trace_finest_relative_change_max: 0.15
+  field_cauchy_ratio_min: 1.5
+  field_finest_relative_change_max: 0.15
+promotion_boundary: >
+  Passing validates only a manufactured root-connected active-front topology
+  and short-time span-grid convergence. It does not validate an evolving
+  onset front, Case1/2, TEV coupling, long roll-up, pressure, force, or
+  production.

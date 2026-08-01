@@ -1,0 +1,154 @@
+artifact: constrained_p2_wake_transport_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b2b1
+depends_on_claims:
+  - N3.1j3b6d18c2b2b
+  - N3.1j3b6d18c2b2a
+  - N3.1j3b6d18c1a
+status: executed_no_go
+stage: S3l_essential_P2_trace_constrained_transport
+role: no_force_boundary_constrained_ALE_transport_oracle
+
+question: >
+  Does a typed essential P2 trace, imposed in the free/constrained Galerkin
+  block equation including prescribed trace value and time derivative,
+  remove the S3k boundary failure without post-update clamping and also
+  transmit a nonzero body-attachment trace correctly?
+
+cause_from_s3k:
+  data_fingerprint:
+    - "S3k passed every moving/time/patch/objectivity gate except zero boundary preservation"
+    - "unconstrained zero-boundary drift was 3.015449e-4 against the frozen 2e-12 gate"
+    - "the physical wake has both zero tip/terminal traces and a potentially nonzero newest body-attachment trace"
+  node: N3.1j3b6d18c2b2b1
+  movable_space: >
+    Only an explicitly typed partition of global P2 scalar DOFs into free and
+    prescribed traces may change. The mass/advection matrices, moving
+    geometry, interface welding, quadrature and continuum law remain frozen.
+  classification: missing_essential_scalar_trace_component
+
+primary_evidence:
+  - source: >
+      Dziuk & Elliott, Finite element methods for surface PDEs, Acta Numerica
+      22 (2013), ALE ESFEM weak form
+    url: >
+      https://wrap.warwick.ac.uk/id/eprint/53966/1/WRAP_Elliott_DziEll13a.pdf
+    implication: >
+      Essential trace data enter the finite-element trial/test space and the
+      moving-basis weak equation, not an output-cleanup operation.
+  - source: >
+      N3.1j3b6d18c2a S3h
+    implication: >
+      The newest body-attached geometry edge is an essential stage boundary;
+      scalar attachment requires the analogous typed trace identity.
+  - source: >
+      N3.1j3b6d18c1a S3g
+    implication: >
+      Body-cut/wake trace identity is oriented and material-ID based, so the
+      scalar boundary cannot be inferred from coordinates or proximity.
+
+candidate_rewrite: >
+  For prescribed P2 trace indices b and free indices f, solve
+  M_ff*mu_dot_f=-(M_fb*g_dot+C_ff*mu_f+C_fb*g), set mu_dot_b=g_dot, and impose
+  exact g at every predictor/corrector stage. The constrained indices are
+  typed inputs. Updating all DOFs and clamping afterward is a registered
+  counterfactual, not an allowed implementation.
+
+canonical:
+  geometry_and_mesh: "identical to S3k"
+  time:
+    start: 0.0
+    end: 0.2
+    step_families: [2, 4, 8]
+  cases:
+    zero_all_boundaries:
+      mu0: "s*(1-s)*r*(1-r)"
+      prescribed_trace: 0.0
+    nonzero_body_attachment:
+      mu0: "s*r*(1-r)"
+      zero_edges: ["s=0", "r=0", "r=1"]
+      body_edge: "s=1"
+      body_trace: "r0(t)*(1-r0(t))"
+  constraint_identity:
+    source: explicit_global_P2_material_DOF_ids
+    coordinate_or_proximity_inference_allowed: false
+  counterfactual:
+    name: clamp_only
+    definition: "advance unconstrained, overwrite boundary values, omit M_fb*g_dot and C_fb*g"
+
+required_identities:
+  - "typed constrained/free DOFs form a complete disjoint partition"
+  - "free block mass matrix is full rank"
+  - "zero traces remain zero at every stage"
+  - "nonzero body trace equals its provider at every stage"
+  - "free-state equation includes both M_fb*g_dot and C_fb*g"
+  - "zero and nonzero cases retain second-order time contraction"
+  - "patch traces and rigid objectivity remain exact"
+  - "clamp-only counterfactual has a visible free-interior error"
+  - "no coordinate inference, post-hoc cleanup, stabilization, pressure or force enters"
+
+thresholds:
+  partition_failure_count_max: 0
+  free_mass_rank_deficiency_max: 0
+  prescribed_trace_abs_max: 2.0e-12
+  shared_trace_jump_abs_max: 0.0
+  zero_case_time_cauchy_ratio_min: 3.5
+  nonzero_case_time_cauchy_ratio_min: 3.5
+  zero_case_finest_relative_l2_error_max: 0.01
+  nonzero_case_finest_relative_l2_error_max: 0.01
+  rigid_final_scalar_abs_difference_max: 2.0e-10
+  clamp_only_free_interior_abs_error_min: 1.0e-4
+  invalid_constraint_failure_count_min: 3
+
+decision:
+  go: >
+    Every partition, trace, block-equation, time, objectivity and failure gate
+    passes and clamp-only visibly fails. Validate the essential-trace
+    component and authorize actual induced-velocity composition.
+  no_go: >
+    Any failure blocks composition. Do not post-clamp, infer indices from
+    coordinates in runtime, change thresholds or add stabilization/targets.
+  production_activation_allowed: false
+
+execution:
+  stage_decision: NO-GO
+  valid_result:
+    typed_partition_failure_count: 0
+    free_mass_rank_deficiency_max: 0
+    prescribed_trace_abs_max: 0.0
+    shared_trace_jump_abs_max: 0.0
+    zero_case_time_cauchy_ratio: 4.398271909155595
+    nonzero_case_time_cauchy_ratio: 3.8121681129961242
+    zero_case_finest_relative_l2_error: 0.002164660459119323
+    nonzero_case_finest_relative_l2_error: 0.0006739583984044805
+    rigid_final_scalar_abs_difference: 2.983724378680108e-16
+    clamp_only_free_interior_abs_error: 3.499053021991175e-05
+    invalid_constraint_failure_count: 3
+  failed_frozen_gate:
+    name: clamp_only_free_interior_abs_error_min
+    observed: 3.499053021991175e-05
+    required: 1.0e-04
+  first_execution_oracle_audit:
+    preserved_as: constrained_p2_wake_transport_results_initial_invalid_oracle.json
+    defect: >
+      Inverse-rigid-transform roundoff put the nominal r=1 manufactured
+      material endpoint just above one, crossing the tan(pi*r/2) analytic
+      branch. The guard-only material coordinate was clipped back to its
+      closed [0,1] label after a fail-closed tolerance check; no candidate
+      equation, state, threshold or production code changed.
+  interpretation: >
+    The free/constrained block candidate passed all direct equation,
+    accuracy, trace, time and objectivity gates, but this experiment did not
+    distinguish it from clamp-only at the frozen final-state threshold.
+    Because c_s=a*sin(pi*s) is exactly zero at the nominal body edge s=1,
+    that edge is characteristic rather than a genuine inflow. The claim
+    remains partial and cannot authorize actual induced-velocity composition.
+  next_gate: >
+    Preregister a typed inflow/body-attachment versus outflow/old-edge
+    manufactured transport gate with nonzero relative boundary flux. Do not
+    lower the S3l threshold or tune the current case.
+
+scope_limit: >
+  The typed IDs and trace providers are manufactured. This gate does not
+  validate the actual body-cut trace provider, actual induced velocity,
+  post-relaxation equilibrium, pressure, force, LEV or production.

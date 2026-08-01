@@ -1,0 +1,41 @@
+claim: N3.1j4b5
+status: preregistered_before_execution
+scope:
+  - N1 ring circulation to oriented DDE potential-jump sign and unit identity
+  - named, dimension-only-normalized global conservation algebra
+  - no physical LEV geometry, pressure, force, or V4.1 production coupling
+interface_case:
+  gamma_n1: 0.37
+  n1_ring_order:
+    - front_left
+    - front_right
+    - aft_right
+    - aft_left
+  n1_normal: [0.0, 0.0, 1.0]
+  dde_normal: [0.0, 0.0, 1.0]
+  expected_mu_over_gamma: -1.0
+  induced_velocity_points:
+    - [0.2, 0.3, 0.8]
+    - [1.8, -0.7, 1.2]
+    - [-0.6, 0.2, 0.5]
+  max_relative_induced_velocity_error: 2.0e-9
+  max_roundtrip_error: 1.0e-14
+global_algebra_case:
+  velocity_reference: 8.0
+  length_reference: 0.287
+  normalized_residual_tolerance: 1.0e-12
+  state_tolerance: 2.0e-14
+  required_blocks:
+    - no_penetration
+    - trace_continuity
+    - vorticity_compatibility
+    - material_kelvin
+    - kutta_interface
+    - mirror_symmetry
+    - free_edge
+no_go:
+  - any LESP amplitude equation is accepted by the global system
+  - any tuneable equation-family weight or regularization is present
+  - the N1/DDE sign is selected from force or pressure agreement
+  - a rank-deficient manufactured system is silently solved
+

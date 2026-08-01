@@ -1,0 +1,126 @@
+artifact: analytic_p2_sheet_finite_part_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3a2b
+parent_claim: N3.1j3b6d18c2b3a2
+status: executed_go
+stage: S3q_analytic_p2_sheet_finite_part_edge_moments
+role: no_force_numerical_operator_gate
+
+question: >
+  After the validated exact P2 boundary-vortex extraction, can the remaining
+  owner/coplanar linear area-vorticity finite part be evaluated exactly from
+  endpoint I0/I1/I2 and logarithmic J0/J1 moments, eliminating the
+  manufactured near-vertex quadrature layer without a core or offset?
+
+cause_from_s3p:
+  boundary_vortex_validated:
+    polynomial_reconstruction_abs_max: 1.1102230246251565e-16
+    constant_ring_abs_max: 2.842170943040401e-14
+  remaining_fingerprint:
+    manufactured_q16_to_q24_abs_change: 6.976575309208144e-3
+    actual_body_frozen_order_abs_change: 5.6822325441229055e-12
+    actual_wake_frozen_order_abs_change: 6.318586692616209e-9
+  node: N3.1j3b6d18c2b3a2b
+  movable_space: >
+    Replace only the two numerical area-vorticity terms inside the already
+    derived owner/coplanar finite-part identity.  The validated analytic
+    boundary vortex, off-plane radial identity and every physical state are
+    frozen.
+  classification: missing_analytic_area_vorticity_finite_part_moments
+
+primary_evidence:
+  - source: >
+      Montanelli, Collino & Haddar, SIAM Journal on Scientific Computing 46
+      (2024)
+    doi: https://doi.org/10.1137/23M1605594
+    implication: >
+      Strongly singular quadratic-triangle integrals are regularized by
+      Taylor subtraction and continuation into one-dimensional boundary
+      terms.
+  - source: Johnson, NASA CR-3079 (1980), Appendix D
+    url: https://ntrs.nasa.gov/citations/19800015776
+    implication: >
+      The remaining polynomial doublet velocity influence terms possess
+      closed endpoint H/F recursions.
+
+candidate_rewrite:
+  local_identity: >
+    On each edge use physical coordinate u from the target's line
+    projection.  The linear area-vorticity numerator times the radial vector
+    is quadratic, so its nonlogarithmic term consumes I0/I1/I2.  The constant
+    gamma-at-target term is linear and consumes J0/J1.
+  exact_moments:
+    I0: "integral du/r^3"
+    I1: "integral u du/r^3"
+    I2: "integral u^2 du/r^3"
+    J0: "integral log(r/Lref) du/r^3"
+    J1: "integral u*log(r/Lref) du/r^3"
+  invariants:
+    - "analytic area term plus validated boundary vortex equals the same finite-part identity"
+    - "constant gamma and zero gamma limits remain exact"
+    - "no core, offset, excluded disk, smoothing or target load"
+    - "targets on an edge fail closed"
+
+canonical:
+  inherit_manufactured_and_actual_snapshot_from:
+    near_singular_p2_edge_quadrature_cases.yaml
+  actual_snapshot_orders:
+    body: [16, 24, 36, 52, 72]
+    wake: [24, 36, 48, 64, 80]
+  independent_standard_reference_order: 256
+  moderate_owner_barycentric:
+    - [0.2, 0.3, 0.5]
+    - [0.5, 0.2, 0.3]
+
+thresholds:
+  moment_derivative_relative_max: 2.0e-8
+  analytic_vs_standard_moderate_abs_max: 2.0e-9
+  manufactured_order_invariance_abs_max: 2.0e-12
+  constant_ring_abs_max: 2.0e-12
+  actual_body_last_abs_change_max: 1.0e-8
+  actual_wake_last_abs_change_max: 1.0e-8
+  ledger_closure_abs_max: 2.0e-12
+  rigid_channel_abs_max: 2.0e-9
+  edge_failure_count_min: 2
+
+decision:
+  go: >
+    Moment-derivative, moderate independent-reference, manufactured
+    near-vertex invariance, constant-ring, actual S3n, ledger, rigid and
+    fail-closed gates all pass.  Freeze only the analytic coplanar finite-part
+    operator and authorize a fresh full S3n ledger rerun.
+  no_go: >
+    Any failure leaves c2b3a partial.  Do not change the validated boundary
+    vortex, raise orders, add a core/offset or inspect pressure/force.
+  production_activation_allowed: false
+
+forbidden:
+  - geometry_update
+  - material_mu_transport
+  - wake_relaxation
+  - fixed_point
+  - target_offset
+  - vortex_core
+  - smoothing
+  - pressure
+  - force
+  - LESP
+  - target_load
+  - structural_dynamics
+
+execution:
+  result_file: analytic_p2_sheet_finite_part_results.json
+  decision: GO
+  metrics:
+    moment_derivative_relative_max: 4.737393113410878e-9
+    analytic_vs_standard_moderate_abs_max: 7.771561172376096e-16
+    manufactured_order_invariance_abs_max: 0.0
+    constant_ring_abs_max: 2.842170943040401e-14
+    actual_body_last_abs_change: 5.6822325441229055e-12
+    actual_wake_last_abs_change: 2.9433731603321313e-10
+    ledger_closure_abs_max: 0.0
+    rigid_channel_abs_max: 1.4632739464559563e-13
+  promotion: >
+    Validate and freeze only the analytic coplanar P2 sheet-average
+    finite-part edge moments.  The parent four-channel S3n ledger must be
+    rerun in full before c2b3a or wake relaxation can advance.

@@ -1,0 +1,173 @@
+artifact: actual_boundary_oriented_wake_attachment_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c1a
+depends_on_claims:
+  - N3.1j3b6d18c1
+  - N3.1j4c6
+status: executed_go_after_preregistration
+stage: S3g_oriented_body_cut_to_material_wake_attachment
+role: no_force_oriented_trace_identity_oracle
+
+question: >
+  Does an explicit attachment carrying ordered body material vertex IDs and
+  a signed P2 body-cut-to-wake trace map remove the S3f frame dependence
+  while preserving legacy, curved-geometry and reverse-parameterization
+  equivalence?
+
+cause_from_s3f:
+  data_fingerprint:
+    - "straight legacy equivalence, curved geometry consumption, rank and interfaces pass"
+    - "generic rigid rotation reverses coordinate-selected cut order and produces matrix/RHS/jump errors of 1.89e-3/3.42e-4/3.84e-2"
+    - "an x-axis rotation that preserves cut order passes at O(1e-15)"
+    - "restoring the original material cut order under the generic rotation passes at O(1e-15)"
+  node: N3.1j3b6d18c1
+  movable_space: >
+    Only the declared body-cut-to-wake material identity may change. No
+    vertex coordinates, body/cut DOFs, basis functions, quadrature, source
+    or doublet signs, material strengths, solver tolerances, pressure or
+    force paths may change.
+  classification: missing_oriented_material_attachment_map
+
+primary_evidence:
+  - source: >
+      Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990)
+    implication: >
+      Panel abutments and orientation are explicit topological data; a
+      coordinate sort is not a physical boundary identity.
+  - source: >
+      Krebs dissertation (2021), sections 3.2-3.3
+    implication: >
+      Gapless surface/wake strength continuity is imposed across named
+      neighbouring material elements and retained during wake motion.
+  - source: >
+      Pate, Georgia Tech dissertation (2017)
+    implication: >
+      An orientable triangulated vortex sheet combines geometry and signed
+      surface-vorticity/circulation data; reversing surface orientation
+      requires the corresponding signed field transformation.
+  - source: >
+      Double-layer potential identity mu * dG/dn
+    implication: >
+      Reversing the sheet normal changes the sign of dG/dn, so the potential
+      jump must reverse sign to represent the same physical double layer.
+
+candidate_rewrite:
+  type: MaterialWakeCutAttachment
+  fields:
+    ordered_body_cut_vertex_indices: >
+      Exact material vertex IDs from one declared zero-jump endpoint to the
+      other; must equal the classified cut chain in either direction.
+    wake_jump_from_body_cut_sign: >
+      Exactly +1 or -1, defining wake_mu = sign * P_cut_to_wake * body_jump.
+  derived_not_fitted:
+    p2_trace_permutation: >
+      Identity or exact reversal derived only from material vertex IDs.
+    active_current_row: >
+      sign * P_cut_to_wake * J_cut * current_body_potential.
+  forbidden:
+    - "world-coordinate sorting"
+    - "geometric nearest-neighbour matching"
+    - "post-solve array flipping"
+    - "strength averaging or fitting"
+
+canonical:
+  body_history_and_quadrature: "identical to frozen S3f canonical"
+  forward_attachment:
+    ordered_body_cut_vertex_indices: [2, 6, 10, 14, 18]
+    wake_jump_from_body_cut_sign: 1
+  generic_rigid_transform:
+    rotation_axis: [0.3, -0.4, 0.5]
+    rotation_deg: 31.0
+    translation: [0.7, -0.2, 0.4]
+    expected_coordinate_cut_order_reversal: true
+    attachment_material_ids: "unchanged [2,6,10,14,18]"
+  reverse_parameterization:
+    ordered_body_cut_vertex_indices: [18, 14, 10, 6, 2]
+    wake_jump_from_body_cut_sign: -1
+    wake_geometry: "same physical surface with span nodes reversed"
+    wake_material_rows: "negative of the forward rows in reversed P2 order"
+
+required_identities:
+  - "forward typed attachment reproduces the S3f straight legacy path"
+  - "curved explicit geometry remains consumed without mutation"
+  - "generic rigid transform passes although coordinate-selected topology order reverses"
+  - "reverse span parameterization with sign -1 represents the same physical double layer"
+  - "P2 permutation is derived only from exact body material IDs"
+  - "active current row equals sign * permutation * body cut jump"
+  - "old material rows remain known and immutable"
+  - "interfaces, newest common-edge topology, rank, weak residual, attachment and tips pass"
+  - "invalid/repeated/non-chain material IDs and non-binary signs fail before assembly"
+  - "no smoothing, core, pressure, force, LESP, prescribed current circulation or target load enters"
+
+thresholds:
+  straight_legacy_matrix_max_abs_difference: 1.0e-12
+  straight_legacy_rhs_max_abs_difference: 1.0e-12
+  straight_legacy_cut_jump_max_abs_difference: 1.0e-12
+  curved_geometry_mutation_abs_max: 0.0
+  curved_strength_mutation_abs_max: 0.0
+  curved_vs_straight_cut_jump_difference_min: 1.0e-5
+  rigid_matrix_max_abs_difference: 1.0e-10
+  rigid_rhs_max_abs_difference: 1.0e-10
+  rigid_cut_jump_max_abs_difference: 1.0e-10
+  reverse_gauge_matrix_max_abs_difference: 1.0e-10
+  reverse_gauge_rhs_max_abs_difference: 1.0e-10
+  reverse_gauge_cut_jump_max_abs_difference: 1.0e-10
+  active_oriented_attachment_abs_max: 1.0e-12
+  history_interface_abs_max: 1.0e-14
+  body_wake_common_edge_pair_count: 8
+  independent_old_wake_unknown_count_max: 0
+  rank_deficiency_max: 0
+  normalized_weak_residual_max: 1.0e-10
+  condition_number_max: 1.0e4
+  tip_jump_abs_max: 1.0e-12
+
+decision:
+  go: >
+    Every forward, rigid, reverse-gauge, geometry, topology and algebra gate
+    passes, and invalid identities fail closed. GO validates only the
+    oriented attachment and may reopen the geometry-general interface for
+    later wake-relaxation composition.
+  no_go: >
+    Any failed gate blocks the attachment. Do not choose a sign from the
+    numerical answer, reorder by coordinates or distance, alter material
+    rows, tune geometry, regularize, relax thresholds or use load targets.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate validates material orientation identity only. It does not solve
+  wake velocity, perform wake relaxation, iterate surface/wake equilibrium,
+  move the body, generate LEV, compute pressure/force or activate production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_oriented_wake_attachment_results.json
+  stage_decision: GO
+  metrics:
+    straight_legacy_matrix_max_abs_difference: 0.0
+    straight_legacy_rhs_max_abs_difference: 0.0
+    straight_legacy_cut_jump_max_abs_difference: 0.0
+    curved_geometry_mutation_abs_max: 0.0
+    curved_strength_mutation_abs_max: 0.0
+    curved_vs_straight_cut_jump_difference: 0.0015163486125526551
+    rigid_coordinate_cut_order_reversed: true
+    rigid_matrix_max_abs_difference: 5.551115123125783e-17
+    rigid_rhs_max_abs_difference: 1.7780915628762273e-17
+    rigid_cut_jump_max_abs_difference: 6.626643678231403e-15
+    reverse_gauge_matrix_max_abs_difference: 1.118343698897073e-14
+    reverse_gauge_rhs_max_abs_difference: 4.879506087379637e-15
+    reverse_gauge_cut_jump_max_abs_difference: 1.0237574676885686e-12
+    active_oriented_attachment_abs_max: 0.0
+    history_interface_abs_max: 0.0
+    body_wake_common_edge_pair_counts: [8]
+    independent_old_wake_unknown_count_max: 0
+    rank_deficiency_max: 0
+    normalized_weak_residual_max: 3.822757350216067e-16
+    condition_number_max: 111.42107906294413
+    tip_jump_abs_max: 0.0
+    invalid_identity_failure_count: 3
+  interpretation: >
+    Explicit material IDs, exact P2 permutation and signed jump orientation
+    remove the S3f frame dependence without changing the integral operator.
+    The geometry-general interface is now eligible for a separate
+    wake-relaxation/equilibrium gate.
+

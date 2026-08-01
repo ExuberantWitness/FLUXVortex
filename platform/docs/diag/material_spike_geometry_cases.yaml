@@ -1,0 +1,78 @@
+version: 1
+frozen_before_implementation: true
+scope: "N2.6c1b material-surface Weingarten identity; not a separation closure"
+authority:
+  primary_source:
+    title: "Spike formation theory in three-dimensional flow separation"
+    authors: "Santhosh, Qin, Klose, Jacobs, Vétel & Serra"
+    venue: "Journal of Fluid Mechanics 969 (2023), A25"
+    doi: "10.1017/jfm.2023.559"
+    equations:
+      - "3.3: first/second fundamental forms and Weingarten map"
+      - "4.1: finite-time Weingarten change"
+      - "Definition 1 and Proposition 2: Lagrangian backbone"
+      - "Proposition 1: parametrization invariance and observer objectivity"
+claim_under_test: >
+  Given two positions of the same structured material surface at t0 and t,
+  the first and second fundamental forms determine the Weingarten maps and
+  their finite-time change.  Its principal-curvature changes are invariant
+  under proper time-dependent Euclidean observer transformations and converge
+  under material-grid refinement.  This identity alone does not identify a
+  physical separation backbone.
+forbidden_inputs:
+  - wall_shear_threshold
+  - shape_factor_threshold
+  - LESP
+  - BEF
+  - lift
+  - thrust
+  - force
+  - pressure_residual
+  - structural_state
+manufactured_cases:
+  plane:
+    requirement:
+      - "first fundamental form is identity"
+      - "second fundamental form and both principal curvatures are zero"
+  cylinder:
+    parametrization: "[R sin(u), v, R(1-cos(u))]"
+    requirement:
+      - "one principal curvature has magnitude 1/R"
+      - "the other principal curvature and Gaussian curvature are zero"
+      - "error decreases under grid refinement"
+  static_curved_surface:
+    requirement:
+      - "identical initial and final positions give zero Weingarten change"
+      - "both principal-curvature changes are zero"
+  parabolic_fold:
+    initial: "[u,v,0]"
+    final: "[u,v,0.5*a*u^2]"
+    requirement:
+      - "at the origin the positive largest curvature change equals a"
+      - "the transverse curvature change is zero"
+  observer_change:
+    requirement:
+      - "initial and final snapshots may use different proper rotations and translations"
+      - "fundamental scalar invariants and principal-curvature changes are preserved"
+      - "improper or non-orthogonal observer maps are rejected by the transform helper"
+  reparametrization:
+    requirement:
+      - "linear material-coordinate rescaling preserves principal curvatures"
+      - "comparison excludes the finite-difference boundary stencil"
+failure_cases:
+  - "non-finite position"
+  - "fewer than three material nodes in either coordinate"
+  - "non-monotone material coordinates"
+  - "degenerate surface metric"
+  - "material orientation flip relative to a supplied reference normal"
+go:
+  identity: >
+    All manufactured analytic identities pass, observer residuals are below
+    discretization tolerance, and cylinder error decreases under refinement.
+  physical_promotion: false
+no_go:
+  - "calling the geometric identity a validated separation manifold"
+  - "ridge extraction without positive-value, stationarity and negative-curvature conditions"
+  - "using a final surface curvature instead of finite-time curvature change"
+  - "selecting integration time or ridge thresholds from integrated loads"
+  - "feeding this oracle with a wall surface instead of near-wall fluid material surfaces"

@@ -1,0 +1,149 @@
+artifact: actual_boundary_blunt_base_identifiability_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+status: preregistered_before_implementation
+stage: S2e_blunt_base_side_state_identifiability
+role: conservation_family_nonuniqueness_oracle
+
+question: >
+  Once the two finite-base corner fronts are retained, can their local
+  high-Re formation direction, strength and relative motion be determined
+  from the outer-surface incident velocities and geometry alone?  Or does an
+  unobserved base-side recirculation/shear-layer state generate multiple
+  conservation-admissible front states for exactly the same outer input?
+
+cause_from_S2d:
+  known: >
+    A nonzero NACA-2406 base requires two material origins or an equivalent
+    finite-width interface.
+  missing: >
+    S2d contains no equation for the flow incident on each corner from the
+    base region.  The Xia-Mohseni finite-angle direction relation consumes
+    both incident-side velocities, so topology alone may not make the two
+    front states identifiable.
+  classification: missing_base_region_dynamic_state
+
+primary_evidence:
+  - source: >
+      Xia & Mohseni, Journal of Fluid Mechanics 830 (2017),
+      DOI 10.1017/jfm.2017.513
+    implication: >
+      The finite-angle direction and strength depend on both incident sheet
+      velocities; dropping one side is only the one-sided stagnant limit.
+  - source: >
+      Martinez-Cava, Rodriguez, Valero & Paniagua, Aerospace Science and
+      Technology 113 (2021) 106730,
+      DOI 10.1016/j.ast.2021.106730
+    implication: >
+      The two shear layers bound a low-pressure, low-momentum base region
+      and meet at a downstream confluence point; base-region flow is a
+      physical state, not a geometric midpoint.
+  - source: >
+      Thomareis & Papadakis, Physics of Fluids 29 (2017) 014101,
+      DOI 10.1063/1.4973811
+    implication: >
+      Blunt-edge global shedding modifies and locks the separating shear
+      layers, so their motion is not determined by the outer attached flow
+      alone.
+  - source: >
+      Wang, Abdel-Maksoud & Song, Ocean Engineering 130 (2017) 398-406,
+      DOI 10.1016/j.oceaneng.2016.12.009
+    implication: >
+      Pressure Kutta is a nonlinear coupled condition; it is not silently
+      supplied as a post-processing selector in this identifiability gate.
+
+canonical:
+  geometry:
+    airfoil: NACA-2406
+    base_fraction: 1.0
+    maximum_camber: 0.02
+    camber_location: 0.40
+    thickness_ratio: 0.06
+    chord: 1.0
+    corner_wedge_definition: >
+      At each corner use the smaller angle between the downstream outer
+      surface tangent and the adjoining solid-base tangent from the analytic
+      S2d geometry.
+  fixed_observed_outer_speed: 1.0
+  unobserved_base_speed_ratios: [0.0, 0.25, 0.5, 0.75]
+  interpretation: >
+    The ratios are a witness family, not tunable model parameters.  Every
+    member has identical outer-surface input and geometry; only the
+    deliberately unobserved base-side state differs.
+
+computed_family:
+  local_equations: >
+    Reuse the validated S2c signed-control-volume finite-angle identities at
+    each corner with u_outer=-1 and u_base=-ratio.  Report angle sum,
+    direction, Kutta strength, circulation-rate and signed momentum
+    residuals for every member.
+  nonuniqueness_observables:
+    - forming_front_angle
+    - sheet_strength
+    - relative_velocity
+    - both_sheet_side_velocities
+  mirror_requirement: >
+    Upper and lower canonical corners must have equal wedge magnitudes and
+    equal scalar witness families to within geometric roundoff.
+
+thresholds:
+  local_normalized_residual_max: 1.0e-13
+  sheet_side_velocity_negative_tolerance: 1.0e-13
+  corner_wedge_mirror_abs_deg_max: 1.0e-3
+  corner_family_mirror_abs_max: 1.0e-5
+  forming_angle_spread_min_deg: 30.0
+  sheet_strength_spread_min: 0.5
+  relative_velocity_spread_min: 0.1
+  outer_input_identity_abs_max: 0.0
+
+decision:
+  go: >
+    All witness members satisfy the same local conservation identities and
+    nonnegative sheet-side velocities, while identical outer input produces
+    angle, strength and relative-velocity spreads above the frozen minima.
+    Then outer-only closure is falsified and a base-side/confluence state is
+    a necessary input before two-front dynamics or pressure can be claimed.
+  no_go: >
+    If the state is invariant to the base-side velocity or any witness is
+    inadmissible, do not claim this nonuniqueness mechanism; revisit the
+    local corner control-volume mapping without fitting a selector.
+  production_activation_allowed: false
+
+scope_limit: >
+  Passing does not validate any ratio as the physical base velocity, select
+  a base pressure, construct a confluence model, solve viscous inventory,
+  alter N1, activate a sharp-limit approximation, or enter 3-D production.
+
+forbidden:
+  - "choosing the ratio that improves lift or thrust"
+  - "averaging the witness family into a closure"
+  - "calling zero base-side speed universally valid"
+  - "using pressure equality without material potential history"
+  - "activating any witness state in production"
+
+S2e_execution_2026_07_28:
+  stage_decision: GO
+  result_artifact: actual_boundary_blunt_base_identifiability_results.json
+  aggregate_metrics:
+    local_normalized_residual_max: 6.344131569286608e-17
+    minimum_sheet_side_velocity: 0.0
+    corner_wedge_mirror_abs_deg: 0.0005550532300873101
+    corner_family_mirror_abs_max: 3.572707602206293e-06
+    forming_angle_spread_deg: 35.41050862819273
+    sheet_strength_spread: 0.6611718114129703
+    relative_velocity_spread: 0.14560744167191098
+    observed_outer_input_identity_abs_max: 0.0
+  claim_rewrite:
+    falsified: >
+      N3.1j3b6d12: outer-surface speed and corner geometry uniquely close
+      the two finite-base fronts without a base-side state.
+    validated_in_scope: >
+      N3.1j3b6d13: a base-side/confluence state or equivalent observable is
+      necessary for identifiability of two-front dynamics.
+  production_activation_allowed: false
+  routing_decision: >
+    Keep exact finite-base dynamics as a qualified unresolved branch.  Do
+    not let an unidentifiable sub-chord base selector block the independent
+    3-D material-wake research shadow; enter 3-D only through a separately
+    preregistered coincident finite-angle lifting canonical, not by changing
+    the validated NACA-2406 production geometry.

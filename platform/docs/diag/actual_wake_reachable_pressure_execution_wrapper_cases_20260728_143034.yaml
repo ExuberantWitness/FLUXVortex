@@ -1,0 +1,405 @@
+artifact: actual_wake_reachable_pressure_execution_wrapper_preregistration
+version: S3ai-v2.2-one-shot-wrapper-v1
+date_preregistered: "2026-07-28 14:30:34 +08:00"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3e3b
+stage: S3ai_reachable_material_history_pressure_obstruction
+status: preregistered_before_wrapper_implementation
+role: execution_transport_only_no_physics_no_result
+
+frozen_definition_chain:
+  S3ai-v2:
+    file: actual_wake_reachable_pressure_obstruction_cases_20260728_131922.yaml
+    sha256: 8345035356d300d4154ac276fc54b8ab27b6e83704cb4444436dbc0c2c59c75b
+  S3ai-v2.1:
+    file: actual_wake_reachable_pressure_obstruction_cases_20260728_133218.yaml
+    sha256: e751381942ec7c0cac8ea055c6aad1a5756643b85992bc04f4bee88339b563b4
+  S3ai-v2.2:
+    file: actual_wake_reachable_pressure_obstruction_cases_20260728_134229.yaml
+    sha256: 3d662a69c1da80a1452b6b05c67107b188070871bb1b594977467ab7384e0b27
+  implementation_audit:
+    file: actual_wake_reachable_prestep_symmetry_diagnostic_20260728_133553.json
+    sha256: f10e6ce2e31aea570b6b07d1607b7cdebe5336dd7e9700845596e2338318b4f2
+  invariant: >
+    The wrapper may load and call the frozen implementation by reference but
+    may not modify, replace, or reinterpret any member of this chain.
+
+review_basis:
+  actual_reviewer:
+    route: Claude_Code_CLI_stdin
+    canonical_model: glm-5.2
+    executor_family: OpenAI
+    reviewer_family: Zhipu_GLM
+    review_independence_by_runtime_metadata: unresolved_runtime_provenance_conflict
+    reviewer_response_self_label: single-family_single-run_no-cross-family-overlay
+    acceptance_status: implementation_permission_only_execution_not_accepted
+  first_pass:
+    thread_id: 38480c70-a3dc-4b24-a6aa-601baca48f18
+    request_file: .aris/traces/research-review/2026-07-28_run01/003-s3ai-v22-cross-family-semantic-audit-stdin.request.json
+    request_sha256: d7b81c17e426103e3a15d0d6b7935cda14b32c96b36d192b14730ca902c2dd3d
+    response_file: .aris/traces/research-review/2026-07-28_run01/003-s3ai-v22-cross-family-semantic-audit-stdin.response.md
+    response_sha256: 0d8c2278ea1e01f3c8da48f3460db548a7adec6c5c8ee20ca431fd3e10b21fcd
+  correction:
+    thread_id: 38480c70-a3dc-4b24-a6aa-601baca48f18
+    request_file: .aris/traces/research-review/2026-07-28_run01/004-s3ai-v22-cross-family-audit-correction.request.json
+    request_sha256: 89564b2e44dad9eff5bd4a63d2da971b712dd8cf039a4c3c23660a6cca9f2189
+    response_file: .aris/traces/research-review/2026-07-28_run01/004-s3ai-v22-cross-family-audit-correction.response.md
+    response_sha256: 7d377de1bf580f555093023124f02b13a075e7265a76ee8ef259ce5416ff9145
+    verdict: definition_fidelity_pass_wrapper_implementation_allowed_execution_not_allowed
+    context_caveat: >
+      The monolithic first pass exceeded the reported 200k-token context.
+      A second bounded audit of the implemented wrapper and partitioned v2.2
+      semantics is mandatory before an authorization ticket may exist.
+
+diagnosis:
+  data_and_code_fingerprint:
+    - >
+      The frozen loader requires formal_execution_allowed to remain false,
+      whereas run_preregistered_observation subsequently requires the same
+      field to be true.  The two predicates are jointly unsatisfiable.
+    - >
+      The frozen runner's 15-file _code_fingerprints inventory is a strict
+      subset of the 62-file local Python source set loaded by a clean import.
+      The package initializer eagerly imports 47 additional local sources that
+      the frozen inventory does not fingerprint.
+  claim_localization: >
+    This is an execution-governance and provenance gap inside the open
+    reachable-pressure evidence node.  It is not a pressure-law, wake-state,
+    forming-geometry, VES, force, or production-model result.
+  movable_space: >
+    Add one external one-shot execution wrapper and its tests.  Keep the frozen
+    v2.2 runner and all frozen YAML assets byte-identical.  The wrapper may only
+    orchestrate the already frozen loader, history collector, aggregator, and
+    fingerprint observations.
+
+wrapper_contract:
+  implementation_file: platform/actual_wake_reachable_pressure_obstruction_v22_one_shot.py
+  definition_file: platform/docs/diag/actual_wake_reachable_pressure_execution_wrapper_cases_20260728_143034.yaml
+  authorization_file_reserved_absent_until_second_audit:
+    file: platform/docs/diag/actual_wake_reachable_pressure_execution_authorization_20260728_143034.yaml
+    must_exist_before_second_audit: false
+  result:
+    file: platform/docs/diag/actual_wake_reachable_pressure_obstruction_results_20260728_134229.json
+    must_be_absent_before_attempt: true
+    overwrite_allowed: false
+    latest_pointer_write_allowed: false
+  permanent_attempt_marker:
+    file: platform/docs/diag/actual_wake_reachable_pressure_obstruction_results_20260728_134229.json.lock
+    creation: O_CREAT_plus_O_EXCL_before_any_history
+    durability:
+      - write an immutable attempt receipt through the exclusive file descriptor
+      - fsync the marker file descriptor
+      - fsync the already-open no-follow parent directory descriptor
+    stale_marker_policy: fail_closed_and_require_new_evidence_review
+
+  callable_sequence:
+    - call the frozen _load_frozen_contract by reference
+    - verify the returned contract still carries formal_execution_allowed false
+    - compute the recursive local source closure and all start fingerprints
+    - create the permanent exclusive attempt marker
+    - call the frozen _collect_frozen_histories by reference
+    - call the frozen aggregate_frozen_histories by reference
+    - recompute the complete source and execution-input fingerprints
+    - structurally validate the result without changing its scientific decision
+    - publish one canonical JSON result with atomic no-replace semantics
+
+  source_closure:
+    method: clean_python_B_import_observation_cross_checked_by_recursive_static_AST
+    frozen_runner_reported_count: 15
+    actual_local_closure_count_before_wrapper: 62
+    required_execution_count_with_wrapper: 63
+    ordered_path_manifest_sha256_newline_terminated: 369dd3445ae99351f10cab8c3c1ac0bdab406ca0159cb903e14e8ac74e88dc59
+    observation_protocol:
+      - start a clean PYTHONDONTWRITEBYTECODE=1 python -B process
+      - insert only the resolved platform directory before importing the frozen runner
+      - do not call the loader, registry, mesh, collector, or aggregator
+      - map loaded local pyc origins back to their Python source
+      - select every loaded Python source whose resolved path is below platform
+      - require the observed set to equal the recursive AST closure including package initializers
+    exact_preimplementation_closure:
+      - platform/actual_boundary_3d_cut_wake_junction_guard.py
+      - platform/actual_wake_reachable_pressure_obstruction_v2_guard.py
+      - platform/claim_runtime/__init__.py
+      - platform/claim_runtime/actual_body_wake_velocity.py
+      - platform/claim_runtime/actual_boundary_body_wake.py
+      - platform/claim_runtime/actual_boundary_p2_galerkin.py
+      - platform/claim_runtime/actual_boundary_potential_shadow.py
+      - platform/claim_runtime/actual_wake_direct_independent.py
+      - platform/claim_runtime/actual_wake_direct_trace.py
+      - platform/claim_runtime/actual_wake_kutta_closure_roles.py
+      - platform/claim_runtime/actual_wake_kutta_compatibility.py
+      - platform/claim_runtime/actual_wake_newborn_coupled_stage.py
+      - platform/claim_runtime/actual_wake_newborn_transition.py
+      - platform/claim_runtime/actual_wake_reachable_pressure.py
+      - platform/claim_runtime/actual_wake_repeated_insertion.py
+      - platform/claim_runtime/actual_wake_stage_topology.py
+      - platform/claim_runtime/actual_wake_stage_velocity.py
+      - platform/claim_runtime/actual_wake_weak_geometry_velocity.py
+      - platform/claim_runtime/blunt_base_identifiability.py
+      - platform/claim_runtime/blunt_base_topology.py
+      - platform/claim_runtime/characteristic_birth_slab.py
+      - platform/claim_runtime/circulation_cut_oracle.py
+      - platform/claim_runtime/classified_p2_cut_topology.py
+      - platform/claim_runtime/constrained_material_wake_advection.py
+      - platform/claim_runtime/core.py
+      - platform/claim_runtime/deforming_shell_kinematics.py
+      - platform/claim_runtime/distributed_doublet.py
+      - platform/claim_runtime/doublet_potential.py
+      - platform/claim_runtime/dual_side_bernoulli.py
+      - platform/claim_runtime/finite_angle_sheet_formation.py
+      - platform/claim_runtime/global_conservation.py
+      - platform/claim_runtime/hirato_equations.py
+      - platform/claim_runtime/hirato_shadow.py
+      - platform/claim_runtime/implicit_claim_group.py
+      - platform/claim_runtime/joukowski_kutta_oracle.py
+      - platform/claim_runtime/material_attachment_inventory.py
+      - platform/claim_runtime/material_backbone_conditions.py
+      - platform/claim_runtime/material_birth_flux.py
+      - platform/claim_runtime/material_helmholtz.py
+      - platform/claim_runtime/material_sheet_advection.py
+      - platform/claim_runtime/material_spike_geometry.py
+      - platform/claim_runtime/material_wake_time_march.py
+      - platform/claim_runtime/moving_separation_flux.py
+      - platform/claim_runtime/n1_dde_interface.py
+      - platform/claim_runtime/n1_thick_shell_adapter.py
+      - platform/claim_runtime/near_wall_field_contract.py
+      - platform/claim_runtime/near_wall_material_flow_map.py
+      - platform/claim_runtime/near_wall_profile_collapse.py
+      - platform/claim_runtime/p2_surface_material_transport.py
+      - platform/claim_runtime/reachable_pressure_cases.py
+      - platform/claim_runtime/reachable_pressure_symmetry.py
+      - platform/claim_runtime/reachable_pressure_uncertainty.py
+      - platform/claim_runtime/sheet_velocity_projection.py
+      - platform/claim_runtime/surface_ibl_state.py
+      - platform/claim_runtime/surface_vorticity_inventory.py
+      - platform/claim_runtime/thick_body_neumann_shadow.py
+      - platform/claim_runtime/thick_body_trailing_edge.py
+      - platform/claim_runtime/unified_panel_pressure.py
+      - platform/claim_runtime/viscous_shell_geometry.py
+      - platform/claim_runtime/vortex_entrainment_sheet.py
+      - platform/claim_runtime/wake_gauge_transport.py
+      - platform/claim_runtime/work_conjugate_transfer.py
+    rules:
+      - the frozen 15-file mapping must be an exact subset with identical hashes
+      - the clean-import observed and static local-source sets must be identical
+      - the wrapper itself is an additional fingerprint
+      - any missing, added, or drifting local source fails before history execution
+
+  runtime_identity:
+    bind_before_authorization:
+      - sys.executable and /proc/self/exe path-byte SHA256 plus matching device/inode
+      - Python implementation and full version
+      - byte order and float64 machine constants
+      - numpy version, package path, package-file SHA256, and build-config digest
+      - PyYAML version, package path, and package-file SHA256
+      - dont_write_bytecode and fixed absent pycache_prefix
+      - repository and platform absolute path plus device/inode identity
+      - loaded Python dependency, native-extension, and shared-library fingerprints with device/inode identity
+      - OMP_NUM_THREADS
+      - OPENBLAS_NUM_THREADS
+      - MKL_NUM_THREADS
+      - CUDA_VISIBLE_DEVICES
+      - NPY_DISABLE_CPU_FEATURES
+      - OPENBLAS_CORETYPE
+      - MKL_CBWR
+      - OMP_DYNAMIC
+      - OMP_PROC_BIND
+      - OMP_PLACES
+      - process CPU affinity
+      - floating-point rounding mode
+    rule: >
+      The wrapper does not set or tune any runtime variable.  It only compares
+      the observed runtime identity with the second-audit authorization ticket
+      and fails before the attempt marker on any drift.
+    source_execution_mode: >
+      The formal process must start with -B and
+      -X pycache_prefix=<repo>/.one_shot_no_bytecode_cache while that fixed
+      cache path is absent.  A fixed stdin bootstrap opens the wrapper with
+      O_NOFOLLOW, reads it once, hashes and compiles those identical bytes,
+      registers that module in sys.modules, and injects only the observed
+      wrapper SHA256.  The wrapper records this condition before importing the
+      frozen runner, brackets all 62 dependent-source hashes around that
+      import, and rejects any later disk mismatch; audited source bytes, not a
+      stale cache or post-import deployment, must supply executable code.
+
+  authorization_ticket_schema:
+    required:
+      - exact artifact, version, status, and unique authorization id
+      - exact wrapper-definition file and SHA256
+      - exact frozen four-artifact definition chain
+      - exact ordered 31-case names and deterministic case-identity SHA256 values
+      - exact 63-file execution source closure and SHA256 values
+      - canonical digests of the source map, runtime identity, case registry, and definition chain
+      - second bounded audit request/response paths and raw SHA256 values
+      - parsed structured clearance with genuine cross-family independence and accepted verdict
+      - second-audit 32-byte bearer-token digest with the preimage supplied out of band
+      - external raw authorization SHA256 supplied by the caller
+      - explicit decision YES_ONE_SHOT_31_HISTORY_ONLY
+      - exact canonical result path and permanent marker path
+      - single-use token digest
+      - formal_execution_allowed true and execution_limit 1
+      - explicit scope exclusions
+      - canonical authorization digest
+    canonical_digest: >
+      Parse YAML, replace authorization.canonical_sha256 by 64 ASCII zeroes,
+      serialize as sorted compact JSON with allow_nan=false, and SHA256 the
+      resulting bytes.  Raw authorization-file SHA256 is observed separately
+      in the result; no impossible raw self-hash is required.
+    external_trust_anchor: >
+      run_authorized_once requires both the expected raw authorization SHA256
+      and the 32-byte second-audit bearer-token preimage as caller arguments.  Neither
+      value may be read from an environment variable or inferred from the
+      authorization file.  The ticket stores only the token SHA256.
+    formal_cli: >
+      Invoke this same wrapper through the fixed no-follow read-hash-compile
+      Python -c bootstrap under the required -B/-X source mode, pass only
+      --expected-authorization-sha256 on argv, and provide the
+      64-hex-character token preimage on standard input.  No additional local
+      launcher file is allowed because it would change the execution identity.
+    trust_boundary: >
+      Hash and schema checks prevent accidental drift and wrong-snapshot
+      execution; they are not a cryptographic signature against a malicious
+      writer who can change code, ticket, traces, and manifest together.
+      Execution acceptance therefore remains an external research-governance
+      verdict from the second bounded audit (and, if required by the user, a
+      human-supplied clearance), not a self-issued machine claim.  The
+      one-shot property is local to this exact, non-snapshotted and
+      non-rolled-back filesystem instance under a stable package environment;
+      VM/filesystem rollback or global distributed consumption requires an
+      external append-only ledger and is outside this local wrapper.  The
+      wrapper gates acceptance and canonical publication of formal evidence;
+      it cannot revoke Python-level access to the frozen module's private
+      collector, and a direct private call has no authorization receipt and
+      cannot become accepted formal evidence.
+    structured_second_audit_clearance:
+      serialization: exact_UTF-8_JSON_object_without_markdown_fences
+      required_fields:
+        - artifact S3ai-v2.2-one-shot-execution-clearance
+        - version 1
+        - verdict ACCEPT_EXACT_ONE_SHOT_31_HISTORY_EXECUTION
+        - actual_independence genuine-cross-family
+        - reviewed wrapper and preregistration SHA256 values
+        - canonical 63-source-map SHA256
+        - canonical runtime-identity SHA256
+        - canonical ordered-registry SHA256
+        - canonical frozen-definition-chain SHA256
+        - single-use bearer-token SHA256 commitment
+        - authorization_ticket_creation_allowed true
+        - formal_execution_allowed true
+        - execution_limit 1
+        - production_activation_allowed false
+        - force_hp_state_ves_118_fig_allowed false
+        - empty blocking_findings
+      rule: >
+        The wrapper parses the traced response itself and compares every
+        binding with observed inputs; copying verdict or independence strings
+        into the local ticket is insufficient.
+    outcome_dependent_values: >
+      Per-history array value hashes cannot be bound before the only formal
+      observation without fabricating its outcome.  Instead the ticket binds
+      the required value-hash schema.  The wrapper preserves the frozen five
+      hashes and adds hashes observed directly from each frozen observation for
+      every array listed under extended_value_hash_schema.
+    extended_value_hash_schema:
+      - mass_active
+      - stage_times
+      - measurement_times
+      - stored_window_residual
+      - direct_window_residual
+      - stored_step_residuals
+      - direct_step_residuals
+      - canonical_material_current_trace
+      - body_cut_trace
+      - canonical_material_release
+      - representation_inventory
+      - stored_weak_pressure
+      - direct_weak_pressure
+      - stage_roles_canonical_JSON
+
+  one_shot_semantics:
+    - missing authorization ticket fails before frozen loader or mesh
+    - invalid ticket or any fingerprint drift fails before attempt-marker creation
+    - result or marker already present fails before frozen loader or mesh
+    - the exclusive marker consumes the authorization even if computation crashes
+    - marker content SHA256 plus created device/inode/size remain invariant through publication
+    - a crash or protocol result may not be silently retried with the same ticket
+    - PROTOCOL-NO-GO is a valid scientific outcome and must still be persisted
+    - all fixed files are opened no-follow
+    - one output-directory descriptor is held from marker claim through marker recheck and no-replace result publication
+    - canonical marker and result parent identities are checked before claim and before and after publication
+    - execution_limit one is bound to the authorized repository path and device/inode identity
+
+  atomic_publication:
+    temporary_file: same_directory_O_CREAT_plus_O_EXCL
+    serialization: UTF-8_sorted_keys_allow_nan_false_indent_2_trailing_newline
+    durability:
+      - fsync temporary file
+      - keep the verified temporary inode open through the no-replace hard link
+      - recheck marker content and inode immediately before publication
+      - atomically hard-link temporary inode to the absent canonical result path
+      - verify canonical result and temporary descriptor name the same inode and bytes
+      - fsync result directory
+      - unlink temporary name and fsync result directory again
+    prohibition: >
+      Do not use os.replace for final publication because it can overwrite a
+      result created by a concurrent or external process.
+
+  result_obligations:
+    structural:
+      - protocol_version is S3ai-v2.2
+      - production_activation_allowed remains false
+      - fixed_space_only is true
+      - execution accounting is exactly 31/380/31/411/822/791
+      - cases are the exact ordered frozen registry
+      - an explicit ordered_case_names list equals the frozen registry order
+      - each case contains all five frozen value_hashes
+      - each case contains all fourteen extended value hashes
+      - mass_active values are present so their serialized hash is independently recomputable
+      - code_fingerprints equals the 63-file start closure
+      - runtime identity equals the authorization-bound identity
+      - all extended hashes and observation_payload_sha256 survive JSON round-trip recomputation
+    authorization_receipt:
+      - raw and canonical authorization digests
+      - wrapper-definition digest
+      - bounded-review request and response digests
+      - single-use token digest
+      - start and end execution-input fingerprints
+    scientific_boundary: >
+      The wrapper records PROTOCOL-NO-GO, zeroth-order obstruction,
+      first-order witness, or no-resolved-witness exactly as returned by the
+      frozen aggregator.  It may not turn a failed guard into an exception that
+      erases the evidence or into a physical-state claim.
+
+required_definition_tests:
+  - import has no execution or file side effect
+  - missing authorization fails before frozen loader, mesh, or marker
+  - malformed/canonical-hash-drifted authorization fails closed
+  - wrong external authorization SHA or second-audit bearer preimage fails closed
+  - frozen artifact, review trace, wrapper definition, case identity, and source closure drift fail closed
+  - original frozen public runner remains permanently fail-closed
+  - existing result and existing marker each fail before frozen loader or mesh
+  - concurrent publication cannot overwrite an existing result
+  - symlinked authorization, definition, marker, result, or temporary path fails closed
+  - source drift during fake execution prevents result publication
+  - all five frozen and fourteen extended value-hash keys are required for every case
+  - runtime identity drift fails before attempt-marker creation
+  - PROTOCOL-NO-GO fake aggregate is atomically persisted without promotion
+  - NaN or infinity cannot be serialized
+  - latest result pointer is never written
+  - formal-history collector is never called by any unit test
+
+prohibitions:
+  - no edit to the frozen v2.2 runner or frozen v2/v2.1/v2.2 YAML
+  - no environment-variable physics or path override
+  - no reimplementation of the frozen physics, history, or aggregate formulas
+  - no overwrite, append, retry, or latest-pointer mutation
+  - no result-value prebinding
+  - no force, pressure integration, lift, thrust, production, h/p, state identity, VES, 118 sweep, or Fig17/18/19
+
+decision:
+  wrapper_implementation_allowed: true
+  second_bounded_cross_family_audit_required: true
+  authorization_ticket_creation_allowed_before_second_bounded_audit: false
+  authorization_ticket_creation_requires_accepted_second_bounded_audit: true
+  formal_execution_allowed: false
+  production_activation_allowed: false
+  no_result_exists_at_preregistration: true

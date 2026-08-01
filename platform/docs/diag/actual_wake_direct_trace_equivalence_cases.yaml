@@ -1,0 +1,84 @@
+artifact: actual_wake_direct_trace_equivalence_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2a
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c2a
+status: executed_go
+stage: S3ac0_direct_one_solve_trace_equivalence
+role: implementation_equivalence_only
+
+question: >
+  Is one direct actual-boundary solve exactly equivalent to the frozen S3aa
+  zero-plus-nine-unit affine trace construction, given that the candidate
+  newest current row is excluded from the actual matrix and right-hand side?
+
+cause:
+  data_fingerprint:
+    - "S3aa half/full affine condition number is exactly one."
+    - >
+      Source audit shows prescribed newest active_rows contains only the
+      upstream and middle rows; the current row is always active_cut_map
+      times the solved body potential.
+    - >
+      One S3ac smoke step passes every named physical residual but costs
+      about ten minutes because the same fixed geometry is assembled twelve
+      times per stage.
+  node: N3.1j3b6d18c2b3b3b2c2b2a
+  movable_space: >
+    Add one direct evaluator outside the frozen S3aa implementation and
+    compare both paths on the same canonical half stage. Do not modify S3aa,
+    its quadrature, matrix, RHS, state, thresholds or physics.
+  classification: missing_verified_execution_equivalence
+
+canonical:
+  state: "frozen S3n two-band actual solution"
+  geometry: "S3z q7 weak-release half geometry at dt=0.01"
+  frozen_reference: "solve_actual_wake_coupled_newborn_trace"
+  direct_candidate: "solve_actual_wake_coupled_newborn_trace_direct"
+  boundary_quadrature_order: 10
+
+required_identities:
+  - "global body potential is identical"
+  - "global wake P2 state and solved trace are identical"
+  - "actual weak and attachment residuals are identical"
+  - "free-state preservation and copy-counterfactual residual are identical"
+  - "input state remains immutable"
+  - "direct path performs one actual-boundary solve"
+  - "no cache approximation, changed quadrature or changed physics enters"
+
+thresholds:
+  global_body_potential_abs_max: 2.0e-12
+  global_wake_P2_abs_max: 2.0e-12
+  solved_trace_abs_max: 2.0e-12
+  diagnostic_abs_max: 2.0e-12
+  input_state_mutation_abs_max: 0.0
+  direct_basis_solve_count_expected: 1
+
+decision:
+  go: >
+    Every state and diagnostic identity passes. Validate/freeze only the
+    direct execution equivalence and authorize it inside S3ac repeated
+    insertion.
+  no_go: >
+    Preserve the mismatch and continue using frozen S3aa. Do not loosen
+    tolerance, cache an approximate matrix, alter quadrature or change a
+    physical equation.
+  production_activation_allowed: false
+
+result:
+  artifact: actual_wake_direct_trace_equivalence_oracle
+  file: actual_wake_direct_trace_equivalence_results.json
+  stage_decision: GO
+  global_body_potential_abs_max: 0.0
+  global_wake_P2_abs_max: 0.0
+  solved_trace_abs_max: 0.0
+  diagnostic_abs_max: 0.0
+  input_state_mutation_abs_max: 0.0
+  frozen_basis_solve_count: 12
+  direct_basis_solve_count: 1
+  matrix_bitwise_equal: true
+  rhs_bitwise_equal: true
+  claim_effect: >
+    Validate and freeze only the one-solve execution equivalence. Authorize
+    its use inside the still-open S3ac repeated-insertion candidate without
+    changing S3aa or any physical claim.

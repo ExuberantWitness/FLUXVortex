@@ -1,0 +1,124 @@
+artifact: analytic_p2_boundary_vortex_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3a2
+parent_claim: N3.1j3b6d18c2b3a
+status: executed_no_go
+stage: S3p_analytic_p2_boundary_vortex_extraction
+role: no_force_numerical_operator_gate
+
+question: >
+  Does exact analytic integration of the complete quadratic P2 boundary
+  vortex on every straight edge remove the unresolved 1/r^3 near-vertex
+  layer, leaving the already finite-part area-vorticity remainder convergent
+  under target-transplanted Gauss, without changing the doublet sheet?
+
+cause_from_s3o:
+  data_fingerprint:
+    actual_body_frozen_order_abs_change: 1.7472172799657516e-9
+    actual_wake_frozen_order_abs_change: 6.318586451029411e-9
+    manufactured_q16_to_q24_abs_change: 1.769196738995049e-2
+    constant_ring_abs_error: 5.25238844229392e-4
+  node: N3.1j3b6d18c2b3a2
+  movable_space: >
+    Replace only the numerical boundary-vortex edge integral by its exact
+    quadratic polynomial moments.  Keep the area-vorticity finite-part
+    identity and use the already preregistered target-sinh coordinates only
+    on that remainder.
+  classification: missing_analytic_strong_singularity_extraction
+
+primary_evidence:
+  - source: Johnson, NASA CR-3079 (1980), Appendix D
+    url: https://ntrs.nasa.gov/citations/19800015776
+    implication: >
+      Higher-order polynomial doublet velocity influence coefficients are
+      computed from closed H/F integral recursions.
+  - source: Krebs dissertation (2021), Appendix A
+    implication: >
+      DDE quadratic strength coefficients multiply Johnson H(M,N,K)-based
+      velocity influences rather than an empirical core.
+  - source: >
+      Montanelli, Aussal & Haddar, SIAM Journal on Scientific Computing 44
+      (2022), Theorem 2.1
+    url: https://arxiv.org/abs/2111.13151
+    implication: >
+      Transplanting alone retains only exponential convergence for higher
+      singular powers; analytic subtraction lowers the singular order before
+      quadrature.
+
+candidate_rewrite:
+  edge_polynomial: "mu(s)=A*s^2+B*s+C, exactly reconstructed from P2 edge nodes"
+  local_coordinate: >
+    With unit tangent t, length L, unbounded line projection s*, transverse
+    vector r_perp and u=L*(s-s*), integrate q0+q1*u+q2*u^2 against
+    (u^2+a^2)^(-3/2) using exact endpoint primitives I0/I1/I2.
+  exact_primitives:
+    I0: "u/(a^2*sqrt(u^2+a^2))"
+    I1: "-1/sqrt(u^2+a^2)"
+    I2: "asinh(u/a)-u/sqrt(u^2+a^2)"
+  invariants:
+    - "analytic plus remainder equals the original doublet identity"
+    - "constant P2 strength equals the oriented finite vortex ring"
+    - "no offset, core, excluded disk or target load"
+    - "proper rigid transforms rotate the vector result"
+    - "targets on an edge fail closed"
+
+canonical:
+  inherit_manufactured_and_actual_snapshot_from:
+    near_singular_p2_edge_quadrature_cases.yaml
+  candidate_orders: [8, 12, 16, 24]
+  independent_standard_orders: [192, 256]
+  actual_snapshot_orders:
+    body: [16, 24, 36, 52, 72]
+    wake: [24, 36, 48, 64, 80]
+
+thresholds:
+  edge_polynomial_reconstruction_abs_max: 2.0e-14
+  constant_ring_abs_max: 2.0e-12
+  candidate_last_abs_change_max: 1.0e-8
+  candidate_last_rel_change_max: 1.0e-6
+  actual_body_last_abs_change_max: 1.0e-8
+  actual_wake_last_abs_change_max: 1.0e-8
+  regular_field_equivalence_abs_max: 2.0e-10
+  rigid_channel_abs_max: 2.0e-9
+  edge_failure_count_min: 2
+
+decision:
+  go: >
+    Every polynomial, analytic-ring, manufactured near-vertex Cauchy,
+    regular-field, actual S3n, rigid and fail-closed gate passes.  Freeze only
+    the analytic P2 boundary-vortex extraction and authorize a fresh S3n
+    rerun; do not authorize wake relaxation yet.
+  no_go: >
+    Any failure blocks c2b3a.  Do not raise orders, lower the manufactured
+    proximity, relax thresholds, add a core/offset or inspect pressure/force.
+  production_activation_allowed: false
+
+forbidden:
+  - geometry_update
+  - material_mu_transport
+  - wake_relaxation
+  - fixed_point
+  - target_offset
+  - vortex_core
+  - pressure
+  - force
+  - LESP
+  - target_load
+  - structural_dynamics
+
+execution:
+  result_file: analytic_p2_boundary_vortex_results.json
+  decision: NO-GO
+  validated_narrow_identity:
+    edge_polynomial_reconstruction_abs_max: 1.1102230246251565e-16
+    constant_ring_abs_max: 2.842170943040401e-14
+  remaining_failure:
+    manufactured_q16_to_q24_abs_change: 6.976575309208144e-3
+  actual_snapshot:
+    body_frozen_order_abs_change: 5.6822325441229055e-12
+    wake_frozen_order_abs_change: 6.318586692616209e-9
+  interpretation: >
+    Exact extraction of the complete quadratic boundary vortex is validated,
+    and the actual snapshot converges.  The stronger manufactured owner point
+    still fails, locating the remaining near-singular layer in the linear
+    area-vorticity finite-part terms.  Only that remainder may move next.

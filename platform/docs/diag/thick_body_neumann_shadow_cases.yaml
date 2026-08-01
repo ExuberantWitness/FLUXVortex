@@ -1,0 +1,116 @@
+claim: N3.1j3b6c
+status: preregistered_before_implementation
+target: >
+  Establish a diagnostic actual-thickness Neumann source shadow conditioned
+  on the complete incident velocity from frozen N1, the wake/free-vortex
+  state, freestream, and wall motion.  Preserve the prescribed N1 potential
+  jump and combine all potential rates and velocities before one Bernoulli
+  evaluation and one pressure-force integration.
+references:
+  - "Morino, NASA CR-2464 (1974), surface potential/normal derivative boundary integral"
+  - "Bristow, NASA CR-3234 (1980), combined source-doublet actual-surface panel method"
+  - "NASA TP-2995 (1990), source/doublet jump identities and panel consistency"
+  - "Hess & Smith (1967), constant-source polygon influence"
+  - "Carley, Engineering Analysis with Boundary Elements 36 (2012), doi:10.1016/j.enganabound.2011.09.022"
+implementation_role: diagnostic_shadow
+operator_contract:
+  total_incident_velocity: >
+    freestream + frozen N1 bound + N1 wake + qualified free-vortex state;
+    never geometry-only
+  boundary_condition: >
+    n dot (u_incident + u_source - v_wall) = 0 on the actual closed shell
+  source_field:
+    - single-valued potential outside the body
+    - zero prescribed circulation and no potential jump
+    - closed-body Neumann compatibility and far-field decay
+  pressure:
+    - combine total potential material rate before Bernoulli
+    - combine total velocity before Bernoulli
+    - no pressure-level mode addition
+    - exactly one surface-pressure force integration
+  frozen_inputs:
+    - N1 bound circulation
+    - N1 wake geometry and strengths
+    - N1 force contribution
+    - N2.6d1 NACA-2406 material geometry identity
+stages:
+  G1a_kernel:
+    cases:
+      - constant_source_triangle_off_surface_oracle
+      - source_normal_velocity_jump
+      - pressure_potential_gauge
+    thresholds:
+      max_velocity_oracle_relative_error: 2.0e-10
+      max_potential_oracle_relative_error: 2.0e-10
+      max_normal_jump_error: 2.0e-10
+      max_gauge_force_change: 2.0e-12
+  G1b_closed_body:
+    cases:
+      - outward_watertight_icosphere
+      - sphere_uniform_flow
+      - sphere_source_flux_compatibility
+      - sphere_surface_pressure
+      - sphere_dalembert_force
+      - sphere_panel_refinement
+    refinements:
+      subdivisions: [1, 2, 3]
+    thresholds:
+      max_topology_boundary_edges: 0
+      max_topology_nonmanifold_edges: 0
+      max_collocation_no_penetration_relative: 2.0e-11
+      max_source_flux_relative: 2.0e-10
+      finest_surface_velocity_rms_relative: 8.0e-2
+      finest_pressure_rms_absolute: 1.5e-1
+      finest_force_coefficient_norm: 3.0e-2
+      required_velocity_error_decrease_fraction: 0.15
+      max_condition_number: 2.0e5
+  G1c_conditioned_incident_state:
+    cases:
+      - incident_dipole_inside_sphere
+      - incident_vortex_mode_preserves_source_single_valuedness
+      - incident_field_change_requires_source_resolve
+      - frozen_input_immutability
+    thresholds:
+      max_no_penetration_relative: 2.0e-11
+      max_source_potential_jump: 2.0e-12
+      max_frozen_input_change: 0.0
+      minimum_source_solution_change_relative: 1.0e-3
+  G1d_unsteady_objectivity:
+    cases:
+      - translating_sphere_galilean_invariance
+      - accelerating_sphere_added_mass
+      - three_stage_material_potential_history
+    thresholds:
+      max_galilean_pressure_force_change_relative: 2.0e-10
+      max_added_mass_relative_error: 5.0e-2
+      max_material_rate_relative_error: 2.0e-3
+  G1e_roboeagle_geometry_adapter:
+    cases:
+      - naca2406_upper_lower_material_pairing
+      - leading_edge_root_tip_trailing_base_closure
+      - outward_orientation_and_positive_volume
+      - n1_mean_surface_unchanged
+    thresholds:
+      max_material_pairing_error: 3.0e-16
+      max_boundary_edges: 0
+      max_nonmanifold_edges: 0
+      max_n1_geometry_change: 0.0
+required_before_model_comparison:
+  - G1a_kernel
+  - G1b_closed_body
+  - G1c_conditioned_incident_state
+  - G1d_unsteady_objectivity
+  - G1e_roboeagle_geometry_adapter
+promotion_gates:
+  - thick-body trailing-edge/base Kutta residual is independently qualified
+  - N1 frozen cruise and static attached guards do not fail
+  - dual-side Cp validation is executed without inverse fitting
+  - 118-case trend guards do not regress
+  - pressure ledger and ForceLedger prove one-time integration
+no_go:
+  - production activation before every canonical stage passes
+  - changing N1 to make the shadow pass
+  - fitting source strength, panel offset, thickness, or gauge to load data
+  - accepting a geometry-only source right-hand side
+  - separately integrating thickness and lifting pressure
+  - interpreting inviscid thickness pressure as separated viscous pressure

@@ -1,0 +1,48 @@
+artifact: deforming_dual_surface_shell_kinematics
+date_preregistered: "2026-07-27"
+claim_node: N2.6d2a
+scope:
+  allowed:
+    - "Structured material-surface differential geometry"
+    - "Dual-side offset by a material half-thickness"
+    - "Central time differences of positions and directors"
+  forbidden:
+    - "Pressure, force, boundary-layer or separation inputs"
+    - "Changing N1 mean-surface geometry"
+    - "Repairing an inverted or degenerate material surface"
+cases:
+  - id: dual_side_material_pairing
+    gates:
+      mean_reconstruction_error: 1.0e-12
+      thickness_reconstruction_error: 1.0e-12
+      director_unit_error: 1.0e-12
+  - id: proper_rigid_transform
+    gates:
+      metric_invariance_error: 1.0e-11
+      area_invariance_error: 1.0e-11
+      curvature_invariance_error: 1.0e-9
+      director_rotation_error: 1.0e-12
+  - id: constant_translation
+    gates:
+      velocity_error: 1.0e-12
+      acceleration_error: 1.0e-12
+  - id: cylindrical_bending
+    gates:
+      interior_area_jacobian_error: 2.0e-3
+      interior_mean_curvature_magnitude_error: 3.0e-3
+      interior_gaussian_curvature_error: 3.0e-3
+  - id: degenerate_or_inverted_surface
+    gates:
+      must_raise: true
+promotion:
+  go_if:
+    - "Every manufactured geometry and kinematics gate passes"
+    - "The implementation has no aerodynamic or target-load dependency"
+  claim_if_passed: >
+    Structured flexible mean-surface snapshots can supply objective dual-side
+    shell geometry and finite-difference kinematics to N2.6a/b.
+  must_not_claim:
+    - "The structure-to-aerodynamic map is work-conjugate"
+    - "Large-strain shell dynamics are solved"
+    - "Any boundary-layer or force prediction is validated"
+

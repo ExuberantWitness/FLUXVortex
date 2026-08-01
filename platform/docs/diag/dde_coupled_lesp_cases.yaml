@@ -1,0 +1,35 @@
+schema_version: 1
+title: "N3.1j4b2 N1-AIC / DDE nascent-sheet coupled LESP gate"
+role: >
+  Test whether parameter-free continuous P2 half-wing source bases can enter
+  the frozen N1 bound equation and close the affine LESP constraint at three
+  explicit time stages. The canonical is manufactured and no force target is
+  used.
+grids:
+  - {nc: 2, ns: 4}
+  - {nc: 4, ns: 8}
+geometry:
+  chord: 1.0
+  half_span: 3.0
+  pitch_deg: 15.0
+  nascent_chord_displacement: 0.08
+  nascent_normal_displacement: 0.05
+time_nodes: [0.0, 0.5, 1.0]
+preconstraint_a0_root: [0.34, 0.38, 0.35]
+preconstraint_tip_fraction: 0.95
+u_infinity: 1.0
+lesp_crit: 0.27
+line_quadrature_order: 96
+guards:
+  bound_equation_residual_max: 1.0e-10
+  lesp_active_residual_max: 1.0e-10
+  aic_condition_number_max: 1.0e5
+  lesp_condition_number_max: 1.0e8
+  midpoint_noninterpolation_min: 1.0e-6
+  newborn_trace_jump_max: 1.0e-11
+promotion_boundary: >
+  Passing validates only a manufactured no-force N1/DDE algebraic coupling
+  and proves that a separately solved half-time strength can populate the
+  middle P2 row. It does not validate physical first-sheet geometry, onset,
+  TEV/LEV Kelvin coupling over multiple steps, wake roll-up, pressure, or
+  production use.

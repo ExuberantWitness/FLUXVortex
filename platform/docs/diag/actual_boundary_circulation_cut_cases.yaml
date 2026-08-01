@@ -1,0 +1,120 @@
+artifact: actual_boundary_circulation_cut_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+status: preregistered_before_implementation
+role: topology_and_pressure_oracle
+
+question: >
+  Can a globally single-valued closed body potential trace carry prescribed
+  nonzero circulation, or must the actual-boundary lifting formulation
+  contain an explicit potential cut/wake jump before N1 circulation can be
+  admitted as a constraint?
+
+mechanism:
+  closed_trace: >
+    For a single-valued scalar potential on a closed material loop, the
+    integral of its tangential gradient telescopes exactly to zero.  P2
+    order or mesh refinement cannot change this topological identity.
+  cut_trace: >
+    Duplicate the two trace values at one classified cut.  Their potential
+    jump is prescribed circulation Gamma; all non-cut interfaces remain P2
+    continuous.  The cut is the 2-D canonical of a wake doublet sheet, not
+    an arbitrary body discontinuity.
+  pressure: >
+    On a circular cylinder, use the exact surface potential
+    phi(theta)=2*U*a*cos(theta)+Gamma*theta/(2*pi).  A curved P2 trace
+    supplies tangential velocity and one Bernoulli pressure integration.
+    The analytic force is drag=0 and lift_per_span=-rho*U*Gamma for the
+    stated counter-clockwise theta convention.
+
+primary_evidence:
+  - >
+    NASA CR-189854 states that wakes extended from lifting-surface trailing
+    edges allow nonzero circulation and impose jump conditions across the
+    wake cut.
+  - >
+    Moored, Computers & Fluids 2017 (arXiv:1703.08259) states that the
+    body source/doublet system must be modified by an explicit or implicit
+    Kutta condition to support bound circulation and evolves a deforming
+    doublet wake.
+  - >
+    Berci & Righi, AIAA Journal 2022, DOI 10.2514/1.J061894, formulate the
+    circulatory potential with a zero-thickness wake discontinuity and show
+    that the wake potential jump is materially conserved.
+  - >
+    Bernasconi et al., IJNME 72 (2007), DOI 10.1002/nme.2099, use continuous
+    higher-order singularity surfaces for thick bodies, thin surfaces and
+    wakes.
+
+canonical:
+  radius: 1.0
+  freestream_speed: 1.0
+  density: 1.0
+  prescribed_circulation: 0.8
+  p2_panel_counts: [8, 16, 32, 64]
+  quadrature_order: 16
+
+thresholds:
+  closed_trace_circulation_absolute_max: 1.0e-13
+  cut_trace_circulation_relative_error_max: 1.0e-13
+  cut_jump_relative_error_max: 1.0e-13
+  finest_tangential_velocity_rms_error_max: 0.01
+  finest_lift_relative_error_max: 0.005
+  finest_drag_absolute_max: 1.0e-12
+  gauge_velocity_absolute_change_max: 1.0e-13
+  gauge_force_absolute_change_max: 1.0e-13
+  velocity_and_force_errors_monotone: true
+
+decision:
+  go: >
+    All gates pass.  This validates only the topological requirement that
+    nonzero circulation enter through a classified potential cut/wake jump
+    and that the same trace can recover the 2-D analytic pressure force.
+  no_go: >
+    Any failed telescoping, jump, gauge or Kutta-Joukowski gate blocks 3-D
+    wake coupling and requires a sign/topology/pressure derivation review.
+  scope_limit: >
+    Passing does not validate a 3-D finite-wing wake, finite-base Kutta,
+    N1 circulation compatibility, wake relaxation, unsteady pressure,
+    separated flow or RoboEagle production loads.
+
+forbidden:
+  - "placing a circulation singularity through the actual body"
+  - "forcing nonzero circulation into a globally periodic scalar trace"
+  - "fitting pressure, lift or the potential jump"
+  - "using a core, offset or trailing-edge constant"
+  - "calling this a structure or aeroelastic model"
+
+execution_2026_07_28:
+  result_artifact: actual_boundary_circulation_cut_results.json
+  stage: S2a_circulation_cut_topology
+  stage_decision: GO
+  production_activation_allowed: false
+  aggregate_metrics:
+    closed_trace_circulation_absolute_max: 7.216449660063518e-16
+    cut_trace_circulation_relative_error_max: 1.1102230246251565e-15
+    cut_jump_relative_error_max: 2.7755575615628914e-16
+    finest_tangential_velocity_rms_error: 0.000644720943978579
+    finest_lift_relative_error: 9.674318290908701e-08
+    finest_drag_absolute: 5.612914646957456e-16
+    gauge_velocity_absolute_change_max: 8.038014698286133e-14
+    gauge_force_absolute_change_max: 1.454392162258955e-14
+  convergence:
+    panel_counts: [8, 16, 32, 64]
+    tangential_velocity_rms_error:
+      - 0.04088415534253061
+      - 0.01029296311008939
+      - 0.002577754263250032
+      - 0.000644720943978579
+    lift_relative_error:
+      - 0.0003901024549984866
+      - 2.4674072527236524e-05
+      - 1.5467369283983512e-06
+      - 9.674318290908701e-08
+  interpretation: >
+    The closed single-valued trace is topologically incapable of carrying
+    prescribed nonzero circulation, independent of P2 refinement.  A
+    classified duplicated trace at the cut carries exactly the prescribed
+    jump and circulation, and the same differentiated trace recovers the
+    analytic attached pressure force.  This validates the cut requirement,
+    not a three-dimensional body-wake implementation.

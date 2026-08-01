@@ -1,0 +1,197 @@
+artifact: actual_wake_owned_stage_velocity_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b2b
+depends_on_claims:
+  - N3.1j3b6d18c2b3b2a
+  - N3.1j3b6d18c2b3a
+  - N3.1j4c5
+  - N3.1j3b6d18c2b2a
+status: executed_go
+stage: S3t_owner_aware_actual_wake_geometry_and_P2_stage_velocity
+role: no_force_fixed_stage_velocity_discretization_oracle
+
+question: >
+  On the validated S3s typed actual-wake topology, can explicit owned
+  patch/face/barycentric queries feed the same four-channel physical velocity
+  into (a) free-P1 vertex-star normal geometry projection with a prescribed
+  body-attachment velocity and (b) consistent global-P2 relative-tangential
+  transport assembly, without reviving continuous full-vector P1 projection?
+
+cause_from_s3r_s3s:
+  data_fingerprint:
+    - "S3s removed the one-sided-open-boundary topology blocker exactly."
+    - >
+      S3n publishes four owned strict-interior points per face, which match
+      the frozen c5 vertex-star geometry identity.
+    - >
+      consistent P2 transport evaluates a higher-order face quadrature, but
+      its frozen callback receives bare coordinates and cannot select the
+      Birkhoff-Rott owner limit.
+    - >
+      the newest P1 edge is an essential body geometry boundary; projecting
+      fluid velocity there would undo c2a.
+    - >
+      N3.1j4c1 already falsified forcing all three sheet-average velocity
+      components into one continuous P1 field.
+  node: N3.1j3b6d18c2b3b2b
+  movable_space: >
+    Add only an owner-preserving quadrature contract, an open-boundary
+    free-P1 vertex-star normal projection and an owner-fed copy of the frozen
+    consistent-P2 matrix assembly. Body-edge P1 velocity is prescribed by
+    kinematics. Do not change any field channel, singular operator, P2 weak
+    form, quadrature rule, material row, geometry, pressure or force.
+  classification: missing_owner_aware_stage_discretization
+
+primary_evidence:
+  - source: >
+      Krebs dissertation (2021), figures 3.4, 3.6 and 3.7.
+    implication: >
+      Wake vertices are moved with local velocity, while multiple interior
+      control points per element support the high-order distributed field.
+  - source: >
+      Ambrose, The velocity field and Birkhoff-Rott integral for non-decaying
+      periodic vortex sheets, SIAM J. Appl. Math. 85 (2025).
+    doi: https://doi.org/10.1137/24M164848X
+    implication: >
+      The on-sheet geometric velocity is an explicitly defined mean limit;
+      owner/side identity cannot be recovered from a bare coincident point.
+  - source: >
+      Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990).
+    url: https://ntrs.nasa.gov/citations/19910009745
+    implication: >
+      Edge/on-panel velocity limits require explicit element-side treatment,
+      motivating strict interior owned evaluation.
+  - source: >
+      Elliott & Venkataraman, NMPDE 31 (2015) 459-499.
+    doi: https://doi.org/10.1002/num.21930
+    implication: >
+      ALE scalar transport consumes the relative tangential field on the
+      current triangulation; it is distinct from the mesh geometry velocity.
+
+candidate_rewrite: >
+  Use WakeSheetQuery ownership for both the frozen four-point geometry query
+  and arbitrary triangle quadrature. Project only free-P1 normal speed by
+  local vertex-star affine extrapolation; insert the supplied body-edge
+  kinematic velocity exactly. At P2 quadrature, subtract the P1 mesh velocity
+  from the four-channel material velocity, project the remainder tangentially
+  inside the unchanged consistent mass/advection assembly, and retain the
+  maximum discarded normal residual as a diagnostic.
+
+canonical:
+  actual_state: "frozen S3n curved two-band actual-boundary solution"
+  topology: "validated S3s typed actual-wake topology"
+  geometry_query:
+    points_per_face: 4
+    source: wake_sheet_interior_query
+  body_attachment_velocity: [0.0, 0.0, 0.0]
+  transport_query:
+    triangle_quadrature_order: 4
+    owner_fields: [patch_index, face_index, barycentric]
+  actual_velocity:
+    channels:
+      - external_incident
+      - actual_body_source
+      - actual_body_doublet
+      - current_material_wake
+    edge_quadrature: target_sinh_analytic_sheet
+    body_orders: [24, 36]
+    wake_orders: [24, 36]
+  closed_reference_counterfactual:
+    history_strength: zero
+    body_terminal_role: zero
+    comparison: >
+      New open projector versus frozen assembly vertex-star projector on all
+      non-body P1 DOFs under the same manufactured owned velocities.
+  transport_reference_counterfactual:
+    velocity: "v(x)=A*x+b"
+    comparison: >
+      Owner-fed mass/advection matrices versus the frozen bare-point
+      monolithic assembler on the identical global triangulation.
+  rigid_frame_counterfactual:
+    rotation_axis: [-0.4, 0.3, 0.8]
+    rotation_deg: 33.0
+    translation: [0.6, -0.2, 0.5]
+
+required_identities:
+  - "geometry and P2 queries reconstruct every owned physical point"
+  - "free P1 geometry velocity is normal-only"
+  - "body-attachment P1 velocity equals supplied body kinematics exactly"
+  - "duplicated chronological seam vertices receive one global velocity"
+  - "open projector equals frozen closed projector on a valid shared range"
+  - "owner-fed P2 mass/advection equals the frozen assembler on a shared range"
+  - "actual four-channel P2 query is finite and its ledger closes exactly"
+  - "actual owner-fed P2 mass matrix is full rank and preserves constants"
+  - "proper rigid transformation rotates geometry velocity and preserves scalar matrices"
+  - "wrong owner, wrong body velocity and mismatched velocity/query fail closed"
+  - "no continuous full-vector P1 fit, coordinate owner inference or load target enters"
+
+thresholds:
+  query_reconstruction_abs_max: 2.0e-12
+  free_velocity_tangential_abs_max: 2.0e-12
+  body_attachment_velocity_abs_max: 0.0
+  chronological_seam_velocity_abs_max: 0.0
+  closed_projector_equivalence_abs_max: 2.0e-12
+  transport_mass_equivalence_abs_max: 2.0e-13
+  transport_advection_equivalence_abs_max: 2.0e-13
+  actual_ledger_closure_abs_max: 2.0e-12
+  actual_mass_rank_deficiency_max: 0
+  actual_constant_rate_residual_max: 2.0e-11
+  rigid_projection_abs_max: 2.0e-10
+  rigid_mass_abs_max: 2.0e-12
+  rigid_advection_abs_max: 2.0e-12
+  invalid_input_failure_count_min: 3
+  coordinate_owner_inference_count_max: 0
+
+decision:
+  go: >
+    Every owner, geometry, body boundary, seam, shared-range equivalence,
+    actual-field, rigid and fail-closed gate passes. Validate only the fixed
+    stage spatial discretization and authorize time-algorithm preregistration.
+  no_go: >
+    Any failure keeps b2b open. Preserve whether it occurs in ownership,
+    projection, body boundary, P2 assembly, actual field or objectivity.
+    Do not revive full-vector P1 projection, infer owner from coordinates,
+    add a core, relax thresholds or use pressure/force targets.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate does not update geometry or P2 scalar state, classify actual
+  inflow signs, apply an essential scalar rate, solve a relaxation stage,
+  compute pressure/force/LEV or activate production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_wake_owned_stage_velocity_results.json
+  decision: GO
+  passed_checks: 11
+  total_checks: 11
+  aggregate_metrics:
+    query_reconstruction_abs_max: 2.220717083251841e-16
+    free_velocity_tangential_abs_max: 1.3877787807814457e-17
+    body_attachment_velocity_abs_max: 0.0
+    chronological_seam_velocity_abs_max: 0.0
+    closed_projector_equivalence_abs_max: 0.0
+    transport_mass_equivalence_abs_max: 0.0
+    transport_advection_equivalence_abs_max: 0.0
+    actual_transport_ledger_closure_abs_max: 0.0
+    actual_mass_rank_deficiency: 0
+    actual_mass_condition_number: 22.078186627783378
+    actual_constant_rate_residual: 8.101015718016207e-15
+    rigid_projection_abs_max: 2.914335439641036e-16
+    rigid_mass_abs_max: 1.734723475976807e-17
+    rigid_advection_abs_max: 1.1102230246251565e-16
+    invalid_input_failure_count: 3
+  retained_diagnostics:
+    projection_residual_fraction: 0.5519790136217941
+    actual_relative_velocity_normal_component_max: 0.32951703677650945
+    interpretation: >
+      These are visible consistency diagnostics, not fitted-away errors and
+      not promotion evidence. The former measures non-affine face-normal
+      content outside the local P1 vertex-star representation; the latter is
+      the relative normal field that the scalar ALE tangential operator must
+      not consume. Both must remain visible in the time-stage gate.
+  claim_effect: >
+    Validate and freeze only the owner-preserving fixed-stage query,
+    free-normal/body-essential geometry projection and owner-fed consistent
+    P2 matrix adapter. Authorize a separate explicit-versus-implicit
+    time-stage decision; do not activate production or infer load accuracy.

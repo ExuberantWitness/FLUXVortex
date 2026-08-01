@@ -1,0 +1,138 @@
+artifact: actual_wake_nonlinear_midpoint_cauchy_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2b
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2a
+  - N3.1j3b6d18c2b3b2b
+  - N3.1j3b6d18c2b3a
+status: executed_go
+stage: S3x_actual_nonlinear_midpoint_multistep_time_cauchy
+role: no_force_nonlinear_time_convergence_oracle
+
+question: >
+  Over the same short physical window, do the complete nonlinear
+  previous-time midpoint geometry, global-P2 material scalar and algebraic
+  body trace converge at second order under 1/2/4 step refinement while all
+  named stage constraints remain closed and the retained projection/normal
+  diagnostics approach timestep-independent terminal values?
+
+cause_from_s3w:
+  data_fingerprint:
+    - >
+      One dt=0.01 nonlinear step closes half/full scalar residuals at
+      2.35e-15/1.33e-15 and trace residual at 2.50e-15.
+    - >
+      The step is nontrivial: free geometry changes 1.145e-3 and free
+      scalar changes 1.893e-3.
+    - >
+      Projection residual increases from 55.20% to 56.53% at the midpoint;
+      a single algebraically exact step cannot show whether this diagnostic
+      converges or accumulates with timestep.
+  node: N3.1j3b6d18c2b3b3b2b
+  movable_space: >
+    Repeat only the validated S3w step over one fixed T=0.01 window with
+    1/2/4 steps. Re-evaluate actual physical velocity at every midpoint and
+    endpoint. Do not change any spatial operator, quadrature, algebraic
+    stage method, body motion, incident field or threshold.
+  classification: missing_nonlinear_multistep_time_evidence
+
+primary_evidence:
+  - source: >
+      Arnold, Strehmel & Weiner, Numerische Mathematik 64 (1993) 409-432.
+    doi: https://doi.org/10.1007/BF01388697
+    implication: >
+      Formal HERK order must be demonstrated on the coupled differential and
+      algebraic variables, not only on an isolated ODE component.
+  - source: >
+      Roccia et al., Wind Energy Science 9 (2024), Appendix C2.
+    doi: https://doi.org/10.5194/wes-9-385-2024
+    implication: >
+      The chosen previous-time branch still requires timestep verification;
+      its lack of nonlinear iteration is not itself an accuracy proof.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28.
+    doi: https://doi.org/10.3390/aerospace9010028
+    implication: >
+      Wake geometry and distributed strengths jointly determine subsequent
+      induced velocity, so both states must enter the time-refinement
+      observable.
+
+canonical:
+  initial_state: "base_solution.wake_history from frozen S3n"
+  time:
+    start: 0.0
+    end: 0.01
+    step_families: [1, 2, 4]
+  body:
+    geometry: static
+    incident_velocity: "frozen S3n t=0.5 field"
+  step_method: "validated S3w nonlinear previous-time midpoint"
+  physical_velocity:
+    geometry_query: "four strict interior points per face"
+    P2_quadrature_order: 4
+    body_orders: [24, 36]
+    wake_orders: [24, 36]
+    edge_quadrature: target_sinh_analytic_sheet
+  terminal_observables:
+    - "all free P1 geometry coordinates"
+    - "all global-P2 scalar DOFs"
+    - "body-attachment P2 trace"
+    - "geometry projection residual fraction"
+    - "relative-velocity normal-component maximum"
+
+required_identities:
+  - "free-P1 geometry terminal states show second-order Cauchy contraction"
+  - "global-P2 scalar terminal states show second-order Cauchy contraction"
+  - "body-trace terminal states show second-order Cauchy contraction"
+  - "finest geometry/scalar/trace changes are small relative to their physical evolution"
+  - "all actual-boundary, affine-stage and scalar increment residuals remain closed"
+  - "attachment, chronological seams, P2 round-trip and ledgers remain closed"
+  - "terminal projection and relative-normal diagnostic differences contract with refinement"
+  - "all terminal topologies retain the exact chronological permutation"
+  - "face areas remain valid and the shared initial state is not mutated"
+  - "no geometry fixed point, scalar clamp, pressure, force or structure enters"
+
+thresholds:
+  geometry_time_cauchy_ratio_min: 3.4
+  scalar_time_cauchy_ratio_min: 3.4
+  body_trace_time_cauchy_ratio_min: 3.4
+  geometry_finest_change_over_evolution_max: 0.02
+  scalar_finest_change_over_evolution_max: 0.02
+  body_trace_finest_change_over_evolution_max: 0.02
+  actual_boundary_relative_weak_residual_max: 2.0e-12
+  algebraic_trace_residual_abs_max: 2.0e-11
+  scalar_increment_normalized_residual_max: 2.0e-11
+  attachment_seam_P2_ledger_abs_max: 2.0e-12
+  diagnostic_refinement_contraction_min: 1.0
+  topology_mismatch_count_max: 0
+  minimum_face_area_ratio_min: 0.99
+  input_state_mutation_abs_max: 0.0
+  geometry_iteration_count_max: 0
+
+decision:
+  go: >
+    Every state Cauchy, finest-change, named residual, diagnostic
+    contraction, topology, area and mutation gate passes. Validate the short
+    nonlinear multi-step time oracle and authorize a separate newborn-band/
+    longer-history gate before unified pressure.
+  no_go: >
+    Preserve which state or diagnostic fails. Do not reduce quadrature,
+    shorten the already frozen window, add smoothing/damping, iterate
+    geometry, clamp the trace or use a load target.
+  production_activation_allowed: false
+
+scope_limit: >
+  This is a T=0.01 two-band local nonlinear time gate. It does not shed a
+  newborn band, span a flap cycle, compute unified pressure/force/LEV,
+  compare experiments or activate production.
+
+execution:
+  result: GO
+  result_file: actual_wake_nonlinear_midpoint_cauchy_results.json
+  geometry_time_cauchy_ratio: 4.078918012859055
+  scalar_time_cauchy_ratio: 4.213309516590013
+  body_trace_time_cauchy_ratio: 4.428305699267544
+  maximum_named_residual: 7.96560925991624e-15
+  projection_diagnostic_refinement_contraction: 4.732010862454846
+  relative_normal_diagnostic_refinement_contraction: 3.780067560985728
+  production_activation_allowed: false

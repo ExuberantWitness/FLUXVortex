@@ -1,0 +1,150 @@
+artifact: near_singular_p2_edge_quadrature_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3a1
+parent_claim: N3.1j3b6d18c2b3a
+status: executed_no_go
+stage: S3o_target_centered_near_singular_p2_edge_quadrature
+role: no_force_numerical_operator_gate
+
+question: >
+  After the already-validated analytic radial reduction and on-sheet
+  finite-part cancellation, can a target-centered, parameter-free sinh
+  coordinate on each remaining edge integral recover near-edge and
+  near-vertex P2 doublet velocities at finite order, without changing the
+  integral or introducing an offset, vortex core, pressure or force target?
+
+cause_from_s3n:
+  data_fingerprint:
+    body_last_abs_change_q52_to_q72: 9.477818447017105e-3
+    wake_last_abs_change_q64_to_q80: 3.416391363242956e-3
+    worst_barycentric: [0.03333333333333333, 0.03333333333333333, 0.9333333333333333]
+    body_normal_distance_over_sqrt_2_area: 3.2367096363748885e-3
+    wake_q192_to_q256_abs_change: 1.1855094544044204e-9
+  interpretation: >
+    The physical four-channel sum, owner identity, topology, representation
+    and objectivity pass.  Ordinary edge Gauss has a target-dependent
+    near-singular layer and does not reach the preregistered tolerance.
+  node: N3.1j3b6d18c2b3a1
+  movable_space: >
+    Change only the coordinate and weights of the remaining one-dimensional
+    edge quadrature.  Preserve the P2 density, radial primitives,
+    finite-part identity, source identities and every physical state.
+  classification: missing_target_aware_near_singular_quadrature
+
+primary_evidence:
+  - source: Johnson, NASA CR-3079 (1980)
+    url: https://ntrs.nasa.gov/citations/19800015776
+    implication: >
+      Polynomial source and doublet influence coefficients admit closed-form
+      H/F recursions rather than brute-force ordinary surface quadrature.
+  - source: >
+      Montanelli, Aussal & Haddar, SIAM Journal on Scientific Computing 44
+      (2022)
+    url: https://arxiv.org/abs/2111.13151
+    implication: >
+      Near singularities on quadratic triangles require locating the
+      singular preimage and using subtraction/continuation with transplanted
+      Gauss; ordinary Gauss loses rapid convergence as the target approaches.
+  - source: >
+      Montanelli, Collino & Haddar, SIAM Journal on Scientific Computing 46
+      (2024)
+    doi: https://doi.org/10.1137/23M1605594
+    implication: >
+      The same target-aware construction extends to strongly singular
+      kernels and quadratic triangular elements.
+  - source: >
+      Johnston, Johnston & Elliott, Journal of Computational and Applied
+      Mathematics 245 (2013)
+    doi: https://doi.org/10.1016/j.cam.2012.12.018
+    implication: >
+      A projection-centered sinh coordinate resolves nearly singular
+      triangular BEM integrals without changing their kernel.
+
+candidate_rewrite:
+  coordinate: >
+    For an edge x(s)=x0+s*e, compute s0 as the closest-segment coordinate of
+    the target, d=|target-x(s0)|/|e|, and map
+    s=s0+d*sinh(t), with exact endpoint images and Jacobian
+    ds/dt=d*cosh(t).
+  invariants:
+    - "the transformed weights integrate over exactly s in [0,1]"
+    - "no target offset or excluded disk"
+    - "no vortex core or smoothing"
+    - "analytic radial and finite-part algebra unchanged"
+    - "proper rigid transforms leave s0, d and vector rotation invariant"
+    - "a target exactly on an edge fails closed"
+
+canonical:
+  manufactured_triangle:
+    vertices:
+      - [0.0, 0.0, 0.0]
+      - [1.0, 0.0, 0.0]
+      - [0.0, 1.0, 0.0]
+    quadratic_mu_nodes: [0.0, 0.0, 0.0, 0.35, -0.2, 0.5]
+    owner_barycentric:
+      - [0.01, 0.01, 0.98]
+      - [0.01, 0.49, 0.50]
+      - [0.3333333333333333, 0.3333333333333333, 0.3333333333333334]
+    constant_mu: 0.7
+    off_sheet_height_over_sqrt_2_area: [1.0e-2, 1.0e-3]
+  candidate_orders: [8, 12, 16, 24]
+  independent_reference_orders: [192, 256]
+  actual_snapshot: S3n_actual_body_wake_sheet_velocity_ledger
+  actual_snapshot_orders:
+    body: [16, 24, 36, 52, 72]
+    wake: [24, 36, 48, 64, 80]
+  rigid_frame_counterfactual:
+    rotation_axis: [0.3, -0.4, 0.5]
+    rotation_deg: 31.0
+    translation: [0.7, -0.2, 0.4]
+
+thresholds:
+  transformed_measure_abs_max: 3.0e-15
+  constant_ring_abs_max: 2.0e-10
+  candidate_last_abs_change_max: 1.0e-8
+  candidate_last_rel_change_max: 1.0e-6
+  independent_reference_cauchy_abs_max: 2.0e-8
+  candidate_vs_reference_abs_max: 5.0e-8
+  regular_field_equivalence_abs_max: 2.0e-10
+  actual_body_last_abs_change_max: 1.0e-8
+  actual_wake_last_abs_change_max: 1.0e-8
+  rigid_channel_abs_max: 2.0e-9
+  on_edge_failure_count_min: 2
+  invalid_geometry_failure_count_min: 2
+
+decision:
+  go: >
+    All mapping, analytic constant-ring, independent-reference, finite-order
+    Cauchy, actual S3n snapshot, rigid-objectivity and fail-closed gates pass.
+    Freeze only the target-aware edge quadrature and authorize rerunning S3n;
+    do not yet authorize wake relaxation.
+  no_go: >
+    Any failure preserves c2b3a as partial.  Do not increase the frozen
+    orders, relax thresholds, omit a source, offset the target, add a core or
+    consult pressure/force targets.
+  production_activation_allowed: false
+
+forbidden:
+  - geometry_update
+  - material_mu_transport
+  - wake_relaxation
+  - fixed_point
+  - target_offset
+  - vortex_core
+  - smoothing
+  - pressure
+  - force
+  - LESP
+  - target_load
+  - structural_dynamics
+
+execution:
+  result_file: near_singular_p2_edge_quadrature_results.json
+  decision: NO-GO
+  interpretation: >
+    The simple sinh map preserves regular fields, passes the actual S3n
+    frozen-order ledger, objectivity and fail-closed semantics, but it does
+    not remove the 1/r^3 boundary-vortex singular power.  At the stronger
+    manufactured near-vertex point the q16-to-q24 change is 1.77e-2 and the
+    analytic constant-ring error is 5.25e-4.  The map is therefore frozen as
+    falsified rather than promoted from its favorable actual-snapshot result.

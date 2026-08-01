@@ -1,0 +1,173 @@
+artifact: actual_boundary_blunt_base_topology_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+status: preregistered_before_implementation
+stage: S2d_finite_blunt_base_topology_identifiability
+role: topology_and_identifiability_oracle
+
+question: >
+  Can one zero-thickness newborn vortex-sheet junction, with one material
+  origin and one downstream trace, represent the two spatially distinct
+  separation corners of a finite NACA-2406 trailing-edge base?  Or does every
+  nonzero base thickness require two anchored shear-layer fronts plus an
+  unresolved base-region/confluence state before any pressure closure is
+  attempted?
+
+cause_from_S2c:
+  known: >
+    S2c validates a parameter-free high-Re formation state for one
+    finite-angle sharp junction whose two incident sheets meet at the same
+    material point.
+  missing: >
+    The open-TE NACA-2406 has two corner points separated by a solid base.
+    Applying the one-junction state there would silently collapse that
+    separation and delete the base control volume.
+  classification: missing_topology_component
+
+primary_evidence:
+  - source: >
+      Kemp, A Vector-Continuous Loading Concept for Aerodynamic Panel
+      Methods, NASA TM-80104 (1979), NTRS 19790016785
+    implication: >
+      B-1 bisector, B-2 two-corner direction and B-3 nonlinear pressure
+      equality are alternative blunt-edge closures; they must remain
+      separately observable.
+  - source: >
+      Xia & Mohseni, Journal of Fluid Mechanics 830 (2017),
+      DOI 10.1017/jfm.2017.513
+    implication: >
+      Their finite-angle derivation is a local single-junction control
+      volume.  It cannot establish the topology of two separated corners.
+  - source: >
+      Martinez-Cava, Rodriguez, Valero & Paniagua, Aerospace Science and
+      Technology 113 (2021) 106730,
+      DOI 10.1016/j.ast.2021.106730
+    implication: >
+      At a blunt trailing edge the upper and lower boundary layers form two
+      shear layers that meet at a downstream confluence point, enclosing a
+      low-pressure, low-momentum base region.
+  - source: >
+      Thomareis & Papadakis, Physics of Fluids 29 (2017) 014101,
+      DOI 10.1063/1.4973811
+    implication: >
+      DNS distinguishes the blunt-edge global shedding mode from the sharp
+      trailing-edge shear-layer dynamics; bluntness is not only a small
+      geometric perturbation of one sheet.
+  - source: >
+      Wang, Abdel-Maksoud & Song, Ocean Engineering 130 (2017) 398-406,
+      DOI 10.1016/j.oceaneng.2016.12.009
+    implication: >
+      Pressure Kutta is a nonlinear coupled circulation condition.  One
+      scalar pressure equality is not used here to manufacture missing
+      topology.
+
+geometry_continuation:
+  airfoil: NACA-2406
+  maximum_camber: 0.02
+  camber_location: 0.40
+  thickness_ratio: 0.06
+  thickness_polynomial: >
+    yt/c=5*t*(0.2969*sqrt(x)-0.1260*x-0.3516*x^2
+    +0.2843*x^3+a4*x^4)
+  coefficient_path: >
+    a4(f)=-0.1036+f*(-0.1015+0.1036), f in [0,1].
+    Thus f=1 is the standard open edge and f=0 is the standard coincident
+    finite-angle closed edge.  This is a diagnostic continuation, not a
+    fitted thickness law.
+  base_fractions: [1.0, 0.5, 0.25, 0.0]
+  chord: 1.0
+
+topology_identities:
+  corner_points: >
+    q_upper=r_camber+yt*n_camber and
+    q_lower=r_camber-yt*n_camber at x/c=1, using analytic first
+    derivatives of both traces.
+  best_single_origin_residual: >
+    min_q max(norm(q-q_upper),norm(q-q_lower))
+    =0.5*norm(q_upper-q_lower).
+  consequence: >
+    A single material origin can attach to both corner loci if and only if
+    the base thickness is zero.  Two independent origins make the attachment
+    residual exactly zero but do not yet close their strengths, directions,
+    confluence motion or base pressure.
+  B2_direction_comparator: >
+    min_g max(angle(g,t_upper),angle(g,t_lower))
+    =0.5*angle(t_upper,t_lower).  This records Kemp B-2 incompatibility with
+    one prescribed direction; it is not asserted as the universal unsteady
+    Kutta condition.
+
+thresholds:
+  geometry_identity_abs_max: 1.0e-14
+  open_base_thickness_abs_error_max: 1.0e-14
+  coincident_corner_abs_max: 1.0e-14
+  two_origin_attachment_abs_max: 1.0e-14
+  single_origin_normalized_identity_abs_error_max: 1.0e-14
+  positive_base_floor: 1.0e-15
+  finite_angle_floor_deg: 1.0e-6
+  monotonic_abs_tolerance: 1.0e-14
+
+decision:
+  go: >
+    Every f>0 case has a positive base and a strictly positive optimal
+    single-origin residual equal to half the base thickness; two explicit
+    corner origins close attachment exactly; the residual decreases
+    monotonically to zero; and f=0 recovers one coincident finite-angle
+    junction without changing any pressure or circulation variable.
+  no_go: >
+    If a nonzero base can be represented by one exact material origin, or
+    if the coefficient path fails to recover the standard open/closed NACA
+    identities, stop and revise the geometric claim.  Do not introduce a
+    wake angle, pressure, circulation or force parameter.
+  claim_rewrite_if_go:
+    falsify: >
+      One Xia-Mohseni single-junction sheet can directly represent a finite
+      blunt base.
+    validate_in_scope: >
+      A finite two-corner base requires at least two anchored sheet fronts
+      or an equivalent finite-width material interface, plus a separate
+      base-region/confluence state.  This is only a 2-D topology necessity.
+
+scope_limit: >
+  This gate does not solve the two sheet strengths or directions, base
+  pressure, confluence location, viscous mass/momentum inventory, material
+  potential history, actual-boundary BEM coupling, 3-D spanwise junctions or
+  RoboEagle production loads.
+
+forbidden:
+  - "collapsing nonzero base thickness to a midpoint wake origin"
+  - "using the B-1 bisector as a universal physical answer"
+  - "using B-3 pressure equality to infer two missing sheet states"
+  - "inventing base pressure, source mass, circulation or wake angle"
+  - "activating any result in production"
+
+S2d_execution_2026_07_28:
+  stage_decision: GO
+  result_artifact: actual_boundary_blunt_base_topology_results.json
+  aggregate_metrics:
+    standard_open_base_thickness_over_chord: 0.0012599999999999782
+    standard_open_single_origin_residual_over_chord: 0.0006299999999999891
+    single_origin_normalized_residual_for_all_nonzero_bases: 0.5
+    closed_base_thickness: 0.0
+    closed_finite_angle_deg: 8.294977687031261
+    geometry_identity_abs_max: 7.15573433840433e-18
+    two_origin_attachment_abs_max: 0.0
+  continuation:
+    base_thickness_over_chord:
+      - 0.0012599999999999782
+      - 0.0006299999999999734
+      - 0.00031499999999998207
+      - 0.0
+    monotonic_to_sharp_limit: true
+  claim_rewrite:
+    falsified: >
+      N3.1j3b6d10: one single-junction newborn sheet directly represents a
+      nonzero finite base.
+    validated_in_scope: >
+      N3.1j3b6d11: a 2-D finite blunt base topologically requires two
+      anchored fronts or an equivalent finite-width material interface plus
+      a base/confluence region.
+  production_activation_allowed: false
+  next_missing: >
+    A conservation-coupled two-front/base-region dynamic state that closes
+    strength, direction, material motion and confluence without inventing
+    base pressure or source mass.

@@ -1,0 +1,101 @@
+artifact: actual_wake_birth_flux_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3
+status: executed_go
+stage: S3ae_unsteady_kutta_material_birth_flux
+role: no_force_sharp_junction_manufactured_oracle
+
+question: >
+  Does the conservation-derived material circulation flux produce a
+  first-order newborn potential increment and an order-zero P2 sheet
+  vorticity equal to the finite-angle sharp-edge formation strength, without
+  any panel-length, core, damping or load closure?
+
+depends_on_claims:
+  - N3.1j3b6d9
+  - N3.1j3b6d18c2b3b3b2c2b2b2
+  - N3.1j4a
+
+canonical:
+  wedge_angle_deg: 40.0
+  span_vertices: [-0.5, 0.5]
+  timestep_family: [0.004, 0.002, 0.001, 0.0005]
+  orientation:
+    body_to_released_direction: positive_x
+    ordered_span_direction: positive_y
+    sheet_normal: positive_z
+    repository_birth_flux_sign: 1
+  cases:
+    - id: side1_dominant
+      u1_plus: -2.0
+      u2_minus: -1.0
+    - id: side2_dominant_mirror
+      u1_plus: -1.0
+      u2_minus: -2.0
+    - id: side1_dominant_scaled
+      u1_plus: -4.0
+      u2_minus: -2.0
+
+required_outputs:
+  - "finite-angle gamma_g, u_g and dotGamma_g"
+  - "newborn physical length and three temporal P2 trace rows"
+  - "P2 sheet-vorticity vector at all triangle P2 nodes"
+  - "trace increment and vorticity log slopes versus timestep"
+  - "mass-form circulation-flux residual"
+  - "mirror and velocity-scale covariance residuals"
+
+thresholds:
+  trace_increment_dt_order_abs_error_max: 1.0e-12
+  sheet_vorticity_dt_order_abs_max: 1.0e-12
+  sheet_vorticity_vector_abs_error_max: 2.0e-11
+  circulation_flux_residual_max: 2.0e-13
+  midpoint_trace_residual_max: 2.0e-13
+  mirror_residual_max: 2.0e-12
+  velocity_scale_covariance_residual_max: 2.0e-12
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  go: >
+    Every nondegenerate finite-angle case has trace order one, vorticity
+    order zero, the expected oriented vorticity vector, exact midpoint and
+    circulation-flux identities, plus mirror and velocity-scale covariance.
+  no_go: >
+    Keep the birth-flux node open and review only orientation, derivation or
+    representation. Do not change thresholds or add numerical/force
+    regularization.
+  production_activation_allowed: false
+
+result:
+  result_file: actual_wake_birth_flux_results.json
+  stage_decision: GO
+  aggregate_metrics:
+    trace_increment_dt_order_abs_error_max: 2.1094237467877974e-15
+    sheet_vorticity_dt_order_abs_max: 1.6720015611460778e-16
+    sheet_vorticity_vector_abs_error_max: 0.0
+    circulation_flux_residual_max: 0.0
+    midpoint_trace_residual_max: 0.0
+    normal_orientation_error_max: 0.0
+    mirror_residual_max: 0.0
+    velocity_scale_covariance_residual_max: 0.0
+    input_state_mutation_abs_max: 0.0
+  claim_effect: >
+    The conservation-derived local sharp-junction birth flux is validated
+    and frozen as a representation identity. It gives Delta g=O(dt) and an
+    order-zero P2 sheet vorticity exactly equal to the finite-angle formation
+    strength. The broader actual-body coupled formation claim remains
+    partial until the topology-derived quotient test space is identified.
+  later_evidence_update: >
+    S3af subsequently falsified the topology-derived quotient route. The
+    local S3ae identity remains validated and frozen, but its next coupling
+    route is now an independent active-wake trace that retains every body BIE
+    and replaces the Morino closure with exactly one physical Kutta closure.
+
+forbidden:
+  - "finite blunt-base interpretation"
+  - "actual-boundary equation modification"
+  - "least-squares insertion into the current square solve"
+  - "wake panel-length rule"
+  - "vortex core or epsilon offset"
+  - "damping or clamp"
+  - "pressure, force, LESP or target load"
+  - "structural dynamics"

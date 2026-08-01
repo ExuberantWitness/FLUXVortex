@@ -1,0 +1,230 @@
+artifact: actual_wake_reachable_pressure_obstruction_preregistration
+version: S3ai-v2.1
+date_preregistered: "2026-07-28 13:32:18 +08:00"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3e3b
+stage: S3ai_reachable_material_history_pressure_obstruction
+status: preregistered_before_any_formal_execution
+role: executable_definition_addendum_no_physical_result
+
+base_protocol:
+  file: actual_wake_reachable_pressure_obstruction_cases_20260728_131922.yaml
+  sha256: 8345035356d300d4154ac276fc54b8ab27b6e83704cb4444436dbc0c2c59c75b
+  inheritance: >
+    All physical scope, canonical geometry, histories, equations, evidence,
+    families, thresholds, classifications, and nonclaims remain in force
+    except where this addendum explicitly removes an ambiguity.
+supersedes_for_execution:
+  - actual_wake_reachable_pressure_obstruction_cases_20260728_131922.yaml
+reason_for_addendum:
+  - >
+    The base q-plateau allowance included u_round while the total uncertainty
+    included it again.  This was discovered by an independent definition
+    audit before any formal history was run.
+  - >
+    Negative-control amplitudes, mirror scaling, condition norm, vector
+    dimension, body-q provenance, and exact execution counts needed
+    deterministic definitions.
+
+fixed_space:
+  active_vector_dimension: 7
+  complete_trace_dimension: 9
+  active_mass_shape: [7, 7]
+  active_mass_requirements:
+    - finite
+    - bit_exact_symmetric
+    - cholesky_positive_definite
+    - identical_across_all_histories
+  spatial_mesh_refinement_present: false
+
+execution_accounting:
+  histories: 31
+  nominal_signed_histories: 22
+  zero_histories: 6
+  fresh_repeat_histories: 3
+  histories_by_timestep:
+    "0.0625": 18
+    "0.125": 10
+    "0.25": 3
+  measured_steps: 380
+  compatible_presteps: 31
+  total_s3e_steps: 411
+  half_full_body_wake_solves: 822
+  uniquely_observed_stages: 791
+  rule: >
+    Assert every count before the first march.  Each fresh history owns one
+    [-dt,0] pre-step; the current S3e API does not share that state between
+    histories.
+
+case_identity:
+  key: >
+    (float(epsilon_signed).hex(), float(dt).hex(), int(q), replicate_id)
+  replicate_id:
+    nominal_and_zero: 0
+    fresh_repeat: 1
+  freshness: >
+    Rebuild mesh, topology, attachment, march, arrays, and operators for all
+    three repeat histories.  No numpy array may share memory across histories.
+    Value hashes may agree and must not be called object-identity evidence.
+
+quadrature_provenance:
+  body_target_order: q
+  body_source_order: q
+  direct_w_target_order: q
+  direct_w_source_order: q
+  pressure_line_order: 12
+  evidence: >
+    The typed runner passes q to both target/source arguments of the S3e
+    marcher and records that request.  A spy unit test must verify the call.
+    Direct-W assembly metadata must equal q at every observed stage.
+  boundary: >
+    ActualBoundaryBodyWakeSolution does not store body quadrature provenance;
+    requested-body-q plus the tested typed call is the available evidence.
+    Do not claim stronger in-object provenance.
+
+uncertainty_correction:
+  floating_round_definition: >
+    For one family, u_round_family =
+    4096*eps64*max of the dual-mass norms of every vector entering that
+    family.  Exact all-zero vectors give an exact zero floor.
+  omega_compared_vectors:
+    - all three epsilon tangents
+    - all three timestep tangents
+    - all three quadrature tangents
+    - all eight mixed-cube tangents
+    - nominal and fresh-repeat anchor tangents
+    - stored-phi and direct-phi-pressure anchor tangents
+  omega_round: >
+    u_round=max of the family floors listed above.
+  richardson_allowance: >
+    u_a=||Omega_f^R-Omega_f||+||Omega_f^R-Omega_2f^R||.
+    Do not add a floating floor inside u_a.
+  quadrature_allowance: >
+    On an exact/floating plateau use u_q=delta2.  Otherwise require
+    rho=delta2/delta1<1 and use u_q=delta2/(1-rho).  Do not add a floating
+    floor inside u_q.
+  total: >
+    U_Omega=u_epsilon+u_dt+u_q+u_mix+u_repeat+u_alg_observer+u_round.
+    The floating allowance appears exactly once.
+  zero_round_Z: >
+    4096*eps64 times the maximum dual-mass norm over all six nominal Z
+    vectors, the fresh zero repeat, the stored/direct anchor pair, and every
+    vector in the dt-q mixed difference.
+  zero_round_V: >
+    4096*eps64 times the maximum absolute value over the analogous scalar V
+    set.
+  zero_total: >
+    U_Z and U_V each contain their dt Richardson, q tail, one dt-q mixed
+    difference, repeat, observer-algebraic discrepancy, and their own round
+    term exactly once.
+  mixed_tail_assumption: >
+    Pairwise/three-way Moebius differences on the one adjacent 2x2x2 cube
+    are a local unresolved mixed allowance only, not a global derivative or
+    asymptotic convergence bound.
+
+mirror_guard:
+  parity: even_under_span_reversal
+  complete_trace_map: "v -> v[::-1]"
+  active_trace_map: "v -> v[::-1]"
+  observed_vectors:
+    - canonical material current trace
+    - stored weak pressure
+    - direct-phi weak pressure
+    - stored step residual
+    - direct-phi step residual
+  relative_residual: >
+    If maxabs(v)==0 exactly, return zero.  Otherwise use
+    maxabs(v-v[::-1])/maxabs(v).
+  threshold: 2.0e-10
+  prohibition: no fitted parity, coordinate nearest-neighbour map, or offset
+
+condition_guard:
+  matrix: B
+  condition_norm: spectral_2
+  backward_error: componentwise_max_for_Bphi_plus_Wg_equals_b
+  indicator: kappa_2_B_times_componentwise_backward_error
+  threshold: 1.0e-2
+  boundary: >
+    This is a conditioning screen, not a rigorous forward-error theorem
+    because the norms differ.  Same-space pressure observer discrepancy
+    u_alg_observer remains the numerical allowance.
+
+negative_controls:
+  stored_phi_single_dof:
+    dof: "int(topology.upper_cut_dofs[3])"
+    perturbation: 0.0009765625
+    exact_form: "2**-10 in canonical nondimensional potential units"
+    requirements:
+      - corrupted stored BIE backward error exceeds 2.0e-11
+      - corrupted stored BIE backward error is at least 1000 times the baseline
+      - >
+        dual-mass pressure change exceeds 1000000 times its
+        same-vector floating round floor
+      - direct solve potential, residual, backward error, and pressure are unchanged bitwise
+  wrong_attachment_sign:
+    sign: -1
+    requirement: >
+      On the nominal positive anchor, full material/body compatibility
+      exceeds 1000000 times the correct-sign residual or the same-trace
+      floating floor, whichever is larger.
+  wrong_birth_sign:
+    beta: -1
+    requirement: >
+      At least one nominal positive-anchor previous-full->half or half->full
+      complete-trace increment exceeds 1000000 times the corresponding
+      correct-sign residual or same-trace floating floor.
+  asymmetric_reverse_roundtrip:
+    complete_trace: [0.0, 0.13, -0.08, 0.31, -0.17, 0.22, 0.07, -0.11, 0.0]
+    reversed_attachment_sign: -1
+    requirement: exact typed reverse/sign map recovers the forward canonical trace
+  invalid_permutation:
+    operation: swap declared material vertex ids at positions 1 and 2
+    requirement: typed attachment mapping fails closed
+  row_cache_mutation:
+    operations:
+      - "previous row active index 3 += 0.4"
+      - "midpoint row active index 3 -= 0.2"
+      - "current row active index 3 += 0.1"
+    requirement: >
+      face_mu functional is bitwise unchanged and row/surface cache guard
+      fails.
+  surface_mutation:
+    operation: "current boundary segment 1 P2 midpoint face_mu += 0.2"
+    requirement: face_mu functional changes and row/surface cache guard fails
+  local_noncancellation:
+    operation: >
+      current boundary P2 midpoint face_mu +=0.15 on segment 0 and -=0.15
+      on segment 2 of the symmetric manufactured band.
+    requirement: scalar span sum is zero but complete-trace guard fails
+  input_immutability:
+    requirement: >
+      Body potentials, material surface coefficients, cached rows, geometry,
+      topology, upper/lower classifications, and old histories are bitwise
+      unchanged by every observer.
+
+required_definition_tests:
+  - active vector dimension and exact symmetric SPD mass
+  - 31/380/411/822/791 execution accounting
+  - body target/source q spy and direct-W metadata
+  - zero pre-step full stored BIE and zero material trace
+  - previous-full to half and half to full actual-S3e inventory increments
+  - wrong permutation, attachment sign, birth sign, and stored-phi controls
+  - boundary duplicate and surface internal-trace defects
+  - history seam, time-gap, and geometry-gap defects
+  - input and old-state immutability
+  - exact Richardson, q-tail, mixed-cube, repeat, algebraic, and zero formulas
+  - formal runner remains fail-closed until independent implementation audit
+
+decision:
+  inherit_from_base: true
+  production_activation_allowed: false
+  result_file: actual_wake_reachable_pressure_obstruction_results_20260728_133218.json
+  latest_result_file: actual_wake_reachable_pressure_obstruction_results.json
+  no_result_exists_at_preregistration: true
+
+nonclaims:
+  - no spatial h/p convergence
+  - no exact-arithmetic trajectory error bound
+  - no independent closed-loop Kelvin equation
+  - no state identity or dimension
+  - no geometry-versus-VES decision
+  - no force, production, 118 sweep, or Fig17/18/19 result

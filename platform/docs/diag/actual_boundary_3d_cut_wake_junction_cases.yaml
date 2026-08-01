@@ -1,0 +1,157 @@
+artifact: actual_boundary_3d_cut_wake_junction_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+depends_on_claims:
+  - N3.1j3b6d3a
+  - N3.1j3b6d5
+  - N3.1j3b6d9
+  - N3.1j4b1
+  - N3.1j4b5a
+status: executed_go_after_preregistration
+stage: S3a_3d_classified_body_cut_to_material_wake_junction
+role: topology_and_trace_interface_oracle
+
+question: >
+  On a closed three-dimensional finite-angle lifting body, can the physical
+  geometry remain watertight while the scalar P2 body-potential trace is
+  explicitly duplicated across the classified trailing-edge cut, and can
+  that body jump attach exactly to the current edge of one continuous P2
+  material-wake band without discontinuities elsewhere or gauge dependence?
+
+cause_from_existing_tree:
+  validated:
+    - "N3.1j3b6d3a: globally continuous body P2 topology away from cuts"
+    - "N3.1j3b6d5: a classified potential cut is necessary for circulation"
+    - "N3.1j4b1: parameter-free C1 P2 span trace"
+    - "N3.1j4b5a: aligned interface sign mu_DDE=-Gamma_N1"
+    - "N3.1j4c5/c6: no-core short-time DDE reference and explicit patch interfaces"
+  missing: >
+    No current artifact constructs a watertight 3-D body whose geometry
+    vertices remain shared while only the upper/lower P2 potential degrees
+    of freedom are split on the trailing-edge line and paired with a
+    material wake trace.
+  classification: missing_actual_boundary_to_wake_interface_component
+
+primary_evidence:
+  - source: >
+      Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990)
+    implication: >
+      Lifting potential flow requires a wake/potential branch cut while
+      ordinary body interfaces retain continuous potential representation.
+  - source: >
+      NASA TM-88355 (1986), lifting-potential branch-cut formulations
+    implication: >
+      A jump in potential across a wake-like branch cut is a lifting-domain
+      topology, not a geometric crack in the body.
+  - source: >
+      Le Provost et al., Journal of Fluid Mechanics 977 (2023),
+      DOI 10.1017/jfm.2023.997
+    implication: >
+      Bound-sheet no-through-flow, Kelvin circulation and newborn wake
+      conditions belong to one coupled system.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28,
+      DOI 10.3390/aerospace9010028
+    implication: >
+      A distributed-doublet material wake carries a continuous potential
+      jump assigned at birth and retained during subsequent geometry motion.
+
+canonical:
+  body:
+    section: "symmetric diamond, LE=(0,0), upper=(0.5,0.1), TE=(1,0), lower=(0.5,-0.1)"
+    span_nodes: [-1.0, -0.5, 0.0, 0.5, 1.0]
+    topology: >
+      Extruded closed full wing with upper/lower skins and two end caps.
+      Geometry is a single watertight triangular mesh.
+    classified_cut: "all four spanwise TE segments"
+    zero_jump_cut_endpoints: "both physical wing tips"
+  manufactured_jump:
+    formula: "mu(y)=1-y^2"
+    properties:
+      - "zero at both tips"
+      - "even full-wing symmetry"
+      - "quadratic and exactly representable by P2"
+  material_wake:
+    current_edge: "the geometric TE line x=1"
+    previous_edge: "parallel downstream line x=1.1"
+    time_nodes: [0.0, 0.5, 1.0]
+    potential_jump_rows: "the same manufactured mu(y) on all three explicit rows"
+    vortex_family: TEV
+  gauge_shift: 3.7
+
+required_identities:
+  - "closed body geometry remains unchanged and watertight"
+  - "only internal TE vertex and TE edge-midpoint potential DOFs are duplicated"
+  - "all non-cut mesh edges retain one shared P2 trace"
+  - "upper-minus-lower body trace equals mu(y) at every cut P2 node"
+  - "current material-wake edge equals the same mu(y)"
+  - "equal gauge shift of both body sides changes neither jump nor wake match"
+  - "aligned N1/DDE sign map round-trips exactly"
+  - "tip jump is zero and full-wing symmetry derivative at y=0 is zero"
+  - "material wake surface is internally P2-continuous"
+
+thresholds:
+  body_geometry_change_abs_max: 0.0
+  body_boundary_edge_count_max: 0
+  body_nonmanifold_edge_count_max: 0
+  noncut_trace_dof_mismatch_max: 0
+  cut_coordinate_pair_gap_abs_max: 1.0e-15
+  body_jump_abs_error_max: 1.0e-13
+  wake_attachment_abs_error_max: 1.0e-13
+  gauge_jump_change_abs_max: 1.0e-13
+  interface_roundtrip_abs_error_max: 1.0e-13
+  tip_jump_abs_max: 1.0e-13
+  symmetry_derivative_abs_max: 1.0e-13
+  wake_internal_trace_jump_abs_max: 1.0e-13
+
+decision:
+  go: >
+    All identities pass without moving body geometry, welding the cut
+    potential copies, fitting a circulation, or changing any validated N1
+    quantity.  Passing validates only the 3-D classified trace/junction
+    topology and permits a later coupled body-wake equation gate.
+  no_go: >
+    Any crack in geometry, non-cut trace split, cut jump mismatch, gauge
+    dependence or wake discontinuity blocks the coupled solve.  Do not hide
+    the failure with a core, epsilon, midpoint wake, duplicated force or
+    relaxed interface tolerance.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate does not solve no-through-flow, Kutta/Kelvin amplitudes, material
+  pressure history, wake roll-up, finite blunt base, LEV release, panel
+  pressure, force, 118 cases or production coupling.
+
+forbidden:
+  - "splitting or moving the physical body geometry"
+  - "keeping one scalar trace across the classified lifting cut"
+  - "fitting the manufactured jump to force"
+  - "claiming a finite blunt-base solution"
+  - "activating pressure or production loads"
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_3d_cut_wake_junction_results.json
+  stage_decision: GO
+  metrics:
+    body_geometry_change_abs_max: 0.0
+    body_boundary_edge_count: 0
+    body_nonmanifold_edge_count: 0
+    duplicated_internal_cut_vertex_dofs: 3
+    duplicated_cut_edge_midpoint_dofs: 4
+    noncut_trace_dof_mismatch_count: 0
+    cut_coordinate_pair_gap_abs_max: 0.0
+    body_jump_abs_error_max: 0.0
+    wake_attachment_abs_error_max: 0.0
+    gauge_jump_change_abs_max: 0.0
+    interface_roundtrip_abs_error_max: 0.0
+    tip_jump_abs_max: 0.0
+    symmetry_derivative_abs_max: 3.1776437161565094e-15
+    wake_internal_trace_jump_abs_max: 0.0
+  interpretation: >
+    The geometry and potential topology are independent: a single watertight
+    body can carry paired scalar P2 traces on the classified TE cut, and
+    their jump is exactly the current-edge material-wake trace. This GO
+    validates only the topology/trace junction and does not select its
+    amplitude or activate pressure, force, finite-base dynamics or
+    production.

@@ -1,0 +1,155 @@
+artifact: actual_wake_kutta_compatibility_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3e
+status: executed_counterexample_go_physical_compatibility_no_go
+stage: S3ag_kutta_closure_compatibility_and_regular_root
+role: no_force_cross_guard_and_counterexample_oracle
+
+question: >
+  Do either (a) a prescribed stripwise two-dimensional birth-rate closure or
+  (b) a zero-pressure-residual closure, by themselves, select a regular
+  current-wake state that satisfies every body BIE and has a vanishing
+  body-to-wake edge defect on the present actual P2 canonical?
+
+diagnosis_completed_before_preregistration:
+  disclosure: >
+    Feasibility commands already showed an O(1e-2) birth-branch edge defect
+    and large pressure-root wake amplitudes. This artifact is therefore a
+    frozen reproducibility/counterexample gate, not a blind acceptance test.
+    The exact cases and thresholds below are fixed before the reusable module,
+    guard and persistent result are implemented. A subsequent independent
+    definition audit clarified order signs, observation maps and solver
+    globalization before the first formal execution; it did not use a formal
+    guard result or change any observed physical range.
+  observed_ranges:
+    birth_edge_defect_abs: [0.013, 0.017]
+    pressure_root_wake_jump_abs_max: [4.0, 15.0]
+    pressure_root_edge_defect_abs_max: [2.0, 11.0]
+
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c2b2b3a
+  - N3.1j3b6d18c2b3b3b2c2b2b3d
+
+canonical:
+  body: "frozen S3a symmetric diamond full wing"
+  cut: "four-segment classified TE cut; p=9, active rank r=7"
+  scope: >
+    Fixed nondimensional witness with chord=1 and freestream speed=1. Absolute
+    defect/amplification thresholds are fingerprint thresholds for this
+    canonical only, not universal physical regularity limits.
+  freestream:
+    speed: 1.0
+    alpha_deg: 5.0
+  actual_boundary:
+    downstream_edge_x: 2.0
+    target_quadrature_order: 5
+    source_quadrature_order: 5
+  initial_material_state: >
+    The q5/x2 Morino solution supplies the old material trace only. It is a
+    reproducible baseline, not evidence that Morino is the final closure.
+  birth_counterexample:
+    u1_plus: -2.0
+    u2_minus: -1.0
+    wedge_angle_deg: 40.0
+    repository_birth_flux_sign: 1
+    span_envelope: "1-y^2, enforcing zero jump at both wing tips"
+    timestep_family: [0.004, 0.002, 0.001, 0.0005]
+    wake_geometry: >
+      One newest band of length u_g*dt plus one old band extending to x=2;
+      old rows are material constants and the newest midpoint/current rows
+      use the prescribed envelope birth rate.
+  pressure_counterexample:
+    initial_guess: "the same Morino active wake trace"
+    observation_maps:
+      - weak_active_p2_line_mass
+      - midpoint_and_two_sided_vertex_average_collocation
+    observation_definitions:
+      weak_active_p2_line_mass: >
+        Compute the upper/lower incident-face pressure jump first at the q8
+        line nodes, assemble the consistent full P2 line weak residual, then
+        retain the seven active rows.
+      midpoint_and_two_sided_vertex_average_collocation: >
+        Use one pressure jump at each segment midpoint. At each internal cut
+        vertex, compute pressure separately on the left and right incident
+        face pairs and average those two pressure values with weights 1/2;
+        never average velocities across the wedge before squaring.
+      surface_velocity: >
+        On each incident face use tangent(incident)-grad_s(mu)+normal(wall)
+        with exterior-potential sign fixed by the existing actual-P2 oracle.
+      dense_pressure: >
+        Report the same frozen q8 line-node values as a counterexample witness;
+        this is not an independent oversampled pressure-convergence test.
+    line_quadrature_order: 8
+    nonlinear_solver: >
+      Analytic Jacobian and a full Newton proposal. Deterministic line search
+      tries step lengths 2^-k for k=0,...,23 and accepts the first strict
+      decrease of the residual infinity norm. No fixed under-relaxation,
+      physical/state damping, regularizer, force objective or amplitude clamp.
+    residual_tolerance: 1.0e-10
+    maximum_iterations: 12
+    maximum_backtracking_steps: 24
+
+required_outputs:
+  - "all 81 body-BIE residuals for every branch"
+  - "birth trace order and body-to-wake edge-defect order versus dt"
+  - "pressure residual and analytic Schur/Jacobian condition"
+  - "analytic Jacobian directional central-difference agreement"
+  - "wake amplitude, edge defect and dense pointwise pressure jump"
+  - "difference between the roots of the two pressure observation maps"
+  - "input mutation and production-off status"
+
+thresholds:
+  normalized_full_bie_residual_max: 2.0e-12
+  birth_trace_dt_order_abs_error_max: 1.0e-11
+  birth_edge_defect_abs_min: 5.0e-3
+  birth_edge_defect_dt_order_abs_max: 0.25
+  pressure_closure_residual_abs_max: 1.0e-9
+  pressure_jacobian_directional_abs_error_max: 1.0e-6
+  pressure_root_wake_to_morino_amplification_min: 10.0
+  pressure_root_edge_defect_abs_min: 1.0e-1
+  pressure_observation_root_difference_abs_min: 5.0e-1
+  weak_root_dense_pressure_jump_abs_min: 5.0e-2
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  counterexample_go: >
+    Both algebraic systems satisfy all retained equations, while the birth
+    edge defect remains order zero and the pressure roots are observation-
+    dependent, strongly amplified, or leave a large dense pressure jump.
+    This is physical-compatibility NO-GO, not solver failure.
+  no_go: >
+    If the counterexample does not reproduce, inspect only equation signs,
+    trace roles, pressure observation or analytic Jacobian. Do not tune a
+    pressure test map, add smoothing, clamp g, fit a force or relax a full-BIE
+    tolerance.
+  production_activation_allowed: false
+
+execution_result:
+  artifact: actual_wake_kutta_compatibility_results.json
+  checks_passed: 12
+  checks_total: 12
+  stage_decision: COUNTEREXAMPLE-GO / PHYSICAL-COMPATIBILITY-NO-GO
+  birth:
+    trace_increment_dt_order: 0.9999999999999974
+    edge_compatibility_defect_dt_order: 0.022785897546055676
+    edge_compatibility_defect_abs_range:
+      - 0.013345059234867757
+      - 0.016031336716881228
+  pressure:
+    wake_to_morino_amplification_min: 34.507939413729304
+    observation_root_difference_abs_max: 10.353944990032353
+    edge_compatibility_defect_abs_min: 2.943983710430806
+    analytic_jacobian_directional_abs_error_max: 2.2288882059462445e-9
+  claim_effect:
+    - "arbitrary prescribed stripwise birth-rate sufficiency falsified/frozen"
+    - "pressure-residual-only physical-root sufficiency falsified/frozen"
+    - "regular-branch compatibility remains open; production activation forbidden"
+
+forbidden:
+  - "claim that arbitrary stripwise 2D birth rate is a sufficient 3D closure"
+  - "promotion based only on Newton or projected-residual convergence"
+  - "simultaneous strong Morino plus birth plus pressure constraints"
+  - "least squares, smoothing, regularization, fixed state damping or amplitude clamp"
+  - "pressure or force target fitting"
+  - "finite-base or production V4.1 activation"
+  - "structural dynamics"

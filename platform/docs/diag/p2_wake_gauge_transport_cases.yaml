@@ -1,0 +1,145 @@
+artifact: p2_wake_gauge_transport_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b2a
+depends_on_claims:
+  - N3.1j3b6d18c2b2
+  - N3.1j4c5
+  - N3.1j4c6
+status: executed_go
+stage: S3j_continuous_P2_ALE_transport_spatial_gate
+role: no_force_semidiscrete_spatial_transport_oracle
+
+question: >
+  In the zero-tangential-mesh gauge, does an unstabilized continuous-P2
+  Galerkin discretization of M*mu_dot+C(u_t)*mu=0 converge to the exact
+  transported material potential jump while preserving constants, shared
+  traces and rigid-frame objectivity?
+
+cause_from_s3i:
+  data_fingerprint:
+    - "S3i falsified normal-only geometry plus frozen P2 coefficients by a 0.0567519 field error"
+    - "S3i validated only the continuum ALE identity, not a discrete P2 transport operator"
+    - "MaterialWakeBand stores face-local P2 values and continuity, but has no global shared-DOF transport equation"
+  node: N3.1j3b6d18c2b2a
+  movable_space: >
+    Only the global continuous-P2 scalar transport mass/advection operator on
+    the existing P1 triangular geometry may be introduced. Normal geometry,
+    actual-boundary strength, wake field, attachment, pressure and force
+    operators remain frozen.
+  classification: missing_discrete_material_scalar_transport_component
+
+primary_evidence:
+  - source: >
+      Elliott & Venkataraman, Error analysis for an ALE evolving surface
+      finite element method, Numerical Methods for PDEs 31 (2015), 459-499
+    url: https://doi.org/10.1002/num.21930
+    implication: >
+      ALE evolving-surface finite elements explicitly account for the
+      difference between material and mesh velocities and have optimal
+      spatial error estimates.
+  - source: >
+      Dziuk & Elliott, Finite element methods for surface PDEs, Acta Numerica
+      22 (2013), section 5.5
+    url: >
+      https://wrap.warwick.ac.uk/id/eprint/53966/1/WRAP_Elliott_DziEll13a.pdf
+    implication: >
+      When mesh vertices do not move with material velocity, the basis
+      transport property produces an explicit relative-velocity advection
+      term; the Lagrangian limit removes that term.
+  - source: >
+      N3.1j3b6d18c2b2 S3i validated continuum identity
+    implication: >
+      The transported variable is the scalar potential jump, not a fitted
+      force or an artificial sheet-strength amplitude.
+
+candidate_rewrite: >
+  Build one global P2 scalar degree of freedom per geometric vertex and edge
+  midpoint, assemble the consistent surface mass matrix M and nonconservative
+  material-scalar advection matrix C_ij=int(N_i*c_t.grad_s(N_j))dS, and use
+  mu_dot=-M^{-1}C*mu. No lumping, upwind, diffusion, limiter, ridge or target
+  normalization is allowed in this gate.
+
+canonical:
+  surface:
+    coordinate_domain: "[0,1]x[0,1]"
+    embedding: "[s,r,0]"
+    structured_cell_families: [3, 6, 12]
+    diagonal_pattern: alternating
+  time:
+    start: 0.0
+    end: 0.2
+    integration: exact_matrix_exponential_of_semidiscrete_operator
+  material_velocity:
+    equation: "[a*sin(pi*s), b*sin(pi*r), 0]"
+    a: 0.3
+    b: -0.2
+  mesh_tangential_velocity: "[0,0,0]"
+  material_potential_jump:
+    equation: "0.15+0.4*s+0.2*r+0.3*s*r+0.25*s^2-0.1*r^2"
+  quadrature:
+    assembly_order: 10
+    counterfactual_order: 12
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, 0.7, -0.3]
+    rotation_deg: 37.0
+    translation: [-0.4, 0.6, 0.2]
+
+required_identities:
+  - "the P2 topology has one shared scalar DOF at every vertex and edge midpoint"
+  - "constant mu lies in the exact nullspace of the advection operator"
+  - "the semidiscrete solution converges monotonically to the exact transported scalar"
+  - "shared-edge trace jumps remain exactly zero"
+  - "generic rigid transformation leaves M, C and the final scalar unchanged"
+  - "order-10 and order-12 assembly changes are below the frozen quadrature gate"
+  - "no mass lumping, upwind, diffusion, limiter, ridge, core, target, pressure or force enters"
+
+thresholds:
+  mass_rank_deficiency_max: 0
+  constant_rate_abs_max: 1.0e-12
+  shared_trace_jump_abs_max: 0.0
+  l2_error_monotone_required: true
+  l2_cauchy_ratio_min: 3.5
+  finest_relative_l2_error_max: 0.01
+  rigid_matrix_abs_difference_max: 2.0e-12
+  rigid_final_scalar_abs_difference_max: 2.0e-11
+  quadrature_final_scalar_abs_difference_max: 2.0e-8
+
+decision:
+  go: >
+    Every topology, nullspace, convergence, objectivity and quadrature gate
+    passes. Validate only this stationary planar semidiscrete P2 operator and
+    authorize a later moving-curved/history-seam transport gate.
+  no_go: >
+    Any failure blocks composition. Do not add stabilization, lump mass,
+    lower resolution, shorten final time, change quadrature, tune thresholds
+    or use pressure/force targets after seeing the result.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate isolates spatial transport on a stationary planar sheet and
+  removes time-integration error with a matrix exponential. It does not
+  validate moving/curved geometry, chronological wake seams, actual induced
+  velocity, post-relaxation equilibrium, pressure, force, LEV or production.
+
+execution:
+  date: "2026-07-28"
+  result_file: p2_wake_gauge_transport_results.json
+  decision: GO
+  aggregate_metrics:
+    mass_rank_deficiency_max: 0
+    constant_rate_abs_max: 1.7884469676827658e-14
+    shared_trace_jump_abs_max: 0.0
+    relative_L2_errors:
+      - 0.0003433586576278964
+      - 5.114192003599368e-05
+      - 9.555319911835349e-06
+    relative_L2_cauchy_ratios:
+      - 6.713839789085756
+      - 5.352193386288261
+    rigid_matrix_abs_difference_max: 2.2551405187698492e-17
+    rigid_final_scalar_abs_difference: 2.220446049250313e-15
+    quadrature_final_scalar_abs_difference: 4.440892098500626e-15
+  claim_effect: >
+    Validate/freeze c2b2a only for a stationary planar continuous-P2
+    semidiscrete spatial operator. A separate moving-curved/history-seam
+    composition gate is still required before actual induced velocity.

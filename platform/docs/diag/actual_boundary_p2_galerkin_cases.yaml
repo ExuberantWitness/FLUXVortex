@@ -1,0 +1,416 @@
+artifact: actual_boundary_continuous_p2_galerkin_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d3
+status: preregistered_before_implementation
+role: diagnostic_equation_and_surface_pressure_oracle
+
+question: >
+  Does a globally continuous P2 doublet field solved by the weak
+  actual-boundary interior-Dirichlet equation remove the failed S0
+  piecewise-constant surface-pressure representation while preserving the
+  qualified exterior potential?
+
+discrete_state:
+  geometry: "outward closed triangular body"
+  trial_and_test: >
+    One globally shared quadratic Lagrange degree of freedom at every mesh
+    vertex and edge midpoint.  The same P2 basis is used for trial and test.
+  source: >
+    Piecewise-constant prescribed sigma=(u_incident-u_wall) dot n on each
+    actual boundary face; source strength is not solved or fitted.
+  doublet_equation: >
+    Integral over the actual boundary of test_i times
+    [0.5*mu + PV(D mu) + S sigma] equals zero.
+  surface_velocity: >
+    Exterior perturbation potential is -mu.  Tangential velocity is obtained
+    from the element P2 surface gradient of -mu; normal velocity is the
+    prescribed wall-normal value.  No ordinary perimeter-ring surface value,
+    offset, core or fitted smoothing is allowed.
+  continuity: >
+    Vertex and edge degrees of freedom are global, so every internal trace is
+    identical by construction.  A closed canonical surface has no exposed
+    edge.
+
+quadrature:
+  rule: "tensor-Duffy Gauss-Legendre on each source and target triangle"
+  source_and_target_orders_for_level0_cauchy: [6, 10, 16]
+  production_oracle_order: 16
+  singular_handling: >
+    Same planar face double-layer PV kernel is identically zero and the
+    explicit +0.5 jump is assembled in the mass matrix.  Adjacent-face weak
+    integrals are evaluated without offsets; quadrature convergence is
+    reported.
+
+canonical:
+  geometry: "unit icosphere levels 0 and 1 (20 and 80 faces)"
+  flow: "fixed body, U=(1,0,0)"
+  analytic:
+    disturbance_potential: "phi'=0.5*x/r^3"
+    surface_velocity: "u=1.5*(U-(U dot n)n)"
+    pressure: "Cp=1-|u|^2"
+  offbody_points:
+    - [2.0, 0.0, 0.0]
+    - [-2.0, 0.0, 0.0]
+    - [0.0, 2.0, 0.0]
+    - [0.0, 0.0, 2.0]
+    - [1.4142135623730951, 1.4142135623730951, 0.0]
+
+thresholds:
+  weak_relative_residual_max: 1.0e-10
+  continuity_residual_max: 1.0e-12
+  prescribed_source_flux_relative_max: 1.0e-13
+  level0_quadrature_finest_offbody_change_max: 0.01
+  offbody_potential_error_monotone_with_mesh: true
+  finest_offbody_potential_relative_error_max: 0.02
+  finest_surface_velocity_rms_error_max: 0.08
+  finest_surface_Cp_rms_error_max: 0.08
+  matrix_condition_number_max: 1.0e6
+
+decision:
+  go: >
+    All thresholds pass and no trace discontinuity or hidden exposed edge is
+    present.  This admits only the continuous P2 actual-boundary potential
+    and attached surface-pressure oracle to the circulation/wake stage.
+  no_go: >
+    Any pressure failure with a converged exterior potential keeps d3
+    partial and opens a specific weak-operator/surface-gradient diagnosis.
+    Thresholds may not be loosened.
+  scope_limit: >
+    Passing does not validate N1 circulation compatibility, finite-base
+    Kutta, LEV/TEV shedding, material time derivatives, separated viscous
+    pressure, RoboEagle force, 118 cases, or production activation.
+
+forbidden:
+  - "collocation offsets or vortex cores"
+  - "face-local independent P2 coefficients"
+  - "least-squares force or Cp fitting"
+  - "reusing raw N1 ring velocity on the actual surface"
+  - "calling this structural or aeroelastic coupling"
+
+S1a_refinement_extension_preregistered_after_S1_no_go_before_execution:
+  trigger: >
+    Formal S1 at 20/80 faces passed continuity, weak residual, source flux,
+    condition and quadrature gates but failed only the predeclared exterior
+    potential and surface accuracy gates.  An unpromoted level-2/order-6
+    diagnostic then showed monotone errors 0.03631 (potential), 0.10141
+    (velocity) and 0.09113 (Cp), consistent with unresolved flat-facet
+    geometry rather than divergence.
+  hypothesis: >
+    Globally continuous P2 strength on P1 flat geometry is potential-accurate
+    at approximately second order but its surface gradient is geometry-
+    limited.  One further fixed icosphere refinement will cross the original
+    unchanged accuracy thresholds without altering equations or constants.
+  formal_mesh_levels: [2, 3]
+  quadrature_order: 6
+  quadrature_bias_guard: >
+    At level 0 compare order 6 against the already formal order-16 solution.
+    Absolute changes normalized by the analytic scales must be <=0.005 for
+    offbody potential, <=0.01 for surface velocity RMS, and <=0.02 for Cp
+    RMS.  These bounds are frozen before the extension run.
+  unchanged_accuracy_thresholds:
+    offbody_potential_relative_error_max: 0.02
+    surface_velocity_rms_error_max: 0.08
+    surface_Cp_rms_error_max: 0.08
+  required_behavior:
+    - "all three errors decrease strictly from level 1 to 2 to 3"
+    - "weak/continuity/source-flux/condition gates remain passed"
+    - "no pressure or force target enters the solve"
+  decision: >
+    Passing only validates a flat-facet mesh-resolution requirement for the
+    attached sphere oracle.  It does not erase the original S1 NO-GO at
+    20/80 faces and does not activate N1, wake, Kutta, material pressure or
+    RoboEagle production.
+
+S1b_quadrature_attribution_preregistered_after_S1a_before_execution:
+  trigger: >
+    S1a level-3/order-6 passed the unchanged potential and velocity gates but
+    Cp RMS was 0.0854006 versus the frozen 0.08 gate.  The already formal
+    level-0 order-6 to order-16 Cp change was 0.0125575, larger than this
+    remaining gap, so geometry cannot yet be blamed without a fixed-mesh
+    quadrature attribution.
+  fixed_geometry: "icosphere level 2, 320 faces"
+  compared_orders: [6, 10]
+  outputs:
+    - "offbody potential relative error"
+    - "surface velocity RMS error"
+    - "surface Cp RMS error"
+    - "weak residual, continuity, source flux and condition"
+  decision:
+    quadrature_limited: >
+      If order 10 changes Cp RMS by more than 0.005 or changes the pass/fail
+      direction predicted for level 3, do not claim a P1-geometry defect;
+      improve the singular/adjacent-face weak quadrature before another
+      geometry claim.
+    geometry_limited: >
+      If the Cp change is <=0.005 while all equation gates remain passed,
+      the remaining surface-pressure error is attributed to flat-facet
+      geometry/resolution and an isoparametric geometry claim may be opened.
+  no_go:
+    - "using the order-10 result to relax the 0.08 Cp threshold"
+    - "extrapolating a production force"
+    - "changing the equation, source, mesh, or pressure target"
+
+S1c_line_reduced_potential_preregistered_after_S1b_before_implementation:
+  trigger: >
+    At fixed level-2 geometry, order 6 to 10 changed offbody potential error
+    by only 1.98e-5 but changed surface Cp RMS by 0.009519, exceeding the
+    frozen 0.005 attribution limit.  Therefore the ordinary tensor-Duffy
+    adjacent-face weak integral is the wrong numerical component.
+  mechanism: >
+    For every planar source triangle and target point, project the target
+    into the source plane, split the triangle into three signed
+    projection-to-edge fans, integrate the quadratic doublet density exactly
+    in the radial coordinate, and retain only smooth one-dimensional Gauss
+    integration along each edge.  This is the scalar-potential counterpart
+    of the already validated DDE analytic-radial velocity operator.
+  exact_radial_primitives:
+    J0: "integral rho/(rho^2+h^2)^(3/2) d rho"
+    J1: "integral rho^2/(rho^2+h^2)^(3/2) d rho"
+    J2: "integral rho^3/(rho^2+h^2)^(3/2) d rho"
+  canonical:
+    - "one P2 triangle: line-reduced potential versus 48-order area oracle at separated points"
+    - "constant strength: exact solid-angle/doublet-panel identity"
+    - "near-coplanar points approaching a nonowner edge without offset/core"
+    - "closed sphere levels 0/1 with line orders 6/10/16"
+  thresholds:
+    separated_area_oracle_relative_error_max: 2.0e-10
+    constant_panel_relative_error_max: 2.0e-12
+    near_edge_cauchy_finest_relative_change_max: 0.01
+    weak_relative_residual_max: 1.0e-10
+    continuity_residual_max: 1.0e-12
+    finest_offbody_potential_relative_error_max: 0.02
+    finest_surface_velocity_rms_error_max: 0.08
+    finest_surface_Cp_rms_error_max: 0.08
+  decision: >
+    The line-reduced operator replaces tensor-Duffy only if its independent
+    element identities pass first.  Closed-sphere pressure remains subject
+    to the original unchanged 0.08 gates.  Failure opens an analytic-kernel
+    derivation review; no offset, core, smoothing or threshold change is
+    allowed.
+
+S1d_paired_singular_galerkin_preregistered_after_S1c_before_implementation:
+  trigger: >
+    S1c passed the separated-element P2 potential oracle to 4.93e-15 and the
+    constant-panel identity to 4.41e-16, but its near-edge finest relative
+    change was 24.25 and the level-1 sphere Cp RMS was 0.7679.  Therefore
+    exact radial integration of the source element alone does not regularize
+    the outer target integration.  The four-dimensional target/source pair
+    is the required numerical object.
+  literature_mechanism:
+    - >
+      Erichsen and Sauter (CMAME 157, 1998, DOI
+      10.1016/S0045-7825(97)00236-3) classify Galerkin triangle-pair
+      cubature by their geometric intersection.
+    - >
+      Reid, Johnson and White (IEEE TAP 63, 2015, arXiv:1312.1703)
+      give exact Taylor-Duffy partitions with three, six and two subregions
+      for common-triangle, common-edge and common-vertex pairs and show that
+      the transformed weakly singular integrands are regular.
+    - >
+      Seibel (SIAM JSC 45, 2023, DOI 10.1137/22M1534857) independently
+      confirms that Sauter-Schwab transformations remove the singularity
+      before semi-analytic evaluation of identical/common-edge pairs.
+  mechanism: >
+    Assemble Galerkin target/source face-pair contributions directly.  For
+    pairs with a common edge or vertex, use the published exact subregion
+    partition and one shared radial scale before Gauss integration.  Apply
+    the same pair treatment to the double-layer matrix and to the prescribed
+    source single-layer right-hand side.  Same-face double-layer principal
+    value remains exactly zero on a planar face; its single-layer self term
+    is still checked as a paired integral.  Disjoint pairs retain ordinary
+    product quadrature.
+  canonical:
+    - >
+      The transformed Jacobians must integrate unity to the exact product of
+      triangle areas for common-triangle, common-edge and common-vertex
+      topologies.
+    - >
+      A separated pair must agree with an independent high-order product
+      quadrature for every P2-by-P2 double-layer block entry and for the
+      constant-source/P2-test single-layer vector.
+    - >
+      Common-edge, common-vertex and identical-pair entries must be Cauchy
+      under frozen pair orders 4, 6 and 8 without offsets or cores.
+    - >
+      Closed unit-sphere levels 0 and 1 use the paired operator at orders
+      4, 6 and 8; the original potential, velocity and Cp thresholds remain
+      unchanged.  A level-2 run is allowed only after the pair canonical
+      gates pass.
+  thresholds:
+    area_partition_relative_error_max: 1.0e-13
+    separated_doublet_block_relative_error_max: 2.0e-10
+    separated_source_vector_relative_error_max: 2.0e-10
+    common_edge_finest_block_relative_change_max: 5.0e-3
+    common_vertex_finest_block_relative_change_max: 5.0e-3
+    identical_source_finest_relative_change_max: 5.0e-3
+    weak_relative_residual_max: 1.0e-10
+    continuity_residual_max: 1.0e-12
+    finest_offbody_potential_relative_error_max: 0.02
+    finest_surface_velocity_rms_error_max: 0.08
+    finest_surface_Cp_rms_error_max: 0.08
+  decision:
+    go: >
+      All pair canonical gates pass, the level-0 order-6 to order-8 change
+      is below 0.005 for potential, velocity and Cp, and the level-1 sphere
+      passes the original unchanged accuracy gates.  Only then may the
+      paired weak operator replace the two falsified independent rules.
+    no_go: >
+      A failed canonical gate keeps N3.1j3b6d3 partial and localizes the next
+      derivation to the failed topology or kernel.  A passed pair operator
+      with a failed sphere pressure gate moves attribution to geometry or
+      surface-gradient representation, not to aerodynamic constants.
+  forbidden:
+    - "increasing independent face quadrature order"
+    - "collocation offsets, vortex cores or edge smoothing"
+    - "loosening the frozen 0.08 pressure threshold"
+    - "fitting any matrix entry to the sphere solution"
+    - "activating wake, force or production code"
+
+S1d_execution:
+  implementation_identity_correction: >
+    The first guard execution placed the common-edge parameter origin at
+    the opposite vertex.  Area partition still passed, but the frozen
+    common-edge doublet Cauchy gate failed at 0.00907.  Comparison against
+    Reid et al. Appendix A/Figure 2 showed that V1 and V2 must be the two
+    shared-edge vertices.  Correcting only that coordinate identity reduced
+    the same frozen order-6 to order-8 change to 1.405e-5.  No threshold,
+    kernel, geometry or aerodynamic quantity changed.
+  canonical:
+    maximum_area_partition_relative_error: 8.881784197001252e-16
+    separated_doublet_relative_change: 1.0223884252050396e-13
+    separated_source_relative_change: 1.205755077243379e-15
+    common_edge_doublet_finest_relative_change: 1.4053377182124461e-05
+    common_edge_source_finest_relative_change: 1.7095047203281614e-06
+    common_vertex_doublet_finest_relative_change: 1.3912148486256305e-05
+    common_vertex_source_finest_relative_change: 1.1084759571795072e-06
+    identical_source_finest_relative_change: 4.603367776612223e-06
+    decision: GO
+  sphere:
+    level0_order6_to_order8:
+      offbody_potential_change: 5.103390343652592e-07
+      surface_velocity_error_change: 2.6972480504650065e-07
+      surface_Cp_error_change: 2.6031605816212444e-06
+    level1_order8:
+      offbody_potential_relative_error: 0.12565511632609272
+      surface_velocity_rms_error: 0.1595216694685661
+      surface_Cp_rms_error: 0.08897739858036176
+    decision: NO-GO
+  conclusion: >
+    The intersecting-pair weak operator and prescribed-source pair RHS are
+    numerically qualified, but the 80-face flat-facet sphere still fails the
+    unchanged physical accuracy gates.  S1d as a stage remains NO-GO; the
+    next attribution is mesh/geometry versus surface-gradient resolution.
+
+S1e_paired_mesh_attribution_preregistered_after_S1d_before_execution:
+  trigger: >
+    After the coordinate-identity correction every S1d pair canonical and
+    level-0 quadrature Cauchy gate passed, while the 80-face sphere retained
+    errors 0.12566 (potential), 0.15952 (velocity) and 0.08898 (Cp).  The
+    remaining failure is therefore no longer attributable to intersecting
+    triangle-pair quadrature.
+  hypothesis: >
+    On globally continuous P2 strength over P1 flat geometry, the remaining
+    attached-sphere error is mesh/geometry and surface-gradient resolution.
+    One fixed level-2 icosphere run with the already-qualified paired order-8
+    operator will decrease all three errors without changing the equation.
+  formal_mesh_level: 2
+  target_and_pair_quadrature_order: 8
+  unchanged_thresholds:
+    offbody_potential_relative_error_max: 0.02
+    surface_velocity_rms_error_max: 0.08
+    surface_Cp_rms_error_max: 0.08
+  required:
+    - "potential, velocity and Cp errors all decrease from level 1"
+    - "weak residual, continuity, source flux and condition gates pass"
+    - "the paired topology ledger is complete and no fallback is used"
+  decision:
+    go: >
+      All unchanged accuracy and equation gates pass.  This qualifies only
+      the attached unit-sphere P2/P1 resolution requirement.
+    no_go: >
+      A monotone but insufficient result opens a predeclared level-3 or
+      isoparametric-geometry decision; a nonmonotone result reopens the
+      surface-gradient representation.  No threshold may be loosened.
+  forbidden:
+    - "changing the paired operator or source convention"
+    - "fitting sphere Cp or force"
+    - "adding wake, circulation, Kutta or production activation"
+
+S1e_execution:
+  level2_order8:
+    offbody_potential_relative_error: 0.03374952066097081
+    surface_velocity_rms_error: 0.07857139831447574
+    surface_Cp_rms_error: 0.03393285313758175
+    relative_weak_residual: 6.129131038046208e-16
+    continuity_residual: 0.0
+    relative_source_flux: 5.384316363527424e-18
+    condition_number: 10.86787912371215
+  result: >
+    All errors decreased from level 1.  Velocity and Cp passed their
+    unchanged 0.08 gates; only offbody potential remained above 0.02.
+    The result is monotone but insufficient, so S1e is NO-GO and the
+    preregistered level-3 continuation is admissible.
+
+S1f_paired_level3_continuation_preregistered_after_S1e_before_execution:
+  trigger: >
+    Level-2/order-8 paired Galerkin reduced potential, velocity and Cp
+    errors to 0.03375, 0.07857 and 0.03393.  Velocity/Cp already pass and
+    the level-1 to level-2 potential reduction factor is 3.72, predicting
+    that one uniform refinement can cross the unchanged 0.02 potential
+    gate without an equation change.
+  quadrature_qualification: >
+    Before the level-3 run, recompute level 2 with target/source/pair order
+    6 and require absolute changes from the formal order-8 result <=0.002
+    for potential, velocity and Cp.  This uses the already-passed S1d
+    order-6 to order-8 Cauchy evidence and controls the level-3 cost.
+  formal:
+    mesh_level: 3
+    target_source_and_pair_order: 6
+  unchanged_thresholds:
+    offbody_potential_relative_error_max: 0.02
+    surface_velocity_rms_error_max: 0.08
+    surface_Cp_rms_error_max: 0.08
+  required:
+    - "level-2 order qualification passes all three 0.002 limits"
+    - "all three level-3 errors are below the unchanged accuracy gates"
+    - "weak residual, continuity, source flux and condition remain passed"
+    - "paired topology counts are complete"
+  decision:
+    go: >
+      Passing qualifies the attached unit-sphere continuous-P2/P1 weak
+      potential and surface-gradient oracle at the demonstrated mesh
+      resolution only.
+    no_go: >
+      A failed order qualification invalidates the level-3 execution.  A
+      qualified but inaccurate level-3 result opens isoparametric geometry
+      rather than another flat-mesh chase.
+  forbidden:
+    - "changing the equation, source sign or paired topology transform"
+    - "loosening any threshold"
+    - "claiming circulation, wake, unsteady pressure or production force"
+
+S1f_execution:
+  level2_order6_to_order8_absolute_changes:
+    offbody_potential_relative_error: 1.8733697848549724e-07
+    surface_velocity_rms_error: 1.2007561591836913e-06
+    surface_Cp_rms_error: 4.980947087479537e-06
+  level3_order6:
+    face_count: 1280
+    p2_dof_count: 2562
+    offbody_potential_relative_error: 0.008596224976182842
+    surface_velocity_rms_error: 0.038972696857821815
+    surface_Cp_rms_error: 0.013846991829858171
+    relative_weak_residual: 1.1287065839688375e-15
+    continuity_residual: 0.0
+    relative_source_flux: 8.474951893649764e-18
+    condition_number: 11.58962759726577
+    paired_topology_counts:
+      common_triangle: 1280
+      common_edge: 3840
+      common_vertex: 11460
+  decision: GO
+  scope: >
+    Validates only the attached unit-sphere continuous-P2/P1 weak potential
+    and surface-gradient oracle at the demonstrated resolution.  It does
+    not validate N1 circulation compatibility, finite-base Kutta/wake,
+    material time pressure, separated pressure, force or production.

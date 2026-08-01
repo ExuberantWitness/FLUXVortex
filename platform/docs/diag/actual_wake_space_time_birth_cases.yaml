@@ -1,0 +1,175 @@
+artifact: actual_wake_space_time_birth_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b1
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c2a
+  - N3.1j3b6d18c2b3b3b2c1b2
+status: executed_go
+stage: S3ab_characteristic_space_time_birth_boundary
+role: no_force_topology_birth_oracle
+
+question: >
+  Can a zero-area newborn material-wake region be represented as a
+  characteristic space-time P2 triangle whose only data are the three
+  coupled inflow-trace values, without inventing newborn initial values or
+  remapping old state?
+
+cause_from_s3x_s3aa:
+  data_fingerprint:
+    - >
+      The frozen actual topology has 45 P2 DOFs before insertion and 63
+      afterward; a fixed-topology method-of-lines call therefore requires
+      eighteen values that did not exist at the initial time.
+    - >
+      The newborn band has exactly zero area at birth, so its initial mass
+      block is singular rather than merely ill-conditioned.
+    - >
+      S3aa supplies coupled half/full body traces but deliberately freezes
+      all old/free state; S3x transports old/free state only on a fixed
+      topology.
+    - >
+      Copying, averaging or clamping missing values is contradicted by the
+      S3u and S3aa algebraic-stage counterfactuals.
+  node: N3.1j3b6d18c2b3b3b2c2b1
+  movable_space: >
+    Introduce only a characteristic space-time birth boundary. Prescribe
+    the three P2 values on its inflow edge from the coupled release trace
+    and solve the remaining three P2 space-time DOFs weakly. Do not modify
+    S3x, S3z or S3aa; do not initialize a zero-area newborn surface, remap,
+    regularize, smooth, fit a load or compute pressure/force.
+  classification: missing_topology_birth_boundary_operator
+
+primary_evidence:
+  - source: >
+      Dziuk & Elliott, L2-estimates for the evolving surface finite element
+      method, Mathematics of Computation 82 (2013), equations 2.14 and
+      3.1-3.2.
+    doi: https://doi.org/10.1090/S0025-5718-2012-02601-9
+    implication: >
+      The material surface transport theorem evolves the image of an
+      already existing material subdomain; it does not create initial data
+      on a region absent at the lower time face.
+  - source: >
+      Olshanskii & Reusken, Error Analysis of a Space-Time Finite Element
+      Method for Solving PDEs on Evolving Surfaces.
+    doi: https://doi.org/10.1137/130936877
+    implication: >
+      Evolving-surface transport can be posed as one weak problem on the
+      space-time manifold, with discontinuous time slabs.
+  - source: >
+      Grande, Olshanskii & Reusken, A space-time FEM for PDEs on evolving
+      surfaces.
+    url: https://arxiv.org/abs/1403.0277
+    implication: >
+      A space-time representation naturally handles topological change and
+      local geometric singularity instead of relying on a fixed spatial
+      topology.
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for Unsteady Aerodynamic
+      Analysis with Relaxed Wakes, 2021, sections 2.2 and 3.1-3.3.
+    implication: >
+      Newly-created wake strength is assigned from the coupled surface/wake
+      solve during creation and then retains material identity.
+
+canonical:
+  physical_problem:
+    domain: "0 < t < dt, 0 < x < c*t"
+    equation: "partial_t(mu) + c*partial_x(mu) = 0"
+    inflow: "mu(t, 0) = g(t)"
+    characteristic_coordinate: "tau = t - x/c"
+  reference_triangle:
+    vertices:
+      - [0.0, 0.0]
+      - [1.0, 0.0]
+      - [1.0, 1.0]
+    coordinate_order: [r, q]
+    operator: "partial_r + partial_q"
+    polynomial_order: 2
+    inflow_node_indices: [0, 3, 1]
+    solved_node_indices: [2, 4, 5]
+  quadrature:
+    construction: "tensor Gauss-Legendre with Duffy triangle map"
+    order: 8
+  polynomial_oracles:
+    - coefficients: [1.0, 0.0, 0.0]
+    - coefficients: [-0.4, 1.7, 0.0]
+    - coefficients: [0.2, -0.9, 1.3]
+  scale_family:
+    timesteps: [0.08, 0.02, 0.005]
+    convection_speeds: [0.7, 1.9]
+  repeated_insertion:
+    trace: "exp(0.7*t) + 0.15*sin(2.3*t)"
+    final_time: 0.6
+    step_counts: [3, 6, 12, 24]
+    error_norm: "L2 over final chronological wake"
+
+required_identities:
+  - "only three inflow P2 values are prescribed"
+  - "the three remaining space-time P2 values are solved by the weak characteristic equation"
+  - "no initial newborn scalar argument exists"
+  - "constant, linear and quadratic characteristic traces are exact"
+  - "the all-test weak residual closes"
+  - "endpoint newborn rows retain start/mid/end release-time identity"
+  - "newborn endpoint integral equals the time-integrated inflow flux"
+  - "reference solve is invariant to positive timestep and convection-speed scaling"
+  - "three or more consecutive bands retain chronology and exact seams"
+  - "smooth-trace repeated insertion exhibits third-order L2 Cauchy behavior"
+  - "no remap, epsilon, smoothing, pressure, force, LESP, target or structure enters"
+
+thresholds:
+  prescribed_dof_count_expected: 3
+  solved_dof_count_expected: 3
+  initial_newborn_scalar_count_expected: 0
+  free_rank_deficiency_max: 0
+  free_condition_number_max: 10.0
+  polynomial_recovery_abs_max: 2.0e-12
+  weak_residual_abs_max: 2.0e-12
+  endpoint_trace_identity_abs_max: 2.0e-12
+  newborn_mass_balance_abs_max: 2.0e-12
+  scale_invariance_abs_max: 2.0e-12
+  chronological_seam_abs_max: 2.0e-12
+  repeated_insertion_count_min: 3
+  L2_cauchy_contraction_min: 6.0
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  go: >
+    Every rank, exact-polynomial, weak-residual, flux-balance, scaling,
+    chronology and Cauchy gate passes. Validate only the characteristic
+    space-time birth-boundary representation and authorize a separate
+    actual old-state/newborn coupled repeated-insertion gate.
+  no_go: >
+    Preserve the failed matrix, trace and conservation residual. Do not
+    initialize newborn DOFs, copy/average/clamp, add epsilon/core/filter,
+    alter frozen S3x/S3z/S3aa, or consult a pressure/load target.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate is a manufactured topology-birth oracle. It does not yet advance
+  the actual 45-DOF old state together with the actual 63-DOF augmented
+  topology, and it does not compute pressure, force, LESP or production.
+
+execution:
+  result: GO
+  result_file: actual_wake_space_time_birth_results.json
+  passed_checks: 10
+  total_checks: 10
+  aggregate_metrics:
+    prescribed_dof_count: 3
+    solved_dof_count: 3
+    initial_newborn_scalar_count: 0
+    free_rank_deficiency_max: 0
+    free_condition_number_max: 5.098638046281883
+    polynomial_recovery_abs_max: 8.881784197001252e-16
+    weak_residual_abs_max: 1.942890293094024e-16
+    endpoint_trace_identity_abs_max: 2.6645352591003757e-15
+    newborn_mass_balance_abs_max: 5.551115123125783e-17
+    scale_invariance_abs_max: 0.0
+    chronological_seam_abs_max: 2.6645352591003757e-15
+    L2_cauchy_contraction_min: 7.958427921127978
+    input_state_mutation_abs_max: 0.0
+  claim_effect: >
+    Validate and freeze only the characteristic space-time birth-boundary
+    representation. Authorize the separate actual old-state/newborn
+    repeated-insertion gate; do not activate pressure, force, LESP or
+    production.

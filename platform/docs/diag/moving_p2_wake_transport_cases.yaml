@@ -1,0 +1,157 @@
+artifact: moving_p2_wake_transport_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b2b
+depends_on_claims:
+  - N3.1j3b6d18c2a
+  - N3.1j3b6d18c2b2
+  - N3.1j3b6d18c2b2a
+  - N3.1j4c6
+status: executed_no_go
+stage: S3k_moving_curved_multipatch_P2_transport
+role: no_force_moving_geometry_transport_composition_oracle
+
+question: >
+  Can the validated P2 ALE scalar operator be assembled on an explicitly
+  welded, moving curved multi-patch wake and advanced with the same
+  predictor-corrector stages as geometry while retaining time convergence,
+  trace identity, representation invariance and rigid objectivity?
+
+cause_from_s3j:
+  data_fingerprint:
+    - "S3j validated only a stationary planar semidiscrete operator"
+    - "S3h advances moving wake geometry with stage velocities and exact named seams"
+    - "no runtime component currently rebuilds M(t), C(t) at geometry stages or welds P2 scalar DOFs across explicit moving patches"
+  node: N3.1j3b6d18c2b2b
+  movable_space: >
+    Only stage-synchronous assembly and Heun advancement of the already
+    validated P2 scalar law on explicit moving P1 patch geometry may change.
+    The continuum equation, spatial basis, geometry identities, induced
+    velocity, strength solve, pressure and force paths remain frozen.
+  classification: missing_moving_geometry_multipatch_composition
+
+primary_evidence:
+  - source: >
+      Elliott & Venkataraman, Error analysis for an ALE evolving surface
+      finite element method, Numerical Methods for PDEs 31 (2015)
+    url: https://doi.org/10.1002/num.21930
+    implication: >
+      ALE surface finite-element matrices and relative-velocity terms are
+      evaluated on the evolving triangulation.
+  - source: >
+      Dziuk & Elliott, Finite element methods for surface PDEs, Acta Numerica
+      22 (2013), section 5.5
+    url: >
+      https://wrap.warwick.ac.uk/id/eprint/53966/1/WRAP_Elliott_DziEll13a.pdf
+    implication: >
+      The mesh basis has an explicit transport property and the ALE term is
+      tied to the current moving surface.
+  - source: >
+      N3.1j3b6d18c2a S3h and N3.1j4c6
+    implication: >
+      Predictor-corrector geometry stages and explicit interface welding are
+      already validated identities and must not be replaced.
+
+candidate_rewrite: >
+  Weld only explicitly declared patch-interface P1 vertices; derive one
+  global P2 scalar DOF at every welded vertex and edge midpoint. At every
+  Heun stage rebuild the consistent M(t), C(t) on the current geometry,
+  evaluate mu_dot=-M(t)^{-1}C(t)mu, and update one global scalar vector.
+  Patch-local traces are views of that vector, never averaged by proximity.
+
+canonical:
+  parameter_domain: "[0,1]x[0,1]"
+  patch_split: "four named chronological strips in s"
+  cells:
+    streamwise: 4
+    spanwise: 8
+    diagonal_pattern: alternating
+  geometry:
+    equation: "X(s,r,t)=[s,r,eps*sin(pi*s)*sin(pi*r)*sin(omega*t)]"
+    epsilon: 0.08
+    omega: 1.3
+  time:
+    start: 0.0
+    end: 0.2
+    step_families: [2, 4, 8]
+    integrator: explicit_Heun_with_stage_geometry
+  relative_material_velocity:
+    parameter_rates:
+      s_dot: "a*sin(pi*s)"
+      r_dot: "b*sin(pi*r)"
+      a: 0.3
+      b: -0.2
+    physical_equation: "c_t=X_s*s_dot+X_r*r_dot"
+  material_potential_jump:
+    equation: "mu0=s*(1-s)*r*(1-r)"
+    boundary_value: 0.0
+  quadrature_order: 10
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, 0.7, -0.3]
+    rotation_deg: 37.0
+    translation: [-0.4, 0.6, 0.2]
+
+required_identities:
+  - "explicit patch interfaces weld to one P1/P2 global topology"
+  - "patch and monolithic assembly produce identical M(t), C(t) and trajectory"
+  - "Heun stage matrices use the current and predicted geometry"
+  - "time-step families show second-order Cauchy contraction"
+  - "all patch-local shared traces and zero boundaries remain exact"
+  - "constant scalar remains in the instantaneous nullspace"
+  - "generic rigid transform gives the transformed geometry and same scalar"
+  - "no proximity welding, averaging, stabilization, actual induced velocity, pressure or force enters"
+
+thresholds:
+  welded_geometry_gap_abs_max: 1.0e-14
+  patch_monolithic_matrix_abs_difference_max: 2.0e-12
+  patch_monolithic_final_scalar_abs_difference_max: 2.0e-11
+  shared_trace_jump_abs_max: 0.0
+  zero_boundary_trace_abs_max: 2.0e-12
+  constant_rate_abs_max: 1.0e-11
+  time_cauchy_ratio_min: 3.5
+  finest_relative_l2_error_max: 0.01
+  rigid_geometry_abs_difference_max: 2.0e-12
+  rigid_final_scalar_abs_difference_max: 2.0e-10
+  minimum_face_area_ratio_min: 0.95
+
+decision:
+  go: >
+    Every moving-stage, topology, time, trace, objectivity and area gate
+    passes. Validate only prescribed moving-curved multipatch transport and
+    authorize actual body/source/wake velocity composition.
+  no_go: >
+    Any failure blocks composition. Do not change dt families, curvature,
+    patch split, quadrature, thresholds, add stabilization, weld by distance,
+    or use pressure/force targets after seeing results.
+  production_activation_allowed: false
+
+scope_limit: >
+  Geometry and relative velocity are manufactured. This gate does not
+  validate actual body/source/wake-induced velocity, post-relaxation strength
+  equilibrium, pressure, force, LEV or production.
+
+execution:
+  date: "2026-07-28"
+  result_file: moving_p2_wake_transport_results.json
+  decision: NO-GO
+  aggregate_metrics:
+    welded_geometry_gap_abs_max: 0.0
+    patch_monolithic_matrix_abs_difference_max: 0.0
+    patch_monolithic_final_scalar_abs_difference_max: 0.0
+    shared_trace_jump_abs_max: 0.0
+    zero_boundary_trace_abs_max: 0.0003015449472231779
+    constant_rate_abs_max: 1.0250370563035426e-14
+    time_cauchy_ratio: 4.428360796893872
+    finest_relative_l2_error: 0.0022652812753982065
+    rigid_geometry_abs_difference: 2.482534153247273e-16
+    rigid_final_scalar_abs_difference: 3.469446951953614e-17
+    minimum_face_area_ratio: 1.0000039585144591
+  failed_gate: zero_boundaries_remain_zero
+  diagnosis: >
+    The unconstrained continuous-Galerkin trial space updates DOFs on
+    explicitly zero physical boundaries. Boundary roles must enter as
+    essential scalar traces; they cannot be expected to remain invariant
+    merely because the continuum characteristic is tangent to the boundary.
+  claim_effect: >
+    Falsify/freeze c2b2b as unconstrained sufficiency. Open a separate
+    boundary-role-constrained composition claim without changing this result
+    or its thresholds.

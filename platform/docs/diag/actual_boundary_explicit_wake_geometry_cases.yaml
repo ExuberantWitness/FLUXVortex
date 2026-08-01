@@ -1,0 +1,185 @@
+artifact: actual_boundary_explicit_wake_geometry_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c1
+depends_on_claims:
+  - N3.1j3b6d18b
+  - N3.1j4c6
+status: executed_no_go_after_preregistration
+stage: S3f_explicit_3d_material_wake_geometry_affine_interface
+role: no_force_geometry_interface_and_objectivity_oracle
+
+question: >
+  Can the actual-boundary affine body-wake equation consume an explicit
+  chronological P2 material-wake history with arbitrary three-dimensional
+  geometry, without flattening or mutating it, while preserving the frozen
+  straight-wake solution and rigid-frame objectivity?
+
+cause_from_s3e:
+  data_fingerprint:
+    - "N3.1j3b6d18b passes fixed-body time convergence only with prescribed uniform x convection"
+    - "N3.1j4c5/c6 already validate no-core P2 material geometry advection and explicit multi-patch seams"
+    - "solve_actual_boundary_body_wake_p2 accepts only wake_edge_x_nodes and reconstructs every wake edge from the body cut with fixed y,z"
+  node: N3.1j3b6d18c
+  movable_space: >
+    Only the wake-geometry input representation and its affine assembly
+    adapter may change. The body/cut topology, P2 basis, pair quadrature,
+    source/doublet signs, known-old/current-unknown partition, and all
+    pressure/force paths remain frozen.
+  classification: missing_explicit_three_dimensional_wake_geometry_interface
+
+primary_evidence:
+  - source: >
+      Krebs dissertation (2021), sections 3.2-3.3 and figure 3.4
+    implication: >
+      The relaxed wake is a gapless material sheet whose vertices move with
+      their local velocities; its current three-dimensional geometry must
+      enter the next surface/wake solve.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28,
+      DOI 10.3390/aerospace9010028
+    implication: >
+      Distributed-doublet surface and wake elements form one interacting
+      system, and already shed element strengths remain attached to their
+      moved geometry.
+  - source: >
+      Bramesfeld & Maughmer, Journal of Aircraft 45 (2008) 560-568,
+      DOI 10.2514/1.31665
+    implication: >
+      Loads in wake-sensitive configurations depend on wake shape; a
+      continuous distributed-vorticity wake is relaxed as geometry rather
+      than replaced by a straight prescribed strip.
+  - source: >
+      Pate, A Surface Vorticity Method for Wake-Body Interactions,
+      Georgia Tech dissertation (2017)
+    implication: >
+      Bound bodies and a triangulated deforming wake must be represented in
+      one consistent boundary-element geometry and circulation ledger.
+  - source: >
+      Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990)
+    implication: >
+      Panel networks and their abutments are explicit geometric data;
+      proximity-based reconstruction cannot substitute for declared wake
+      topology.
+
+candidate_rewrite: >
+  Add one typed prescribed_wake_history input to the existing affine
+  actual-boundary solver. The legacy wake_edge_x_nodes path remains bitwise
+  available. A prescribed history supplies each band's vertices, faces,
+  time nodes and immutable old rows; only the newest current row remains
+  coupled to the body cut jump.
+
+canonical:
+  body_and_cut: "unchanged frozen S3a symmetric full-wing diamond canonical"
+  freestream:
+    speed: 1.0
+    alpha_deg: 5.0
+  spatial_quadrature_order: 10
+  material_rows:
+    old_band: ["0.20*g(y)", "0.30*g(y)", "0.40*g(y)"]
+    active_band_known: ["0.40*g(y)", "0.10*g(y)"]
+    active_band_current: "unknown J_cut*mu_body"
+  straight_history:
+    edge_x: [2.0, 1.5, 1.0]
+    edge_z: 0.0
+    comparator: "frozen S3d wake_edge_x_nodes path"
+  curved_history:
+    far_edge: "[2.0, y, 0.20*g(y)]"
+    seam_edge: "[1.5, y, 0.12*g(y)]"
+    body_edge: "classified physical trailing-edge cut"
+    purpose: "prove explicit geometry is consumed rather than flattened"
+  rigid_frame_counterfactual:
+    rotation_axis: [0.3, -0.4, 0.5]
+    rotation_deg: 31.0
+    translation: [0.7, -0.2, 0.4]
+    transformed_quantities:
+      - "body and explicit wake vertices"
+      - "incident and wall velocity vectors"
+      - "classified cut coordinates with unchanged topology ids"
+
+required_identities:
+  - "the legacy x-node path is unchanged and remains callable"
+  - "the explicit straight history reproduces legacy matrix, RHS, body potential and cut jump"
+  - "every explicit band vertex, face, time node and old P2 row is consumed without mutation or flattening"
+  - "only the newest current row is coupled to the body; old wake has zero independent unknowns"
+  - "curving the declared wake changes the current body jump by a resolvable amount"
+  - "body/wake common-edge singular pairing occurs only on the newest attached band"
+  - "rigid rotation/translation plus vector rotation leaves scalar potential jump and equation invariant"
+  - "all systems are full rank with passing weak residual and exact material interfaces"
+  - "no wake core, smoothing, pressure, force, LESP, prescribed current circulation or target load enters"
+
+thresholds:
+  straight_matrix_max_abs_difference: 1.0e-12
+  straight_rhs_max_abs_difference: 1.0e-12
+  straight_body_potential_max_abs_difference: 1.0e-12
+  straight_cut_jump_max_abs_difference: 1.0e-12
+  explicit_geometry_mutation_abs_max: 0.0
+  explicit_strength_mutation_abs_max: 0.0
+  history_time_gap_abs_max: 1.0e-14
+  history_geometry_gap_abs_max: 1.0e-14
+  history_trace_jump_abs_max: 1.0e-14
+  curved_vs_straight_cut_jump_difference_min: 1.0e-5
+  rigid_matrix_max_abs_difference: 1.0e-10
+  rigid_rhs_max_abs_difference: 1.0e-10
+  rigid_cut_jump_max_abs_difference: 1.0e-10
+  body_wake_common_edge_pair_count: 8
+  independent_old_wake_unknown_count_max: 0
+  rank_deficiency_max: 0
+  normalized_weak_residual_max: 1.0e-10
+  condition_number_max: 1.0e4
+  active_attachment_abs_max: 1.0e-12
+  tip_jump_abs_max: 1.0e-12
+
+decision:
+  go: >
+    Every legacy-equivalence, explicit-geometry, geometry-sensitivity,
+    objectivity, topology and algebra gate passes. GO validates only the
+    geometry-general affine interface and may authorize composition with the
+    already validated no-core Heun wake advection.
+  no_go: >
+    Any failed identity blocks the adapter. Do not flatten the wake, infer
+    seams by distance, alter old strengths, tune geometry, add a core,
+    regularize, relax a threshold, or use pressure/force targets.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate consumes prescribed three-dimensional wake geometry but does not
+  yet solve its local velocity, iterate post-relaxation surface/wake
+  equilibrium, move/deform the body, generate LEV, compute pressure/force or
+  activate production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_explicit_wake_geometry_results.json
+  stage_decision: NO-GO
+  metrics:
+    straight_matrix_max_abs_difference: 0.0
+    straight_rhs_max_abs_difference: 0.0
+    straight_body_potential_max_abs_difference: 0.0
+    straight_cut_jump_max_abs_difference: 0.0
+    explicit_geometry_mutation_abs_max: 0.0
+    explicit_strength_mutation_abs_max: 0.0
+    history_time_gap_abs_max: 0.0
+    history_geometry_gap_abs_max: 0.0
+    history_trace_jump_abs_max: 0.0
+    curved_vs_straight_cut_jump_difference: 0.0015163486125526551
+    rigid_matrix_max_abs_difference: 0.0018887904670361957
+    rigid_rhs_max_abs_difference: 0.0003422220806948385
+    rigid_cut_jump_max_abs_difference: 0.03841531574549567
+    body_wake_common_edge_pair_counts: [8]
+    independent_old_wake_unknown_count_max: 0
+    rank_deficiency_max: 0
+    normalized_weak_residual_max: 3.5074733564911614e-16
+    condition_number_max: 111.42107906294413
+    active_attachment_abs_max: 0.0
+    tip_jump_abs_max: 0.0
+  diagnosis:
+    data_fingerprint:
+      - "a rotation about x that preserves lexicographic cut order gives matrix 4.86e-17, RHS 9.38e-18 and jump 3.83e-15 objectivity errors"
+      - "the preregistered generic rotation reverses coordinate-selected cut order and fails objectivity by O(1e-3 to 1e-2)"
+      - "restoring the original material cut order gives matrix 5.55e-17, RHS 1.78e-17 and jump 6.63e-15 errors"
+    classification: >
+      Explicit three-dimensional geometry without an oriented material
+      body-cut-to-wake trace map is insufficient. The underlying integral
+      operator is objective; the missing component is orientation and
+      potential-jump sign identity at the attachment.
+

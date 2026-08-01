@@ -5,8 +5,11 @@ Robustness notes (verified against data.md):
 - data.md FIGURE captions for (c)/(d) are SWAPPED vs the actual column headers (18c caption says Lift but the
   column header is 'Thurst/g'); the COLUMN HEADER is authoritative -> kind is parsed from the header line of
   each 工况 block, never from the caption.
-- Units: grams-force -> N via g*9.80665e-3, sign preserved (negative thrust = net drag), same convention as
-  the existing Fig17/18 entries (verified: 18|a|6.0 exp[0] = -3.17N == -323g).
+- Units: grams-force -> N via g*9.80665e-3, sign preserved (negative thrust = net drag).
+- Fig18 thrust provenance warning: the original digitization note assigned the source plot's lower
+  curve to U=6 and upper curve to U=10.  This is reversed relative to the PDF legend and正文.
+  ``correct_fig18_curve_identity.py`` repairs the measured x/exp identities.  Do not restore the
+  obsolete check ``18|a|6.0 == -323g``; the corrected U=6 anchor is about -116g.
 - Fig19 fixed params (from _v2_validate_all.FIG_SPEC, condition text in data.md): a/b: wind=8, twist=0, sweep=freq;
   c/d: wind=8, freq=2.6, sweep=twist; aoa from the 工况 header (度).
 Key format: '19|a|<aoa>' etc., value {kind:'T'|'L', x:[...], exp:[...]} — matches existing consumer code.

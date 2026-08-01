@@ -1,0 +1,169 @@
+artifact: actual_wake_stage_topology_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b2a
+depends_on_claims:
+  - N3.1j3b6d18c2b3b1
+  - N3.1j3b6d18c1a
+  - N3.1j3b6d18c2b2b1a
+  - N3.1j4c6
+status: executed_go
+stage: S3s_typed_actual_wake_topology_and_P2_history_bijection
+role: no_force_topology_and_state_mapping_oracle
+
+question: >
+  Can a chronological MaterialWakeHistory define one typed actual-wake stage
+  topology in which internal chronological seams are welded by declared band
+  identity, the newest edge remains a one-sided external body attachment,
+  and the complete continuous-P2 scalar is in an exact bijection with the
+  (2*bands+1) chronological potential-jump rows?
+
+cause_from_s3r:
+  data_fingerprint:
+    - >
+      closed QuadraticDoubletAssembly validation rejects the actual
+      one-sided external-body-cut before geometry projection or P2 transport.
+    - >
+      each material band stores three temporal rows by (2*nspan-1) spanwise
+      P2 nodes, while adjacent bands share one complete temporal row.
+    - >
+      for B bands and n span vertices, the chronological representation has
+      (2B+1)(2n-1) scalar nodes, exactly the number of global continuous-P2
+      vertex/edge DOFs on the triangulated strip.
+    - >
+      MaterialWakeBand currently exposes geometry-only material_update and
+      therefore has no exact scalar-state reconstruction path.
+  node: N3.1j3b6d18c2b3b2a
+  movable_space: >
+    Add only a typed combinatorial topology and exact P1/P2/chronological-row
+    maps around the frozen MaterialWakeHistory and continuous-P2 basis.
+    Internal seams must use band chronology and local integer identities.
+    No coordinate sorting, proximity welding, strength averaging, velocity,
+    time integration, pressure, force or target is permitted.
+  classification: missing_typed_open_boundary_and_scalar_state_bijection
+
+primary_evidence:
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for Unsteady Aerodynamic
+      Analysis with Relaxed Wakes, 2021, sections 3.2-3.3.
+    implication: >
+      A gapless wake is generated as chronological element rows; old material
+      strengths remain associated with those elements while the newest row is
+      tied to the current trailing edge.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28.
+    doi: https://doi.org/10.3390/aerospace9010028
+    implication: >
+      Individual unsteady wake-element strengths are maintained over time,
+      so chronological identity cannot be replaced by a coordinate remap.
+  - source: >
+      Dziuk & Elliott, Finite element methods for surface PDEs, Acta Numerica
+      22 (2013) 289-396.
+    doi: https://doi.org/10.1017/S0962492913000056
+    implication: >
+      A continuous nodal surface finite-element state is assembled through
+      shared mesh entities on the current triangulation.
+  - source: >
+      Elliott & Venkataraman, Error analysis for an ALE evolving surface
+      finite element method, NMPDE 31 (2015) 459-499.
+    doi: https://doi.org/10.1002/num.21930
+    implication: >
+      The scalar finite-element state and its current evolving triangulation
+      need an explicit ALE correspondence; geometry motion alone is not a
+      scalar update.
+
+candidate_rewrite: >
+  Build global P1 vertices by chronological time-row identity. Build global
+  continuous-P2 vertex/edge DOFs from those integer entities. Map each P2
+  vertex/horizontal/vertical/diagonal midpoint combinatorially to one
+  chronological temporal/span node. Declare newest, oldest and side
+  boundaries explicitly, with newest as a one-sided external body
+  attachment. Provide exact extract and rebuild maps for every material band.
+
+canonical:
+  history: "frozen S3n curved two-band actual MaterialWakeHistory"
+  expected:
+    band_count: 2
+    span_vertex_count: 5
+    chronological_temporal_row_count: 5
+    span_P2_node_count: 9
+    global_P1_dof_count: 15
+    global_P2_dof_count: 45
+    body_attachment_P1_dof_count: 5
+    body_attachment_P2_dof_count: 9
+    oldest_P2_dof_count: 9
+    root_characteristic_interior_P2_dof_count: 3
+    tip_characteristic_interior_P2_dof_count: 3
+  deterministic_scalar_counterfactual: >
+    Add a nonzero analytic value to every non-terminal chronological P2 DOF,
+    rebuild all material bands, then extract it again.
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, -0.7, 0.4]
+    rotation_deg: 29.0
+    translation: [0.3, -0.5, 0.8]
+
+required_identities:
+  - "P1 and P2 counts equal the closed combinatorial formulas"
+  - "P2-to-chronological mapping is a complete permutation"
+  - "chronological seams share one row without averaging"
+  - "newest body attachment is one-sided and disjointly typed"
+  - "oldest, root and tip boundary roles form the remaining open boundary"
+  - "baseline history extracts and rebuilds rows and face_mu exactly"
+  - "a deterministic nonterminal scalar counterfactual round-trips exactly"
+  - "rigid transformation changes geometry but not any topology/scalar map"
+  - "broken geometry seam, broken scalar seam and unsupported face pattern fail closed"
+  - "no coordinate sorting, proximity welding or strength averaging occurs"
+
+thresholds:
+  baseline_geometry_abs_max: 0.0
+  baseline_row_abs_max: 0.0
+  baseline_face_mu_abs_max: 2.0e-15
+  scalar_counterfactual_roundtrip_abs_max: 2.0e-15
+  scalar_counterfactual_face_mu_abs_max: 2.0e-15
+  rigid_geometry_abs_max: 2.0e-15
+  rigid_topology_mismatch_count_max: 0
+  boundary_role_overlap_count_max: 0
+  invalid_history_failure_count_min: 3
+  coordinate_inference_count_max: 0
+
+decision:
+  go: >
+    Every count, permutation, boundary, baseline/counterfactual round-trip,
+    rigid and fail-closed gate passes. Validate only the typed actual-wake
+    topology and scalar-state bijection, then authorize an owner-aware stage
+    velocity/transport gate.
+  no_go: >
+    Any failure blocks owner-aware velocity composition. Preserve the
+    failed entity or map and do not weld by coordinate, average rows, clamp
+    scalar values, relabel the body edge or consult loads.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate contains no velocity evaluation, P2 transport matrix, geometry
+  advance, boundary solve iteration, pressure, force, LEV, target load or
+  structural dynamics.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_wake_stage_topology_results.json
+  decision: GO
+  passed_checks: 9
+  total_checks: 9
+  aggregate_metrics:
+    permutation_error_count: 0
+    history_geometry_gap_abs_max: 0.0
+    history_scalar_seam_abs_max: 0.0
+    boundary_role_overlap_count: 0
+    baseline_geometry_abs_max: 0.0
+    baseline_row_abs_max: 0.0
+    baseline_face_mu_abs_max: 0.0
+    scalar_counterfactual_roundtrip_abs_max: 0.0
+    scalar_counterfactual_face_mu_abs_max: 0.0
+    rigid_geometry_abs_max: 0.0
+    rigid_topology_mismatch_count: 0
+    invalid_history_failure_count: 3
+    coordinate_inference_count: 0
+  claim_effect: >
+    Validate and freeze only the typed one-sided actual-wake topology and
+    exact global-P2/chronological-row bijection. Authorize b2b owner-aware
+    stage velocity/projection/transport preregistration; do not yet advance
+    geometry or choose a time algorithm.

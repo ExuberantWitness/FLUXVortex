@@ -1,0 +1,57 @@
+version: 1
+frozen_before_implementation: true
+scope: "N2.6b4 profile/edge state information sufficiency only"
+forbidden_inputs:
+  - LESP
+  - lift
+  - thrust
+  - pressure_target
+  - structural_state
+cases:
+  analytic_linear_2d:
+    profile: "u/Ue = n/delta, delta=1, rho=1"
+    expected:
+      mass_flux_defect_x: 0.5
+      momentum_flux_trace: 0.16666666666666666
+      surface_mass: 1.0
+      surface_momentum_x: 0.5
+    atol: 2.0e-7
+  rigid_rotation:
+    requirement: >
+      rotating velocity, sheet normal and all vector/tensor outputs by the
+      same proper orthogonal matrix preserves scalars and rotates vectors
+      and tensors covariantly
+    atol: 2.0e-12
+  outer_plateau_gauge:
+    profiles:
+      - "linear 0<=n<=1"
+      - "same linear layer plus u=Ue plateau on 1<n<=1.2"
+    requirement:
+      ibl_defect_max_difference: 2.0e-7
+      minimum_surface_mass_difference: 0.19
+      minimum_surface_momentum_difference: 0.19
+  equal_defect_distinct_state:
+    profile_a: "f(eta)=eta, delta=1"
+    profile_b: >
+      f(eta)=eta+0.2*eta*(1-eta)-0.2819747927945442*
+      eta*(1-eta)*(1-2*eta), delta=15/14
+    requirement:
+      monotone: true
+      ibl_defect_max_difference: 2.0e-7
+      minimum_surface_mass_difference: 0.07
+      minimum_surface_momentum_difference: 0.07
+  invalid_inputs:
+    must_reject:
+      - non_increasing_normal_coordinate
+      - non_positive_density
+      - non_unit_sheet_normal
+      - external_velocity_with_sheet_normal_component_for_ibl
+      - empty_edge_convention
+promotion:
+  go: >
+    all equation, covariance, non-uniqueness and validation guards pass;
+    promote only the necessity of explicit profile/edge state
+  no_go:
+    - "infer any missing state from force or pressure"
+    - "select an edge convention from integrated-load error"
+    - "claim that the oracle closes smooth-leading-edge release"

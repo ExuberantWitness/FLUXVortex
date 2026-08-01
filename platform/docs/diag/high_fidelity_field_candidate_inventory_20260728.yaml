@@ -1,0 +1,192 @@
+version: 1
+as_of: "2026-07-28"
+scope: >
+  Second-pass public-data audit for the spatial-vortex-state and unified
+  panel-pressure branches.  This inventory is evaluated against the
+  pre-existing frozen N2.6b4f3 contract.  A pressure archive, a rendered
+  movie, or a paper figure is not a velocity-field archive.
+contract: "near_wall_field_contract_cases.yaml"
+joint_eligibility_required: true
+can_union_assets_for_field_eligibility: false
+
+discovery_snapshot:
+  datacite_query:
+    endpoint: "https://api.datacite.org/dois"
+    query: 'titles.title:"dynamic stall"'
+    records_returned: 123
+    dataset_records_before_version_deduplication: 20
+  high_fidelity_paper_relation_audit:
+    crossref_relation_is_empty: true
+    datacite_related_dataset_total: 0
+    dois:
+      - "10.2514/6.2024-1352"
+      - "10.1063/5.0239448"
+      - "10.2514/1.J056108"
+      - "10.2514/1.C035427"
+      - "10.2514/1.J062109"
+      - "10.2514/1.J063039"
+      - "10.2514/1.J058681"
+      - "10.1017/jfm.2018.939"
+      - "10.1115/FEDSM2014-21588"
+      - "10.3390/fluids6120457"
+    interpretation: >
+      This is a date-limited registry-link result, not proof that no author
+      copy exists and not a substitute for inspecting a stated repository.
+
+assets:
+  four_tu_reverse_flow_naca643418_v2:
+    title: "Data from the experimental measurement of a pitching airfoil NACA643418"
+    persistent_id: "doi:10.4121/8cec2ee4-9dfa-47ba-a71d-69e73b625d38.v2"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [250000]
+    flow_domain: "reverse-flow pitching airfoil; outside RoboEagle target domain"
+    repository_claim: "PIV and surface-pressure measurements"
+    archive:
+      url: "https://data.4tu.nl/file/8cec2ee4-9dfa-47ba-a71d-69e73b625d38/366e775b-b967-4f75-8cf4-9eabd689ff1c"
+      name: "version2_ PoF paper.zip"
+      size_bytes: 3261847090
+      md5: "7ceb734a1835b88e2df73018ac215413"
+      zip_entries: 1389
+      central_directory_size_bytes: 213400
+      released_tree_summary:
+        pressure_unsteady_entries: 1281
+        velocity_or_piv_named_entries: 0
+      readme:
+        crc32: 2950481452
+        states_150_cycles: true
+        states_primary_content_is_pressure_processing: true
+      sampled_raw_mat:
+        name: "RawPre_new_meanaoa170_fre2_amp10_150cycles.mat"
+        crc32: 859483916
+        variables: ["ChanNames", "ConvertVer", "ConvertedData"]
+        channels: 253
+        samples_per_channel: 24000
+        velocity_coordinates_or_vectors_present: false
+    field_contract_decision: "NO-GO"
+    pressure_output_decision: "GO-AS-OUT-OF-DOMAIN-TEST"
+    reason: >
+      The version-2 metadata describes an experiment using PIV and pressure,
+      but the released archive tree and sampled raw MAT contain pressure
+      acquisition/processing only.  No x-y-z velocity field is released.
+    allowed_roles:
+      - "dynamic surface-pressure parser and conservation test"
+      - "pressure/force phase and cycle-variability stress test"
+      - "metadata-versus-payload mismatch rejection test"
+
+  four_tu_du97w300_vortex_generator_v2:
+    title: >
+      Data supporting vortex-generator design for unsteady flow separation
+      control and dynamic stall suppression on pitching thick airfoils
+    persistent_id: "doi:10.4121/374c2baa-aca1-487e-8463-6ef167569be7.v2"
+    related_paper: "doi:10.5194/wes-11-1971-2026"
+    source_kind: experiment
+    license: "CC BY-SA 4.0"
+    reported_reynolds: [1000000]
+    flow_domain: "pitching DU-97-W-300 with and without vortex generators"
+    archive:
+      url: "https://data.4tu.nl/file/374c2baa-aca1-487e-8463-6ef167569be7/0efff785-7e18-47eb-8395-67f1c4ae7c18"
+      name: "data.zip"
+      size_bytes: 1706315457
+      md5: "171d4e6b76f82cb3c464916a21aeddb0"
+      zip_entries: 120
+      central_directory_size_bytes: 17297
+      representations:
+        - "steady and unsteady surface Cp"
+        - "integrated forces"
+        - "full-cycle records and phase-averaged mean/std"
+      velocity_or_piv_named_entries: 0
+    field_contract_decision: "NO-GO"
+    pressure_output_decision: "GO-AS-OUT-OF-DOMAIN-TEST"
+    reason: >
+      The archive is a rich dynamic pressure/load database, but it contains
+      no velocity field, moving-wall mesh, wall-normal profiles, or vortex
+      coordinates.  Re=1e6 and the thick VG-equipped section are outside the
+      production domain.
+    allowed_roles:
+      - "independent dynamic panel-pressure output test"
+      - "cycle mean/std and phase-lag validation"
+      - "pressure-to-integrated-force conservation test"
+
+  princeton_upward_ramp_dynamic_stall:
+    title: "Princeton Dynamic Stall Database: Upward ramp-type pitching motions"
+    persistent_id: "doi:10.34770/b3vq-sw14"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [500000, 5500000]
+    released_representation: >
+      Phase-averaged data from 32 surface-pressure taps over 150 half-cycles.
+    field_contract_decision: "NO-GO"
+    pressure_output_decision: "GO-AS-OUT-OF-DOMAIN-TEST"
+    reason: "No velocity field; Reynolds range is above the target interval."
+    allowed_roles:
+      - "independent ramp-pitch surface-pressure and phase validation"
+
+  ndsu_swept_finite_wing_piv:
+    title: "Dynamic Stall Characteristics of Pitching Swept Finite-Aspect-Ratio Wings"
+    persistent_id: "doi:10.3390/fluids6120457"
+    source_kind: experiment
+    license: "CC BY 4.0 article; data available on request"
+    reported_reynolds: [200000]
+    released_representation: >
+      The article reports 2D PIV at four span stations and states that the
+      presented data are snapshots/phase averages at selected phases.
+    field_contract_decision: "NO-GO-PUBLIC"
+    pressure_output_decision: "QUALITATIVE-ONLY"
+    reason: >
+      No public field archive is linked; the paper's data-availability
+      statement is request-only, and the reported PIV is not a continuous
+      three-dimensional material-time sequence.
+    allowed_roles:
+      - "finite-wing sweep/topology qualitative comparison"
+      - "author-request candidate for raw phase-locked PIV"
+
+  aip_2026_plunging_plasma_supplements:
+    title: >
+      Dynamic stall formation and control for plunging airfoil: an
+      optimization study of plasma actuator
+    persistent_id: "doi:10.60893/figshare.pof.c.8460981.v1"
+    source_kind: simulation_and_experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [66000]
+    released_representation: "four MP4 visualization supplements"
+    released_files:
+      - "S1.mp4"
+      - "S2.mp4"
+      - "S3.mp4"
+      - "S4.mp4"
+    field_contract_decision: "NO-GO"
+    pressure_output_decision: "NO-GO"
+    reason: "Rendered videos are not coordinate-bearing numerical fields."
+    allowed_roles:
+      - "qualitative shear-layer visualization only"
+
+  scielo_2019_low_re_openfoam_figures:
+    title: "Numerical Simulation of a Pitching Airfoil Under Dynamic Stall of Low Reynolds Number Flow"
+    persistent_id: "doi:10.6084/m9.figshare.10438160"
+    source_kind: simulation
+    license: "CC BY 4.0"
+    reported_reynolds: [100000]
+    released_representation: "12 JPG paper figures and two small XLS tables"
+    field_contract_decision: "NO-GO"
+    pressure_output_decision: "NO-GO"
+    reason: "The Figshare payload is publication imagery/tables, not solver fields."
+    allowed_roles:
+      - "bibliographic mechanism comparison only"
+
+decision:
+  production_field_eligible_assets: []
+  independent_pressure_output_assets:
+    - "four_tu_reverse_flow_naca643418_v2"
+    - "four_tu_du97w300_vortex_generator_v2"
+    - "princeton_upward_ramp_dynamic_stall"
+  missing_component: >
+    A target-domain, coordinate-bearing, continuous velocity/near-wall field
+    with moving-wall and edge identity remains missing.
+  newly_available_component: >
+    Independent dynamic surface-pressure output tests are now available and
+    should be separated from hidden spatial-vortex-state identification.
+  claim_rewrite: >
+    Split acquisition into a spatial-state evidence gate and an independent
+    pressure-output gate.  Pressure-only data may falsify a unified pressure
+    prediction but may not identify or promote the hidden vortex state.

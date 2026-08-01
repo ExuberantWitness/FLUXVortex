@@ -1,0 +1,174 @@
+artifact: actual_boundary_body_wake_coupled_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d16
+depends_on_claims:
+  - N3.1j3b6d3d
+  - N3.1j3b6d15
+  - N3.1j4b1
+  - N3.1j4b5a
+status: executed_no_go_after_preregistration
+stage: S3b_static_3d_actual_boundary_material_wake_coupled_equation
+role: no_force_equation_and_identifiability_oracle
+
+question: >
+  After the three-dimensional classified P2 body cut is attached to a
+  material doublet wake, does the actual-boundary interior-Dirichlet equation
+  form one full-column-rank system in body-potential unknowns when the wake
+  strength is the body upper-minus-lower trace, without an independently
+  adjustable circulation or wake amplitude?
+
+cause_from_s3a:
+  validated: >
+    S3a proves geometry/trace topology and exact body-jump-to-wake attachment.
+  missing: >
+    No artifact currently places the wake double-layer influence inside the
+    actual-boundary Galerkin equation.  Consequently rank, gauge fixing,
+    symmetry, far-wake convergence and duplicate-circulation bookkeeping are
+    unknown.
+  classification: missing_coupled_actual_boundary_wake_equation_component
+
+primary_evidence:
+  - source: "Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990)"
+    implication: >
+      A lifting body is solved with body source/doublet panels plus a trailing
+      doublet wake; ordinary body interfaces retain continuous higher-order
+      traces while wake abutments implement the lifting branch cut.
+  - source: >
+      Hess, Calculation of Potential Flow about Arbitrary Three-Dimensional
+      Lifting Bodies, Douglas MDC J5679-01 (1972), as summarized in NASA
+      panel-method records
+    implication: >
+      Wake doublet strength is the potential jump and must equal the lifting
+      surface jump along the body-wake abutment.
+  - source: >
+      Magnus & Epton, PAN AIR Theory Document, NASA CR-3251 (1980)
+    implication: >
+      The higher-order formulation uses quadratic doublet variation,
+      continuous ordinary-network traces and explicit wake-network Kutta
+      matching rather than a fitted circulation.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28,
+      DOI 10.3390/aerospace9010028
+    implication: >
+      The material DDE wake inherits the trailing-edge strength, retains
+      individual strengths after shedding, and requires continuous spatial
+      trace representation.
+
+canonical:
+  body: "the frozen S3a full-wing symmetric diamond closed triangular body"
+  classified_cut: "the frozen S3a four-segment TE cut with zero-jump tips"
+  freestream:
+    speed: 1.0
+    angles_deg: [-5.0, 0.0, 5.0]
+    direction: "[cos(alpha), 0, sin(alpha)]"
+  steady_material_wake:
+    current_edge_x: 1.0
+    downstream_edge_x: [2.0, 4.0, 8.0]
+    span_vertices: [-1.0, -0.5, 0.0, 0.5, 1.0]
+    temporal_rows: >
+      All three explicit P2 rows use the same unknown span trace. This is the
+      steady load-free wake identity, not an unsteady Kelvin update.
+    family: TEV
+  paired_singular_quadrature_orders: [3, 4, 5]
+  reference_case:
+    alpha_deg: 5.0
+    downstream_edge_x: 8.0
+    quadrature_order: 5
+  gauge: >
+    The interior perturbation potential is fixed to zero, selecting one body
+    potential gauge. Equal shifts of both cut copies must still leave the
+    physical jump map invariant, but are not alternate solutions under this
+    fixed Dirichlet gauge.
+
+assembly_contract:
+  unknowns: "only classified body P2 potential DOFs"
+  wake_strength: >
+    A deterministic linear map of upper-minus-lower body cut trace; no
+    independent wake or circulation unknown is permitted.
+  equation: >
+    Weak interior Dirichlet body source + body double-layer + attached wake
+    double-layer = 0, with same-face/body-edge/body-wake-edge singular pairs
+    integrated as paired target-source domains.
+  forbidden_rows:
+    - "target force or pressure"
+    - "LESP amplitude"
+    - "prescribed circulation"
+    - "regularizer or fitted Kutta constant"
+
+required_identities:
+  - "one square full-rank system in classified body P2 unknowns"
+  - "no independent wake/circulation amplitude exists in the unknown vector"
+  - "normalized weak residual satisfies the frozen tolerance"
+  - "wake current-edge trace equals body upper-minus-lower trace"
+  - "zero incidence gives zero cut jump"
+  - "plus/minus incidence gives opposite cut jump"
+  - "full-wing cut jump is mirror-even in span"
+  - "both physical wing-tip jumps remain zero"
+  - "reference nonzero-incidence solution has nonzero circulation"
+  - "far-wake and paired-quadrature refinements meet frozen Cauchy gates"
+  - "steady wake material rows are identical and internally P2-continuous"
+
+thresholds:
+  rank_deficiency_max: 0
+  normalized_weak_residual_max: 1.0e-10
+  condition_number_max: 1.0e9
+  wake_attachment_abs_error_max: 1.0e-12
+  zero_alpha_jump_abs_max: 1.0e-10
+  incidence_antisymmetry_abs_max: 1.0e-10
+  span_mirror_abs_max: 1.0e-10
+  tip_jump_abs_max: 1.0e-12
+  reference_root_jump_abs_min: 1.0e-4
+  far_wake_root_relative_change_max: 0.10
+  quadrature_root_relative_change_max: 0.02
+  wake_material_row_change_abs_max: 0.0
+  wake_internal_trace_jump_abs_max: 1.0e-12
+
+decision:
+  go: >
+    Every identity passes with wake strength eliminated exactly into the body
+    equation. GO validates only a steady three-dimensional actual-boundary
+    body-wake equation and authorizes a later unsteady material-history gate.
+  no_go: >
+    Rank loss, gauge ambiguity, symmetry failure, unattached trace or failed
+    refinement blocks the route. Do not repair it with prescribed
+    circulation, a diagonal regularizer, force fitting, a wake core or a
+    relaxed tolerance.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate does not implement finite-blunt-base dynamics, unsteady Kelvin
+  history, free-wake roll-up, LEV release, dual-side Bernoulli pressure,
+  panel force, 118 cases or production coupling.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_body_wake_coupled_results.json
+  stage_decision: NO-GO
+  passed:
+    - "square full-rank 81x81 body system"
+    - "zero independent wake/circulation unknowns"
+    - "normalized weak residual <=4.08e-16"
+    - "wake attachment, tip jump, material-row and internal-trace identities"
+  failed_metrics:
+    zero_alpha_jump_abs: 5.758816309833076e-05
+    incidence_antisymmetry_abs: 1.1473804550045374e-04
+    span_mirror_abs: 5.4382293090210476e-05
+    quadrature_root_relative_change_q4_to_q5: 0.26924973015813364
+    far_wake_root_relative_change_x4_to_x8: 0.3151491944684143
+  diagnostic_only_not_acceptance:
+    fixed_x8_root_jump:
+      q3: -0.0344596663297239
+      q4: -0.07058842591519278
+      q5: -0.09659719445668907
+      q6: -0.11247124214733428
+      q8: -0.12488939750867833
+      q10: -0.12631107638715378
+      q12: -0.12650514488488704
+    interpretation: >
+      The finite-angle body-wake pair itself approaches a stable value as
+      paired order rises, but one P2 band stretched from the TE to a distant
+      cutoff loses shape regularity. At fixed q=10 its root jump changes from
+      -0.12557/-0.12631 at x=4/8 to -0.11972/-0.08157 at x=16/32 while mirror
+      residual grows. The next component must use shape-regular chronological
+      material bands and explicit interfaces, not a single elongated wake
+      element or a relaxed tolerance.

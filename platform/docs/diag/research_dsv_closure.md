@@ -1,5 +1,11 @@
 # 文献调研产出(2026-07-04):DSV/LEV 升力闭合 + 分离延迟 —— 步骤 2
 
+> **2026-07-27 方程级复核更正：本案 H14“忠实 Hirato”命题已被证伪并由
+> `research_n3_hirato_equation_audit_20260727.md` 取代。** 共享 wake 数组不是
+> 自动错误；真正缺陷是现代码未闭合 Hirato Eq.7/9/10/17/23。尤其
+> `hirato+ansari` 的规范 Case 1 全程没有生成持久 LEV 环，且面板压力缺
+> `dGamma_LEV/dt`。以下保留为历史推理记录，不得再作为生产晋升依据。
+
 来源:① 本地论文精读(Hirato 2019、Ramesh×2、LEV-lift-mechanism、dvm3d、mavs、flap)
 ② Web 检索(OpenFAST/Boeing-Vertol、Goman-Khrabrov、Polhamus NASA TN、Ramesh LDVM 系列)
 

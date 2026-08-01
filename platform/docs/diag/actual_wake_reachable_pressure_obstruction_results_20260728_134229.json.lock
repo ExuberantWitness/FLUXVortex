@@ -1,0 +1,15 @@
+{
+  "artifact": "S3ai-v2.2-permanent-one-shot-attempt",
+  "authorization_canonical_sha256": "bb51931e1c2be1816c21567506023006aa07bf95754b3cb59dbcc93a761f6595",
+  "authorization_id": "S3ai-v2.2-one-shot-gemma4-20260728-03",
+  "authorization_raw_sha256": "39ebcd7b5a51e9ccd400c211cc3025952b9f27be9c09ad296f1dfc1a0bf5a75e",
+  "claimed_at_utc": "2026-07-28T08:19:49.411432+00:00",
+  "execution_input_sha256_start": "108bc703c76dc90c2af3c88011b8138044cc28f80b97029e8b35fd73264c6fbb",
+  "ordered_registry_manifest_sha256": "4ed3e9adcfad1f4f207a33d4d51160c52c886f95114e4c4b7951a14bad1bfbd7",
+  "output_directory_st_dev": 66306,
+  "output_directory_st_ino": 42210167,
+  "retry_allowed": false,
+  "single_use_token_sha256": "873efd05485c87936fcea36a360c411c9ecf1bab59cf388ab9711dff4fe214e1",
+  "wrapper_definition_sha256": "641e3111a811b97f8da9da8b6cfdecde2db0054fe931e4af053b479ee1253e5c",
+  "wrapper_source_sha256": "ddcb2dccfe315c4dfd978cc04f17fdfbdf99dcc8cf8172f6b3c8d9cea76b428c"
+}

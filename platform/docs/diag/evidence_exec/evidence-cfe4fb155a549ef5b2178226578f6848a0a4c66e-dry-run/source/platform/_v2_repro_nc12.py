@@ -1,0 +1,250 @@
+"""FULL data.md sweep at the GRID-INDEPENDENT nc=12 production config (Ansari-LEV), RESUMABLE.
+Each unique (U,aoa,freq,twist) is run with spc matched to hold the validated U*dt/chord ratio
+(spc = 15*U*nc/freq, rounded to 60; = 720 at the U8/2Hz/nc12 validation point). Results cached to
+disk incrementally so a multi-day run survives interruption (just re-launch to resume).
+
+  python _v2_repro_nc12.py --dry    # list unique conditions + spc + cost estimate (no GPU)
+  python _v2_repro_nc12.py --run    # run all (resumable); saves docs/repro_nc12/cache.json incrementally
+  python _v2_repro_nc12.py --plot   # docs/repro_fig17.png + repro_fig18.png (exp vs nc12 model) + MAE
+"""
+import sys, os, json, time, argparse, numpy as np
+DOCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'docs')
+JP = os.path.join(DOCS, 'repro_data.json')
+OD = os.path.join(DOCS, 'repro_nc12'); os.makedirs(OD, exist_ok=True)
+
+NC = 12; NS = 16; NCYC = 4; WINDS = None; FIXMODE = False; CFG = None
+PROD = dict(real_geom=True, sym=True, les_suction=True, les_eta=1.0, d_para=3.0, a0_crit=0.23,
+            lev_shed_mode='kelvin', lev_hold_mode='inviscid', attached_drag='faure',
+            lev_sheet=True, lev_place='ansari', lev_sign=1.0)
+# 2026-06-30 Fix1 ONLY (lift): geometric quasi-steady stall, physics-anchored (NACA-2406 alpha_ss/width).
+# Fix2 (friction) DROPPED: skin friction is freq-independent (~U^2, chordwise-flow-dominated), so it can NOT
+# explain the thrust freq-SLOPE error (model -3.2->+2.2 vs meas -1.1->+0.7, ~2.9x too steep). Thrust = open item.
+FIX = dict(geo_stall=True, geo_stall_deg=12.0, geo_stall_width=16.0)
+# --- 2026-07-02 candidate configs (--cfg): faithful-Hirato LEV thrust fix, all first-principles / no fits ---
+HIRATO_COMMON = dict(real_geom=True, sym=True, les_suction=True, les_eta=1.0, d_para=3.0, a0_crit=0.23,
+                     lev_shed_mode='hirato', lev_place='wake', lev_sheet=True, lev_sign=1.0,
+                     lev_le_off=0.10, lev_core_ring=0.4, attached_drag='faure')
+CFG_PRESETS = {
+    'K0': dict(PROD, **FIX),                                              # production kelvin+Fix1 baseline
+    'H2': dict(HIRATO_COMMON),                                            # hirato + saturated vnf (geo_stall OFF)
+    'H3': dict(HIRATO_COMMON, **FIX),                                     # + geo_stall ON (double-count probe)
+    # P1c 2026-07-02: H3==H2 on both worst conds (thrust identical, lift -0.07N) -> H3 sweep skipped.
+    # a0_crit is THE tw22.5 lever (0.27: dT -3.68 -> -1.93 passes gate; costs U6 +0.71 where the residual
+    # is a rig-offset known-unknown anyway). Both 0.23/0.27 are literature airfoil values (2D-anchored).
+    'H4': dict(HIRATO_COMMON, a0_crit=0.27),                              # LESP crit sensitivity (SD7003@Re2e4)
+    # P2 2026-07-04 deep-stall overshoot candidates (P1 diag: les double-suppressed by LEV-sheet induction; K0's
+    # flat thrust at tw45 = -14N bern drag canceled by +19.4N les; H4 got les +10.4 + vtx -6.1 -> -15N blowup):
+    'H5': dict(HIRATO_COMMON, a0_crit=0.27, les_kin=True),                # C4: kinematic LE velocity (consistency, no new consts)
+    'H6': dict(HIRATO_COMMON, a0_crit=0.27, les_kin=True, **FIX),         # C4 + C2 (geo_stall Kirchhoff lift loss, NACA-2406)
+    # H10 2026-07-04 (approved rebuild): unified alpha_eff-Kirchhoff closure — Fig16 instantaneous data showed the
+    # attached model over-predicts amplitudes 2.5-4x and the mean-level fit rode on two fictions canceling
+    # (les mid-stroke pulses vs d_para; deep-twist bern drag vs K0's saturated les). fsep(alpha_eff) drives
+    # bern(circulatory)xKirchhoff-CN + les x fsep; vnf stays (Polhamus separated-flow limit). Zero new constants.
+    'H10': dict(HIRATO_COMMON, a0_crit=0.27, kirch_cn=True, les_att=True),
+    # H11: + ring strength capped at the exact Kelvin excess (fixes the over-strong-ring wake pollution that
+    # fed the P0 runaway, the A0 sub-critical collapse AND the tw45 fictional loads at feathered phases).
+    'H11': dict(HIRATO_COMMON, a0_crit=0.27, kirch_cn=True, les_att=True, lev_cap_exc=True),
+    # H12: stall cap (Vcol-based per-panel CL_max saturation — the induction-included alpha SEES the fictional
+    # wake-induced loading, which the kinematic fsep gate cannot) + les_att (kinematic fsep kills the tw0 fake
+    # suction pulses). Composite of the two experimentally-validated blocks.
+    'H12': dict(HIRATO_COMMON, a0_crit=0.27, stall=True, les_att=True),
+    # H13: + Goman-Khrabrov lag on the separation state (tau*=4.5 literature): separation DELAY at reversals
+    # (real suction survives the brief deep-alpha pass -> reversal drag relief) + reattachment hysteresis
+    # (downstroke/upstroke asymmetry -> mean lift). Targets BOTH open residuals with one standard mechanism.
+    'H13': dict(HIRATO_COMMON, a0_crit=0.27, stall=True, les_att=True, fsep_lag=True),
+    # H14 2026-07-04 (literature-faithful Hirato; GAP->research->implement): implicit LESP=LESP_crit constraint run
+    # with the LEV sheet ANCHORED at the LE (lev_place='ansari', force-only Bernoulli) instead of dumped into the TEV
+    # wake. Per Hirato/Ramesh source-paper review: DSV lift = unsteady-Bernoulli v_L + dG_L/dt (route a), NOT Polhamus
+    # rotation -> lev_vnf=False (kills the double-count). Separation delay EMERGENT (LESP gate fires later than
+    # quasi-steady alpha_ss; A0 carries unsteady content) -> no kirch_cn/stall/fsep_lag. The wake pollution fed every
+    # prior hirato candidate's pathology (P0 runaway / A0 collapse / tw45 fiction). Zero new constants; 2-line code change.
+    'H14': dict(HIRATO_COMMON, lev_place='ansari', a0_crit=0.27, lev_vnf=False),
+    # H15: H14 + stall cap. H14 confirmed the LESP-constraint separation delay (best tw22.5/tw45 thrust) but DSV lift
+    # did NOT emerge at nc4 (discrete-ring induction under-resolves). Stall cap (H4s/H13-validated) supplies the
+    # lift-amplitude closure the coarse grid cannot. Production candidate.
+    'H15': dict(HIRATO_COMMON, lev_place='ansari', a0_crit=0.27, lev_vnf=False, stall=True),
+    # H16 2026-07-04 (Li/Feng vortex-impulse, user option B): LEV force = -d/dt[rho*Sum(Gamma*A)] (grid-INDEPENDENT,
+    # no surface-pressure resolution). Built on the STABLE kelvin path (ansari sheet, no unstable LESP-constraint
+    # fold) + a0_crit gates shed onset (kinematic, emergent separation delay). The Vlev_a surface-pressure
+    # contribution is skipped (LEV force via impulse instead) to avoid double-count. DSV lift should emerge at any nc.
+    'H16': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True),
+    # H17: H16 + stall cap. The stall cap acts ONLY on Fb (Bernoulli base) -> reduces the bound amplitude fiction
+    # WITHOUT touching the vortex-impulse LEV force (separate accumulator). Unlike H15 (cap killed H14's Fb-based
+    # thrust), here thrust stays at H16's best (impulse) AND lift gets the cap. Non-conflicting combination.
+    'H17': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, stall=True),
+    # H18: H16 + the two literature-validated DRAG flags that are OFF by default — prof_drag (Hoerner crossflow
+    # separated pressure drag, cd_form=1.98/cd_dp=1.2 flat-plate constants, zero-fit) + visc (DeLaurier profile
+    # friction, Blasius Cf, zero-fit). Targets the residual's twist-dimension (sep drag ~sin^2 alpha) and
+    # speed-dimension (profile ~U^2) structure per the drag-research synthesis (Hoerner/Polhamus/Faure/Ramesh).
+    'H18': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, prof_drag=True, visc=True),
+    # H19: H18 + fsep_lag — gate the Hoerner sep drag by the LAGGED separated fraction (1-fsep). H18 confirmed sep
+    # drag is the right term (tw0 +2.84->-1.46) but static Hoerner OVERSHOOTS at mid-stroke (tw45 -11.8 vs meas -4.2)
+    # = no dynamic-stall delay. The GK lag (tau*=4.5 literature) holds fsep~1 through the brief alpha peak -> sep
+    # drag switches on late -> matches measured. Same mechanism as H13, now on the stable impulse path + prof_drag.
+    'H19': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, prof_drag=True, visc=True, fsep_lag=True),
+    # H20 (P1 2026-07-05): the DOUBLE-COUNT FIX. H19's prof_drag (Hoerner) added to the uncapped bound Bernoulli
+    # backward-tilt -> deep-twist over-drag (-4.7N). kirch_blend REPLACES it: one blended vector (attached Bernoulli
+    # + flat-plate CN by separated fraction) -> pressure drag emerges from the same vector that loses lift, no
+    # double-count. = H16 impulse + kirch_blend + visc + fsep_lag (no prof_drag).
+    'H20': dict(PROD, **FIX, a0_crit=0.27, lev_impulse=True, kirch_blend=True, visc=True, fsep_lag=True),
+    # K1 2026-07-04: KELVIN path (no hirato ring wake pollution) + the full closure suite. The stall cap costs
+    # -4N mean lift because the real wing's downstroke DSV lift ~ attached values (K0 imitated it via amplitude
+    # fiction); fp_lev IS the DSV mechanism (kinematic excess suction rotated to normal, K_v=2pi/(1+2/AR)
+    # analytic) and only works OFF the polluted-A0 hirato path. All existing flags, zero new constants.
+    'K1':  dict(PROD, stall=True, les_att=True, fsep_lag=True, fp_lev=True),
+    'K1g': dict(PROD, **FIX, stall=True, les_att=True, fsep_lag=True, fp_lev=True),   # + legacy geo_stall (dbl-count probe)
+}
+ONLY = None                                                               # --only whitelist of conditions (ck strings)
+
+def cache_path():     # grid+cfg-tagged so different grids / model variants never collide
+    if CFG == 'K0':   # K0 == the legacy PROD+FIX cache (59 Fig17/18 conds already computed) — reuse it
+        return os.path.join(OD, f"cache_nc{NC}_cyc{NCYC}_fix.json")
+    if CFG:
+        return os.path.join(OD, f"cache_nc{NC}_cyc{NCYC}_{CFG}.json")
+    return os.path.join(OD, f"cache_nc{NC}_cyc{NCYC}{'_fix' if FIXMODE else ''}.json")
+
+
+def cond_of(key, xi):
+    fig, sub, param = key.split('|')
+    if fig == '17':                 U, aoa, freq, tw = 8., 5., float(param), xi
+    elif fig == '19':               # Fig19: aoa from param; a/b = freq sweep @twist0, c/d = twist sweep @2.6Hz (8 m/s)
+        if sub in ('a', 'b'):       U, aoa, freq, tw = 8., float(param), xi, 0.
+        else:                       U, aoa, freq, tw = 8., float(param), 2.6, xi
+    elif sub in ('a', 'b'):         U, aoa, freq, tw = float(param), 5., xi, 0.
+    else:                           w, f = eval(param); U, aoa, freq, tw = float(w), 5., float(f), xi
+    # quantize away parse-noise duplicates (physically identical points run once): tw->0.5deg, freq->0.05Hz
+    U = round(U, 1); aoa = round(aoa, 1); freq = round(freq / 0.05) * 0.05; tw = round(tw / 0.5) * 0.5
+    return U, aoa, freq, tw
+
+
+def spc_of(U, freq):
+    return int(round(15.0 * U * NC / freq / 60.0)) * 60     # holds U*dt/chord = validated ratio
+
+
+def unique_conds():
+    R = json.load(open(JP)); seen = {}
+    for key in sorted(R.keys()):
+        for xi in R[key]['x']:
+            U, aoa, freq, tw = cond_of(key, xi)
+            if WINDS is not None and round(U, 1) not in WINDS: continue
+            ck = f"{U:.1f}_{aoa:.1f}_{freq:.3f}_{tw:.3f}"
+            seen[ck] = (U, aoa, freq, tw)
+    if ONLY is not None:                    # --only whitelist (P2 A/B sets, P4 nc12 key conds)
+        seen = {ck: c for ck, c in seen.items() if ck in ONLY}
+    return seen
+
+
+def ckey(U, aoa, freq, tw): return f"{U:.1f}_{aoa:.1f}_{freq:.3f}_{tw:.3f}"
+
+
+def dry():
+    conds = unique_conds()
+    tot = 0.0
+    print(f"{'cond':>26} {'spc':>5} {'est_min':>7}")
+    for ck, (U, aoa, freq, tw) in sorted(conds.items()):
+        spc = spc_of(U, freq); est = 2110.0 * (spc / 720.0) ** 2 / 60.0   # ~35min at spc720 baseline (n_cycle4)
+        tot += est
+        print(f"{ck:>26} {spc:>5} {est:>7.0f}")
+    print(f"\n{len(conds)} unique nc12 runs | total est ~{tot/60:.1f} h ~{tot/60/24:.1f} days", flush=True)
+
+
+def run():
+    import warp as wp; wp.init()
+    from _v2_robo import gpu_run_twist
+    conds = unique_conds(); CACHE = cache_path()
+    kw = dict(CFG_PRESETS[CFG]) if CFG else dict(PROD, **(FIX if FIXMODE else {}))
+    cache = json.load(open(CACHE)) if os.path.exists(CACHE) else {}
+    todo = [(ck, c) for ck, c in sorted(conds.items()) if ck not in cache]
+    print(f"resume[{os.path.basename(CACHE)}]: {len(cache)} done, {len(todo)} to run (of {len(conds)})", flush=True)
+    for i, (ck, (U, aoa, freq, tw)) in enumerate(todo):
+        spc = spc_of(U, freq); t0 = time.time()
+        try:
+            r = gpu_run_twist(U=U, aoa_deg=aoa, freq=freq, twist_amp_deg=tw, twist_phase_deg=90.0,
+                              nc=NC, ns=NS, n_cycle=NCYC, steps_per_cycle=spc, wake_rows=spc, **kw)
+            cache[ck] = [float(r['L_wind']), float(r['T_wind'])]
+        except Exception as ex:
+            print(f"  ERR {ck}: {ex}", flush=True); cache[ck] = [float('nan'), float('nan')]
+        json.dump(cache, open(CACHE, 'w'))                          # INCREMENTAL save (resumable)
+        L, T = cache[ck]
+        print(f"[{i+1}/{len(todo)}] {ck} spc={spc} -> L={L:.2f} T={T:.2f} ({time.time()-t0:.0f}s)", flush=True)
+    print(f"DONE all {len(conds)} conditions cached", flush=True)
+
+
+def _pred_lines():
+    R = json.load(open(JP)); cache = json.load(open(cache_path()))
+    pred = {}
+    for key in sorted(R.keys()):
+        kind = R[key]['kind']; line = []
+        for xi in R[key]['x']:
+            U, aoa, freq, tw = cond_of(key, xi); v = cache.get(ckey(U, aoa, freq, tw))
+            if v is None: line.append(None)
+            else: line.append(None if np.isnan(v[0 if kind == 'L' else 1]) else v[0 if kind == 'L' else 1])
+        pred[key] = line
+    return R, pred
+
+
+def plot():
+    import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
+    R, pred = _pred_lines(); CMAP = plt.cm.viridis
+    nan = lambda L: [np.nan if v is None else v for v in (L or [])]
+    ae = []
+    def line(ax, key, c, lab):
+        if key not in R: return
+        d = R[key]; x = d['x']
+        ax.plot(x, d['exp'], '-o', color=c, ms=5, lw=2.2, label=f"exp {lab}")
+        p = nan(pred.get(key)); ax.plot(x, p, '--x', color=c, ms=5, lw=1.5, alpha=0.85, label=f"nc12 {lab}")
+        e = np.asarray(d['exp'], float); pp = np.asarray(p, float); m = np.isfinite(e) & np.isfinite(pp)
+        ae.extend(list(np.abs(pp[m] - e[m])))
+    # Fig17: thrust(a)+lift(b) vs twist, 5 freqs
+    FREQS = [1.4, 1.7, 2.0, 2.3, 2.6]
+    fig, ax = plt.subplots(1, 2, figsize=(15, 6))
+    for i, f in enumerate(FREQS):
+        c = CMAP(i / 4); line(ax[0], f"17|a|{f}", c, f"{f}Hz"); line(ax[1], f"17|b|{f}", c, f"{f}Hz")
+    ax[0].set_title("Fig17a net thrust vs twist"); ax[1].set_title("Fig17b lift vs twist")
+    for a in ax: a.set_xlabel("twist (deg)"); a.set_ylabel("force (N)"); a.grid(alpha=0.3); a.legend(fontsize=6, ncol=2)
+    fig.suptitle("Fig17 exp(-o) vs nc12 Ansari-LEV(--x)  [8m/s AoA5, per freq]", fontsize=12)
+    fig.tight_layout(); fig.savefig(os.path.join(DOCS, "repro_fig17.png"), dpi=110); plt.close(fig)
+    # Fig18: thrust(a)+lift(b) vs freq, 3 winds
+    WINDS = [6.0, 8.0, 10.0]
+    fig, ax = plt.subplots(1, 2, figsize=(15, 6))
+    for i, U in enumerate(WINDS):
+        c = CMAP(i / 2); line(ax[0], f"18|a|{U}", c, f"{U:.0f}m/s"); line(ax[1], f"18|b|{U}", c, f"{U:.0f}m/s")
+    ax[0].set_title("Fig18a net thrust vs freq"); ax[1].set_title("Fig18b lift vs freq")
+    for a in ax: a.set_xlabel("freq (Hz)"); a.set_ylabel("force (N)"); a.grid(alpha=0.3); a.legend(fontsize=7, ncol=2)
+    fig.suptitle("Fig18 exp(-o) vs nc12 Ansari-LEV(--x)  [twist0, per wind]", fontsize=12)
+    fig.tight_layout(); fig.savefig(os.path.join(DOCS, "repro_fig18.png"), dpi=110); plt.close(fig)
+    # Fig19: thrust(a)+lift(b) vs freq @twist0 and thrust(c)+lift(d) vs twist @2.6Hz, 4 AoAs (8 m/s)
+    AOAS = [0, 5, 10, 15]
+    fig, ax = plt.subplots(2, 2, figsize=(15, 11))
+    for i, aoa in enumerate(AOAS):
+        c = CMAP(i / 3)
+        line(ax[0, 0], f"19|a|{aoa:g}", c, f"aoa{aoa}"); line(ax[0, 1], f"19|b|{aoa:g}", c, f"aoa{aoa}")
+        line(ax[1, 0], f"19|c|{aoa:g}", c, f"aoa{aoa}"); line(ax[1, 1], f"19|d|{aoa:g}", c, f"aoa{aoa}")
+    ax[0, 0].set_title("Fig19a net thrust vs freq (tw0)"); ax[0, 1].set_title("Fig19b lift vs freq (tw0)")
+    ax[1, 0].set_title("Fig19c net thrust vs twist (2.6Hz)"); ax[1, 1].set_title("Fig19d lift vs twist (2.6Hz)")
+    for a2 in ax.flat: a2.set_ylabel("force (N)"); a2.grid(alpha=0.3); a2.legend(fontsize=6, ncol=2)
+    ax[0, 0].set_xlabel("freq (Hz)"); ax[0, 1].set_xlabel("freq (Hz)")
+    ax[1, 0].set_xlabel("twist (deg)"); ax[1, 1].set_xlabel("twist (deg)")
+    fig.suptitle("Fig19 exp(-o) vs model(--x)  [8 m/s, per AoA]", fontsize=12)
+    fig.tight_layout(); fig.savefig(os.path.join(DOCS, "repro_fig19.png"), dpi=110); plt.close(fig)
+    done = sum(1 for v in json.load(open(cache_path())).values() if not np.isnan(v[0]))
+    print(f"saved repro_fig17.png + repro_fig18.png | {done} conds done | MAE={np.mean(ae) if ae else float('nan'):.2f}N "
+          f"over {len(ae)} matched pts", flush=True)
+
+
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--dry', action='store_true'); ap.add_argument('--run', action='store_true'); ap.add_argument('--plot', action='store_true')
+    ap.add_argument('--nc', type=int); ap.add_argument('--ncyc', type=int); ap.add_argument('--winds'); ap.add_argument('--fix', action='store_true')
+    ap.add_argument('--cfg', choices=sorted(CFG_PRESETS))
+    ap.add_argument('--only', help='comma list U_aoa_f_tw (short floats ok, e.g. 10_5_2.6_45)')
+    a = ap.parse_args()
+    if a.nc: NC = a.nc
+    if a.ncyc: NCYC = a.ncyc
+    if a.winds: WINDS = [round(float(x), 1) for x in a.winds.split(',')]
+    if a.only: ONLY = {ckey(*[float(x) for x in c.split('_')]) for c in a.only.split(',')}
+    FIXMODE = a.fix; CFG = a.cfg
+    if a.dry: dry()
+    elif a.run: run()
+    elif a.plot: plot()
+    else: print("use --dry | --run | --plot")

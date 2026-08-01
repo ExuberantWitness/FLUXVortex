@@ -1,0 +1,188 @@
+artifact: actual_wake_release_weak_projection_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c1b
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c1a
+  - N3.1j3b6d18c2b3a2b
+status: executed_weak_go
+stage: S3z_point_trace_vs_weak_release_velocity
+role: no_force_boundary_representation_decision_oracle
+
+question: >
+  Does the actual body-wake velocity possess a direction-independent
+  pointwise trace at the retiring attachment P1/P2 nodes, or must the
+  topology transition instead use a convergent global weak P1 projection of
+  the sheet-normal velocity as its finite mesh gauge?
+
+cause_from_s3y:
+  data_fingerprint:
+    - >
+      The S3y one-sided local least-squares operator is full rank with
+      condition number 13.38 and rigid error 6.66e-16, but its retained
+      pointwise relative fit residual is 68.80 and its amplitude-level
+      projection residual is approximately 55.2%.
+    - >
+      In an exploratory actual-field approach sequence with epsilon halved
+      from 0.025 to 0.003125, both tip-vertex normal velocities grow from
+      0.2337 to 0.4027 and their successive changes remain 0.0581, 0.0561,
+      0.0548 rather than contracting.
+    - >
+      The two outer attachment-edge midpoint velocities also continue from
+      -0.0533 to -0.0790 with successive changes 0.00911, 0.00847, 0.00809.
+    - >
+      Interior attachment vertices approached through different incident
+      faces retain a finest-direction spread up to 0.0441.
+  node: N3.1j3b6d18c2b3b3b2c1b
+  movable_space: >
+    Compare only two representations of the same frozen actual four-channel
+    velocity: a stricter unseen point-approach sequence and a consistent
+    global P1 weak normal projection assembled from owner-preserving
+    quadrature. Do not change the physical velocity, P2 sheet, body solve,
+    time method, geometry, or any regularization/core parameter.
+  classification: wrong_pointwise_boundary_trace_hypothesis_and_missing_weak_mesh_velocity
+
+primary_evidence:
+  - source: >
+      Pozrikidis, Journal of Fluid Mechanics 425 (2000) 335-366.
+    doi: https://doi.org/10.1017/S0022112000002202
+    implication: >
+      A three-dimensional vortex sheet is evolved by the fluid velocity
+      normal to the sheet while tangential marker motion is arbitrary;
+      numerical vortex-sheet dynamics is singular/ill-posed beyond a limited
+      interval, so a mesh-node point value is not automatically physical.
+  - source: >
+      DeVoria & Mohseni, Journal of Fluid Mechanics 855 (2018) 299-321.
+    doi: https://doi.org/10.1017/jfm.2018.645
+    implication: >
+      The Birkhoff-Rott self-induced velocity is singular and finite-segment
+      motion requires a bounded integral construction rather than naive
+      point evaluation through the singularity.
+  - source: >
+      Dziuk & Elliott, Acta Numerica 22 (2013) 289-396.
+    doi: https://doi.org/10.1017/S0962492913000056
+    implication: >
+      Evolving-surface finite elements define geometry and transport through
+      variational surface integrals on the triangulated surface.
+  - source: >
+      Elliott & Venkataraman, NMPDE 31 (2015) 459-499.
+    doi: https://doi.org/10.1002/num.21930
+    implication: >
+      ALE surface evolution separates the prescribed normal surface motion
+      from mesh parameterization and admits a finite-element velocity field
+      tied to the current triangulation.
+
+candidates:
+  point_trace:
+    claim_node: N3.1j3b6d18c2b3b3b2c1b1
+    approach_epsilons:
+      - 0.0125
+      - 0.00625
+      - 0.003125
+      - 0.0015625
+      - 0.00078125
+    observed_entities:
+      - "two tip attachment vertices"
+      - "four attachment edge midpoints"
+      - "all incident-face directions at three interior vertices"
+    pass_definition: >
+      The last two differences contract by at least 1.3, the finest absolute
+      change is below the entity threshold, and incident-face limits agree.
+  weak_projection:
+    claim_node: N3.1j3b6d18c2b3b3b2c1b2
+    quadrature_orders: [3, 5, 7]
+    basis: "global continuous P1 scalar normal speed"
+    geometry_velocity: "sum_i N_i s_i n_i"
+    objective: >
+      Minimize the surface L2 error of the physical face-normal speed using
+      the consistent global mass/Gram matrix; no boundary point value enters.
+    pass_definition: >
+      The Gram solve is full-rank, the manufactured FE field is recovered,
+      the physical release coefficients contract and reach the finest
+      relative-change threshold, the residual is weakly orthogonal, and the
+      result is rigid-frame covariant.
+
+canonical:
+  state: "frozen S3n two-band actual body-wake solution"
+  physical_velocity:
+    source_channels:
+      - external_incident
+      - actual_body_source
+      - body_P2_doublet
+      - complete_wake_sheet_average
+    body_orders: [24, 36]
+    wake_orders: [24, 36]
+    edge_quadrature: target_sinh_analytic_sheet
+  point_trace:
+    geometry: "last material band attachment"
+    query: "strict owner-preserving barycentric approach"
+  weak_projection:
+    geometry: "complete current two-band wake"
+    quadrature: "owner-preserving triangle quadrature"
+    normals: "area-weighted P1 vertex normals and exact face normals"
+  rigid_frame_counterfactual:
+    rotation_axis: [0.2, -0.7, 0.4]
+    rotation_deg: 29.0
+    translation: [0.3, -0.5, 0.8]
+
+thresholds:
+  point_tip_finest_change_abs_max: 5.0e-3
+  point_outer_edge_finest_change_abs_max: 2.0e-3
+  point_last_difference_contraction_min: 1.3
+  point_incident_direction_spread_abs_max: 5.0e-3
+  weak_mass_rank_deficiency_max: 0
+  weak_mass_condition_number_max: 1.0e5
+  weak_manufactured_recovery_abs_max: 2.0e-12
+  weak_orthogonality_relative_residual_max: 2.0e-12
+  weak_release_speed_abs_min: 1.0e-3
+  weak_quadrature_change_contraction_min: 1.05
+  weak_finest_release_relative_change_max: 0.05
+  weak_tangential_velocity_abs_max: 2.0e-14
+  rigid_release_velocity_abs_max: 2.0e-12
+  actual_velocity_ledger_closure_abs_max: 2.0e-12
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  weak_go: >
+    Point-trace convergence fails on the unseen finest levels while every
+    weak projection gate passes. Falsify pointwise nodal release, validate
+    only the weak P1 mesh-normal velocity, and authorize S3y topology
+    injection to consume that weak field.
+  point_go: >
+    Every point-trace gate passes on unseen levels. Preserve the converged
+    point trace and do not promote the weak alternative without a separate
+    accuracy advantage.
+  no_go: >
+    If the point trace fails and the weak projection does not converge,
+    preserve both failures and move to a bounded finite-segment/thin-layer
+    representation. Do not add a blob/core radius, epsilon crop, filter,
+    smoothing, damping or target load.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate selects only the retiring-edge geometry-velocity
+  representation. It does not infer newborn strength, advance time, compute
+  pressure/force/LESP, compare experiments or activate production.
+
+execution:
+  result: WEAK-GO
+  result_file: actual_wake_release_weak_projection_results.json
+  point_candidate: FALSIFIED
+  weak_candidate: GO
+  aggregate_metrics:
+    point_tip_finest_change_abs_max: 0.05358633874708274
+    point_tip_last_difference_contraction_min: 1.0085004078158704
+    point_outer_edge_finest_change_abs_max: 0.007729114659071001
+    point_outer_edge_last_difference_contraction_min: 1.017066120242574
+    point_incident_direction_spread_abs_max: 0.04189781694735425
+    weak_mass_condition_number_max: 11.105307035751997
+    weak_manufactured_recovery_abs_max: 1.942890293094024e-16
+    weak_orthogonality_relative_residual_max: 2.017516723584667e-16
+    weak_quadrature_change_contraction: 3.567086595722435
+    weak_finest_release_relative_change: 0.02519436761385004
+    weak_release_speed_abs_max: 0.14620663250705546
+    rigid_release_velocity_abs_max: 8.604228440844963e-16
+  claim_effect: >
+    Falsify and freeze pointwise attachment velocity. Validate and freeze
+    the global weak P1 normal mesh velocity. The coupled newborn stage may
+    consume only this weak field; its coefficients must never be reported as
+    physical boundary point values.

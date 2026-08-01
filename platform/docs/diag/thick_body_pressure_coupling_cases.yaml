@@ -1,0 +1,46 @@
+claim: N3.1j3b6b
+status: preregistered_before_execution
+target: >
+  Falsify pressure-level addition of an independently evaluated thickness
+  mode and lifting/circulation mode.  Potential and velocity modes may be
+  superposed, but the total velocity and material potential rate must enter
+  Bernoulli once before pressure is integrated once.
+canonical_problem:
+  name: circular_cylinder_with_prescribed_circulation
+  radius: 1.0
+  freestream_speed: 1.0
+  circulation_velocity_ratios: [0.10, 0.35, 0.70]
+  azimuth_nodes: 4096
+  convention:
+    theta: counterclockwise_from_positive_x
+    outward_normal: [cos(theta), sin(theta)]
+    noncirculatory_surface_velocity: "-2 U sin(theta)"
+    circulation_surface_velocity: "k U, k = Gamma/(2 pi R U)"
+    pressure_coefficient: "Cp = 1 - (v_theta/U)^2"
+    force_coefficient: "-0.5 integral_0^(2pi) Cp n dtheta, reference chord=2R"
+metrics:
+  - total_pressure_matches_closed_form
+  - nonadditive_cross_term_matches_closed_form
+  - total_lift_matches_kutta_joukowski
+  - pressure_level_addition_loses_lift
+  - total_inviscid_drag_is_zero
+  - uniform_pressure_gauge_does_not_change_force
+thresholds:
+  max_pressure_identity_error: 2.0e-14
+  max_cross_term_identity_error: 2.0e-14
+  max_force_coefficient_error: 2.0e-12
+  max_zero_drag_error: 2.0e-12
+  max_gauge_force_change: 2.0e-12
+required_outcome:
+  pressure_level_addition_gate: NO-GO
+  potential_velocity_level_unification_gate: GO
+scope_limit:
+  - exact incompressible inviscid two-dimensional representation identity only
+  - no claim that a RoboEagle thick-body source solve has been implemented
+  - no claim that prescribed N1 circulation satisfies a thick-body Kutta condition
+  - no viscous, separation, LEV, force-fit, or V4.1 production claim
+no_go:
+  - adding separately integrated thickness and lifting pressures or forces
+  - omitting the Bernoulli cross term
+  - changing N1 circulation, wake, force, or implementation
+  - using an experimental target or fitted coefficient in this guard

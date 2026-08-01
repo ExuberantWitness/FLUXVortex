@@ -1,0 +1,86 @@
+version: 1
+frozen_before_implementation: true
+scope: "N2.6b4f independent near-wall field identity and evidence coverage"
+authority:
+  decision: "research_n2_profile_state_decision_20260728.md"
+  projection_identity: "research_n2_ibl_to_ves_sufficiency_20260727.md"
+forbidden_inputs:
+  - lift
+  - thrust
+  - force
+  - moment_target
+  - LESP
+  - pressure_target
+  - pressure_residual
+  - structural_state
+schema:
+  coordinates:
+    time: "[nt], strictly increasing"
+    surface_chart: "[ns,2]"
+    surface_faces: "[nf,3], valid node indices"
+    side: "[ns], values -1 or +1"
+    normal_coordinate: "[nt,ns,nn], starts at zero and strictly increases"
+  kinematics:
+    wall_position: "[nt,ns,3]"
+    wall_velocity: "[nt,ns,3]"
+    surface_normal: "[nt,ns,3], unit"
+    tangent_basis: "[nt,ns,2,3], right-handed orthonormal"
+    edge_position: "[nt,ns,3]"
+    edge_velocity: "[nt,ns,3]"
+  field:
+    density: "[nt,ns,nn], positive"
+    velocity: "[nt,ns,nn,3]"
+  provenance:
+    required:
+      - source_kind
+      - reference
+      - case_id
+      - split_role
+      - independent_audit_id
+      - edge_convention
+      - reynolds_min
+      - reynolds_max
+      - regime_flags
+manufactured_cases:
+  valid_moving_crossflow:
+    requirement:
+      - "no-slip residual within declared extraction tolerance"
+      - "last profile point equals declared edge velocity"
+      - "edge point lies on declared local normal ray"
+      - "basis, normal and side identities valid"
+    promotion_role: "schema/identity only"
+  rigid_rotation:
+    requirement:
+      - "all scalar validation residuals are invariant under proper rotation"
+      - "dataset validity is unchanged"
+    promotion_role: "schema/identity only"
+  forbidden_label:
+    mapping_key: "lift_target"
+    requirement: "must fail before dataset construction"
+  no_slip_violation:
+    requirement: "must identify the wall-kinematic inconsistency"
+  missing_physical_coverage:
+    requirement:
+      - "manufactured source never becomes production eligible"
+      - "missing separated/transitional/moving-wall coverage remains explicit"
+coverage_gate:
+  target:
+    reynolds_min: 110000.0
+    reynolds_max: 190000.0
+    required_regimes:
+      - dynamic
+      - three_dimensional
+      - crossflow
+      - transitional
+      - separated
+      - moving_wall
+    required_split_role: "test"
+  go: >
+    schema and field identities pass, target Reynolds interval is covered,
+    every required regime is present, source is independent non-manufactured
+    field data, and an external audit id is recorded
+  no_go:
+    - "manufactured profiles as physical validation"
+    - "metadata coverage alone as proof of model accuracy"
+    - "any force, pressure-residual, LESP or structural target"
+    - "production decoder before field-level reconstruction and spike gates"

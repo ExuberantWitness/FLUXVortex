@@ -1,0 +1,190 @@
+artifact: actual_wake_nonlinear_midpoint_step_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b1
+  - N3.1j3b6d18c2b3b2b
+  - N3.1j3b6d18c2b3a
+status: executed_go
+stage: S3w_actual_nonlinear_previous_time_midpoint_single_step
+role: no_force_nonlinear_stage_composition_oracle
+
+question: >
+  Can one actual previous-time explicit-midpoint step update free-P1 wake
+  geometry and global-P2 material state while re-evaluating the four-channel
+  physical velocity at the midpoint and satisfying the algebraic body trace
+  exactly at both midpoint and endpoint, without iterating geometry or
+  clamping the scalar boundary?
+
+cause_from_s3v:
+  data_fingerprint:
+    - >
+      The exact fixed-geometry actual DAE has effective mass condition 11.46,
+      spectral radius 16.37 and explicit-midpoint Cauchy ratio 4.0036.
+    - >
+      Its coarsest explicit stability-polynomial defect is 1.19%, so local
+      stiffness does not justify an implicit geometry branch.
+    - >
+      S3t leaves 55.20% non-affine geometry projection residual and a 0.3295
+      relative-normal diagnostic; both must remain visible at nonlinear
+      stages rather than be fitted away.
+    - >
+      S3u falsifies endpoint clamping, so each midpoint/end scalar stage
+      must solve the algebraic body-trace constraint together with the
+      M_fb trace increment.
+  node: N3.1j3b6d18c2b3b3b2
+  movable_space: >
+    Compose only the validated actual topology, owner-aware velocity,
+    normal-only/body-essential geometry projection, consistent-P2 matrices
+    and actual-boundary solve. At each fixed stage geometry, solve the
+    nine-dimensional affine body-trace residual exactly by unit-basis
+    superposition. Do not iterate geometry, add damping/stabilization,
+    change quadrature or inspect pressure/force.
+  classification: missing_nonlinear_constraint_consistent_stage_composition
+
+primary_evidence:
+  - source: >
+      Arnold, Strehmel & Weiner, Numerische Mathematik 64 (1993) 409-432.
+    doi: https://doi.org/10.1007/BF01388697
+    implication: >
+      Half-explicit RK requires an algebraically consistent solution at each
+      differential stage, not an endpoint projection.
+  - source: >
+      Roccia et al., Wind Energy Science 9 (2024), Appendix C2.
+    doi: https://doi.org/10.5194/wes-9-385-2024
+    implication: >
+      A previous-time explicit geometry branch is legitimate without a
+      nonlinear geometry iteration.
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for Unsteady Aerodynamic
+      Analysis with Relaxed Wakes, 2021, figures 3.4 and 3.8.
+    implication: >
+      Wake vertices move with local velocity and the relaxed geometry then
+      re-enters the strength/tangency solution; geometry motion and algebraic
+      flow re-solution are distinct operations.
+  - source: >
+      Elliott & Venkataraman, NMPDE 31 (2015) 459-499.
+    doi: https://doi.org/10.1002/num.21930
+    implication: >
+      Geometry velocity and relative-tangential scalar transport must be
+      evaluated on the appropriate evolving-surface stage.
+
+canonical:
+  initial_state: "base_solution.wake_history from frozen S3n"
+  body:
+    geometry: static
+    attachment_velocity: [0.0, 0.0, 0.0]
+    incident_velocity: "frozen S3n t=0.5 field"
+  timestep: 0.01
+  physical_velocity:
+    channels:
+      - external_incident
+      - actual_body_source
+      - actual_body_doublet
+      - current_material_wake
+    geometry_query: "four strict interior points per face"
+    P2_quadrature_order: 4
+    body_orders: [24, 36]
+    wake_orders: [24, 36]
+    edge_quadrature: target_sinh_analytic_sheet
+  half_stage:
+    geometry: "X_mid=X_n+0.5*dt*w_n with body P1 edge essential"
+    scalar_equation: >
+      Mff_n*(y_mid-y_n)+Mfb_n*(g_mid-g_n)
+      +0.5*dt*(Cff_n*y_n+Cfb_n*g_n)=0
+    algebraic_constraint: "g_mid=body_trace(X_mid,y_mid)"
+  endpoint:
+    geometry: "X_1=X_n+dt*w_mid with body P1 edge essential"
+    scalar_equation: >
+      Mff_mid*(y_1-y_n)+Mfb_mid*(g_1-g_n)
+      +dt*(Cff_mid*y_mid+Cfb_mid*g_mid)=0
+    algebraic_constraint: "g_1=body_trace(X_1,y_1)"
+  algebraic_stage_solver:
+    method: >
+      Evaluate residual at zero and every unit body-trace basis on fixed
+      stage geometry, solve the exact 9x9 affine system, then perform one
+      independent verification solve.
+    geometry_iterations: 0
+
+required_identities:
+  - "base, midpoint and endpoint actual-boundary weak systems are valid"
+  - "midpoint and endpoint nine-dimensional affine trace systems are full rank"
+  - "midpoint and endpoint algebraic body-trace residuals close"
+  - "half and full free-P2 weak increment equations close"
+  - "body P1 geometry remains exactly attached at both stages"
+  - "chronological geometry/scalar seams and P2 round-trip remain exact"
+  - "base and midpoint four-channel velocity ledgers close"
+  - "normal-only geometry update and actual P2 scalar update are both nontrivial"
+  - "face areas stay positive and the input state is not mutated"
+  - "no geometry fixed point, scalar clamp, load target or structure enters"
+
+thresholds:
+  actual_boundary_relative_weak_residual_max: 2.0e-12
+  algebraic_stage_rank_deficiency_max: 0
+  algebraic_stage_condition_number_max: 1.0e6
+  algebraic_trace_residual_abs_max: 2.0e-11
+  scalar_increment_normalized_residual_max: 2.0e-11
+  body_geometry_attachment_abs_max: 0.0
+  chronological_seam_abs_max: 2.0e-12
+  P2_roundtrip_abs_max: 2.0e-12
+  velocity_ledger_closure_abs_max: 2.0e-12
+  free_geometry_change_abs_min: 1.0e-8
+  free_scalar_change_abs_min: 1.0e-8
+  minimum_face_area_ratio_min: 0.95
+  input_state_mutation_abs_max: 0.0
+  geometry_iteration_count_max: 0
+
+decision:
+  go: >
+    Every actual-boundary, affine-stage, scalar, geometry, topology, ledger,
+    nontriviality and mutation gate passes. Validate only one nonlinear
+    previous-time midpoint step and authorize a separate multi-step time
+    Cauchy/timestep-independence gate.
+  no_go: >
+    Preserve the failure at its named stage. Do not add damping, a core,
+    ridge regularization, geometry iteration, trace clamp or relax any
+    threshold. An explicit-stage failure is evidence for revisiting the
+    implicit branch only after the failed residual is localized.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate advances one existing two-band wake over dt=0.01. It does not
+  add a newborn band, run a time family or flap cycle, compute unified
+  pressure/force/LEV, compare loads or activate production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_wake_nonlinear_midpoint_step_results.json
+  decision: GO
+  passed_checks: 10
+  total_checks: 10
+  aggregate_metrics:
+    actual_boundary_relative_weak_residual_max: 4.160965396799122e-16
+    algebraic_stage_rank_deficiency_max: 0
+    algebraic_stage_condition_number_max: 1.1341600400992544
+    algebraic_trace_residual_abs_max: 2.4980018054066022e-15
+    free_state_preservation_abs_max: 0.0
+    half_scalar_normalized_residual: 2.3488330558437118e-15
+    full_scalar_normalized_residual: 1.3324868566350226e-15
+    geometry_stage_identity_abs_max: 0.0
+    body_geometry_attachment_abs_max: 0.0
+    chronological_seam_abs_max: 0.0
+    P2_roundtrip_abs_max: 2.4980018054066022e-15
+    velocity_ledger_closure_abs_max: 0.0
+    free_geometry_change_abs_max: 0.0011448285954944943
+    free_scalar_change_abs_max: 0.0018930510384470717
+    minimum_face_area_ratio: 0.999870896064582
+    input_state_mutation_abs_max: 0.0
+    geometry_iteration_count: 0
+    half_stage_basis_solve_count: 11
+    endpoint_basis_solve_count: 11
+  retained_diagnostics:
+    base_geometry_projection_residual_fraction: 0.5519790136217941
+    midpoint_geometry_projection_residual_fraction: 0.5653290923731108
+    base_relative_velocity_normal_component_max: 0.32951703677650945
+    midpoint_relative_velocity_normal_component_max: 0.3305408064806419
+  claim_effect: >
+    Validate and freeze only one dt=0.01 nonlinear previous-time midpoint
+    composition with exact stage algebra. Authorize a distinct multi-step
+    Cauchy/timestep-independence gate; do not infer long-time stability,
+    pressure, force or production accuracy.

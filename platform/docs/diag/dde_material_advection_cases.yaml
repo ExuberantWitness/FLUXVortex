@@ -1,0 +1,33 @@
+schema_version: 1
+title: "N3.1j4c no-core material-sheet advection gates"
+role: >
+  No-force dynamic verification of sheet-average field to shared P1 geometry
+  velocity and Heun material advection. No bound solve, shedding, pressure,
+  or target-force comparison is permitted.
+sources:
+  - "Krebs 2021 dissertation, wake vertices move with local velocity once per timestep"
+  - "Ambrose, SIAM J. Appl. Math. 85 (2025), Birkhoff-Rott sheet-average velocity"
+  - "NASA TP-2995 (1990), panel-edge velocity requires an interior limiting construction"
+rotation_case:
+  angular_speed: 0.7
+  final_time: 0.4
+  steps: [4, 8, 16]
+self_induced_case:
+  mesh_cells: 2
+  final_time: 0.02
+  steps: [2, 4, 8]
+  line_quadrature_orders: [48, 64]
+guards:
+  rotation_error_ratio_min: 3.8
+  self_time_cauchy_ratio_min: 3.0
+  self_finest_change_over_chord_max: 0.01
+  quadrature_change_over_displacement_max: 0.02
+  mirror_symmetry_max_abs: 1.0e-10
+  minimum_area_ratio: 0.90
+  maximum_edge_length_ratio: 1.20
+  material_mu_residual_max: 1.0e-12
+  topology_tolerance: 1.0e-12
+promotion_boundary: >
+  Passing validates only a short-time CPU material-advection reference on a
+  manufactured zero-boundary sheet. It does not validate LEV birth, a bound
+  circulation solve, long-time roll-up, pressure, force, or production use.

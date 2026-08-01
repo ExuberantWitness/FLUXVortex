@@ -1,0 +1,26 @@
+schema_version: 1
+title: "N3.1j4b1 half-wing C1 quadratic shedding-trace gate"
+role: >
+  Determine whether strip-centre strengths can be lifted to one continuous
+  P2 spanwise potential-jump trace without a smoothing parameter. The
+  registered equations are midpoint interpolation, Krebs internal-gradient
+  continuity, zero root derivative from mirror symmetry, and zero tip
+  potential jump.
+grids:
+  uniform_strip_counts: [4, 8, 16]
+  stretched_strip_counts: [4, 8, 16]
+  stretched_exponent: 1.3
+manufactured_trace: "mu(s)=1-s^2 on s in [0,1]"
+guards:
+  matrix_rank_defect_max: 0
+  condition_number_max: 1.0e5
+  midpoint_residual_max: 1.0e-12
+  root_derivative_residual_max: 1.0e-11
+  tip_value_residual_max: 1.0e-12
+  internal_derivative_jump_max: 1.0e-11
+  manufactured_node_error_max: 1.0e-11
+promotion_boundary: >
+  Passing validates only the parameter-free half-wing span-trace
+  reconstruction identity and its use in a newborn material band. It does
+  not supply the three temporal strength rows, validate LEV onset, close
+  bound/free coupling, or authorize pressure or production force.

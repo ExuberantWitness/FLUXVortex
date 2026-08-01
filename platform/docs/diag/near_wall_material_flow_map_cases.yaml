@@ -1,0 +1,63 @@
+version: 1
+frozen_before_implementation: true
+scope: "N2.6c1b2a numerical flow-map identity; not field-level separation evidence"
+authority:
+  primary_source:
+    title: "Spike formation theory in three-dimensional flow separation"
+    citation: "Santhosh et al., JFM 969 (2023), A25"
+    doi: "10.1017/jfm.2023.559"
+    basis:
+      - "Eq.2.3: material flow map"
+      - "Eq.3.1-3.2: advected material surface and tangent basis"
+      - "Algorithm 1: compute the flow map before Weingarten change"
+claim_under_test: >
+  A fixed-step fourth-order trajectory integrator can preserve material node
+  identity while convergently mapping a structured family of near-wall fluid
+  surfaces under a supplied smooth three-dimensional velocity field.
+forbidden_inputs:
+  - wall_shear_threshold
+  - shape_factor_threshold
+  - LESP
+  - BEF
+  - lift
+  - thrust
+  - force
+  - pressure
+  - structural_state
+manufactured_cases:
+  uniform_translation:
+    requirement:
+      - "all material nodes follow the exact affine trajectory"
+      - "input topology and node ordering are unchanged"
+  rigid_rotation:
+    requirement:
+      - "trajectory error converges at fourth order"
+      - "radial distance is recovered within integration error"
+  time_dependent_observer:
+    base_flow: "stationary particles"
+    transformed_flow: "Qdot Q^T (x_tilde-b)+bdot"
+    requirement:
+      - "the transformed trajectory matches Q(t)x0+b(t)"
+      - "a moving observer does not create a false material deformation"
+  no_slip_near_wall_fold:
+    field: "f=[0,0,a*x^2*z]"
+    exact_solution: "z(t)=z0*exp(a*x^2*(t-t0))"
+    requirement:
+      - "the wall layer z=0 remains fixed"
+      - "off-wall layers follow the exact nonlinear fold"
+      - "the integrated surface can be consumed by the N2.6c1b1 geometry oracle"
+failure_cases:
+  - "non-finite or wrongly shaped velocity return"
+  - "non-finite or non-positive maximum step"
+  - "final time not greater than initial time"
+  - "non-finite initial material positions"
+go:
+  numerical_identity: >
+    Translation, fourth-order convergence, moving-observer, no-slip wall and
+    nonlinear-fold cases pass without any load or pressure target.
+  physical_promotion: false
+no_go:
+  - "claiming interpolation accuracy for a field data set not exercised here"
+  - "claiming a validated separation backbone"
+  - "choosing step size or integration interval from integrated loads"
+  - "reusing DDE self-induced sheet advection as a near-wall fluid flow map"

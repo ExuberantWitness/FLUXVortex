@@ -1,0 +1,156 @@
+artifact: actual_relaxation_composition_audit_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b1
+depends_on_claims:
+  - N3.1j3b6d18c2a
+  - N3.1j3b6d18c2b2b1a
+  - N3.1j3b6d18c2b3a
+  - N3.1j4c5
+  - N3.1j4c6
+status: executed_no_go
+stage: S3r_actual_relaxation_direct_composition_audit
+role: no_force_read_only_component_sufficiency_audit
+
+question: >
+  Can the validated fixed-snapshot four-channel velocity ledger, assembly
+  vertex-star normal projection, moving P2 ALE transport, constrained wake
+  Heun step and actual-boundary re-solve be directly composed on the actual
+  MaterialWakeHistory without adding a typed open-boundary topology,
+  owner-aware stage velocity contract or scalar-history reconstruction?
+
+cause_from_c2b3a:
+  exploratory_data_fingerprint:
+    - >
+      material_wake_assembly exposes the newest body attachment as the
+      one-sided role interface:external-body-cut.
+    - >
+      project_assembly_vertex_star_normal_geometry_velocity calls the closed
+      assembly topology validator, which requires every interface to have
+      exactly two sides.
+    - >
+      assemble_p2_patch_material_transport uses the same closed assembly
+      topology even though the actual wake has a prescribed body trace.
+    - >
+      the actual velocity ledger is owner-aware but publishes only a fixed
+      WakeSheetQuery, whereas the P2 transport callback receives untyped
+      point coordinates at its own quadrature points.
+    - >
+      MaterialWakeBand.material_update changes geometry only; no typed
+      inverse map writes a transported global continuous-P2 scalar back to
+      chronological potential_jump_rows.
+  node: N3.1j3b6d18c2b3b
+  movable_space: >
+    This audit may only exercise and inspect the already validated operators.
+    It may not relabel the body edge as zero, synthesize a second interface
+    side, infer ownership from coordinates, freeze mu under a non-Lagrangian
+    gauge, add a vortex core, alter a quadrature, move production geometry,
+    compute pressure/force or inspect a target load.
+  candidate_under_test: direct_composition_without_new_stage_interface
+
+primary_evidence:
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for Unsteady Aerodynamic
+      Analysis with Relaxed Wakes, PhD dissertation, 2021, Fig. 3.1,
+      Fig. 3.4 and Sec. 3.3.
+    implication: >
+      Wake vertices move once per time step with local velocity; surface and
+      newly created wake strengths are solved before relaxation and resolved
+      after the moved geometry is known.
+  - source: >
+      Krebs, Bramesfeld & Cole, Transient Thrust Analysis of Rigid Rotors in
+      Forward Flight, Aerospace 9 (2022) 28.
+    doi: https://doi.org/10.3390/aerospace9010028
+    implication: >
+      Individual material wake strengths are retained while the relaxed wake
+      geometry changes and remains coupled to the lifting-surface solution.
+  - source: >
+      Roccia et al., Development and application of a mesh generator intended
+      for UVLM simulations, Wind Energy Science 9 (2024) 385-420, Appendix C.
+    doi: https://doi.org/10.5194/wes-9-385-2024
+    implication: >
+      The wake velocity contains bound, complete-wake and freestream
+      contributions. Previous-time explicit convection requires no nonlinear
+      wake iteration; present/averaged-time choices do.
+  - source: >
+      Tan & Wang, Panel/full-span free-wake coupled method for unsteady
+      aerodynamics of helicopter rotor blade, CJA 26 (2013) 535-543.
+    doi: https://doi.org/10.1016/j.cja.2013.04.050
+    implication: >
+      Wake strength is supplied by the trailing-edge condition and the wake
+      field changes the body-panel solution, so attachment identity and field
+      ownership are coupling data rather than an optional post-process.
+
+canonical:
+  state: "the frozen S3n curved two-band actual-boundary solution"
+  velocity_operator: target_sinh_analytic_sheet
+  geometry_projection: assembly_vertex_star_sheet_average_normal
+  geometry_boundary:
+    newest: typed_external_body_attachment
+    chronological_seams: paired_explicit_interfaces
+    oldest_and_tips: zero
+  scalar_transport: consistent_global_P2_ALE
+  scalar_boundary:
+    body_attachment: typed_inflow_when_relative_flux_is_inward
+    oldest: free_outflow
+    tips: characteristic
+  actual_boundary_reentry: prescribed_oriented_material_history
+
+required_direct_composition_identities:
+  - "the actual solved history reconstructs and re-enters the boundary equation"
+  - "the actual four-channel ledger evaluates on its owned strict-interior query"
+  - "the vertex-star geometry projector accepts the one-sided typed body attachment"
+  - "the global P2 transport assembler accepts the same typed open boundary"
+  - "the P2 transport velocity callback receives patch, face and barycentric ownership"
+  - "transported global P2 values can reconstruct chronological material rows exactly"
+  - "no coordinate sorting, distance welding or boundary relabelling is used"
+
+thresholds:
+  actual_boundary_relative_weak_residual_max: 2.0e-12
+  actual_velocity_ledger_closure_abs_max: 2.0e-12
+  direct_composition_failure_count_max: 0
+  hidden_coordinate_inference_count_max: 0
+
+decision:
+  go: >
+    All direct-composition identities pass with no new runtime component.
+    Keep c2b3b as a pure stage-orchestration claim and preregister only the
+    coupled time integrator.
+  no_go: >
+    Any direct-composition failure falsifies sufficiency of the existing
+    interfaces. Preserve every failure and open only a typed actual-wake
+    stage operator that distinguishes external geometry boundaries, owner
+    queries and chronological P2 scalar reconstruction. Do not bypass the
+    failed checks or start a relaxation fixed point.
+  production_activation_allowed: false
+
+scope_limit: >
+  This is a read-only composition audit. It does not define a new velocity,
+  change wake geometry or strength, choose an implicit/explicit time scheme,
+  compute pressure/force/LEV or activate production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_relaxation_composition_audit_results.json
+  decision: NO-GO
+  passed_checks: 3
+  total_checks: 8
+  direct_composition_failure_count: 4
+  actual_boundary_relative_weak_residual: 3.4929937003773954e-16
+  actual_velocity_ledger_closure_abs_max: 0.0
+  failures:
+    - >
+      vertex-star projection rejects one-sided
+      interface:external-body-cut.
+    - >
+      global P2 transport assembly rejects the same one-sided attachment.
+    - >
+      the transport callback supplies points but no patch/face/barycentric
+      owner identity.
+    - >
+      MaterialWakeBand has no scalar update from global P2 state back to
+      chronological potential_jump_rows.
+  interpretation: >
+    The actual boundary equation and S3n velocity ledger are healthy, so the
+    failures are localized to missing composition interfaces. Direct
+    composition is falsified; only a typed open-boundary, owner-aware stage
+    operator with exact chronological P2 reconstruction may be opened next.

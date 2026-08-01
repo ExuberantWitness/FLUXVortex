@@ -1,0 +1,171 @@
+artifact: actual_wake_unsteady_pressure_tangent_preregistration
+date_preregistered: "2026-07-28 12:37:58 +08:00"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3e3
+stage: S3ah_compatible_reference_unsteady_pressure_tangent
+status: aborted_before_formal_execution_circular_rank_no_go
+role: no_force_zero_extra_state_and_state_dimension_gate
+
+pre_execution_audit:
+  file: research_n3_actual_wake_unsteady_pressure_tangent_audit_20260728_124437.md
+  decision: CIRCULAR-RANK-NO-GO
+  formal_numerical_execution_performed: false
+  reason: >
+    With B and the Morino block already frozen full rank, H=I+C*B^{-1}W
+    is necessarily rank seven. Requiring J_P full rank, M_a SPD and
+    Q=chol(M_a)^(-T) makes every other factor in G_A invertible, hence
+    rank(G_A)=rank(H)=7 independently of the pressure closure, timestep
+    and history basis. The proposed rank branch therefore cannot identify
+    a physical missing-state dimension.
+  reference_limit: >
+    c_previous0 is algebraically closure-consistent but dynamically
+    unverified; arbitrary seven-mode previous-trace perturbations are not
+    established as reachable history tangents.
+  next_gate: >
+    Generate consecutive BIE/compatibility/Kelvin/material-transport
+    reachable states, observe the unforced pressure/birth dynamic residual,
+    and test its transversality/cokernel only on the reachable tangent
+    space.
+
+question: >
+  Starting from a body-wake compatible reference, does one explicitly named
+  weak unsteady-pressure closure preserve g-Cphi=0 to first order for every
+  active spanwise P2 history perturbation? If not, what is the rank of the
+  compatibility-defect tangent map, and can one global scalar state span it?
+
+cause_from_s3ag:
+  data_fingerprint:
+    - "arbitrary birth forcing gave full-BIE residual <=3.49e-16 but a non-vanishing compatibility defect"
+    - "weak and collocation steady pressure roots converged to different large incompatible states"
+    - "only one span envelope was exercised, so the dimension of the missing compatibility response is still unknown"
+  node: N3.1j3b6d18c2b3b3b2c2b2b3e3
+  movable_space: >
+    Only a no-force compatible-reference tangent oracle may be added. The
+    complete body BIE, direct actual-geometry wake operator, attachment
+    compatibility definition, P2 line mass, pressure observation, N1/N4,
+    production force, grid, kinematics and every frozen claim remain fixed.
+  classification_to_test:
+    - "zero_extra_state actual-coupled closure may preserve compatibility automatically"
+    - "one global scalar may be sufficient"
+    - "a distributed forming-zone inventory may be structurally required"
+
+named_closure:
+  name: weak_unsteady_pressure_history_closure
+  equation: >
+    F_P = M_a [ C phi(g) - c_previous ]
+          + dt * f_a( 0.5*(|w_upper|^2-|w_lower|^2) ) = 0
+  body_equation: "B phi + W_direct g = b"
+  compatibility_observation: "A = g - C phi"
+  notes:
+    - "C is the active body-cut jump map; g is the independent current wake trace"
+    - "f_a is the consistent weak active-P2 line observation, not collocation"
+    - "the previous trace is an input history state, not a fitted coefficient"
+    - "pressure is never integrated into force in this gate"
+
+compatible_reference:
+  body: "frozen symmetric full-wing diamond canonical"
+  freestream: {speed: 1.0, alpha_deg: 0.0}
+  wall_velocity: "zero"
+  downstream_edge_x: 2.0
+  wake_geometry: "one explicit straight material band, first two temporal rows known zero"
+  attachment: "declared ordered material cut, sign +1"
+  body_current_state: "Morino-compatible g0=C*phi0 using all body BIE rows"
+  previous_trace: >
+    c_previous0 = c0 + dt*M_a^{-1}*P0, where P0 is the weak pressure
+    observation at the compatible current state. This defines an exact
+    history-consistent linearization reference; it is not a production
+    pressure offset. P0 must converge toward zero with boundary quadrature.
+
+forcing_basis:
+  space: "seven active P2 cut modes"
+  construction: "Q = chol(M_a)^(-T), hence Q^T M_a Q = I"
+  perturbation: "c_previous(epsilon,j)=c_previous0+epsilon*Q[:,j]"
+  forbidden:
+    - "SVD-selected physical modes"
+    - "a load-derived envelope"
+    - "discarding any of the seven active modes"
+
+tangent_definition:
+  reduced_jacobian: >
+    J_P = M_a*C*(-B^{-1}W_direct) + dt*dP/dg
+  history_response: "Dg = J_P^{-1} M_a Q"
+  compatibility_map: >
+    G_A = L_M^T [ I-C*(-B^{-1}W_direct) ] Dg, where
+    M_a=L_M*L_M^T
+  interpretation:
+    rank_0: "zero-extra-state hypothesis remains eligible"
+    rank_1: "a global scalar is eligible only with an independent separable physical mechanism"
+    rank_gt_1: "one global scalar is structurally insufficient"
+    rank_7: >
+      seven distributed degrees of freedom are the minimum algebraic
+      dimension for this closure, but no physical inventory is authorized
+      until a finite-forming-zone/VES conservation law supplies its state,
+      coupling operators and memory.
+
+canonical_numerics:
+  boundary_quadrature_orders: [5, 8, 10, 12]
+  direct_w_primary_order: 10
+  line_quadrature_order: 12
+  timestep_family: [0.001, 0.01, 0.1]
+  nonlinear_continuation_timestep: 0.01
+  continuation_epsilon: [0.001, 0.0005, 0.00025, 0.000125]
+  newton:
+    residual_tolerance: 1.0e-12
+    maximum_iterations: 16
+    maximum_backtracking_steps: 24
+  deterministic_mode_rotation:
+    construction: "QR of the fixed 7x7 matrix sin((i+1)(j+1))+0.1*cos((i+1)+2(j+1))"
+
+thresholds:
+  direct_w_factorization_abs_max: 5.0e-12
+  direct_w_rank_deficiency_max: 0
+  reference_full_bie_relative_residual_max: 1.0e-11
+  reference_compatibility_abs_max: 1.0e-11
+  reference_closure_abs_max: 1.0e-12
+  reference_pressure_residual_finest_abs_max: 1.0e-6
+  reference_pressure_residual_must_decrease_with_quadrature: true
+  mass_orthonormality_abs_max: 2.0e-12
+  reduced_jacobian_rank_deficiency_max: 0
+  analytic_directional_derivative_abs_max: 2.0e-7
+  compatibility_tangent_rank_min: 7
+  compatibility_tangent_sigma_min_min: 0.25
+  rotated_basis_covariance_abs_max: 2.0e-11
+  nonlinear_root_residual_abs_max: 1.0e-11
+  nonlinear_full_bie_relative_residual_max: 1.0e-11
+  tangent_centered_difference_abs_max: 2.0e-5
+  tangent_predictor_order_min: 1.8
+  global_scalar_rank_max: 1
+  global_scalar_unresolved_dimension_min: 6
+  input_mutation_abs_max: 0.0
+
+decision:
+  zero_state_go: >
+    G_A has numerical rank zero for every frozen timestep/order and the
+    nonlinear reference-connected branch preserves compatibility at the
+    preregistered order. Only then may the same zero-state closure continue.
+  distributed_defect_go: >
+    G_A is full rank seven, the analytic/finite-difference and continuation
+    guards pass, and basis covariance holds. This falsifies automatic
+    compatibility for this named closure and falsifies a one-global-scalar
+    repair. It authorizes only a literature/derivation phase for a physical
+    distributed forming-zone state.
+  no_go: >
+    Rank changes with quadrature/timestep, the reference is incompatible,
+    the derivative or continuation checks fail, or the operator depends on
+    the chosen basis. Diagnose the representation; do not add a slack state,
+    least squares, deleted body rows, damping, core, clamp or load target.
+  production_activation_allowed: false
+
+execution:
+  formal_execution: false
+  result_file: null
+  decision: ABORTED_BEFORE_FORMAL_EXECUTION
+  claim_effect: >
+    Falsify only the use of this predetermined rank as a physical
+    state-dimension diagnostic. Do not infer a zero-state result, a
+    distributed forming state, VES, pressure force or production closure.
+
+nonclaims:
+  - "This gate does not establish a physical forming-zone inventory."
+  - "Xia angle/strength/relative-speed algebra is not counted as extra state because it is eliminable."
+  - "A rank-seven defect does not validate zeta, VES, pressure force or LEV load."
+  - "No h/p spatial convergence, moving wall, finite NACA-2406 base, 118 sweep or Fig17/18/19 result is produced."

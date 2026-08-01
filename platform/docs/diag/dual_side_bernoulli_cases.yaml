@@ -1,0 +1,23 @@
+claim: N3.1j3b
+status: preregistered_before_execution
+target: >
+  Verify that dual-side moving-surface Bernoulli limits reproduce the
+  existing unified pressure jump exactly and that the paired moving-wall
+  circulation source obeys its orientation identity without a fitted term.
+seed: 20260727
+count: 37
+thresholds:
+  max_pressure_jump_identity_residual: 2.0e-14
+  max_gauge_jump_residual: 2.0e-14
+  max_comoving_jump_residual: 2.0e-14
+  max_paired_source_identity_residual: 2.0e-14
+scope_limit:
+  - algebraic manufactured fields only
+  - no claim that mean potential or side limits are yet available from N1
+  - no curved-surface pressure-gradient convergence claim
+  - no boundary-layer inventory, separation release, DDE birth, force, or V4.1 production claim
+no_go:
+  - adding a pressure offset independently on either side
+  - changing the unified pressure jump to reduce the residual
+  - converting the wall source directly into an LEV force or free-sheet amplitude
+  - using target lift or thrust anywhere in the gate

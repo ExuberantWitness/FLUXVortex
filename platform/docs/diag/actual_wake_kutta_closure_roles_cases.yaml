@@ -1,0 +1,143 @@
+artifact: actual_wake_kutta_closure_roles_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3b
+status: executed_algebraic_role_go_quotient_no_go
+stage: S3af_independent_wake_kutta_closure_roles
+role: no_force_equation_role_and_counterexample_oracle
+
+question: >
+  Does the classified P2 actual-boundary system retain every body Galerkin
+  equation when the current wake jump is made independent and closed by one
+  Kutta relation, and does the proposed topology-derived quotient instead
+  give metric-dependent solutions with discarded full-BIE residual?
+
+diagnosis_completed_before_preregistration:
+  observed_fingerprint:
+    full_cut_node_count: 9
+    independent_cut_jump_rank: 7
+    classified_body_unknown_count: 81
+    continuous_base_p2_unknown_count: 74
+    body_matrix_rank: 81
+  disclosure: >
+    These counts and an exploratory Euclidean-versus-surface-mass quotient
+    difference were observed during cause localization. The quotient part of
+    this artifact is therefore a reproducibility counterexample, not a blind
+    acceptance test. All numerical tolerances below are frozen before the
+    reusable oracle and result artifact are implemented.
+
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c2b2b3a
+  - N3.1j3b6d18c2b3a
+  - N3.1j3b6d16
+
+canonical:
+  body: "frozen S3a symmetric diamond full wing"
+  cut: "four-segment classified trailing-edge cut with zero-jump tips"
+  freestream:
+    speed: 1.0
+    alpha_deg: 5.0
+  material_wake:
+    downstream_edge_x: 2.0
+    target_quadrature_order: 5
+    source_quadrature_order: 5
+  active_cut_rows: "all nonzero rows of the oriented full cut-jump map"
+  manufactured_quotient_trace:
+    expression: "g(y)=0.1*(1-y^2) on the seven active P2 cut nodes"
+  wake_coordinate_transforms:
+    - identity
+    - reverse_permutation
+    - positive_diagonal_scaling
+    - unit_upper_triangular
+
+equation_roles:
+  full_body_equation: "B*phi + W*g = b; n equations"
+  baseline_morino_closure: "g - C*phi = 0; r equations"
+  eliminated_baseline: "(B + W*C)*phi = b"
+  future_physical_closure: >
+    F_K(phi,g,g_old,X)=0 replaces the Morino closure. It is not appended
+    beside g-C*phi unless additional forming-state unknowns are first given a
+    physical identity.
+  forbidden_quotient_repair: >
+    Deleting r body test equations to make Morino attachment and a second
+    birth closure fit the same n+r unknowns.
+
+required_outputs:
+  - "raw cut-node count, active rank and zero endpoint rows"
+  - "continuous prolongation and canonical paired-jump injection identities"
+  - "body rank and independent-wake augmented rank/nullity"
+  - "exact eliminated-wake factorization"
+  - "Morino block rank, residual and equivalence to the frozen eliminated solve"
+  - "wake-coordinate basis covariance"
+  - "Euclidean and surface-L2 quotient projectors and mapped solutions"
+  - "projected, attachment and discarded/full BIE residuals"
+
+thresholds:
+  expected_full_cut_node_count: 9
+  expected_independent_cut_rank: 7
+  expected_continuous_base_dof_count: 74
+  expected_classified_body_dof_count: 81
+  rank_deficiency_max: 0
+  zero_endpoint_row_abs_max: 0.0
+  topology_identity_abs_max: 2.0e-13
+  wake_factorization_abs_max: 2.0e-13
+  morino_block_solution_abs_max: 2.0e-11
+  normalized_full_bie_residual_max: 2.0e-12
+  morino_closure_abs_max: 2.0e-12
+  wake_basis_covariance_abs_max: 2.0e-11
+  input_state_mutation_abs_max: 0.0
+  quotient_projector_operator_difference_min: 1.0e-1
+  quotient_solution_abs_difference_min: 1.0e-4
+  quotient_projected_residual_max: 2.0e-11
+  quotient_attachment_abs_max: 2.0e-11
+  quotient_full_bie_relative_residual_min: 1.0e-4
+
+decision:
+  algebraic_role_go: >
+    The active rank is seven, the full body matrix has rank 81, the
+    independent-wake system has exactly seven closure directions, and the
+    88-by-88 Morino block is full rank and reproduces the current eliminated
+    solve under every registered wake-coordinate basis.
+  quotient_no_go: >
+    Two admissible metrics produce materially different quotient projectors
+    and solutions while each satisfies its own projected equation and
+    attachment equation but leaves a nonzero full body-BIE residual.
+  no_go: >
+    Do not tune a metric, select rows by load accuracy, use least squares, or
+    relax a full-BIE residual. Reinspect only topology, orientation or
+    equation assembly.
+  production_activation_allowed: false
+
+result:
+  result_file: actual_wake_kutta_closure_roles_results.json
+  stage_decision: "ALGEBRAIC-ROLE-GO / QUOTIENT-NO-GO"
+  algebraic_role:
+    body_matrix_rank: 81
+    independent_wake_augmented_rank: 81
+    independent_wake_augmented_nullity: 7
+    morino_block_rank: 88
+    wake_factorization_abs_error_max: 8.470329472543003e-22
+    eliminated_block_solution_abs_error_max: 2.9559688030644793e-15
+    normalized_full_bie_residual_max: 4.2943332953351716e-16
+    wake_basis_covariance_abs_error_max: 9.020562075079397e-16
+  quotient_counterexample:
+    projector_operator_difference: 0.609106189494091
+    body_solution_abs_difference: 0.0022042860587162053
+    projected_residual_abs_max: 3.084601171963318e-18
+    attachment_residual_abs_max: 0.0
+    euclidean_full_bie_relative_residual: 0.007365141260775036
+    surface_l2_full_bie_relative_residual: 0.009284445886027882
+  claim_effect: >
+    The topology-derived body-test quotient is falsified and frozen. The
+    narrower algebraic claim that an independent seven-component active wake
+    trace retains all 81 body equations and needs exactly one seven-component
+    Kutta closure is validated and frozen. The physical birth/unsteady-
+    pressure Kutta replacement remains partial and production stays off.
+
+forbidden:
+  - "pressure, force, LESP or target-load input"
+  - "row selection by lift or thrust accuracy"
+  - "least squares or pseudoinverse in a production closure"
+  - "regularization, damping, core radius or epsilon"
+  - "finite blunt-base interpretation"
+  - "modification of frozen N1/N4 or production V4.1"
+  - "structural dynamics"

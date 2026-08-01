@@ -1,0 +1,35 @@
+claim: N3.1j2a
+status: preregistered_before_execution
+target: >
+  Determine whether preserving P2 potential-jump values at material
+  barycentric nodes automatically supplies the per-element Kelvin/Helmholtz
+  stretching identity under an arbitrary nondegenerate affine deformation.
+cases:
+  - name: affine_nonplanar_rotation_shear_stretch
+    reference_vertices:
+      - [0.0, 0.0, 0.0]
+      - [1.2, 0.1, 0.0]
+      - [0.2, 0.9, 0.0]
+    current_vertices:
+      - [0.3, -0.2, 0.1]
+      - [1.7, 0.25, 0.45]
+      - [-0.1, 1.2, 0.7]
+    material_mu: [0.2, 1.2, -0.3, 0.625, 0.375, -0.075]
+    barycentric:
+      - [0.2, 0.3, 0.5]
+      - [0.6, 0.1, 0.3]
+      - [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]
+thresholds:
+  max_material_mu_residual: 2.0e-14
+  max_material_derivative_residual: 2.0e-14
+  max_cauchy_vector_density_residual: 2.0e-14
+scope_limit:
+  - one piecewise-affine material triangle only
+  - no curved inter-element transport rule
+  - no remeshing, reconnection, viscosity, diffusion, or new-vorticity source
+  - no no-penetration solve, pressure, force, or V4.1 production claim
+no_go:
+  - changing material mu to improve the residual
+  - adding a stretch coefficient or empirical circulation correction
+  - claiming global curved-sheet Helmholtz compatibility from this local identity
+

@@ -1,0 +1,103 @@
+artifact: actual_wake_birth_junction_scale_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b2
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c2b2b1
+  - N3.1j3b6d18c2b3b3b2c2a
+  - N3.1j3b6d18c2b3a
+  - N3.1j4a
+status: executed_no_go
+stage: S3ad_birth_junction_finite_velocity_scale
+role: no_force_birth_limit_diagnosis
+
+question: >
+  Does the current trace-only actual newborn construction approach a
+  finite-vorticity, finite-velocity body-wake junction as its physical
+  birth thickness tends to zero?
+
+cause:
+  data_fingerprint:
+    - >
+      With normal geometry and potential, step-2 initial body and wake
+      velocity channels reach 1.3171e7 and 1.3168e7 while their residual
+      total is 1.4003e4.
+    - >
+      The actual matrix condition is only 55.06 and its relative weak
+      residual is 3.47e-16 at the first catastrophic velocity stage.
+    - >
+      Potential, geometry and mass conditioning explode only after the
+      birth-junction velocity has amplified.
+  node: N3.1j3b6d18c2b3b3b2c2b2b2
+  movable_space: >
+    Add a scale-family diagnostic around the open birth junction. Do not
+    modify S3aa, S3t, S3q, the actual boundary equation, quadrature,
+    physical constants, timestep placement or any frozen state.
+  classification: missing_birth_limit_finite_velocity_and_vorticity_claim
+
+canonical:
+  initial_state: "frozen S3n two-band actual solution"
+  release_velocity: "validated S3t ledger plus S3z global weak P1 normal projection"
+  timestep_family: [0.004, 0.002, 0.001, 0.0005]
+  geometry_fraction: 0.5
+  transport_quadrature_order: 7
+  actual_boundary_quadrature_order: 10
+  velocity_ledger: "validated S3n four-channel operator"
+
+required_outputs:
+  - "newborn physical thickness and minimum area"
+  - "solved trace increment from the released old trace"
+  - "newborn P2 sheet-vorticity magnitude"
+  - "actual matrix condition, residual and attachment identity"
+  - "body, wake and total velocity magnitudes on owned newborn points"
+  - "log slopes versus timestep for trace increment, vorticity and total velocity"
+
+thresholds:
+  actual_matrix_condition_number_max: 1.0e4
+  actual_relative_weak_residual_max: 2.0e-12
+  wake_attachment_error_max: 2.0e-12
+  trace_increment_dt_order_min: 0.8
+  sheet_vorticity_divergence_order_max: 0.2
+  total_velocity_divergence_order_max: 0.2
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  go: >
+    The trace increment vanishes at least first order in time, junction
+    sheet vorticity and total velocity remain order-zero bounded, and every
+    actual algebraic identity passes. Only then open a unified close-
+    evaluation oracle.
+  no_go: >
+    Falsify trace-only formation if the trace increment has a nonzero
+    birth-limit or vorticity/velocity diverges. Open an unsteady-Kutta,
+    vorticity-continuous formation claim before numerical close evaluation.
+    Do not change panel length, add a core, epsilon, damping or a load target.
+  production_activation_allowed: false
+
+result:
+  result_file: actual_wake_birth_junction_scale_results.json
+  stage_decision: NO-GO
+  checks:
+    actual_algebraic_system_remains_resolved: true
+    trace_increment_is_at_least_first_order: false
+    newborn_sheet_vorticity_is_bounded: false
+    junction_total_velocity_is_bounded: false
+    input_state_is_immutable: true
+  aggregate_metrics:
+    trace_increment_dt_order: 0.060254475532792444
+    sheet_vorticity_divergence_order: 0.9500087045563814
+    total_velocity_divergence_order: 0.8981022031671453
+    actual_matrix_condition_number_max: 55.070580073655925
+    actual_relative_weak_residual_max: 3.673635956893719e-16
+    wake_attachment_error_max: 0.0
+    input_state_mutation_abs_max: 0.0
+  claim_effect: >
+    The current trace-only newborn solve has a nonzero birth-limit:
+    Delta g remains about 0.02 while the physical thickness is proportional
+    to dt. Consequently the P2 sheet vorticity and the total junction
+    velocity diverge approximately as dt^-0.95 and dt^-0.90. The claim is
+    falsified and frozen; the next movable node is an unsteady-Kutta,
+    vorticity-continuous formation law.
+
+scope_limit: >
+  This is a local no-force birth-limit diagnosis, not a time integrator,
+  pressure model, flap-cycle model, 118-case sweep or production solver.

@@ -1,0 +1,221 @@
+artifact: actual_boundary_circulation_representation_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+status: preregistered_before_actual_boundary_solver
+role: diagnostic_shadow
+
+research_question: >
+  Can frozen N1 circulation be used only as an invariant/predictor while
+  source and continuous doublet (or equivalent bound-vortex-sheet) unknowns
+  are solved on the actual moving NACA-2406 boundary together with a
+  physically admissible trailing/base wake, thereby producing one exterior
+  potential history without any raw N1 filament crossing the body?
+
+cause_fingerprint:
+  representative_case: "v41 U8 aoa15 f2.6 flap22.5 twist11.25 nc4 ns8"
+  production_closed_surface_flux: 0.029729127847591977
+  channel_flux:
+    freestream: -3.469446951953614e-17
+    bound_direct: 0.061030321621282774
+    bound_image: -0.03123059841538274
+    wake_direct: -7.05953583081077e-05
+  active_production_filament_piercings:
+    total: 17
+    bound_direct:
+      root_cap: 5
+      tip_cap: 4
+      trailing_base: 9
+    bound_image:
+      root_and_trailing_corner_intersection: 1
+    wake_direct: 0
+  refinement_fingerprint: >
+    Bound direct/image fluxes remain O(1e-2 to 1e-1) and nonmonotone from
+    158 to 1246 shell faces; the wake channel remains O(1e-5).  The wall
+    volume flux remains about 8e-6.
+  diagnosis: >
+    Raw thin-lattice ring support is not an admissible incident-field
+    representation on the actual closed shell.  This is not a source-solver
+    tolerance, wake-core, or wall-kinematics problem.
+
+primary_evidence:
+  - source: "Erickson, NASA TP-2995 (1990)"
+    implication: >
+      A constant doublet panel is field-equivalent to a ring vortex only
+      around that same panel perimeter.  Continuous doublet distributions
+      remove spurious panel-edge line vortices.  The theorem does not permit
+      moving a thin-lattice ring through a different actual body boundary.
+  - source: "Dusto & Epton, NASA CR-152323 (1980)"
+    implication: >
+      Unsteady source and doublet distributions for thick wings are located
+      on the actual body surface; the trailing-edge neighborhood requires an
+      explicit modification of the basic Morino boundary treatment.
+  - source: "Maskew & Rao, ICAS/NASA record 19820057379 (1982)"
+    implication: >
+      Strongly coupled body/free-vortex flow is solved with actual surface
+      source-doublet panels and iterative free-sheet geometry, not by
+      superposing a body-piercing lattice after the body solve.
+  - source: "Le Provost et al., JFM (2023), lightweight vortex model"
+    implication: >
+      Bound surface vorticity, no-through-flow, Kelvin circulation, and
+      unsteady Kutta/shed strength form one coupled system; the velocity
+      integral on the body is a principal-value boundary operator.
+  - source: "Kemp, NASA TM-80104 (1979)"
+    implication: >
+      A finite blunt base still requires an explicitly selected and tested
+      B-1/B-2/B-3 or conservation-equivalent closure; actual-boundary
+      re-representation does not itself close the base wake.
+
+claim_rewrite:
+  falsified: >
+    A frozen N1 ring field can be evaluated directly on the actual shell and
+    repaired by adding only a single-valued Neumann source potential.
+  live_hypothesis: >
+    N1 may remain a frozen circulation predictor/invariant provider, but the
+    exterior lifting potential must be re-solved or re-represented on the
+    actual body/wake topology.  Any conflict between N1 circulation and the
+    actual-boundary Kutta/base-wake equations is a measured freeze-review
+    residual, not something to absorb.
+
+unknowns:
+  - "actual-boundary source strength fixed by moving-wall normal velocity"
+  - "continuous actual-boundary doublet strength / potential jump"
+  - "newborn trailing/base-wake doublet or vortex-sheet strength"
+  - "wake direction and relative material motion"
+  - "one temporal gauge for material potential history"
+
+implementation_stages_preregistered_before_solver:
+  S0_low_order_equation_oracle:
+    purpose: >
+      Verify Green-function signs, interior Dirichlet identity, prescribed
+      source convention, exterior potential/velocity and canonical pressure
+      using constant source/doublet triangles on a closed body.
+    scope_limit: >
+      Piecewise-constant doublets expose edge filaments and are only a
+      low-order equation oracle.  Passing S0 cannot activate RoboEagle
+      pressure, cannot satisfy G4a continuity, and cannot substitute for S1.
+  S1_continuous_actual_boundary:
+    purpose: >
+      Replace S0 by an actual-boundary continuous P2 doublet/Galerkin solve
+      with every physical edge/interface classified and no spurious internal
+      edge filament.
+  S2_coupled_wake_and_material_history:
+    purpose: >
+      Couple the actual-boundary state to material TE/base and free-vortex
+      sheets, then construct the three-time unified pressure history.
+
+S0_canonical_specification:
+  geometry: "unit icosphere refinements 20/80/320 triangular faces"
+  flow: "fixed body in uniform U=(1,0,0)"
+  source_identity: "sigma=(u_incident-u_wall) dot n_body"
+  interior_equation: >
+    D_interior mu + S sigma = 0 using the explicit interior doublet jump;
+    no collocation offset is allowed.
+  exterior_surface_identity: >
+    perturbation potential on the exterior side equals -mu when the
+    interior residual is zero.
+  independent_oracles:
+    disturbance_potential: "phi'=0.5*x/r^3 for the unit sphere"
+    surface_velocity: "u=1.5*(U-(U dot n)n)"
+    pressure: "Cp=1-|u|^2"
+  thresholds:
+    internal_potential_relative_residual_max: 1.0e-11
+    prescribed_source_flux_relative_max: 1.0e-13
+    exterior_surface_identity_relative_residual_max: 1.0e-11
+    finest_offbody_potential_relative_error_max: 0.03
+    finest_surface_normal_velocity_relative_residual_max: 0.03
+    finest_surface_Cp_rms_error_max: 0.08
+    offbody_potential_error_monotone: true
+    matrix_condition_number_max: 100.0
+  prohibition: >
+    Thresholds qualify only the constant-panel equation oracle.  They do not
+    qualify continuous P2, circulation, Kutta, wake, material pressure
+    history, RoboEagle loads, or production activation.
+
+constraints:
+  - "actual-boundary no-through-flow"
+  - "inter-panel doublet continuity; no unclassified exposed edge filament"
+  - "Kelvin/global circulation ledger with frozen N1 reported as a constraint candidate"
+  - "mass and momentum compatibility at finite base"
+  - "qualified pressure/direction Kutta residuals"
+  - "wake potential jump material conservation after release"
+  - "far-field decay and force/moment consistency"
+
+canonical_gates:
+  G4a_same_support_equivalence:
+    existing_evidence: >
+      dde_canonical_field_results.json constant_ring max relative error
+      4.977922882949989e-15.
+    requirement: >
+      Preserve the exact statement: doublet/ring equivalence holds only on
+      the same oriented perimeter; changing support requires a new boundary
+      solve.
+  G4b_closed_body_circulation:
+    cases:
+      - "circular cylinder with prescribed circulation"
+      - "sphere translating/rotating canonical where applicable"
+    requirement: >
+      Recover analytic exterior potential, no-through-flow, source
+      compatibility, Kutta-Joukowski force, and gauge invariance with one
+      Bernoulli evaluation.
+  G4c_symmetry_and_edge_topology:
+    requirement: >
+      Use a full-wing or mathematically qualified symmetry-domain boundary.
+      Root closure artifacts must be separated from physical tip and finite
+      trailing-base topology.  No active bound singularity may cross the
+      actual surface.
+  G4d_n1_constraint_compatibility:
+    requirement: >
+      On frozen N1 snapshots, report spanwise/global circulation mismatch,
+      Kelvin residual, no-through-flow residual and exterior-field moments.
+      Do not force agreement by changing a source, core, offset or pressure.
+  G4e_trailing_base_wake:
+    requirement: >
+      Execute the preregistered R_geometry/R_direction/R_flux/R_pressure/
+      R_wake_formation ledger.  Upper/lower corners and the finite base may
+      not be collapsed into the old rear-ring line.
+  G4f_material_pressure_history:
+    requirement: >
+      Produce three-time actual-boundary mean and jump potentials, combine
+      all velocities and potential rates once, evaluate one dual-side
+      Bernoulli ledger, and integrate the surface pressure once.
+
+go_condition: >
+  G4a-G4f pass without changing frozen N1, without an active singularity
+  crossing the actual body, and without fitting any force or pressure target.
+  N1 circulation is compatible with the actual-boundary/base-wake system
+  within a preregistered discretization-convergence tolerance.
+
+freeze_review_condition: >
+  If the actual-boundary no-through-flow, Kelvin and base-wake equations are
+  mutually consistent but incompatible with prescribed N1 circulation, stop
+  and open a validated-N1 freeze review.  Do not conceal the mismatch inside
+  N2/N3.
+
+no_go:
+  - "continuing the raw ring-field Neumann conditioner"
+  - "moving/coring/deleting a body-piercing filament"
+  - "using source flux as wake mass, pressure, lift or thrust"
+  - "matching only total L/T while panel pressure is inconsistent"
+  - "solving structure, stiffness or mass distribution in this aerodynamic claim"
+  - "fitting doublet strength, wake angle or Bernoulli gauge to Fig17/18/19"
+
+S0_execution_record_2026_07_28:
+  result_artifact: actual_boundary_potential_shadow_results.json
+  equation_oracle_gate: GO
+  surface_pressure_gate: NO-GO
+  stage_decision: NO-GO
+  finest_320_face_metrics:
+    internal_potential_relative_residual: 1.1272043929017356e-15
+    exterior_surface_identity_relative_residual: 1.2399248321919091e-15
+    prescribed_source_flux_relative: 5.384316363527424e-18
+    offbody_potential_relative_error: 0.029319032329095496
+    matrix_condition_number: 2.083248405825604
+    surface_normal_velocity_relative_residual: 0.03778286835428471
+    surface_Cp_rms_error: 0.5668098970357657
+  interpretation: >
+    The actual-boundary interior-Dirichlet potential equation, source sign,
+    jump identity and exterior field are qualified as a low-order equation
+    oracle.  Ordinary surface velocity/pressure from piecewise-constant
+    perimeter rings fails the frozen pressure gates.  Thresholds are not
+    loosened; S1 continuous P2/Galerkin plus a qualified on-surface
+    finite-part/gradient operator remains mandatory.

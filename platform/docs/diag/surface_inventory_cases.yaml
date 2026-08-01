@@ -1,0 +1,18 @@
+claim: N2.6b2
+status: preregistered_before_execution
+target: >
+  Verify the no-closure finite-volume ledger for a vector circulation
+  inventory: internal edge fluxes must cancel pairwise, and an omitted or
+  incorrect separation release must remain as a visible residual.
+thresholds:
+  max_local_residual: 1.0e-13
+  global_internal_flux_residual: 1.0e-15
+  global_budget_residual: 1.0e-13
+scope_limit:
+  - manufactured algebraic cell inventory only
+  - no physical transport, transition, entrainment, separation, or wall-source closure
+  - no DDE birth, pressure, force, or production claim
+no_go:
+  - solving separation_release from the budget residual
+  - adding an unnamed source or regularization term
+  - using lift, thrust, torque, or experimental force in the ledger

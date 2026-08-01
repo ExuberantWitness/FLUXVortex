@@ -1,0 +1,159 @@
+artifact: actual_boundary_material_wake_history_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d17
+depends_on_claims:
+  - N3.1j3b6d16
+  - N3.1j4b
+  - N3.1j4c6
+status: executed_go_after_preregistration
+stage: S3c_shape_regular_material_wake_history_coupled_equation
+role: no_force_equation_refinement_oracle
+
+question: >
+  Does replacing the falsified single elongated wake band with chronological,
+  shape-regular P2 material bands make the three-dimensional actual-boundary
+  body-wake equation converge in local singular quadrature and far-wake
+  extent while preserving one circulation ledger?
+
+cause_from_s3b:
+  data_fingerprint:
+    - "fixed x=8 root jump approaches -0.1265 as q rises from 3 to 12"
+    - "fixed q=10 root jump degrades from -0.1263 at x=8 to -0.0816 at x=32"
+    - "mirror residual grows again as the one-band aspect ratio grows"
+  node: N3.1j3b6d16
+  movable_space: >
+    Wake chordwise topology and quadrature resolution only. Body geometry,
+    cut topology, source/doublet equations, jump sign, incidence and all
+    thresholds from validated upstream nodes remain unchanged.
+  classification: wrong_single_elongated_wake_discretization_component
+
+primary_evidence:
+  - source: >
+      Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990)
+    implication: >
+      Trailing wakes are panel networks with explicit abutments, not one
+      indefinitely stretched body-adjacent panel.
+  - source: >
+      NASA CR-3868, unsteady panel-method wake-integral convergence study
+      (1985)
+    implication: >
+      Wake influence is accumulated over multiple wake panels/strips and its
+      downstream truncation requires a separate convergence study.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28,
+      DOI 10.3390/aerospace9010028
+    implication: >
+      New material wake elements are created each time step; already shed
+      elements retain individual strengths and geometry rather than being
+      stretched into the newest element.
+  - source: >
+      Generalized Taylor-Duffy transformation for singular Galerkin
+      triangle-product integrals, Reid, White & Johnson,
+      arXiv:1312.1703 / IEEE TAP 63 (2015)
+    implication: >
+      Only geometrically adjacent target/source pairs require the paired
+      singular transformation; separated wake bands use ordinary smooth
+      integration.
+
+canonical:
+  body_and_cut: "unchanged frozen S3a symmetric full-wing diamond canonical"
+  freestream:
+    speed: 1.0
+    alpha_deg: [-5.0, 0.0, 5.0]
+  wake:
+    current_edge_x: 1.0
+    cutoff_x: [4.0, 8.0, 12.0]
+    band_chord: 0.5
+    span_cell_width: 0.5
+    maximum_band_aspect_ratio: 1.0
+    ordering: "oldest downstream band to newest TE-adjacent band"
+    trace: "one steady spanwise P2 jump repeated on every band/time row"
+    interfaces: "explicit coincident P2 material traces"
+  paired_singular_quadrature_orders: [6, 8, 10]
+  reference:
+    cutoff_x: 12.0
+    quadrature_order: 10
+    alpha_deg: 5.0
+
+required_identities:
+  - "all bands satisfy the frozen aspect-ratio ceiling"
+  - "history geometry/time/strength interfaces are exactly continuous"
+  - "only the newest TE-adjacent band uses a body-wake paired singular block"
+  - "all older separated bands use ordinary smooth influence integration"
+  - "unknown vector remains body-only with zero independent wake amplitudes"
+  - "matrix is full rank and weak residual passes"
+  - "zero-alpha, incidence antisymmetry and span mirror errors decrease with q"
+  - "normalized symmetry errors pass at the reference order"
+  - "q8-to-q10 root circulation Cauchy passes"
+  - "cutoff x8-to-x12 root circulation Cauchy passes"
+  - "tip jump and body-to-newest-wake attachment remain exact"
+
+thresholds:
+  maximum_band_aspect_ratio_max: 1.000000000000001
+  history_time_gap_abs_max: 1.0e-14
+  history_geometry_gap_abs_max: 1.0e-14
+  history_trace_jump_abs_max: 1.0e-14
+  body_wake_common_edge_pair_count: 8
+  independent_wake_unknown_count_max: 0
+  rank_deficiency_max: 0
+  normalized_weak_residual_max: 1.0e-10
+  condition_number_max: 1.0e4
+  normalized_zero_alpha_jump_max: 1.0e-4
+  normalized_incidence_antisymmetry_max: 2.0e-4
+  normalized_span_mirror_max: 1.0e-4
+  quadrature_root_relative_change_max: 0.02
+  far_wake_root_relative_change_max: 0.05
+  tip_jump_abs_max: 1.0e-12
+  wake_attachment_abs_error_max: 1.0e-12
+
+decision:
+  go: >
+    Every refinement, history, symmetry and ledger gate passes. GO validates
+    only a steady shape-regular multi-band actual-boundary/wake equation and
+    authorizes a subsequent genuinely unsteady Kelvin-history gate.
+  no_go: >
+    Any failed gate blocks the equation. Do not fit band length, prescribe
+    circulation, project symmetry, add a wake core, relax a tolerance or use
+    pressure/force targets.
+  production_activation_allowed: false
+
+scope_limit: >
+  The steady repeated trace is only a spatial/refinement canonical. This gate
+  does not validate unsteady strength changes, wake roll-up, finite blunt
+  base, LEV release, Bernoulli pressure, force or production.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_material_wake_history_results.json
+  stage_decision: GO
+  metrics:
+    maximum_band_aspect_ratio: 1.0
+    history_time_gap_abs_max: 0.0
+    history_geometry_gap_abs_max: 0.0
+    history_trace_jump_abs_max: 0.0
+    body_wake_common_edge_pair_count: 8
+    independent_wake_unknown_count_max: 0
+    rank_deficiency_max: 0
+    normalized_weak_residual_max: 3.829814890553418e-16
+    condition_number_max: 271.4568805151738
+    normalized_zero_alpha_q6_q8_q10:
+      - 6.834601361516477e-05
+      - 2.5396421454227825e-05
+      - 7.864994733128987e-06
+    normalized_incidence_antisymmetry_q6_q8_q10:
+      - 1.3617187279514338e-04
+      - 5.059956078773347e-05
+      - 1.567013211168297e-05
+    normalized_span_mirror_q6_q8_q10:
+      - 1.2566006010988746e-04
+      - 5.024205466284461e-05
+      - 1.5526695451746602e-05
+    quadrature_root_relative_change_q8_to_q10: 9.228259952054526e-05
+    far_wake_root_relative_change_x8_to_x12: 0.0011526473537017742
+    tip_jump_abs_max: 0.0
+    wake_attachment_abs_error_max: 0.0
+  interpretation: >
+    Shape-regular chronological P2 bands remove the single elongated-band
+    failure without introducing a wake amplitude. This GO validates only the
+    steady spatial equation/refinement component; genuinely unsteady
+    material strength history remains a separate open claim.

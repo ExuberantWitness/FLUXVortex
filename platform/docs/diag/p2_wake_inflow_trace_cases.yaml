@@ -1,0 +1,202 @@
+artifact: p2_wake_inflow_trace_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b2b1a
+depends_on_claims:
+  - N3.1j3b6d18c2b2b1
+  - N3.1j3b6d18c2b2a
+  - N3.1j3b6d18c1a
+status: executed_go
+stage: S3m_typed_inflow_outflow_P2_transport
+role: no_force_inflow_identifiability_oracle
+
+question: >
+  When the newest body-attachment edge has a nonzero relative tangential
+  inflow flux, does prescribing only that typed P2 trace through the
+  free/constrained weak block transmit the new material potential jump into
+  the wake while the old edge remains a free outflow and the span tips remain
+  characteristic?
+
+cause_from_s3l:
+  data_fingerprint:
+    - "S3l passed partition/rank/trace/time/accuracy/objectivity/fail-closed gates"
+    - "S3l clamp-only final free-state difference was 3.499053e-5 below the frozen 1e-4 gate"
+    - "the S3l c_s=a*sin(pi*s) is exactly zero at the nominal body edge s=1"
+    - "the nominal attachment was therefore characteristic, not an inflow carrying newly supplied material strength"
+  node: N3.1j3b6d18c2b2b1a
+  movable_space: >
+    Only the manufactured relative boundary flux, explicit boundary-role
+    partition and its prescribed trace provider may change. The consistent
+    P2 mass/advection assembly, moving P1 geometry, patch welding, quadrature,
+    free/constrained equation and Heun semantics remain frozen.
+  classification: missing_true_inflow_identifiability_component
+
+primary_evidence:
+  - source: >
+      Demkowicz & Gopalakrishnan, A class of discontinuous Petrov-Galerkin
+      methods. Part I: The transport equation, CMAME 199 (2010)
+    doi: https://doi.org/10.1016/j.cma.2010.01.003
+    implication: >
+      A first-order transport state is supplied on the global inflow boundary
+      Gamma_in={x on boundary: beta dot n < 0}; an outflow is not the same
+      essential trace.
+  - source: >
+      Xia & Mohseni, Unsteady aerodynamics and vortex-sheet formation of a
+      two-dimensional airfoil, JFM 830 (2017)
+    doi: https://doi.org/10.1017/jfm.2017.513
+    implication: >
+      The forming free sheet is a material streakline released from the edge;
+      conservation determines its strength and relative velocity.
+  - source: >
+      DeVoria & Mohseni, The vortex-entrainment sheet in an inviscid fluid:
+      theory and separation at a sharp edge, JFM 866 (2019)
+    doi: https://doi.org/10.1017/jfm.2019.134
+    implication: >
+      An edge pressure jump generates new vorticity and the nascent sheet
+      convects away; attachment is a source boundary, not a closed zero trace.
+
+candidate_rewrite: >
+  Define the typed body edge s=1 as the only essential scalar trace because
+  c_s=-a gives c_t dot nu_body=-a<0. Keep the old edge s=0 free because
+  c_t dot nu_old=+a>0. Keep r=0,1 tips free/characteristic because their
+  boundary-normal relative flux is zero. Apply
+  M_ff*mu_dot_f=-(M_fb*g_dot+C_ff*mu_f+C_fb*g), mu_dot_b=g_dot.
+
+canonical:
+  geometry_and_mesh:
+    source: moving_p2_wake_transport_cases.yaml
+    moving_curved_geometry: true
+    streamwise_chronological_strips: 4
+    spanwise_cells: 8
+  quadrature_order: 10
+  relative_material_velocity:
+    parameter_rates:
+      ds_dt: -1.0
+      dr_dt: 0.0
+    body_edge_signed_flux: -1.0
+    old_edge_signed_flux: 1.0
+    tip_signed_flux: 0.0
+  boundary_roles:
+    body_attachment:
+      parameter_edge: "s=1"
+      role: typed_inflow_essential_trace
+    old_edge:
+      parameter_edge: "s=0"
+      role: typed_outflow_free
+    lower_tip:
+      parameter_edge: "r=0"
+      role: typed_characteristic_free
+    upper_tip:
+      parameter_edge: "r=1"
+      role: typed_characteristic_free
+    runtime_coordinate_inference_allowed: false
+  algebraic_identifiability:
+    trace_shape: "q(r)=r*(1-r)"
+    rate_injection:
+      free_state: 0.0
+      trace_value: 0.0
+      trace_time_derivative: "q(r)"
+      clamp_only_definition: >
+        solve the unconstrained full system at the zero state, then overwrite
+        only the boundary rate with g_dot
+    value_injection:
+      free_state: 0.0
+      trace_value: "q(r)"
+      trace_time_derivative: 0.0
+    normalized_free_residual: >
+      norm_inf(M_ff*mu_dot_f+M_fb*g_dot+C_ff*mu_f+C_fb*g) divided by the
+      maximum norm_inf of its nonzero terms
+  propagation_case:
+    start: 0.0
+    end: 0.4
+    step_families: [8, 16, 32]
+    initial_state: 0.0
+    body_trace: "g(t,r)=t^2*r*(1-r)"
+    body_trace_rate: "g_dot(t,r)=2*t*r*(1-r)"
+    exact_solution: >
+      tau=max(t-(1-s),0); mu=tau^2*r*(1-r)
+    clamp_only_definition: >
+      advance the unconstrained full system and overwrite only the typed body
+      trace at predictor/corrector stages
+  rigid_frame_counterfactual:
+    source: moving_p2_wake_transport_cases.yaml
+
+required_identities:
+  - "typed body/old/tip role sets are complete where declared and pairwise disjoint"
+  - "only body-attachment P2 DOFs are constrained"
+  - "body, old and tip relative boundary-flux signs are inflow/outflow/characteristic"
+  - "free mass block is full rank"
+  - "correct algebraic free-block residual is at roundoff for both g_dot and g injections"
+  - "rate injection gives a nonzero free response and clamp-only normalized residual near one"
+  - "body trace is exact at every stage while old edge and tips remain free"
+  - "propagation is temporally convergent and agrees with the manufactured inflow solution"
+  - "clamp-only produces a visible final free-interior error"
+  - "patch trace and rigid-frame scalar objectivity remain exact"
+  - "no stabilization, pressure, force, target load or structural dynamics enters"
+
+thresholds:
+  boundary_role_partition_failure_count_max: 0
+  constrained_nonbody_dof_count_max: 0
+  body_flux_abs_error_max: 2.0e-12
+  old_flux_abs_error_max: 2.0e-12
+  tip_flux_abs_max: 2.0e-12
+  free_mass_rank_deficiency_max: 0
+  correct_algebraic_normalized_residual_max: 2.0e-12
+  rate_injection_free_response_abs_min: 1.0e-4
+  clamp_rate_injection_normalized_residual_min: 0.99
+  prescribed_trace_abs_max: 2.0e-12
+  shared_patch_trace_jump_abs_max: 0.0
+  propagation_time_cauchy_ratio_min: 2.5
+  propagation_finest_relative_l2_error_max: 0.20
+  clamp_only_free_interior_abs_error_min: 1.0e-4
+  rigid_final_scalar_abs_difference_max: 2.0e-10
+  invalid_role_failure_count_min: 3
+
+decision:
+  go: >
+    Every role, flux, algebraic block, propagation, clamp counterfactual,
+    topology, objectivity and failure gate passes. Validate the typed inflow
+    trace child and authorize preregistration of actual induced velocity.
+  no_go: >
+    Any failed gate blocks actual induced velocity. Preserve the failure,
+    locate it in role identity, block algebra, propagation or discretization,
+    and do not lower thresholds or add stabilization.
+  production_activation_allowed: false
+
+execution:
+  stage_decision: GO
+  aggregate_metrics:
+    boundary_role_partition_failure_count: 0
+    constrained_nonbody_dof_count: 0
+    body_flux_abs_error: 0.0
+    old_flux_abs_error: 0.0
+    tip_flux_abs_max: 0.0
+    free_mass_rank_deficiency_max: 0
+    correct_algebraic_normalized_residual_max: 6.661338147750935e-16
+    rate_injection_free_response_abs_max: 0.07240500416616087
+    rate_boundary_coupling_scale: 0.0004882812500000003
+    value_boundary_coupling_scale: 0.013541666666666674
+    clamp_rate_injection_normalized_residual: 1.0
+    prescribed_trace_abs_max: 0.0
+    shared_patch_trace_jump_abs_max: 0.0
+    propagation_time_cauchy_ratio: 4.04798859207592
+    propagation_finest_relative_l2_error: 0.027765140342841867
+    clamp_only_free_interior_abs_error: 0.0010518392707474823
+    rigid_final_scalar_abs_difference: 3.122502256758253e-17
+    invalid_role_failure_count: 3
+    body_inflow_dof_count: 17
+    old_outflow_dof_count: 17
+    characteristic_tip_dof_count: 14
+  interpretation: >
+    A true nonzero body inflow makes the essential block identifiable:
+    the correct algebraic residual is roundoff, the clamp-only rate residual
+    is one and its final free-state error is over ten times the frozen gate.
+    This validates only the manufactured typed-role P2 transport semantics.
+  next_gate: >
+    Localize and preregister the actual incident+body+wake sheet-average
+    velocity and post-relaxation coupled residual under c2b3. Actual pressure,
+    force and production remain prohibited.
+
+scope_limit: >
+  The body trace and relative velocity are manufactured. This gate does not
+  validate the actual body-cut trace provider, edge shedding law, actual
+  induced velocity, relaxation, pressure, force, LEV or production.

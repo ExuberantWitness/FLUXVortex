@@ -1,0 +1,32 @@
+claim: N3.1j4b5a
+status: preregistered_before_execution
+target: >
+  Determine whether the half-wing root reflection preserves the frozen N1
+  ring to DDE potential-jump orientation adapter and the polar-vector image
+  symmetry, without selecting a sign from pressure or force.
+case:
+  gamma_n1: 0.37
+  original_span_interval: [0.2, 1.2]
+  original_ring_order:
+    - front_left
+    - front_right
+    - aft_right
+    - aft_left
+  expected_mu_over_gamma: -1.0
+  expected_vector_reflection: [1.0, -1.0, 1.0]
+  probe_points:
+    - [0.2, 0.4, 0.8]
+    - [1.8, 0.7, 1.2]
+    - [-0.6, 0.3, 0.5]
+thresholds:
+  max_n1_vector_symmetry_error: 2.0e-11
+  max_relative_n1_dde_image_error: 2.0e-9
+scope_limit:
+  - flat mirrored interface with aligned N1 and DDE normals
+  - induced velocity only
+  - no root structural boundary condition
+  - no pressure, force, shedding amplitude, or production coupling
+no_go:
+  - retaining reflected face winding without reversing the P2 local ordering
+  - changing the N1 circulation or DDE strength after reflection
+  - choosing the image sign from a force comparison

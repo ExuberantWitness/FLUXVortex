@@ -1,0 +1,47 @@
+artifact: actual_wake_reachable_pressure_obstruction_preregistration
+version: S3ai-v2.2
+date_preregistered: "2026-07-28 13:42:29 +08:00"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3e3b
+stage: S3ai_reachable_material_history_pressure_obstruction
+status: preregistered_before_any_formal_execution
+role: latest_pointer_no_physical_result_yet
+
+frozen_version: actual_wake_reachable_pressure_obstruction_cases_20260728_134229.yaml
+frozen_version_sha256: 3d662a69c1da80a1452b6b05c67107b188070871bb1b594977467ab7384e0b27
+executable_addendum_v21: actual_wake_reachable_pressure_obstruction_cases_20260728_133218.yaml
+base_frozen_version: actual_wake_reachable_pressure_obstruction_cases_20260728_131922.yaml
+definition_report: research_n3_actual_wake_reachable_pressure_v22_symmetry_audit_20260728_134229.md
+superseded_v1:
+  frozen_version: actual_wake_reachable_pressure_obstruction_cases_20260728_125228.yaml
+  audit_report: research_n3_actual_wake_reachable_pressure_obstruction_audit_20260728_130355.md
+  formal_guard_executed: false
+  result_json_created: false
+
+execution:
+  formal_guard_executed: false
+  result_json_created: false
+  production_activation_allowed: false
+  definition_ready: true
+  implementation_ready: false
+  prerequisites:
+    - stored_phi_pressure_observer
+    - face_mu_only_material_boundary_observer
+    - continuum_zero_initializer_with_excluded_entrance_prestep
+    - typed_primal_dual_even_odd_error_intervals
+    - manufactured_parity_negative_controls
+    - typed_body_direct_w_quadrature_provenance
+    - complete_negative_controls
+    - independent_code_audit
+
+question: >
+  On the fixed 81-body-DOF diamond canonical, does the named unsteady
+  pressure law have a resolved zeroth- or reachable first-order residual
+  after same-space epsilon, timestep, quadrature, mixed, repeat, and
+  stored/direct-observer uncertainties are included?
+
+claim_boundary:
+  - fixed spatial canonical only; no mesh h/p convergence
+  - material inventory is an attachment/orientation representation guard, not an independent Kelvin loop
+  - a witness does not identify a state, state dimension, forming geometry, or VES
+  - L_minus=0 means no resolved symmetry violation, not certified exact symmetry
+  - no force, production, 118 sweep, or Fig17/18/19 result

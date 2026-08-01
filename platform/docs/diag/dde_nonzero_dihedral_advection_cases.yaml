@@ -1,0 +1,42 @@
+schema_version: 1
+title: "N3.1j4c4 nonzero-dihedral vertex-star advection gate"
+role: >
+  Isolates the t=0 coplanar-to-folded operator switch found after three
+  vertex-map variants gave the same first-order self-induced fingerprint.
+  Only the axial-ring phase changes; all numerical families and gates remain.
+prior_falsification:
+  vertex_star_time_cauchy_ratio: 1.9111785119874363
+  initial_coplanar_quad_diagonals: 16
+normal_ode_case:
+  rate: 0.7
+  source: 0.2
+  final_time: 0.4
+  steps: [4, 8, 16]
+cylinder:
+  radius: 1.0
+  length: 1.0
+  circumferential_nodes: 8
+  axial_cells: 2
+  axial_phase_increment_fraction: 0.5
+  potential_jump: "mu=y(1-y)"
+self_induced_case:
+  final_time: 0.01
+  steps: [4, 8, 16]
+  line_quadrature_orders: [48, 64]
+  tangential_gauge: zero
+guards:
+  normal_ode_error_ratio_min: 3.8
+  self_time_cauchy_ratio_min: 3.5
+  self_finest_change_over_radius_max: 0.01
+  quadrature_change_over_displacement_max: 0.02
+  rotational_equivariance_max_abs: 1.0e-10
+  vertex_star_condition_number_max: 50.0
+  vertex_speed_over_sample_speed_max: 2.0
+  minimum_area_ratio: 0.90
+  maximum_edge_length_ratio: 1.20
+  potential_jump_residual_max: 1.0e-12
+promotion_boundary: >
+  Passing identifies the zero-dihedral branch switch as the dynamic-order
+  cause and validates only a short smooth reference. Conservative strength
+  reparameterization, shedding/bound coupling, long-time roll-up, pressure,
+  force, and production stay blocked.

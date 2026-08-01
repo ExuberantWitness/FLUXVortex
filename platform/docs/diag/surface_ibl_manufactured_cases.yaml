@@ -1,0 +1,53 @@
+artifact: surface_ibl_conservation_oracle
+date_preregistered: "2026-07-27"
+claim_node: N2.6b3
+scope:
+  allowed:
+    - "Exact tensorial source identities from the unsteady 3D IBL equations"
+    - "Finite-volume extensive storage and signed internal-edge assembly"
+    - "Proper-rotation objectivity"
+    - "One-dimensional reduction"
+  forbidden:
+    - "Any velocity-profile, skin-friction, dissipation, transition or separation closure"
+    - "Any LESP, BEF, f2, Hcrit, pressure, force or experimental target"
+    - "Inferring a missing flux or source from the budget residual"
+cases:
+  - id: planar_two_cell_manufactured_balance
+    purpose: "Exact local and global balance with one internal edge"
+    gates:
+      max_momentum_residual: 1.0e-12
+      max_energy_residual: 1.0e-12
+      global_internal_momentum_flux: 1.0e-12
+      global_internal_energy_flux: 1.0e-12
+  - id: moving_area_extensive_storage
+    purpose: "Storage is d(AU)/dt rather than A dU/dt"
+    gates:
+      max_momentum_residual: 1.0e-12
+      max_energy_residual: 1.0e-12
+  - id: proper_rotation_objectivity
+    purpose: "M, T, E, qe, tau and grad(qe) transform tensorially"
+    gates:
+      momentum_source_rotation_error: 1.0e-12
+      energy_source_rotation_error: 1.0e-12
+      trace_invariance_error: 1.0e-12
+  - id: one_dimensional_reduction
+    purpose: "Collinear fields reduce to scalar momentum and energy identities"
+    gates:
+      transverse_momentum_error: 1.0e-12
+      scalar_source_error: 1.0e-12
+  - id: omitted_source_visible
+    purpose: "The oracle reports rather than repairs a missing physical source"
+    gates:
+      minimum_visible_residual: 1.0e-4
+promotion:
+  go_if:
+    - "Every numerical gate passes"
+    - "No forbidden dependency occurs in the module or tests"
+  claim_if_passed: >
+    The closure-free 3D IBL conservation skeleton and its frame transformation
+    are implemented correctly for manufactured finite-volume states.
+  must_not_claim:
+    - "A physical boundary-layer closure exists"
+    - "Separation or DDE release is predicted"
+    - "RoboEagle force accuracy improves"
+

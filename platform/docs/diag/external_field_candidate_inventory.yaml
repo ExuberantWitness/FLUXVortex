@@ -1,0 +1,305 @@
+version: 1
+evaluated_against_preexisting_frozen_contract: true
+contract: "near_wall_field_contract_cases.yaml"
+decision_scope: >
+  Publicly obtainable velocity-field assets considered for N2.6b4f2,
+  N2.6c1b2b and N2.6c1b3b.  Eligibility is joint within one asset; fields
+  from incompatible assets may not be combined to manufacture coverage.
+required_joint_fields:
+  - independent_nonmanufactured
+  - time_coordinates
+  - surface_chart_faces_side
+  - wall_position
+  - wall_velocity
+  - normal_coordinate
+  - surface_normal
+  - tangent_basis
+  - edge_position
+  - edge_velocity
+  - edge_convention
+  - density
+  - velocity
+  - target_reynolds_110000_to_190000
+  - dynamic
+  - three_dimensional
+  - crossflow
+  - transitional
+  - separated
+  - moving_wall
+  - test_split
+  - independent_audit_id
+assets:
+  four_tu_surging_naca0021:
+    title: "PIV measurement flow field of the airfoil NACA0021 under surging motion"
+    persistent_id: "doi:10.4121/0B01A240-559F-4F4B-802D-7B1D36AA0024"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [15000]
+    released_representation: "24 phase-averaged planar MAT fields"
+    evidence:
+      - "field_asset_4tu_surging_audit.json"
+      - "Xu et al., Experiments in Fluids 66 (2025) 85"
+    coverage:
+      independent_nonmanufactured: true
+      time_coordinates: false
+      surface_chart_faces_side: false
+      wall_position: false
+      wall_velocity: false
+      normal_coordinate: false
+      surface_normal: false
+      tangent_basis: false
+      edge_position: false
+      edge_velocity: false
+      edge_convention: false
+      density: false
+      velocity: true
+      target_reynolds_110000_to_190000: false
+      dynamic: true
+      three_dimensional: false
+      crossflow: false
+      transitional: false
+      separated: true
+      moving_wall: true
+      test_split: true
+      independent_audit_id: true
+    allowed_roles:
+      - "archive/schema failure audit"
+      - "phase-field visualization"
+
+  cambridge_translating_plate_piv:
+    title: "Velocities: An Impulse-Based Approach to Estimating Forces in Unsteady Flow"
+    persistent_id: "doi:10.17863/CAM.7816"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [10000]
+    released_representation: >
+      Two planar MAT files with x,y and u(x,y,t),v(x,y,t) at 100 Hz for a
+      translating 45-degree flat plate.
+    evidence:
+      - "Apollo README for item 1810/262552"
+      - "Graham, Pitt Ford & Babinsky, JFM 815 (2017), doi:10.1017/jfm.2017.45"
+    coverage:
+      independent_nonmanufactured: true
+      time_coordinates: true
+      surface_chart_faces_side: false
+      wall_position: false
+      wall_velocity: false
+      normal_coordinate: false
+      surface_normal: false
+      tangent_basis: false
+      edge_position: false
+      edge_velocity: false
+      edge_convention: false
+      density: false
+      velocity: true
+      target_reynolds_110000_to_190000: false
+      dynamic: true
+      three_dimensional: false
+      crossflow: false
+      transitional: false
+      separated: true
+      moving_wall: true
+      test_split: true
+      independent_audit_id: true
+    explicit_field_limitation: >
+      The paper states that the region directly below the wing is shadowed
+      from the laser sheet and contains no reliable velocity data.
+    allowed_roles:
+      - "continuous two-dimensional field reader/integrator stress test"
+      - "near-body missing-data rejection test"
+
+  glasgow_dynamic_stall_pressure:
+    title: "Dynamic stall database R and D 1570-AM-01"
+    persistent_id: "doi:10.5525/gla.researchdata.464"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [1500000]
+    released_representation: >
+      Time-resolved surface-pressure, angle and integrated-load database;
+      no velocity field is released.
+    evidence:
+      - "Green & Giuni (2017), Dynamic stall database final report"
+    coverage:
+      independent_nonmanufactured: true
+      time_coordinates: true
+      surface_chart_faces_side: false
+      wall_position: false
+      wall_velocity: false
+      normal_coordinate: false
+      surface_normal: false
+      tangent_basis: false
+      edge_position: false
+      edge_velocity: false
+      edge_convention: false
+      density: false
+      velocity: false
+      target_reynolds_110000_to_190000: false
+      dynamic: true
+      three_dimensional: false
+      crossflow: false
+      transitional: false
+      separated: true
+      moving_wall: true
+      test_split: true
+      independent_audit_id: true
+    allowed_roles:
+      - "future independent panel-pressure/load validation"
+
+  zenodo_feather_naca2414_piv:
+    title: "Distributed feather-inspired flow control mitigates stall and expands flight envelope"
+    persistent_id: "doi:10.5281/zenodo.13831092"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [200000]
+    released_representation: >
+      Planar x,y,u,v,omega MAT files: one time average per configuration and,
+      for selected configurations, isolated snapshots at tau=0.25,0.50,0.75.
+      The original experiment sampled at 1 kHz, but the released velocity
+      arrays are not the continuous 1000-frame sequence.
+    evidence:
+      - "PNAS 121 (2024), doi:10.1073/pnas.2409268121"
+      - "Zenodo archive PIV Guide.docx"
+      - "local checksum/shape audit of Avg.mat and Tau_0.50.mat"
+    coverage:
+      independent_nonmanufactured: true
+      time_coordinates: false
+      surface_chart_faces_side: false
+      wall_position: false
+      wall_velocity: false
+      normal_coordinate: false
+      surface_normal: false
+      tangent_basis: false
+      edge_position: false
+      edge_velocity: false
+      edge_convention: false
+      density: false
+      velocity: true
+      target_reynolds_110000_to_190000: false
+      dynamic: false
+      three_dimensional: false
+      crossflow: false
+      transitional: true
+      separated: true
+      moving_wall: false
+      test_split: true
+      independent_audit_id: true
+    allowed_roles:
+      - "independent post-stall field/schema audit"
+      - "isolated-snapshot visualization"
+      - "shear-layer-location mechanism comparison"
+
+  edinburgh_otomo_pitching_piv:
+    title: "Dataset for unsteady lift on high-amplitude aerofoils"
+    persistent_id: "doi:10.7488/ds/7677"
+    source_kind: experiment
+    license: "CC BY 4.0"
+    reported_reynolds: [32000]
+    released_representation: >
+      Four archives of 1666 planar x,y,u,v CSV frames each, with 0.006 s
+      time step, for symmetric/asymmetric 32/64-degree pitching.
+    evidence:
+      - "Edinburgh DataShare README"
+      - "Otomo et al., Experiments in Fluids 62 (2021)"
+      - "remote ZIP central-directory and three-frame local sample audit"
+    coverage:
+      independent_nonmanufactured: true
+      time_coordinates: true
+      surface_chart_faces_side: false
+      wall_position: false
+      wall_velocity: false
+      normal_coordinate: false
+      surface_normal: false
+      tangent_basis: false
+      edge_position: false
+      edge_velocity: false
+      edge_convention: false
+      density: false
+      velocity: true
+      target_reynolds_110000_to_190000: false
+      dynamic: true
+      three_dimensional: false
+      crossflow: false
+      transitional: false
+      separated: true
+      moving_wall: true
+      test_split: true
+      independent_audit_id: true
+    allowed_roles:
+      - "continuous real-field two-dimensional interpolation stress test"
+      - "low-Re massive-separation negative-transfer test"
+
+  kth_naca4412_les_profiles:
+    title: "Well-resolved LES of turbulent NACA4412 wing sections"
+    persistent_id: "https://www.mech.kth.se/~rvinuesa/WingData/"
+    source_kind: simulation
+    license: "public database; cite original publications"
+    reported_reynolds: [100000, 200000, 400000, 1000000]
+    released_representation: >
+      Static mean and Reynolds-stress wall-normal profiles on suction and
+      pressure sides, expressed in local tangent/normal frames with edge
+      velocity and boundary-layer thickness.
+    evidence:
+      - "Vinuesa et al., International Journal of Heat and Fluid Flow 72 (2018)"
+      - "KTH WingData official description"
+    coverage:
+      independent_nonmanufactured: true
+      time_coordinates: false
+      surface_chart_faces_side: true
+      wall_position: true
+      wall_velocity: true
+      normal_coordinate: true
+      surface_normal: true
+      tangent_basis: true
+      edge_position: false
+      edge_velocity: true
+      edge_convention: true
+      density: false
+      velocity: true
+      target_reynolds_110000_to_190000: false
+      dynamic: false
+      three_dimensional: false
+      crossflow: false
+      transitional: false
+      separated: false
+      moving_wall: false
+      test_split: true
+      independent_audit_id: true
+    allowed_roles:
+      - "static attached/turbulent profile-coordinate unit test"
+      - "profile moment consistency audit outside the production gate"
+
+joint_decision:
+  production_eligible_asset: null
+  can_union_assets_for_eligibility: false
+  reason: >
+    No single candidate jointly supplies target-Re, moving-wall, separated,
+    transitional, three-dimensional crossflow velocity time series together
+    with explicit double-side wall/normal/edge identities.
+request_only_candidates:
+  baldan_guardone_wrles:
+    title: "Wall-resolved large eddy simulations of a pitching airfoil in deep dynamic stall"
+    persistent_id: "doi:10.1063/5.0252828"
+    corresponding_author: "alberto.guardone@polimi.it"
+    reported_reynolds: 135000
+    evidence_status: >
+      The paper reports three-dimensional wall-resolved LES and concludes
+      that span/chord >= 1 is required for the full-cycle DSV physics. Its
+      Data Availability statement says supporting data are available from
+      the corresponding author upon reasonable request. No field files have
+      been obtained or independently audited.
+    potential_role: >
+      Strongest Tier-A/three-dimensional periodic-section candidate:
+      target Reynolds number, pitching wall, transition, separation and
+      spanwise DSV structure. It cannot by itself validate finite-wing-tip
+      crossflow unless the released domain and boundary conditions provide it.
+  sudharsan_sharma_bef_wrles:
+    title: "A vorticity-based criterion to characterise leading edge dynamic stall onset"
+    persistent_id: "doi:10.1017/jfm.2021.1149"
+    reported_reynolds: "moderate/high-Re wall-resolved LES cases"
+    evidence_status: >
+      The paper and ALCF/OSTI records establish fine wall-resolved LES near
+      stall onset, but no independently downloadable raw field archive was
+      found in this audit.
+    potential_role: >
+      Near-leading-edge wall-vorticity/BEF event validation; not a substitute
+      for a full-cycle spatial LEV and finite-wing field.

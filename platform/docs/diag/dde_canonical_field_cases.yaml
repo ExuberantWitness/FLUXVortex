@@ -1,0 +1,37 @@
+schema_version: 1
+title: "N3.1j4 static distributed-doublet canonical field gates"
+role: >
+  No-force, no-target-fit field verification. These gates test the spatial
+  operator before any vertex roll-up, panel pressure, or RoboEagle force run.
+sources:
+  - "Johnson, NASA CR-3079 (1980), high-order panel influence integrals"
+  - "Krebs, Unsteady Aerodynamic Analysis with Relaxed Wakes (2021), Ch.3/App.A"
+  - "Ambrose, SIAM J. Appl. Math. 85 (2025), sheet-average/Birkhoff-Rott velocity"
+manufactured_sheet:
+  domain: [0.0, 1.0, 0.0, 1.0]
+  potential_jump: "mu=x(1-x)y(1-y)"
+  mesh_cells: [2, 4, 8]
+  off_sheet_target: [0.371, 0.413, 0.35]
+  on_sheet_target: [0.371, 0.413, 0.0]
+  symmetry_target: [0.5, 0.5, 0.35]
+  far_field_z: [8.0, 16.0]
+quadrature:
+  off_sheet_orders: [8, 12, 18, 26]
+  on_sheet_orders: [48, 80, 128, 192, 256]
+guards:
+  topology_tolerance: 1.0e-12
+  field_absolute_tolerance: 2.0e-10
+  field_relative_tolerance: 2.0e-9
+  symmetry_tangential_fraction_max: 1.0e-10
+  far_field_decay_exponent_min: 2.7
+  far_field_decay_exponent_max: 3.3
+  off_sheet_cauchy_ratio_min: 2.0
+  off_sheet_finest_relative_change_max: 0.05
+  on_sheet_monotone_cauchy: true
+  on_sheet_finest_relative_change_max: 0.12
+  material_mu_residual_max: 1.0e-12
+  constant_ring_relative_error_max: 1.0e-10
+promotion_boundary: >
+  Passing this file only admits the CPU static field oracle to the next
+  vertex-motion study. It does not validate a production wake integrator,
+  pressure, force, or aeroelastic coupling.

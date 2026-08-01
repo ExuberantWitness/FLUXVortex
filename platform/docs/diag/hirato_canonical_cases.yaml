@@ -1,0 +1,287 @@
+source:
+  title: "Vortex-Sheet Representation of Leading-Edge Vortex Shedding from Finite Wings"
+  authors: "Hirato, Shen, Gopalarathnam, Edwards"
+  venue: "Journal of Aircraft 56(4), 2019"
+  doi: "10.2514/1.C035124"
+  figures: ["8", "9", "11", "12", "15"]
+
+shared:
+  airfoil: "SD7003"
+  chord_reynolds: 20000
+  lesp_crit: 0.27
+  aspect_ratio: 6.0
+  taper_ratio: 1.0
+  pitch_axis_root_x_over_c: 0.25
+  alpha_start_deg: 0.0
+  alpha_end_deg: 45.0
+  reduced_pitch_rate_K: 0.3
+  nondimensional_time: "tstar = U*t/c"
+  note: >
+    The paper specifies nondimensional geometry/motion and Reynolds number.
+    A dimensional chord/U/nu realization is an implementation choice and is
+    not part of the scientific identity.
+
+cases:
+  case1:
+    tip_twist_deg: 0.0
+    sweep_deg: 0.0
+    expected_onset:
+      tstar: 1.710
+      alpha_deg: 24.15
+      abs_y_over_halfspan: 0.0
+      topology: "root-first"
+      source: "Fig.11a and Results IV.A"
+    field_snapshots:
+      - {tstar: 1.710, alpha_deg: 24.15, stage: "nascent root sheet"}
+      - {tstar: 2.040, alpha_deg: 35.49, stage: "spanwise spreading and initial rollup"}
+      - {tstar: 2.505, alpha_deg: 45.00, stage: "developed rolled-up sheet"}
+    load_outputs: ["CL(tstar)", "CM_root_quarter_chord(tstar)"]
+    load_source: "Fig.15"
+
+  case2:
+    tip_twist_deg: 10.0
+    sweep_deg: 0.0
+    expected_onset:
+      tstar: 1.575
+      alpha_deg: 19.51
+      abs_y_over_halfspan: 0.5
+      topology: "midspan-first"
+      source: "Fig.12a and Results IV.A"
+    field_snapshots:
+      - {tstar: 1.575, alpha_deg: 19.51, stage: "nascent sheet near half span"}
+      - {tstar: 2.010, alpha_deg: 34.46, stage: "rootward spreading and rollup"}
+      - {tstar: 2.505, alpha_deg: 45.00, stage: "outboard bulge near 0.75 halfspan"}
+    load_outputs: []
+    load_source: "Paper reports field comparison, not a Case-2 load curve"
+
+preregistered_numerical_guards:
+  onset_tstar_abs_tolerance: 0.10
+  onset_span_abs_y_over_halfspan_tolerance: 0.125
+  onset_definition: >
+    First strip and first time at which the pre-constraint LESP exceeds
+    LESPcrit and a nonzero spatial LEV ring is created.
+  topology_guard: >
+    Case1 onset strip must intersect the root tolerance band; Case2 onset
+    strip must intersect the halfspan tolerance band. Passing total CL alone
+    cannot substitute for this field guard.
+  conservation:
+    eq9_relative_residual: 1.0e-10
+    eq17_recomposition_abs_residual: 1.0e-12
+    split_edge_abs_residual: 1.0e-12
+  sensitivity:
+    grids:
+      - {nc: 4, ns: 16}
+      - {nc: 8, ns: 24}
+      - {nc: 12, ns: 32}
+    time_steps_per_tstar_3:
+      - 120
+      - 240
+    rule: >
+      Onset time/location must remain within the preregistered bands and
+      CL/CM trajectories must show convergence; no single coarse grid may
+      be promoted in isolation.
+
+first_ring_preregistration:
+  role: >
+    No-force placement and resolution audit. A candidate may not be selected
+    by matching CL, CM, RoboEagle loads, or any V4.1 cache.
+  historical_full_freestream_step:
+    formula: "delta_r = U_infinity_vector * dt"
+    claim_id: "N3.1i1b1"
+    state: "falsified"
+    reason: >
+      Hirato Eq.7 defines the one-third split only when a previous LEV exists.
+      It does not define the first vortex. Published upstream methods use a
+      velocity-dependent substep placement.
+  candidates:
+    P-A:
+      source: "Ansari, Zbikowski & Knowles 2006 Part 2, DOI 10.1243/09544100JAERO50"
+      published_identity: "delta_r = 0.5 * q_edge * dt"
+      finite_wing_adapter: >
+        q_edge must be an explicitly ledgered local shedding-edge velocity.
+        The complex-plane-to-3D mapping is not yet validated.
+      state: "partial"
+    P-R:
+      source: "Ramesh et al., AIAA 2012-3027, DOI 10.2514/6.2012-3027"
+      published_identity: >
+        delta_(x,z) = U_infinity*A0*dt/sqrt(2)
+        * [sin(alpha), cos(alpha)]
+      finite_wing_adapter: >
+        Embed the two published components in an explicitly orthonormal local
+        chord-tangent and suction-normal basis; retain signed A0.
+      state: "partial"
+  core_sensitivity:
+    source: "Hirato et al. 2019 Eq.25"
+    velocity_law: >
+      finite-segment Biot-Savart velocity multiplied by
+      1-exp[-(r/rc)^2], where r is perpendicular distance to the filament;
+      rc is not inserted into a van-Garrel/Rosenhead denominator
+    smallest_ring_scale: >
+      ell_min = anticipated minimum ring dimension for the whole run. For
+      P-R canonical onset this includes U_infinity*LESPcrit*dt/sqrt(2),
+      minimum span edge, the 0.3*U_infinity*dt TEV offset, and the minimum
+      bound-panel dimension.
+    rc_over_ell_min: [0.10, 0.25, 0.49]
+    role: "coverage points inside the published rc/ell_min < 0.5 range, not physical constants"
+    time_evolution: >
+      Each ratio defines one fixed singular radius for the complete run.
+      Updating rc with each deformed ring would introduce an unregistered
+      core-evolution model not stated by Hirato.
+    selection_rule: >
+      Report all ratios. Eligibility requires a common mesh/time-refined limit
+      in Gamma_L, centroid, induced velocity, and LESP sensitivity condition;
+      choosing the ratio nearest a target load is prohibited.
+  guards:
+    formula_abs_residual: 1.0e-12
+    basis_norm_abs_residual: 1.0e-10
+    basis_dot_abs_residual: 1.0e-10
+    lesp_active_abs_residual: 1.0e-10
+    eq9_relative_residual: 1.0e-10
+    split_edge_abs_residual: 1.0e-12
+    geometry:
+      - "finite nonzero ring area"
+      - "consistent ring orientation"
+      - "no wing-surface intersection beyond the shared geometric leading edge"
+    no_go:
+      - "unregistered offset, damping, pressure cap, or target-force normalization"
+      - "implicit normalization or orthogonalization of a malformed local basis"
+      - "selection by Fig17/18/19, Meng total force, or V4.1 cache"
+
+wake_discretization_preregistration:
+  tev_first_offset:
+    source: "Hirato dissertation section 4.5.3"
+    identity: "delta_x_W = 0.3 * U_infinity * dt along the trailing-edge track"
+    historical_fluxv: "delta_x_W = 1.0 * U_infinity * dt"
+    historical_state: "falsified for hirato_exact"
+  rollup:
+    source: "Hirato et al. 2019 Eq.23-24"
+    identity: "delta_x = 0.5 * (v_r_now + v_r_previous) * dt"
+    velocity_channels: ["bound", "TEV", "LEV"]
+    historical_shadow: "current-velocity Euler only"
+    historical_state: "partial topology scaffold, not equation-faithful rollup"
+  newborn_convection:
+    source:
+      - "Hirato et al. 2019 Fig.4: after LEV calculation, before LEV convection"
+      - "Hirato dissertation Fig.4.1: force -> TEV convection -> LEV convection"
+    identity: "a ring created at step n participates in the common convection at step n"
+    rejected_identity: "record velocity at birth but defer displacement until step n+1"
+    rejected_state: "falsified"
+  missing_history_bootstrap:
+    source_gap: >
+      Eq.24 requires v_r_previous but the paper does not define a previous
+      material-point velocity for newborn or Eq.7-remeshed vertices.
+    reference_adapter: "P-E: set v_r_previous=v_r_now only at missing-history vertices"
+    role: "registered zero-parameter startup hypothesis, not a Hirato identity"
+    state: "partial"
+    selection_rule: >
+      retain only if temporal refinement and field-topology gates pass; never
+      select from Fig17/18/19 or Meng total-force error.
+  guards:
+    tev_offset_abs_residual: 1.0e-12
+    eq24_recomposition_abs_residual: 1.0e-12
+    previous_velocity_state_required: true
+    birth_step_convection_required: true
+    missing_history_mask_required: true
+    no_go:
+      - "reuse full-step TEV geometry under the hirato_exact name"
+      - "call current-only Euler convection Hirato Eq.24"
+      - "defer newborn-ring convection by one complete time step"
+      - "silently call the P-E missing-history bootstrap a published identity"
+
+nonclaims:
+  - "Fig.11/12 iso-Q and vortex-sheet surfaces are only qualitatively comparable."
+  - "The paper itself reports noticeable CL discrepancies after LEV onset."
+  - "These cases do not validate RoboEagle spatial pressure or flexible-wing topology."
+  - "No force normalizer, Polhamus/vnf term, or target-curve fit is permitted."
+
+current_read_only_observation:
+  date: "2026-07-27"
+  role: >
+    Equation-identity audit only. These results do not promote the historical
+    Hirato force branch or validate the downstream spatial pressure.
+  legacy_fixed_xref:
+    case1: {tstar: 1.400, alpha_deg: 13.77}
+    case2: {tstar: 1.250, alpha_deg: 8.73}
+  paper_eq6_same_front_lattice:
+    normalization: "1.13*Gamma_1/[U_infinity*c*(theta_1+sin(theta_1))]"
+    identity: "validated"
+  incomplete_symmetry_ablation:
+    description: >
+      Bound AIC was mirrored but the other half-wing TEV field and its
+      convection were omitted. This reproduces the old sym=True boundary.
+    case1_fine_grid_first_span_range: [0.145833, 0.203125]
+    case2_topology: "midspan retained"
+    decision: "falsified as a complete half-wing symmetry boundary"
+  complete_symmetry_sensitivity:
+    description: >
+      Read-only probe mirrors bound and TEV induction in the RHS and mirrors
+      bound plus TEV fields during free-wake convection.
+    records:
+      - {case: case1, nc: 4, ns: 16, steps: 120, tstar: 1.625, span_error: 0.03125, gate: pass}
+      - {case: case2, nc: 4, ns: 16, steps: 120, tstar: 1.500, span_error: 0.03125, gate: pass}
+      - {case: case1, nc: 4, ns: 16, steps: 240, tstar: 1.600, span_error: 0.03125, gate: fail}
+      - {case: case2, nc: 4, ns: 16, steps: 240, tstar: 1.4875, span_error: 0.03125, gate: pass}
+      - {case: case1, nc: 8, ns: 24, steps: 120, tstar: 1.700, span_error: 0.020833, gate: pass}
+      - {case: case2, nc: 8, ns: 24, steps: 120, tstar: 1.575, span_error: 0.020833, gate: pass}
+      - {case: case1, nc: 8, ns: 24, steps: 240, tstar: 1.6875, span_error: 0.020833, gate: pass}
+      - {case: case2, nc: 8, ns: 24, steps: 240, tstar: 1.5625, span_error: 0.020833, gate: pass}
+      - {case: case1, nc: 12, ns: 32, steps: 120, tstar: 1.725, span_error: 0.015625, gate: pass}
+      - {case: case2, nc: 12, ns: 32, steps: 120, tstar: 1.600, span_error: 0.015625, gate: pass}
+      - {case: case1, nc: 12, ns: 32, steps: 240, tstar: 1.7125, span_error: 0.015625, gate: pass}
+      - {case: case2, nc: 12, ns: 32, steps: 240, tstar: 1.5875, span_error: 0.015625, gate: pass}
+    summary: {passed: 11, total: 12, all_pass: false}
+  first_ring_formula_geometry_nc8:
+    role: "formula/geometry only; no LEV insertion, Gamma_L solve, pressure, or force"
+    grid: {nc: 8, ns: 24, steps: 120}
+    case1:
+      onset: {step: 68, tstar: 1.700, active_strip_range: [0, 8]}
+      basis_max_abs_residual: 0.0
+      displacement_over_c:
+        historical_full_freestream_step: 0.025
+        P-A-kinematic: 0.011860
+        P-R_range: [0.004791, 0.004874]
+      legacy_core_floor_0p01c_over_P-R_ell_min_range: [2.052, 2.087]
+    case2:
+      onset: {step: 63, tstar: 1.575, active_strip_range: [11, 15]}
+      basis_max_abs_residual: 5.54e-17
+      displacement_over_c:
+        historical_full_freestream_step: 0.025
+        P-A-kinematic_range: [0.011793, 0.011845]
+        P-R_range: [0.004774, 0.004813]
+      legacy_core_floor_0p01c_over_P-R_ell_min_range: [2.078, 2.095]
+    decision: >
+      The historical first ring is about 5.1 times longer than P-R. Retaining
+      the legacy 0.01c core floor with P-R would give rc/ell_min about 2.1,
+      violating Hirato's typical rc/ell_min<0.5 range. P-R is the next
+      implementation-ready live-shadow candidate because it is defined in
+      the LESP-DVM lineage; it remains partial. P-A-kinematic is ineligible
+      because it omits the complete local edge-vortex velocity adapter.
+    runner: "platform/hirato_first_ring_guard.py"
+  decision: >
+    The Eq.6 identity and the missing-free-wake-mirror diagnosis are
+    supported. The preregistered all-grid onset claim remains partial because
+    coarse nc4/spc240 Case1 misses the time gate by 0.010 tstar. LESPcrit
+    remains unchanged.
+  equation_faithful_live_shadow:
+    role: >
+      No-force forward-state stability test. It uses its own TEV/LEV topology,
+      Eq.9/Eq.24, the exact Eq.25 Lamb-Oseen multiplier, and never evaluates
+      panel pressure or selects against a target force.
+    grid: {case: case1, nc: 4, ns: 16, steps_per_tstar_3: 120}
+    tested_core_scale: "rc/(U_infinity*dt)"
+    records:
+      - {ratio: 0.10, first_lesp_crossing_tstar_range: [0.75, 1.05]}
+      - {ratio: 0.25, first_lesp_crossing_tstar_range: [0.95, 1.125]}
+      - {ratio: 0.49, first_lesp_crossing_tstar_range: [1.05, 1.125]}
+    channel_fingerprint:
+      - {tstar: 0.95, bound_max_speed_mps: 10.4, tev_max_speed_mps: 19.7, total_max_speed_mps: 21.0}
+      - {tstar: 1.10, bound_max_speed_mps: 70.25, tev_max_speed_mps: 68.46, total_max_speed_mps: 47.9}
+      - {tstar: 1.125, bound_max_speed_mps: 39.1, tev_max_speed_mps: 122.9, total_max_speed_mps: 118.2}
+    paper_case1_onset_tstar: 1.710
+    decision: >
+      NO-GO for constant-strength ring sheets as the production spatial state.
+      The failure precedes a meaningful LEV and is a TEV free-wake
+      self-induction/congestion failure, not an LESPcrit or LEV-force
+      amplitude error. No core ratio has been selected. The live state remains
+      an equation-level reference while N3.1j investigates continuous
+      higher-order vortex surfaces.

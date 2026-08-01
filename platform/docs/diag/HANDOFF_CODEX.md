@@ -99,11 +99,14 @@ FLUXV RoboEagle 扑翼数字孪生（刚性翼，Meng et al. Drones 2025, 9, 535
 
 | Phase | 病灶 | 节点 | 方向预判（待文献确认） |
 |---|---|---|---|
-| **A** | D1 推力缺阻 + dT/dU 反号（质的差别） | N2.2 错件 | 局部来流系分解（分离压差阻）；`research-pipeline` 查 L-B/Bangga/Sheng 分离阻簿记 |
+| **A（已重定向）** | D1 推力阻力量级不足；dT/dU 同号但偏弱 | N2.5 open + 实验系统边界 open | 先做 wing/rig 唯一簿记；IAG 滞后静态 CT 只能替代现有 UIUC 阻力，禁叠加 |
 | **B** | D2 ds 角区过供（U6/aoa0 回归） | N3.1 缺门控 | Gharib 形成门 + 相干性门（非驱动本身错） |
 | **C** | D3 扭转扫升力形状（tw15-22 峰后滚落） | N5 归因未定 | 先通道归因（独立节点 vs N2/N3 派生），禁先修 |
 
-**顺序不可换**：Phase A 改 N2.2 簿记会改变扭转响应基线 → C 必须在 A/B 定稿后重基线。
+**2026-07-27 更正**：源 PDF 视觉审计确认 Fig18 推力 U6/U10 数字化身份反标，
+旧“dT/dU 反号→N2.2”前提作废。详见
+`platform/docs/diag/d1_fig18_curve_identity_audit.md`。N2.5 若通过 go/no-go，
+仍会先于 C 落地；若量级门否决，则直接进入 B→C，不为 D1 强加组件。
 
 **用户验收门**：drag 绝对误差 ≤20%；轨迹相似性 v3 八族（趋势捕获为主，MAE 门可放宽，memory `feedback_rom_law_capture.md`）。
 

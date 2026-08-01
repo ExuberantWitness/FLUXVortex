@@ -1,0 +1,38 @@
+schema_version: 1
+title: "N3.1j4c cylindrical material-sheet advection gate"
+role: >
+  Follow-up to the frozen planar NO-GO. The sheet is periodic around a
+  cylinder, has zero potential jump only at its two free ends, and starts
+  non-coplanar. No pressure, force, or target data are used.
+diagnosis_from_previous_gate:
+  planar_time_cauchy_ratio: 1.8805572937420745
+  planar_mirror_residual: 1.6217618981227694e-4
+  planar_midpoint_vorticity_jump: 0.04419417382415922
+cylinder:
+  radius: 1.0
+  length: 1.0
+  circumferential_nodes: 8
+  axial_cells: 2
+  potential_jump: "mu=y(1-y)"
+rotation_case:
+  angular_speed: 0.7
+  final_time: 0.4
+  steps: [4, 8, 16]
+self_induced_case:
+  final_time: 0.01
+  steps: [4, 8, 16]
+  line_quadrature_orders: [48, 64]
+guards:
+  rotation_error_ratio_min: 3.8
+  self_time_cauchy_ratio_min: 3.5
+  self_finest_change_over_radius_max: 0.01
+  quadrature_change_over_displacement_max: 0.02
+  rotational_equivariance_max_abs: 1.0e-10
+  projection_residual_fraction_max: 0.30
+  minimum_area_ratio: 0.90
+  maximum_edge_length_ratio: 1.20
+  material_mu_residual_max: 1.0e-12
+promotion_boundary: >
+  Passing validates only smooth short-time material advection on this closed-
+  circumference manufactured sheet. LEV/TEV birth, bound coupling, long-time
+  roll-up, unified pressure, force, and production remain unvalidated.

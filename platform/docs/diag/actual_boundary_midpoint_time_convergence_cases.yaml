@@ -1,0 +1,183 @@
+artifact: actual_boundary_midpoint_time_convergence_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18b
+depends_on_claims:
+  - N3.1j3b6d18a
+  - N3.1j3b6d17
+status: executed_go_after_preregistration
+stage: S3e_explicit_midpoint_material_wake_time_convergence
+role: no_force_time_discretization_and_kelvin_history_oracle
+
+question: >
+  Is one explicit half-time actual-boundary/wake solve sufficient to generate
+  the middle P2 row of every newborn material band and produce a convergent
+  fixed-geometry Kelvin history as dt is refined, without rewriting old wake
+  strengths or using endpoint averaging?
+
+cause_from_s3d:
+  data_fingerprint:
+    - "S3d old-state mutation, active attachment and material interface errors are exactly zero"
+    - "S3d known-wake RHS norm is 5.77e-4 and a signed history counterfactual changes the current jump by 0.11032"
+    - "S3d leaves both active previous and middle rows as externally supplied canonical inputs"
+  node: N3.1j3b6d18
+  movable_space: >
+    Only the temporal stage construction, chronological band birth, and
+    uniform material convection are movable. The frozen body/cut topology,
+    P2 actual-boundary operator, source/doublet signs, spatial quadrature,
+    freestream history, and all pressure/force paths are unchanged.
+  classification: missing_temporal_origin_for_active_middle_row
+
+primary_evidence:
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for the Prediction of
+      Complex and Unsteady Aerodynamic Systems, dissertation (2021),
+      sections 3.2-3.3 and figure 3.8
+    implication: >
+      A new wake row is created every timestep, its material strength is
+      retained after shedding, and surface/new-wake strengths must be solved
+      together until flow tangency and Kutta equilibrium are recovered.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28,
+      DOI 10.3390/aerospace9010028
+    implication: >
+      One surface/wake update can retain timestep dependence; the published
+      DDE route uses two within-step equilibrium iterations, before and after
+      wake relaxation.
+  - source: >
+      Katz & Plotkin, Low-Speed Aerodynamics, 2nd ed.,
+      unsteady panel-method wake marching
+    implication: >
+      Previously shed singularities are known current-step influences and
+      newly shed circulation is tied to the current bound solution.
+  - source: >
+      Dumoulin, Eldredge & Chatelain, Journal of Fluid Mechanics 977
+      (2023) A22, DOI 10.1017/jfm.2023.997
+    implication: >
+      Bound-sheet impermeability, unsteady trailing-edge shedding and wake
+      circulation transfer form one time-indexed system; a wake state cannot
+      be reconstructed later from a force target.
+
+candidate_hypothesis: >
+  A half-step predictor using the same affine actual-boundary/material-wake
+  equation, followed by a full-step corrector whose explicit middle row is
+  that half-step solution, is sufficient for a convergent fixed-body,
+  uniform-convection material history. This is a falsifiable numerical
+  hypothesis, not a claim made by the cited DDE papers.
+
+canonical:
+  body_and_cut: "unchanged frozen S3a symmetric full-wing diamond canonical"
+  freestream:
+    speed: 1.0
+    alpha_history: "alpha(t)=5 deg * sin(pi*t/T)"
+  physical_time:
+    start: 0.0
+    end: 1.0
+    timestep_families: [0.5, 0.25, 0.125]
+  wake:
+    trailing_edge_x: 1.0
+    uniform_convection_speed: 1.0
+    band_chord: "U*dt"
+    ordering: "oldest downstream band to newest TE-adjacent band"
+    old_rows: "bitwise-frozen material P2 rows"
+    half_stage:
+      time: "t_n+dt/2"
+      old_geometry: "convected from t_n by U*dt/2"
+      active_band_chord: "U*dt/2"
+      known_rows: ["mu_n", "mu_n"]
+      unknown_current_row: "coupled solve at alpha(t_n+dt/2)"
+    full_stage:
+      time: "t_n+dt"
+      old_geometry: "convected from t_n by U*dt"
+      active_band_chord: "U*dt"
+      known_rows: ["mu_n", "mu_mid_from_half_stage"]
+      unknown_current_row: "coupled solve at alpha(t_n+dt)"
+    terminal_oldest_role: "explicit truncated material history; same T for every dt family"
+  spatial_quadrature_order: 10
+  off_sheet_velocity_quadrature_order: 32
+  off_sheet_probe_points:
+    - [0.25, 0.0, 0.35]
+    - [1.75, 0.35, 0.40]
+    - [2.50, -0.50, 0.60]
+
+required_identities:
+  - "the half-time row is the current body cut jump of a named half-stage coupled solve"
+  - "the full-band middle row is exactly the half-stage result, not an endpoint average"
+  - "all previously shed material strengths are bitwise unchanged"
+  - "all chronological time, geometry and P2 trace interfaces remain exact"
+  - "newest full-stage current row equals the current body cut jump"
+  - "old wake remains a known RHS with zero independent old-wake unknowns"
+  - "every half/full system is full rank with a finite condition number and passing weak residual"
+  - "tip jumps remain zero and all bands satisfy the frozen shape-regularity ceiling"
+  - "final body cut jump contracts under dt, dt/2, dt/4 refinement"
+  - "the final off-sheet material-wake velocity contracts at the same physical probes"
+  - "no pressure, force, LESP, prescribed circulation, regularizer, endpoint fit or target load enters"
+
+thresholds:
+  old_state_mutation_abs_max: 0.0
+  history_time_gap_abs_max: 1.0e-14
+  history_geometry_gap_abs_max: 1.0e-14
+  history_trace_jump_abs_max: 1.0e-14
+  active_attachment_abs_max: 1.0e-12
+  stage_midpoint_identity_abs_max: 0.0
+  midpoint_vs_endpoint_average_difference_min: 1.0e-6
+  independent_old_wake_unknown_count_max: 0
+  rank_deficiency_max: 0
+  normalized_weak_residual_max: 1.0e-10
+  condition_number_max: 1.0e4
+  tip_jump_abs_max: 1.0e-12
+  maximum_band_aspect_ratio_max: 1.000000000000001
+  body_jump_cauchy_contraction_min: 1.5
+  body_jump_finest_relative_change_max: 0.08
+  wake_probe_cauchy_contraction_min: 1.5
+  wake_probe_finest_relative_change_max: 0.08
+
+decision:
+  go: >
+    Every stage-origin, immutable-history, interface, rank, shape and dual
+    Cauchy gate passes. GO validates only this fixed-body,
+    uniform-convection explicit midpoint history and may authorize a later
+    moving-geometry/equilibrium-iteration gate.
+  no_go: >
+    Any failed identity blocks this candidate. In particular, do not average
+    endpoints, tune dt-dependent constants, smooth the wake, prescribe the
+    current jump, relax a threshold, modify the frozen spatial operator, or
+    use pressure/force targets. A NO-GO falsifies one explicit midpoint solve
+    as sufficient and redirects the claim to within-step coupled equilibrium.
+  production_activation_allowed: false
+
+scope_limit: >
+  This gate has a fixed body and prescribed uniform wake convection. It does
+  not validate moving/deforming geometry, relaxed free-wake roll-up, a finite
+  blunt base, LEV generation, potential time derivatives, Bernoulli
+  pressure, aerodynamic force or production activation.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_boundary_midpoint_time_convergence_results.json
+  stage_decision: GO
+  metrics:
+    old_state_mutation_abs_max: 0.0
+    old_geometry_convection_error_abs_max: 0.0
+    history_time_gap_abs_max: 0.0
+    history_geometry_gap_abs_max: 0.0
+    history_trace_jump_abs_max: 0.0
+    stage_midpoint_identity_abs_max: 0.0
+    midpoint_vs_endpoint_average_difference_max: 0.017404495099128232
+    active_attachment_abs_max: 0.0
+    independent_old_wake_unknown_count_max: 0
+    known_history_rhs_norm_min: 4.964221088283593e-05
+    rank_deficiency_max: 0
+    normalized_weak_residual_max: 3.8436497883879585e-16
+    condition_number_max: 110.82093333072251
+    tip_jump_abs_max: 0.0
+    maximum_band_aspect_ratio: 1.0
+    body_jump_cauchy_contraction: 5.664820226929218
+    body_jump_finest_relative_change: 0.015298995662031687
+    wake_probe_cauchy_contraction: 1.7674614653250698
+    wake_probe_finest_relative_change: 0.04616189529858166
+  interpretation: >
+    One explicit half-stage coupled solve is sufficient for positive time
+    convergence in this fixed-body, prescribed-uniform-convection canonical.
+    The off-sheet field contraction is positive but does not establish a
+    uniform formal second order. Moving geometry and within-step wake
+    relaxation equilibrium remain a separate open claim.

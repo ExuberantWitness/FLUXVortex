@@ -1,0 +1,205 @@
+artifact: finite_angle_sheet_formation_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d
+status: preregistered_before_implementation
+stage: S2c_finite_angle_sharp_edge_sheet_formation
+role: conservation_identity_oracle
+
+question: >
+  For a two-dimensional high-Reynolds-number finite-angle sharp trailing
+  edge, do the Xia-Mohseni Kutta, circulation, mass and momentum identities
+  uniquely determine the forming sheet direction, strength and relative
+  velocity in every nondegenerate case, while recovering the symmetric
+  bisector and one-sided tangent limits without a wake-angle parameter?
+
+cause_from_S2b:
+  known: >
+    A sharp cusp with one tangent admits a Kutta-enriched potential cut and
+    analytic circulation selection.
+  missing: >
+    A finite-angle edge has two distinct tangents.  Choosing either tangent
+    or their bisector a priori is not a general unsteady condition.
+  classification: missing_conservation_coupled_formation_component
+
+primary_evidence:
+  - source: >
+      Xia & Mohseni, Journal of Fluid Mechanics 830 (2017),
+      DOI 10.1017/jfm.2017.513, arXiv:1611.05729
+    equations:
+      direction: "Eq. 6.2: u1_plus*sin(dtheta1)=u2_minus*sin(dtheta2)"
+      angle_sum: "Eq. 4.18: dtheta1+dtheta2=dtheta0"
+      kutta_strength: >
+        Eq. 5.1: gamma_g=u1_plus*cos(dtheta1)
+        -u2_minus*cos(dtheta2)=u_g_plus-u_g_minus
+      circulation_rate: >
+        Eq. 4.15: dot_Gamma_g=u_g*gamma_g
+        =0.5*(u2_minus^2-u1_plus^2)
+      momentum: >
+        Eq. 4.19: u1_plus*u2_minus*sin(dtheta0)
+        -u1_plus*u_g_plus*sin(dtheta1)
+        -u2_minus*u_g_minus*sin(dtheta2)=0
+    scope: >
+      High-Re vortex-sheet limit in which sheet mass and momentum thickness
+      are neglected as the paper's first approximation.
+  - source: >
+      Le Provost et al., Journal of Fluid Mechanics 977 (2023),
+      DOI 10.1017/jfm.2023.997
+    implication: >
+      A practical unsteady panel system solves no-through-flow, Kelvin and
+      the finite-angle formation condition together rather than prescribing
+      one fixed shedding direction.
+
+analytic_solution:
+  sign_domain: >
+    u1_plus<=0 and u2_minus<=0 in the paper's body-fixed shedding
+    convention, not both zero; 0<dtheta0<pi.
+  direction: >
+    Let a=-u1_plus and b=-u2_minus. Then
+    dtheta1=atan2(b*sin(dtheta0), a+b*cos(dtheta0)) and
+    dtheta2=dtheta0-dtheta1.
+  nondegenerate_state: >
+    gamma_g=u1_plus*cos(dtheta1)-u2_minus*cos(dtheta2);
+    dot_Gamma=0.5*(u2_minus^2-u1_plus^2);
+    u_g=dot_Gamma/gamma_g;
+    u_g_plus=u_g+gamma_g/2;
+    u_g_minus=u_g-gamma_g/2.
+  symmetric_degeneracy: >
+    If u1_plus=u2_minus, dtheta1=dtheta2=dtheta0/2,
+    gamma_g=dot_Gamma=0.  Direction is identified, but zero-strength sheet
+    relative speed is not identifiable from these identities and must not be
+    invented.
+
+canonical_cases:
+  wedge_angle_deg: 40.0
+  cases:
+    - id: symmetric_bisector
+      u1_plus: -1.0
+      u2_minus: -1.0
+      expected_role: zero_strength_direction_only
+    - id: side1_dominant
+      u1_plus: -2.0
+      u2_minus: -1.0
+      expected_role: nondegenerate
+    - id: side2_dominant_mirror
+      u1_plus: -1.0
+      u2_minus: -2.0
+      expected_role: nondegenerate
+    - id: side2_stagnant_tangent_limit
+      u1_plus: -2.0
+      u2_minus: 0.0
+      expected_role: one_sided_limit
+    - id: side1_stagnant_tangent_limit
+      u1_plus: 0.0
+      u2_minus: -2.0
+      expected_role: one_sided_limit
+    - id: side1_dominant_scaled
+      u1_plus: -4.0
+      u2_minus: -2.0
+      expected_role: scale_covariance
+
+thresholds:
+  normalized_angle_sum_residual_max: 1.0e-14
+  normalized_direction_residual_max: 1.0e-13
+  normalized_kutta_strength_residual_max: 1.0e-13
+  normalized_circulation_rate_residual_max: 1.0e-13
+  normalized_momentum_residual_max: 1.0e-13
+  sheet_side_velocity_negative_tolerance: 1.0e-13
+  mirror_residual_max: 1.0e-13
+  scale_covariance_residual_max: 1.0e-13
+  symmetric_bisector_residual_max: 1.0e-13
+  tangent_limit_residual_max: 1.0e-13
+
+decision:
+  go: >
+    Every nondegenerate case closes all five identities, both sheet-side
+    velocities are nonnegative, mirror and velocity-scale covariance pass,
+    and the symmetric/tangent limits are recovered without choosing an
+    angle.
+  no_go: >
+    Any failed identity triggers a sign/equation review.  Do not add a wake
+    angle, velocity offset, core, or special result chosen from force data.
+  scope_limit: >
+    Passing validates only the two-dimensional finite-angle sharp-edge
+    high-Re formation identities.  It does not solve a finite blunt base,
+    source mass, viscous sheet inventory, three-dimensional spanwise
+    junction, actual-boundary BEM, material wake evolution, N1 compatibility
+    or production loads.
+
+forbidden:
+  - "prescribing the bisector except in the symmetric limit"
+  - "prescribing either surface tangent except in a one-sided zero-velocity limit"
+  - "inventing a relative velocity for the zero-strength symmetric sheet"
+  - "calling a single finite-angle sheet a solution for the two-corner NACA-2406 base"
+  - "fitting any identity to lift, thrust or pressure data"
+
+S2c_initial_execution_2026_07_28:
+  stage_decision: NO-GO
+  sole_failed_gate:
+    normalized_printed_Eq_4_19_residual_max: 0.09522779402763544
+    threshold: 1.0e-13
+  passed: >
+    Angle sum, final direction equation, Kutta strength, circulation rate,
+    nonnegative outgoing velocities, mirror, scale covariance, symmetric
+    bisector and tangent limits all passed.
+  sign_contradiction: >
+    With the paper's stated u1_plus,u2_minus<=0 and
+    u_g_plus,u_g_minus>=0 convention and positive angles, all three terms
+    of the printed Eq. 4.19 with two minus signs have the same positive sign
+    and cannot sum to zero.
+
+S2c1_signed_control_volume_preregistered_after_failure_before_implementation:
+  derivation: >
+    Start from the paper's immediately preceding signed mass equations
+    u1_plus*S1+u_g_minus*S_g_minus=0 and
+    u2_minus*S2+u_g_plus*S_g_plus=0, together with its tangential and normal
+    momentum-flux equations.  Eliminating all four positive control-surface
+    lengths gives
+    u1_plus*u2_minus*sin(dtheta0)
+    +u1_plus*u_g_plus*sin(dtheta1)
+    +u2_minus*u_g_minus*sin(dtheta2)=0.
+  independent_consistency: >
+    The plus-flux form is compatible with the paper's final direction
+    equation and with the direction/strength implementation in Le Provost
+    et al. JFM 977 (2023), Eqs. 2.5-2.7.  The printed two-minus scalar form
+    is not compatible with its own signed normal-velocity convention.
+  implementation_change: >
+    Replace only the diagnostic momentum residual by the independently
+    re-derived signed-control-volume flux form.  Do not change the angle,
+    strength, circulation-rate, velocity formulas, cases, thresholds or any
+    other gate.
+  go: >
+    The complete original gate must pass with the signed-flux residual.
+    This validates the conservation identity and records the printed
+    scalar-sign path as falsified; it does not authorize a blunt-base model.
+  no_go: >
+    Any failure keeps S2c NO-GO and blocks blunt-base continuation.
+
+S2c1_execution_2026_07_28:
+  stage_decision: GO
+  result_artifact: actual_boundary_finite_angle_sheet_results.json
+  aggregate_metrics:
+    normalized_angle_sum_residual_max: 0.0
+    normalized_direction_residual_max: 1.850371707708594e-17
+    normalized_kutta_strength_residual_max: 0.0
+    normalized_circulation_rate_residual_max: 0.0
+    normalized_signed_momentum_residual_max: 4.11193712824132e-18
+    minimum_sheet_side_velocity: 0.0
+    mirror_residual_max: 5.551115123125783e-17
+    scale_covariance_residual_max: 0.0
+    symmetric_bisector_residual_max: 0.0
+    tangent_limit_residual_max: 0.0
+  claim_rewrite:
+    falsified: >
+      N3.1j3b6d8: the printed two-minus Eq. 4.19 scalar residual is
+      directly usable with the paper's stated signed normal velocities.
+    validated: >
+      N3.1j3b6d9: the parameter-free signed-control-volume finite-angle
+      sharp-edge formation identities, only in the two-dimensional high-Re
+      zero-sheet-thickness scope.
+  production_activation_allowed: false
+  remaining_missing:
+    - finite blunt base with two corner junctions
+    - material potential and Kelvin history
+    - three-dimensional spanwise wake junctions
+    - coupling to the actual-boundary P2 system
+    - RoboEagle production pressure and load guards

@@ -1,5 +1,10 @@
 # 文献研究综合报告:LEV 闭合去 ad-hoc 化(track 2)——放置/馈送规则、吸力保持-塌缩转变判据、附着阻力记账
 
+> **2026-07-27 方程级复核更正：**本文件关于“卷起必须自由对流、`lev_rollh=0.5`
+> 无文献锚”的裁决继续有效；但“现有 `lev_place='ansari'` 已是忠实 Hirato”
+> 不再有效。规范审计发现该分支没有生成持久空间环，并缺 Eq.9/17 等必要账项。
+> 以 `research_n3_hirato_equation_audit_20260727.md` 为最新身份裁决。
+
 范围:替换三处无文献锚的闭合选择——`lev_rollh=0.5`(规定卷起高度形状)、
 `les_sep='plateau'` 的深顺桨(deep-feathering)语义(T2-deep 案:实测净推力在标称扭转 30
 之外快速恶化,模型几乎不响应)、`attached_drag='faure'` 的选型依据。约束:co-design 就绪

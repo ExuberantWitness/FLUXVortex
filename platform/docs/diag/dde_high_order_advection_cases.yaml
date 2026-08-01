@@ -1,0 +1,44 @@
+schema_version: 1
+title: "N3.1j4a2 high-order edge-quadrature dynamic gate"
+role: >
+  Follow-up to the nonzero-dihedral time-order GO but 48/64 quadrature
+  NO-GO. Geometry, vertex-star map, total time, and physical state are fixed;
+  only the preregistered edge quadrature family is raised to 128/192.
+quadrature_diagnosis:
+  order_48_to_64_fraction: 0.16501106561283443
+  order_64_to_96_fraction: 0.015377217436920205
+  order_96_to_128_fraction: 0.0032242086263716318
+  order_128_to_192_fraction: 7.787480688972564e-05
+normal_ode_case:
+  rate: 0.7
+  source: 0.2
+  final_time: 0.4
+  steps: [4, 8, 16]
+cylinder:
+  radius: 1.0
+  length: 1.0
+  circumferential_nodes: 8
+  axial_cells: 2
+  axial_phase_increment_fraction: 0.5
+  potential_jump: "mu=y(1-y)"
+self_induced_case:
+  final_time: 0.01
+  steps: [2, 4, 8]
+  line_quadrature_orders: [128, 192]
+  tangential_gauge: zero
+guards:
+  normal_ode_error_ratio_min: 3.8
+  self_time_cauchy_ratio_min: 3.5
+  self_finest_change_over_radius_max: 0.01
+  quadrature_change_over_displacement_max: 0.02
+  rotational_equivariance_max_abs: 1.0e-10
+  vertex_star_condition_number_max: 50.0
+  vertex_speed_over_sample_speed_max: 2.0
+  minimum_area_ratio: 0.90
+  maximum_edge_length_ratio: 1.20
+  potential_jump_residual_max: 1.0e-12
+promotion_boundary: >
+  Passing validates a high-order CPU dynamic reference, not a production
+  kernel. Johnson H/F closed form or an equivalent compiled adaptive operator,
+  strength reparameterization, shedding/bound coupling, pressure, force, and
+  production remain blocked.

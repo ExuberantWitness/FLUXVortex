@@ -1,0 +1,64 @@
+version: 1
+frozen_before_implementation: true
+scope: "N2.6c1b3a differential conditions for a material backbone; not physical ridge validation"
+authority:
+  primary_source:
+    title: "Spike formation theory in three-dimensional flow separation"
+    citation: "Santhosh et al., JFM 969 (2023), A25"
+    doi: "10.1017/jfm.2023.559"
+    basis:
+      - "Definition 1: positive maxima/ridges of largest principal curvature change"
+      - "Proposition 2: 1D gradient/Hessian and 2D principal-direction conditions"
+claim_under_test: >
+  On a structured material layer, finite differences can convergently evaluate
+  the positivity, stationarity and negative second-directional-derivative
+  conditions in Proposition 2 when the largest principal-curvature-change
+  field and its principal direction are supplied.
+numerical_tolerances:
+  rule: >
+    Stationarity, negative-curvature and eigenvalue-gap tolerances must be
+    explicit call inputs and audited under grid refinement.  They are
+    numerical error bands, not physical shedding thresholds.
+  forbidden_selection:
+    - integrated_load_error
+    - LESP
+    - pressure_residual
+    - best_fit_separation_location
+manufactured_cases:
+  two_dimensional_gaussian_ridge:
+    field: "kappa2=A*exp(-(u/sigma)^2), principal direction e_u"
+    requirement:
+      - "the interior u=0 line satisfies positive stationarity and negative directional curvature"
+      - "off-ridge nodes outside the numerical stationarity band are rejected"
+  one_dimensional_gaussian_maximum:
+    field: "kappa1=kappa2=A*exp(-((u/sigma_u)^2+(v/sigma_v)^2))"
+    requirement:
+      - "the origin has zero gradient and negative-definite Hessian"
+      - "the candidate is classified by eigenvalue degeneracy, not an arbitrary direction"
+  downwelling_maximum:
+    requirement:
+      - "a negative local maximum is rejected by the positive-upwelling condition"
+  directional_minimum:
+    requirement:
+      - "stationarity with positive second directional derivative is rejected"
+  grid_refinement:
+    requirement:
+      - "gradient and Hessian errors decrease at second-order finite-difference rate"
+  linear_reparametrization:
+    requirement:
+      - "candidate topology is unchanged under positive linear rescaling of material coordinates"
+failure_cases:
+  - "non-monotone or too-short material coordinates"
+  - "mismatched curvature/direction shapes"
+  - "non-finite fields"
+  - "non-positive or non-finite numerical tolerances"
+go:
+  numerical_identity: >
+    Manufactured extrema/ridges, sign rejection, second-order convergence and
+    linear reparametrization pass.
+  physical_promotion: false
+no_go:
+  - "calling a candidate mask a converged spiking curve or surface"
+  - "connecting candidates across layers without topology and convergence tests"
+  - "using a curvature amplitude threshold as a sustained release law"
+  - "selecting numerical tolerances from lift or thrust"

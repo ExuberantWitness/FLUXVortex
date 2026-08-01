@@ -1,4 +1,9 @@
-"""FAITHFUL reproduction of the Hirato et al. 2019 (J.Aircraft) finite-wing LEV vortex-sheet MECHANISM,
+"""Historical, incomplete Hirato-branch diagnostic on the 2019 Case 1/2 inputs.
+
+This script is not an equation-faithful reproduction: the branch fails
+Eq.7/9/10/17/23 and must not be used as a co-design load generator.  See
+``docs/diag/research_n3_hirato_equation_audit_20260727.md``.
+
 demonstrated on the paper's own Case 1/2 (SD7003 rect AR=6, pure pitch ramp 0->45deg, K=0.3, Re=20000,
 LESP_crit=0.27). Produces a 3-panel figure:
   (A) C_L(t*): LEV-ON (implicit LESP=LESP_crit constraint, lev_shed_mode='hirato') vs LEV-OFF (attached UVLM).
@@ -15,7 +20,8 @@ import _v2_robo as R
 CH=0.10; HS=0.30; U=3.0; q=0.5*R.ug.RHO*U*U; S=HS*CH; NS=12
 AR=2*HS/CH; RE=U*CH/1.5e-5
 base=dict(U=U, aoa_deg=0.0, freq=10.0, n_cycle=1, steps_per_cycle=200, wake_rows=200, nc=6, ns=NS,
-          chord=CH, half_span=HS, flap_amp_deg=0.0, real_geom=False, sym=True, tc_thick=0.085,
+          chord=CH, half_span=HS, flap_amp_deg=0.0, real_geom=False, section_geometry='sd7003',
+          sym=True, tc_thick=0.085,
           pitch_ramp=True, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0,
           lev_place='wake', lev_sheet=True, les_suction=True, les_eta=1.0, a0_crit=0.27, lev_sign=1.0,
           lev_le_off=0.10, lev_core_ring=0.4)
@@ -73,7 +79,7 @@ axc.set_xlabel('spanwise y / half-span  (0=root, 1=tip)'); axc.set_ylabel('LEV o
 axc.set_title('(C) spanwise LEV-onset location\n(paper Fig.11/12: the FINITE-WING contribution)')
 axc.legend(fontsize=8); axc.grid(alpha=0.3); axc.invert_yaxis()
 
-fig.suptitle('FAITHFUL Hirato-2019 finite-wing LEV vortex-sheet mechanism — SD7003 rect AR=6, pitch ramp, Re=20k, LESP_crit=0.27', fontsize=11)
+fig.suptitle('Historical incomplete Hirato branch — canonical SD7003 Case 1/2 inputs (diagnostic only)', fontsize=11)
 fig.tight_layout(rect=[0,0,1,0.95])
 out=os.path.join('docs','hirato_mechanism_demo.png'); fig.savefig(out,dpi=120)
 print(f"CL(45deg): LEV-off={cl_off[-1]:.2f}  LEV-on={cl_on[-1]:.2f}", flush=True)

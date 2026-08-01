@@ -1,0 +1,58 @@
+version: 1
+claim: "N3.1j3b3"
+status: "preregistered_before_guard_execution"
+diagnostic_note: >
+  Thresholds were fixed after exploratory equation diagnostics but before
+  implementing or executing the named guard. The diagnostics identified the
+  asymptotic mesh and time ranges; they are not physical calibration.
+target: >
+  Establish that the frozen P2 DDE scalar-potential observer extends from a
+  planar element to a curved closed multi-element/multi-patch surface and
+  that three explicit time stages recover the wall-material potential rate
+  caused by relative free-sheet motion without a fitted derivative state.
+spatial_case:
+  geometry: "outward unit octasphere, subdivision levels 0,1,2,3"
+  boundary_density: "mu=cos(theta), represented as physical z on each P2 planar face"
+  quadrature_order: 32
+  off_surface_points:
+    - [0.0, 0.0, 0.6]
+    - [0.0, 0.0, 1.4]
+    - [0.0, 0.0, -0.6]
+    - [0.0, 0.0, -1.4]
+  analytic_identity: >
+    For the present double-layer sign, degree-one density on the unit sphere
+    gives phi_inside=(2/3) r cos(theta), phi_outside=-(1/3)
+    r^(-2) cos(theta), and the smooth-sheet principal value is mu/6.
+  patch_partition: "eight inherited octahedron faces, checked at subdivision level 2"
+temporal_case:
+  geometry: "subdivision-level-2 octasphere translated rigidly in +x"
+  source_speed: 0.25
+  fixed_wall_point: [2.0, 0.0, 0.6]
+  half_windows: [0.16, 0.08, 0.04, 0.02]
+  stages: "[-dt,0,+dt], derivative evaluated at +dt"
+  derivative: "three-node Lagrange endpoint derivative; no inferred midpoint"
+  reference_identity: >
+    Rigid source translation c_dot gives d(phi(P-c))/dt =
+    -c_dot dot grad(phi), where grad(phi) is the independently frozen DDE
+    induced-velocity oracle at the current stage.
+thresholds:
+  off_surface_error_monotone: true
+  min_off_surface_last_cauchy_ratio: 3.0
+  max_off_surface_finest_abs_error: 5.0e-3
+  sheet_pv_error_monotone: true
+  min_sheet_pv_last_cauchy_ratio: 3.0
+  max_sheet_pv_finest_abs_error: 5.0e-3
+  max_patch_representation_residual: 2.0e-12
+  min_time_error_ratio: 3.8
+  max_finest_time_rate_abs_error: 5.0e-7
+  max_material_mu_residual: 0.0
+scope_limit:
+  - "CPU equation oracle, no GPU/production claim"
+  - "closed smooth-sphere limit and rigid relative motion only"
+  - "no LEV birth, separation, viscous diffusion, pressure force, or target-load input"
+  - "passing does not provide N2.6c release or target-domain field evidence"
+no_go:
+  - "finite core, offset surface, singularity cutoff, fitted self term, or smoothing"
+  - "inferring a missing middle time stage"
+  - "changing material P2 mu during rigid translation"
+  - "relaxing a failed spatial or temporal threshold after execution"

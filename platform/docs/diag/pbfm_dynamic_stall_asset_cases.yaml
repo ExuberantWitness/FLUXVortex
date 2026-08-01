@@ -1,0 +1,106 @@
+version: 1
+audit_date: "2026-07-28"
+decision_scope: >
+  Determine whether the public PBFM dynamic-stall HDF5 files can supply the
+  independent near-wall time-resolved volume-velocity evidence required by
+  N2.6b4f3, and separately record any narrower role that their released
+  surface-time fields can legitimately support.
+frozen_contract: "near_wall_field_contract_cases.yaml"
+asset:
+  id: "pbfm_dynamic_stall_surface_time"
+  title: "PBFM dynamic-stall dataset"
+  paper:
+    title: "Physics vs Distributions: Pareto Optimal Flow Matching with Physics Constraints"
+    arxiv: "2506.08604v4"
+    venue: "ICLR 2026"
+  official_repository:
+    url: "https://github.com/tum-pbs/PBFM"
+    commit: "2a702673bae0cc4778d63af1c0243ad99e728b78"
+    commit_date: "2026-02-09T10:26:49Z"
+    dataset_loader_sha256: "d1c401a8b35bf7cb650d81b8e8c84cdc36c2baf8e6fd7e30d2c8c078dc740c40"
+    readme_sha256: "a2f62eda279e6b2db318e36c9b380927587d145c9203b6cfc0896d0b81d23485"
+  official_dataset:
+    url: "https://huggingface.co/datasets/thuerey-group/PBFM"
+    revision: "022378d965c92611edcd01cc79044e9a230128f6"
+    last_modified: "2026-02-09T14:48:38Z"
+    license: "MIT"
+    gated: false
+    files:
+      dynamic_stall_test.h5:
+        size_bytes: 268453888
+        lfs_sha256: "027f91e47c38952132ea562add0f0f8682021dd0369f1ac65999034015a86df2"
+      dynamic_stall_train.h5:
+        size_bytes: 2147616768
+        lfs_sha256: "c18cefd617a7327099f234151e5392077a1a3eb431ad2bfad3070eea0a647aa8"
+  generation:
+    equations: "unsteady compressible two-dimensional RANS"
+    solver: "ANSYS Fluent 2024R2"
+    geometry: "sinusoidally pitching NACA0012"
+    turbulence_transition: "SST turbulence model with intermittency transport"
+    native_mesh: "O-grid, 512 surface nodes x 128 wall-normal nodes"
+    timesteps_per_cycle: 2048
+    mach_range: [0.3, 0.5]
+    alpha_mean_deg_range: [5.0, 10.0]
+    alpha_amplitude_deg_range: [5.0, 10.0]
+    reduced_frequency_range: [0.05, 0.1]
+    reynolds_identity: >
+      Reynolds number is not one of the four released conditioning variables
+      and is not stated as a target-Re identity in the PBFM dataset card.
+  released_representation:
+    topology: >
+      128 x 128 surface-location-by-cycle-phase arrays, downsampled from the
+      CFD solution; these are not 128 x 128 Cartesian or O-grid volume fields.
+    raw_channels: 8
+    physical_channels:
+      - absolute_pressure
+      - x_tangential_velocity_gradient_at_wall
+      - y_tangential_velocity_gradient_at_wall
+      - temperature
+      - density
+      - signed_wall_shear_stress
+    geometry_channels:
+      - surface_tangent_cosine
+      - surface_tangent_sine
+    explicit_volume_velocity_components: []
+    explicit_volume_coordinates: []
+    explicit_time_coordinate_array: false
+    train_nominal_conditions: 128
+    test_nominal_conditions: 16
+    perturbed_samples_per_condition: 32
+coverage:
+  independent_nonmanufactured: true
+  time_coordinates: false
+  surface_chart_faces_side: false
+  wall_position: false
+  wall_velocity: false
+  normal_coordinate: false
+  surface_normal: false
+  tangent_basis: true
+  edge_position: false
+  edge_velocity: false
+  edge_convention: false
+  density: true
+  velocity: false
+  target_reynolds_110000_to_190000: false
+  dynamic: true
+  three_dimensional: false
+  crossflow: false
+  transitional: true
+  separated: true
+  moving_wall: true
+  test_split: true
+  independent_audit_id: true
+expected_decision:
+  spatial_lev_evidence: "NO-GO"
+  material_flow_map: "NO-GO"
+  material_backbone: "NO-GO"
+  unified_panel_pressure_surface_time_test: "ELIGIBLE_WITH_DOMAIN_LABEL"
+  physical_promotion: false
+allowed_roles:
+  - "surface-location-by-phase pressure and skin-friction schema test"
+  - "future two-dimensional compressible-URANS panel-pressure temporal-manifold test"
+forbidden_roles:
+  - "near-wall material flow-map driver"
+  - "three-dimensional LEV position or motion evidence"
+  - "finite-wing crossflow evidence"
+  - "RoboEagle target-Re production promotion"

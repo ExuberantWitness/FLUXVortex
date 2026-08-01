@@ -1,0 +1,171 @@
+artifact: actual_body_wake_velocity_ledger_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3a
+depends_on_claims:
+  - N3.1j3b6d18c2b2b1a
+  - N3.1j3b6d18c1a
+  - N3.1j3b6d18b
+  - N3.1j4b5a
+status: executed_no_go
+stage: S3n_actual_body_wake_sheet_velocity_ledger
+role: no_force_fixed_snapshot_velocity_composition_oracle
+
+question: >
+  At owned strict-interior points of a solved material wake, can one typed
+  ledger compose exactly one external incident field, the actual-boundary
+  body source field, the body P2 double-layer field and the entire wake's
+  Birkhoff-Rott sheet-average field, with converged quadrature, rigid-frame
+  objectivity and fail-closed duplicate-source semantics?
+
+cause_from_c2b3:
+  data_fingerprint:
+    - "material_wake_time_march.py moves old history with a prescribed uniform x displacement"
+    - "constrained_material_wake_advection.py accepts a provider but no canonical physical provider exists"
+    - "DistributedDoubletShadowComponent evaluates wake self-induction only and projects only normal geometry velocity"
+    - "solve_actual_boundary_body_wake_p2 does not expose a velocity ledger on the solved wake"
+    - "no driver re-solves body/newborn strength after wake relaxation"
+  node: N3.1j3b6d18c2b3a
+  movable_space: >
+    Add only a typed fixed-snapshot velocity query and additive ledger around
+    frozen actual-boundary/source/P2-doublet/sheet-average operators. Do not
+    alter those operators, move geometry, transport mu, iterate equilibrium,
+    add a core, pressure, force or target.
+  classification: missing_named_physical_velocity_composition
+
+primary_evidence:
+  - source: >
+      Krebs, Unsteady Aerodynamic Analysis with Relaxed Wakes (2021),
+      sections 3.2-3.3 and figures 3.1, 3.4, 3.8
+    implication: >
+      Wake vertices move with their local velocity; surface and wake are one
+      interacting system, and coefficients are resolved after wake movement.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28
+    doi: https://doi.org/10.3390/aerospace9010028
+    implication: >
+      A gapless distributed-doublet wake uses the velocity induced by the
+      interacting aerodynamic surfaces and all material wake elements.
+  - source: >
+      Ambrose, The velocity field and Birkhoff-Rott integral for non-decaying
+      periodic vortex sheets, SIAM Journal on Applied Mathematics 85 (2025)
+    doi: https://doi.org/10.1137/24M164848X
+    implication: >
+      The geometric sheet velocity is the mean/sheet-average limit; a one-sided
+      value or arbitrary core is not the same operator.
+  - source: >
+      Erickson, Panel Methods: An Introduction, NASA TP-2995 (1990)
+    implication: >
+      Source, doublet, wake and incident fields are additive Green-function
+      contributions, with on-sheet limits requiring explicit side/owner data.
+
+candidate_rewrite: >
+  A WakeSheetQuery supplies explicit patch owner, face owner and barycentric
+  coordinates. An ExternalIncidentField declares all source identities it
+  already contains. The evaluator rejects overlap with reserved current-body
+  source, current-body doublet and current-wake identities, then returns a
+  ledger with four named vector channels and their exact sum.
+
+canonical:
+  body_and_cut: "frozen S3a symmetric full-wing diamond and oriented cut IDs"
+  material_history:
+    origin: "S3e explicit-midpoint march, t=0 to 0.5, dt=0.25"
+    initial_body_jump: 0.0
+    freestream: "U=1, alpha(t)=5deg*sin(pi*t)"
+    terminal_incidence_deg: 5.0
+    shape: >
+      Apply a deterministic span-symmetric z displacement to free old/seam
+      vertices, retain the newest body edge, material rows and all interfaces,
+      then re-solve the actual-boundary equation at t=0.5.
+    far_oldest_trace: 0.0
+  query:
+    points_per_face: 4
+    ownership: explicit_patch_face_barycentric
+  external_incident:
+    included_source_ids: ["uniform_freestream"]
+    excludes:
+      - "actual_body_source"
+      - "actual_body_doublet"
+      - "current_material_wake"
+  body_doublet_orders: [16, 24, 36, 52, 72]
+  wake_sheet_average_orders: [24, 36, 48, 64, 80]
+  quadrature_tolerances:
+    absolute: 1.0e-8
+    relative: 1.0e-6
+  rigid_frame_counterfactual:
+    rotation_axis: [0.3, -0.4, 0.5]
+    rotation_deg: 31.0
+    translation: [0.7, -0.2, 0.4]
+
+required_identities:
+  - "query ownership reconstructs every physical point exactly"
+  - "history seams, zero oldest trace, zero tips and oriented body attachment pass"
+  - "ledger has exactly external/body_source/body_doublet/wake_sheet_average channels"
+  - "each channel is finite and nonzero in the canonical nontrivial case"
+  - "ledger total equals the exact channel sum"
+  - "body doublet and wake sheet-average quadrature converge under frozen orders"
+  - "assembled full-wake sheet-average equals an explicit per-band source sum"
+  - "proper rigid rotation/translation rotates every vector channel and total"
+  - "an external field declaring body or current-wake content fails closed"
+  - "wrong provider shape and invalid ownership fail closed"
+  - "no geometry update, mu transport, relaxation, pressure, force or target enters"
+
+thresholds:
+  query_reconstruction_abs_max: 2.0e-12
+  history_geometry_gap_abs_max: 2.0e-12
+  history_trace_jump_abs_max: 2.0e-12
+  oldest_trace_abs_max: 2.0e-12
+  tip_trace_abs_max: 2.0e-12
+  body_attachment_abs_max: 2.0e-12
+  ledger_closure_abs_max: 2.0e-12
+  channel_norm_min: 1.0e-6
+  full_wake_vs_explicit_sum_abs_max: 2.0e-12
+  rigid_channel_abs_max: 2.0e-9
+  duplicate_source_failure_count_min: 2
+  invalid_query_failure_count_min: 2
+
+decision:
+  go: >
+    Every topology, four-channel, convergence, representation, objectivity
+    and fail-closed gate passes. Validate only the fixed-snapshot velocity
+    ledger and authorize preregistration of the relax/re-solve fixed point.
+  no_go: >
+    Any failure blocks equilibrium composition. Preserve the failed channel;
+    do not omit a contribution, loosen quadrature, add a core, merge source
+    identities, or use pressure/force targets.
+  production_activation_allowed: false
+
+scope_limit: >
+  This fixed-snapshot gate does not move wake geometry, transport P2 mu,
+  solve a relaxation fixed point, generate LEV, compute pressure/force or
+  activate production.
+
+execution:
+  result_file: actual_body_wake_velocity_ledger_results.json
+  decision: NO-GO
+  passed_checks: 9
+  total_checks: 10
+  sole_failed_check: body_and_wake_quadratures_converge
+  body_doublet_last_abs_change: 9.477818447017105e-3
+  wake_sheet_last_abs_change: 3.416391363242956e-3
+  rigid_channel_abs_max: 1.532107773982716e-13
+  interpretation: >
+    The named four-channel ledger, ownership, topology, exact sum,
+    representation, objectivity and fail-closed semantics all pass.  The
+    ordinary edge Gauss rule does not resolve the near-vertex layer at the
+    frozen orders.  This blocks c2b3b and opens only a singularity-aware
+    quadrature child; thresholds and orders are not relaxed.
+  evidence_backed_operator_rerun:
+    result_file: actual_body_wake_velocity_ledger_analytic_results.json
+    operator: target_sinh_analytic_sheet
+    decision: GO
+    passed_checks: 10
+    total_checks: 10
+    ledger_closure_abs_max: 0.0
+    wake_sheet_quadrature_abs_change: 2.9433731603321313e-10
+    rigid_channel_abs_max: 1.4632739464559563e-13
+    interpretation: >
+      S3o and S3p preserved the original failure and isolated the unresolved
+      strong-singularity terms.  S3q analytically extracted the complete P2
+      boundary vortex and coplanar area-vorticity finite part.  Rerunning the
+      original ten S3n checks with that validated operator is GO, so c2b3a
+      may be frozen while c2b3b remains unimplemented.

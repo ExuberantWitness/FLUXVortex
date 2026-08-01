@@ -1,0 +1,38 @@
+schema_version: 1
+title: "N3.1j4b3 Ramesh first-sheet span-grid convergence gate"
+role: >
+  Isolate the finite-wing P-R first-LEV geometry adapter after the algebraic
+  N1/DDE coupling gate. Chordwise resolution, physical geometry, time step,
+  LESP target, source operator, and probes are fixed; only spanwise strip
+  count changes.
+grid:
+  nc: 4
+  ns: [4, 8, 16]
+geometry:
+  chord: 1.0
+  half_span: 3.0
+  pitch_deg: 15.0
+time_step: 0.02
+u_infinity: 1.0
+preconstraint_a0_root: 0.34
+preconstraint_tip_fraction: 0.95
+lesp_crit: 0.27
+line_quadrature_order: 96
+trace_samples: 129
+field_probes:
+  chord_fraction: 0.25
+  span_fractions: [0.2, 0.5, 0.8]
+  normal_offset: 0.2
+guards:
+  lesp_active_residual_max: 1.0e-10
+  lesp_condition_number_max: 1.0e3
+  minimum_suction_side_offset: 0.0
+  trace_cauchy_ratio_min: 1.5
+  trace_finest_relative_change_max: 0.15
+  field_cauchy_ratio_min: 1.5
+  field_finest_relative_change_max: 0.15
+promotion_boundary: >
+  Passing would validate only short-time span-grid convergence of this P-R
+  first-sheet adapter on a manufactured N1/LESP state. It would not validate
+  Hirato Case1/2 post-onset evolution, TEV coupling, long roll-up, pressure,
+  force, or production. Failure freezes this adapter at NO-GO without tuning.

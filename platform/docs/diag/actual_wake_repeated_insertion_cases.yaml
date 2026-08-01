@@ -1,0 +1,159 @@
+artifact: actual_wake_repeated_insertion_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b1
+depends_on_claims:
+  - N3.1j3b6d18c2b3b3b2c2b1
+  - N3.1j3b6d18c2b3b3b2c2a
+  - N3.1j3b6d18c2b3b3b2c2b2a
+  - N3.1j3b6d18c2b3b3b2b
+  - N3.1j3b6d18c2b3b3b2c1b2
+status: executed_no_go
+stage: S3ac_actual_old_state_newborn_repeated_insertion
+role: no_force_actual_topology_growth_time_oracle
+
+question: >
+  Can the actual old material P1/P2 state, characteristic newborn inflow
+  and current body algebraic trace be advanced in one explicit-midpoint
+  domain-decomposed composition, retaining named identities and second-order
+  Cauchy behavior through at least three consecutive insertions?
+
+cause_from_s3ab:
+  data_fingerprint:
+    - >
+      S3ab proves that the eighteen newborn P2 values are birth-boundary
+      values rather than a 63-DOF initial state, but it contains no actual
+      body/wake field and no old-state transport.
+    - >
+      At release the former body P1/P2 row changes role from an algebraic
+      body trace to a material seam, while a new current row becomes the
+      algebraic body trace.
+    - >
+      Advancing old state, inserting a newborn band and then copying a seam
+      would violate the S3u/S3aa stage evidence.
+  node: N3.1j3b6d18c2b3b3b2c2b2b
+  movable_space: >
+    Compose the frozen old-state ALE operator, frozen weak-normal geometry,
+    frozen characteristic birth identity and frozen affine body/newborn
+    trace solve through typed old/new subdomains. Do not change any frozen
+    operator, infer an initial newborn value, remap, regularize or compute
+    pressure/force.
+  classification: missing_actual_domain_decomposed_birth_transport_composition
+
+primary_evidence:
+  - source: >
+      Krebs, A Distributed Doublet-Based Method for Unsteady Aerodynamic
+      Analysis with Relaxed Wakes, 2021, figure 3.1 and sections 3.1-3.3.
+    implication: >
+      Existing wake elements retain material strength while surface and
+      newly-created wake strengths are resolved around wake relaxation.
+  - source: >
+      Krebs, Bramesfeld & Cole, Aerospace 9 (2022) 28.
+    doi: https://doi.org/10.3390/aerospace9010028
+    implication: >
+      Wake rows are created chronologically and then convected as material
+      identities rather than being reinitialized on every topology.
+  - source: >
+      Dziuk & Elliott, L2-estimates for the evolving surface finite element
+      method, Mathematics of Computation 82 (2013).
+    doi: https://doi.org/10.1090/S0025-5718-2012-02601-9
+    implication: >
+      Material scalar transport on an evolving triangulation must pair mesh
+      motion with relative tangential advection in one weak balance.
+  - source: >
+      Olshanskii & Reusken, Error Analysis of a Space-Time Finite Element
+      Method for Solving PDEs on Evolving Surfaces.
+    doi: https://doi.org/10.1137/130936877
+    implication: >
+      Time-slab weak composition supplies the correct interface between
+      changing spatial trial spaces.
+
+canonical:
+  initial_state: "frozen S3n two-band actual solution"
+  physical_velocity: "validated S3n four-channel ledger"
+  geometry_gauge:
+    old_material: "validated S3z global weak P1 normal projection"
+    current_body: "zero fixed-body velocity"
+  scalar_transport:
+    old_material: "validated consistent P2 mass/advection form"
+    time_method: "explicit midpoint"
+  birth:
+    half_predictor_rows: "[transported seam half, same seam half, solved g_half]"
+    full_rows: "[transported seam end, solved g_half, solved g_end]"
+    identity: "validated S3ab characteristic endpoint ordering"
+  algebraic_trace: "validated S3aa zero-plus-nine-unit affine solve"
+  time:
+    start: 0.0
+    end: 0.006
+    step_families: [3, 6, 12]
+  quadrature:
+    geometry_and_transport_order: 7
+    actual_boundary_order: 10
+
+required_identities:
+  - "each step increases band count by exactly one"
+  - "the former body row is an old material seam after release"
+  - "all original old P1/P2 identities remain explicitly mapped"
+  - "old half/full material equations close"
+  - "half/full current body traces close the actual affine residual"
+  - "newborn endpoint rows satisfy the S3ab characteristic identity"
+  - "actual boundary, attachment, chronology, seam and P2 roundtrip close"
+  - "at least three consecutive insertions occur in every trajectory"
+  - "common original-material geometry/state and final trace are time-Cauchy"
+  - "no initial newborn state, remap, copy/clamp, epsilon, pressure, force or structure enters"
+
+thresholds:
+  minimum_consecutive_insertions: 3
+  band_increment_mismatch_max: 0
+  old_transport_normalized_residual_max: 2.0e-11
+  old_mass_rank_deficiency_max: 0
+  old_mass_condition_number_max: 1.0e7
+  actual_boundary_relative_weak_residual_max: 2.0e-12
+  algebraic_trace_residual_abs_max: 2.0e-11
+  free_state_preservation_abs_max: 2.0e-12
+  characteristic_birth_identity_abs_max: 2.0e-12
+  chronological_seam_abs_max: 2.0e-12
+  P2_roundtrip_abs_max: 2.0e-12
+  minimum_newborn_face_area_min: 1.0e-9
+  original_geometry_cauchy_ratio_min: 3.2
+  original_scalar_cauchy_ratio_min: 3.2
+  body_trace_cauchy_ratio_min: 3.2
+  finest_change_over_evolution_max: 0.10
+  input_state_mutation_abs_max: 0.0
+  inferred_scalar_count_max: 0
+  geometry_iteration_count_max: 0
+
+decision:
+  go: >
+    Every role, mapping, old-transport, birth, algebraic, chronology,
+    residual and Cauchy gate passes. Validate the actual repeated-insertion
+    composition and authorize the next unified-pressure research node.
+  no_go: >
+    Preserve the first failed named residual and classify it under old
+    transport, birth interface, algebraic trace or time composition. Do not
+    tune a constant, lower a threshold, initialize newborn DOFs, remap,
+    regularize or consult a load target.
+  production_activation_allowed: false
+
+scope_limit: >
+  This is still a no-force actual-state oracle over a short canonical time
+  window. It does not compute unified pressure, panel force, LESP, a flap
+  cycle, 118 cases or production loads.
+
+result:
+  stage_decision: NO-GO
+  failure_probe: actual_wake_repeated_insertion_failure_probe_results.json
+  stage_probe: actual_wake_repeated_insertion_stage_probe_results.json
+  first_failed_named_component: birth_junction_finite_velocity
+  first_amplifying_stage: step_1_midpoint
+  first_catastrophic_stage: step_2_initial
+  initial_total_velocity_abs_max: 0.9904192317254168
+  step_1_midpoint_total_velocity_abs_max: 13.919279061896134
+  step_2_initial_body_doublet_abs_max: 13171025.790266544
+  step_2_initial_wake_sheet_abs_max: 13168241.395801693
+  step_2_initial_total_velocity_abs_max: 14003.195106263678
+  step_2_initial_actual_matrix_condition_number: 55.061080685330424
+  step_2_initial_actual_relative_weak_residual: 3.471426404549192e-16
+  claim_effect: >
+    Falsify and freeze only the trace-only, separately-evaluated explicit
+    composition. Preserve every frozen constituent and open a birth-junction
+    finite-velocity scale diagnosis before any new time integrator or load.

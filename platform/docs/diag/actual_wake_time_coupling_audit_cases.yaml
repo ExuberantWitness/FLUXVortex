@@ -1,0 +1,175 @@
+artifact: actual_wake_time_coupling_audit_preregistration
+date_preregistered: "2026-07-28"
+claim_node: N3.1j3b6d18c2b3b3
+depends_on_claims:
+  - N3.1j3b6d18c2b3b2a
+  - N3.1j3b6d18c2b3b2b
+  - N3.1j3b6d18c2b3a
+  - N3.1j3b6d18c2b2b1a
+status: executed_coupled
+stage: S3u_actual_wake_differential_algebraic_coupling_audit
+role: no_force_read_only_DAE_identifiability_audit
+
+question: >
+  Does the validated actual-wake state contain a non-negligible two-way
+  differential-algebraic coupling in which an interior material-P2 change
+  alters the algebraically solved body-attachment trace, while the
+  consistent P2 free block simultaneously consumes that trace derivative
+  through M_fb? If so, a solve-then-clamp sequential update is not the
+  validated second-order composition and a constraint-consistent time
+  method is a missing component.
+
+cause_from_s3t:
+  data_fingerprint:
+    - >
+      S3t validates a fixed-stage owner-aware geometry/P2 velocity
+      discretization but performs no geometry or scalar update.
+    - >
+      S3m validates M_ff*mu_dot_f=-(M_fb*g_dot+C_ff*mu_f+C_fb*g) and
+      falsifies full-update-then-clamp under a true inflow.
+    - >
+      solve_actual_boundary_body_wake_p2 treats old/current-interior wake
+      rows as known RHS while the newest current body trace is algebraic.
+    - >
+      Roccia et al. distinguish previous-time explicit geometry convection,
+      which needs no nonlinear iteration, from present/averaged-time
+      convection, which does.
+  node: N3.1j3b6d18c2b3b3
+  movable_space: >
+    Read only the validated S3n actual snapshot, S3s topology, S3t owned
+    mass assembly and the frozen actual-boundary solve. Apply a deterministic
+    zero-boundary interior-P2 direction at two amplitudes. Do not advance
+    time, change any operator, add stabilization, select a time method or
+    inspect pressure/force.
+
+primary_evidence:
+  - source: >
+      Arnold, Strehmel & Weiner, Half-explicit Runge-Kutta methods for
+      semi-explicit differential-algebraic equations of index 1,
+      Numerische Mathematik 64 (1993) 409-432.
+    doi: https://doi.org/10.1007/BF01388697
+    implication: >
+      Non-stiff index-1 DAEs can retain the order of an explicit RK
+      differential update only when the algebraic components are solved
+      consistently at the stages; stage algebra is not an endpoint clamp.
+  - source: >
+      Vijalapura, Strain & Govindjee, Fractional step methods for index-1
+      differential-algebraic equations, JCP 203 (2005) 305-320.
+    doi: https://doi.org/10.1016/j.jcp.2004.08.015
+    implication: >
+      Naive first- and second-order sequential splitting of differential and
+      algebraic parts is only first-order for an index-1 DAE.
+  - source: >
+      Roccia et al., Wind Energy Science 9 (2024) 385-416, Appendix C2.
+    doi: https://doi.org/10.5194/wes-9-385-2024
+    implication: >
+      Previous-time wake convection is an explicit option; present or
+      averaged-time velocities introduce iteration. Geometry iteration
+      therefore cannot be presumed before the actual coupling is measured.
+  - source: >
+      Elliott & Venkataraman, Error analysis for an ALE evolving surface
+      finite element method, NMPDE 31 (2015) 459-499.
+    doi: https://doi.org/10.1002/num.21930
+    implication: >
+      The scalar state and its time-dependent surface discretization form
+      one ALE evolution; boundary data and mesh motion cannot be updated as
+      unrelated endpoint corrections.
+
+canonical:
+  state: "frozen S3n curved two-band actual body-wake solution"
+  topology: "validated S3s actual-wake topology"
+  mass_assembly:
+    quadrature_order: 4
+    relative_velocity: [0.0, 0.0, 0.0]
+    purpose: "isolate M_fb without an advection contribution"
+  interior_counterfactual:
+    direction: >
+      sin(pi*(i+1)/(n+1)) over global P2 DOFs excluding every declared
+      open-boundary role; zero on body, oldest, root and tip boundaries;
+      normalized to unit infinity norm.
+    amplitudes: [0.02, 0.04]
+    body_attachment: "algebraically re-solved, never prescribed"
+  rate_counterfactual:
+    state: 0.0
+    body_trace_value: 0.0
+    body_trace_rate: >
+      directional derivative inferred from the exact linear two-amplitude
+      actual-boundary response; no finite-difference tuning parameter.
+    sequential_definition: >
+      solve the unconstrained zero-advection full P2 rate and overwrite only
+      the body trace rate.
+
+required_identities:
+  - "the typed body P2 trace is a strict subset and leaves free P2 DOFs"
+  - "M_ff is full rank and M_fb is nonzero"
+  - "an interior material-P2 direction changes the algebraic body trace"
+  - "doubling the interior direction doubles the algebraic trace response"
+  - "the correct free/constrained rate satisfies the free weak block"
+  - "full-rate-then-clamp leaves an order-one normalized M_fb*g_dot residual"
+  - "base and perturbed actual-boundary weak residuals remain within the frozen solve range"
+  - "input history is not mutated and no time method or load target enters"
+
+thresholds:
+  expected_global_p2_dof_count: 45
+  expected_body_p2_dof_count: 9
+  expected_free_p2_dof_count: 36
+  free_mass_rank_deficiency_max: 0
+  normalized_mass_boundary_coupling_min: 1.0e-8
+  algebraic_body_trace_response_abs_min: 1.0e-8
+  algebraic_response_linearity_relative_max: 2.0e-10
+  correct_free_block_normalized_residual_max: 2.0e-12
+  sequential_clamp_normalized_residual_min: 0.99
+  actual_boundary_relative_weak_residual_max: 2.0e-12
+  input_state_mutation_abs_max: 0.0
+
+decision:
+  coupled: >
+    All identities pass. Classify the actual stage as a coupled
+    differential-algebraic time problem and preregister constraint-consistent
+    half-explicit RK versus present/averaged-time implicit residual methods.
+    Do not authorize a solve-then-clamp composition.
+  uncoupled: >
+    A zero M_fb or zero algebraic response disproves the assumed two-way
+    coupling on this state. Preserve the result and localize the missing
+    direction before choosing a time algorithm.
+  no_go: >
+    Rank, linearity, weak-residual or mutation failure invalidates the audit.
+    Do not tune amplitudes, relax thresholds or use a load observable.
+  production_activation_allowed: false
+
+scope_limit: >
+  This audit contains no actual velocity evaluation, geometry/scalar update,
+  timestep, nonlinear iteration, pressure, force, LESP, target load or
+  structural dynamics.
+
+execution:
+  date: "2026-07-28"
+  result_file: actual_wake_time_coupling_audit_results.json
+  decision: COUPLED
+  passed_checks: 8
+  total_checks: 8
+  aggregate_metrics:
+    global_p2_dof_count: 45
+    body_p2_dof_count: 9
+    free_p2_dof_count: 36
+    strict_interior_p2_dof_count: 21
+    base_attachment_identity_abs_max: 0.0
+    free_mass_rank_deficiency: 0
+    normalized_mass_boundary_coupling: 0.14653646197283576
+    algebraic_body_trace_response_abs_max: 0.009224561671684381
+    algebraic_body_trace_directional_rate_abs_max: 0.461228083584219
+    algebraic_response_linearity_relative: 2.707989706518409e-14
+    correct_free_block_normalized_residual: 3.2568051733544663e-16
+    sequential_clamp_normalized_residual: 1.0
+    actual_boundary_relative_weak_residual_max: 3.9142577164891834e-16
+    input_state_mutation_abs_max: 0.0
+  measurement_audit: >
+    The first execution used the geometrically identical but algebraically
+    pre-solve history and failed only the attachment identity by 1.1056e-4.
+    That invalid run is preserved separately. Rebinding to the preregistered
+    base_solution.wake_history changed no threshold or hypothesis.
+  claim_effect: >
+    Falsify endpoint solve-then-clamp as a constraint-consistent stage
+    composition. Keep both half-explicit stage algebra and present/averaged
+    implicit residual candidates open; the audit does not choose between
+    them.

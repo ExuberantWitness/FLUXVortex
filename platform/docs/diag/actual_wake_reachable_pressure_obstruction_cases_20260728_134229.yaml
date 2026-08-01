@@ -1,0 +1,214 @@
+artifact: actual_wake_reachable_pressure_obstruction_preregistration
+version: S3ai-v2.2
+date_preregistered: "2026-07-28 13:42:29 +08:00"
+claim_node: N3.1j3b6d18c2b3b3b2c2b2b3e3b
+stage: S3ai_reachable_material_history_pressure_obstruction
+status: preregistered_before_any_formal_execution
+role: executable_symmetry_and_initializer_addendum_no_physical_result
+
+definition_chain:
+  base_protocol:
+    file: actual_wake_reachable_pressure_obstruction_cases_20260728_131922.yaml
+    sha256: 8345035356d300d4154ac276fc54b8ab27b6e83704cb4444436dbc0c2c59c75b
+  executable_addendum_v21:
+    file: actual_wake_reachable_pressure_obstruction_cases_20260728_133218.yaml
+    sha256: e751381942ec7c0cac8ea055c6aad1a5756643b85992bc04f4bee88339b563b4
+  implementation_audit:
+    file: actual_wake_reachable_prestep_symmetry_diagnostic_20260728_133553.json
+    sha256: f10e6ce2e31aea570b6b07d1607b7cdebe5336dd7e9700845596e2338318b4f2
+  inheritance: >
+    S3ai-v2 and v2.1 remain frozen and unchanged.  All their physical
+    scope, 31-history registry, common anchor, same-space uncertainty,
+    negative controls, exact accounting, nonclaims, and no-production role
+    remain in force except for the initializer and mirror-observation rules
+    explicitly replaced below.
+supersedes_for_execution:
+  - actual_wake_reachable_pressure_obstruction_cases_20260728_133218.yaml
+
+reason_for_addendum:
+  data_fingerprint:
+    - >
+      Before any formal 31-history run, the alpha=0 entrance prestep returned
+      a nonzero canonical body-cut trace.  Its maximum absolute value
+      contracted from 2.0602142667e-6 at q8 to 6.2977664710e-7 at q10 and
+      2.0476205296e-7 at q12, while the face_mu attachment inventory remained
+      exactly zero.
+    - >
+      The trace was almost entirely span-odd.  The old
+      maxabs(v-v[::-1])/maxabs(v) metric approached two while the absolute
+      trace contracted.  It therefore divided a vanishing quadrature error
+      by itself and was ill-conditioned at the continuum-zero state.
+    - >
+      At q10 the same trace changed only from 7.8919204607e-7 to
+      7.0531407673e-7 to 6.2977664710e-7 over dt=0.25,0.125,0.0625.  This
+      does not support a physical prehistory or midpoint-time source.
+  localization: >
+    The exact symmetric continuum initializer is zero.  The finite-q
+    span-odd fingerprint is assigned first to body/wake BIE and shared-edge
+    quadrature symmetry, not to forming geometry, a VES, or the pressure-line
+    observer.  The fixed order-12 pressure-line rule exactly integrates the
+    straight-edge P4 test-times-speed-squared polynomial.
+  movable_space: >
+    Replace only the invalid exact-zero and relative-mirror observation
+    rules by typed even/odd projections and same-space q-error intervals.
+    Do not change S3e equations, history length, body/wake geometry,
+    quadrature values, pressure law, force, production, or any aerodynamic
+    constant.
+
+continuum_zero_initializer:
+  exact_target: >
+    At alpha=0 on the symmetric full wing with Uy=0, the continuum body-cut
+    jump, material release, weak pressure jump, and dynamic residual are
+    span-even; the exact zero-strength initializer has zero cut jump.
+  entrance_prestep:
+    count_per_history: 1
+    interval: "[-dt,0]"
+    role: >
+      Construct one stored phi and a complete face_mu material state.  The
+      prestep is excluded from the pressure measurement window.
+    hard_checks:
+      - stored and direct BIE backward-error screens
+      - typed body/wake attachment, seam, tip, chronology, and geometry
+      - exact correct-sign face_mu representation-inventory increments
+      - zero old-state and input mutation
+    removed_checks:
+      - bitwise or fixed-tolerance zero body/material cut trace at t=0
+      - relative mirror residual of a near-zero trace
+  prehistory_prohibition: >
+    No fixed long prehistory or burn-in may be added.  It has no independent
+    physical time scale, changes wake age and length, and would absorb a
+    quadrature artifact into initialization.
+  failure_route: >
+    If the complete-vector q family does not contract or its zero-target
+    interval excludes zero, return PROTOCOL-NO-GO and localize the next
+    movable node to symmetry-preserving body/wake BIE/shared-edge
+    quadrature.  Do not advance to massless forming geometry or finite VES.
+
+span_reflection:
+  physical_parity: even
+  complete_trace_reflection: "J9*v = v[::-1]"
+  active_reflection: "J7*v = v[::-1]"
+  topology_requirements:
+    - reflection maps upper faces to upper faces and lower to lower
+    - active rows are complete rows 1 through 7 in canonical order
+    - active mass is exactly persymmetric: "J7*M*J7 == M"
+    - active mass commutes exactly with reflection: "J7*M == M*J7"
+  projectors:
+    even: "Pi_plus=(I+J)/2"
+    odd: "Pi_minus=(I-J)/2"
+    exact_checks:
+      - idempotence
+      - complementarity
+      - mutual annihilation
+  typed_spaces:
+    primal_trace:
+      values:
+        - canonical material current trace
+        - body-cut trace
+        - canonical material release
+        - representation inventory
+      norm: "sqrt(g.T*M*g)"
+    dual_observation:
+      values:
+        - stored weak pressure
+        - direct-phi weak pressure
+        - stored step residual
+        - direct-phi step residual
+        - stored window residual
+        - direct-phi window residual
+        - centered tangent
+      norm: "sqrt(r.T*solve(M,r))"
+  zero_component: odd
+  signal_component: even
+  prohibition:
+    - no relative mirror ratio with a near-zero denominator
+    - no primal/dual norm mixing
+    - no coordinate-nearest-neighbour reflection
+    - no parity fitted from observed data
+
+projected_uncertainty:
+  rule: >
+    Project every operand before constructing a family.  Apply the inherited
+    epsilon, timestep, q, mixed-cube, repeat, and direct-observer formulas
+    independently to Pi_plus and Pi_minus in the typed norm of that
+    observable.
+  floating_round_scale: >
+    Each projected family receives one round term scaled from the
+    unprojected operands in the same typed norm.  For a cancellation such as
+    inventory=-body_trace+release, use the unprojected body trace and release
+    operands, not the near-zero inventory alone.
+  matched_stage_q_families:
+    signed_positive: [Q8_plus, Q10_plus, A_plus]
+    signed_negative: [Q8_minus, Q10_minus, A_minus]
+    zero: [Z_Q8, Z_Q10, Z_A]
+    rule: >
+      At every common prestep/full, measured midpoint/full, and measured
+      residual index, form q8/q10/q12 triples for canonical trace, stored
+      pressure, direct pressure, stored residual, and direct residual.
+      Primal trace uses M; dual fields use M^-1.
+  quadrature_tail: >
+    If projected q differences are on the inherited floating plateau, use
+    delta2; otherwise require rho=delta2/delta1<1 and use
+    delta2/(1-rho).  Add the unprojected-operand round term exactly once
+    when forming the interval.
+  interval: >
+    I_plus/minus=[max(0,norm(Pi_plus/minus*v_anchor)-U_plus/minus),
+    norm(Pi_plus/minus*v_anchor)+U_plus/minus].
+  parity_decision:
+    resolved_failure: >
+      Any odd lower bound L_minus>0, or any required projected q family that
+      does not contract/plateau, is PROTOCOL-NO-GO.
+    admissible: >
+      L_minus=0 is reported only as NO RESOLVED SYMMETRY VIOLATION.  It is
+      sufficient for this protocol hard guard but is not certified exact
+      mirror symmetry.
+    relative_report: >
+      H_minus/L_plus may be reported only if L_plus>0.  If L_plus=0, emit
+      null and never divide by an observed near-zero signal.
+  local_noncancellation: >
+    Also form V_minus=sum_n norm(Pi_minus*R_n) for zero histories and give it
+    its own inherited dt/q/mixed/repeat/direct-observer scalar interval.
+    Window cancellation may not hide stagewise odd defects.
+
+manufactured_parity_controls:
+  active_even: [1.0, -2.0, 3.0, 4.0, 3.0, -2.0, 1.0]
+  active_odd: [1.0, -2.0, 3.0, 0.0, -3.0, 2.0, -1.0]
+  complete_rule: add_zero_tip_at_each_end
+  odd_amplitude: 0.0009765625
+  exact_form: "2**-10"
+  required:
+    - "primal g=e9+2**-10*o9 recovers the declared odd component"
+    - "dual r=M*e7+2**-10*M*o7 recovers 2**-10*M*o7"
+    - exact zero is not rejected
+    - "2**-40 times an even vector is not rejected"
+    - "2**-40 times an odd vector fails whenever its frozen interval excludes zero"
+    - identity or a wrong permutation cannot masquerade as the declared reversal
+    - primal and dual Pythagorean identities pass
+
+required_definition_tests:
+  inherit_v21: true
+  additions:
+    - continuum-zero prestep accepts a finite-q trace only through a contracting same-space q interval
+    - no long prehistory or measurement-window contamination
+    - exact mass/reflection commutation and typed primal/dual projectors
+    - all manufactured parity controls
+    - projected q interval uses an unprojected-operand round scale exactly once
+    - stagewise odd noncancellation cannot be hidden by window cancellation
+    - old relative mirror metric is absent from every decision
+    - formal runner remains fail-closed until an independent v2.2 code audit
+
+decision:
+  inherit_v2_and_v21: true
+  production_activation_allowed: false
+  formal_execution_allowed: false
+  result_file: actual_wake_reachable_pressure_obstruction_results_20260728_134229.json
+  latest_result_file: actual_wake_reachable_pressure_obstruction_results.json
+  no_result_exists_at_preregistration: true
+
+nonclaims:
+  - no formal S3ai-v2.2 history has run
+  - no certified exact mirror-symmetry claim is made
+  - no spatial h/p convergence
+  - no state identity or dimension
+  - no geometry-versus-VES decision
+  - no force, production, 118 sweep, or Fig17/18/19 result
