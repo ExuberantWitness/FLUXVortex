@@ -12,3 +12,5 @@ build/
 *.mp4
 *.fig
 *.npz
+/platform/data_external/
+/platform/external/
