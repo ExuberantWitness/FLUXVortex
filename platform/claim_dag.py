@@ -192,6 +192,6 @@ if __name__ == "__main__":
     print(dag.summary())
     print()
     print("修改前检查:")
-    for nid in ["N1", "N2", "N3", "N4", "N5", "N6"]:
+    for nid in sorted(dag.nodes):
         ok, reason = dag.validate_modification(nid, "test change")
         print(f"  {nid}: {'✓' if ok else '✗'} {reason}")

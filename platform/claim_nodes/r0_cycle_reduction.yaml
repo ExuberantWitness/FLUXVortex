@@ -1,0 +1,80 @@
+id: R0
+title: 图级周期归约契约
+claim: >
+  V4.1 报告总力使用一次作用于总时序的 winsorized robust cycle reducer，
+  而物理 claim 通道使用普通周期均值。两者的确定性差
+  q_num = R(sum_j f_j) - M(sum_j f_j) 是图级数值归约量，不是任何物理节点
+  未分类的气动力；物理通道必须先在 arithmetic-cycle ledger 中独立闭合。
+state: validated
+freeze: true
+evidence:
+  - "platform/docs/diag/claim_graph_cycle_reduction_prereg_20260729_102628.md"
+  - "anchor→anchor→probe: q_num 与旧 N1 uvlm_remainder 最大差 1.08e-15 N"
+  - "platform/docs/diag/r0_gate1_nogo_20260729.md：原跨进程 bitwise 门按文义 NO-GO"
+  - "platform/docs/diag/r0_gate2_result_20260729.md：同调用十字段 bitwise 不变量、正式 anchor、物理/R0 双账全部 GO"
+refs:
+  - "platform/_v2_robo.py robust total-cycle reducer and arithmetic channel means"
+memory:
+  - "platform/docs/diag/claim_graph_cycle_reduction_prereg.md"
+guard:
+  - id: r0_reported_ledger
+    metric: "reported graph ledger max absolute error"
+    band: "<= 1e-9 N"
+    rule: "物理算术总账加 q_num 必须重现既有 reported body force"
+  - id: r0_physical_ledger
+    metric: "unclassified physical arithmetic-cycle force"
+    band: "<= 1e-9 N"
+    rule: "q_num 不得吸收任何物理通道漏项"
+falsified_when: >
+  任一既有 L/T 改变、q_num 不能复现旧 reducer 差值、物理算术总账不闭合，
+  或 N1 implementation hash 漂移。
+depends_on: ["N1", "N2", "N3", "N4", "N6"]
+provides_to: []
+implementation: "claim_runtime.components:CycleReductionComponent"
+implementation_version: "2-validated"
+implementation_hash: "sha256:a0b0f13578b08db42db094919b0e38ce9420480fae0e0c4bcf39d6f956d52f1b"
+requires:
+  - "solver_channels"
+  - "n1_force"
+  - "n2_force"
+  - "n3_force"
+  - "n4_force"
+  - "n6_force"
+provides: ["r0_cycle_reduction"]
+enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+config: {}
+exclusive_with: []
+runtime_role: "diagnostic"
+children:
+  - id: R0.1
+    title: "双源发布＋跨进程历史 bitwise 判据"
+    claim: >
+      分别提供 R0 状态与力通道，并以不同 CUDA 进程的历史 L/T 逐 bit 相同
+      作为气动不变性的充分判据。
+    state: falsified
+    freeze: true
+    evidence:
+      - "platform/docs/diag/r0_gate1_nogo_20260729.md：两个 anchor 不满足跨进程 bitwise"
+      - "独立schema审计反例：状态通道与力通道可被构造为不同数组"
+    falsified_when: "已发生：控制不可辨识且双数据源允许状态/力账分叉"
+  - id: R0.2
+    title: "canonical 单源＋同调用输出不变量"
+    claim: >
+      从唯一 numerical_cycle_reduction 同时发布 R0 状态和力账，并在同一次
+      solver 调用内证明 ClaimGraph 前后既有气动力字段逐 bit 不变。
+    state: validated
+    freeze: true
+    evidence:
+      - "platform/docs/diag/r0_gate2_incall_prereg_20260729.md"
+      - "platform/docs/diag/r0_gate2_result_20260729.md"
+    guard:
+      - id: r0_incall_api_invariance
+        metric: "十个既有气动力字段 ClaimGraph 前后 IEEE-754 identity"
+        band: "changed_fields=[]"
+        rule: "任一字段改变立即终止"
+version: "runtime-v1 (2026-07-29 晋升)"
+changed: "2026-07-29 partial -> validated：Gate 2 同调用不变量与双账验证"
+notes: |
+  R0 只修正 ClaimGraph 的时间归约身份，不改变任何气动公式、常数、网格、
+  运动学、瞬时通道或报告 L/T。R0 是诊断归约量，不得作为面板载荷传给
+  co-design；结构接口只消费 physics/necessary_physics role。

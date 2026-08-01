@@ -24,6 +24,16 @@ guard:
 falsified_when: "双计（|CT| 前向记账 +3.6N）→ 已证伪，禁重走"
 depends_on: ["N1", "N2"]
 provides_to: []
+implementation: "claim_runtime.components:CTConsistencyComponent"
+implementation_version: "1"
+implementation_hash: "sha256:1b35c6edc52bf23b04c8e8fc3b9bb5cbac39baa958c4e071b9d5abca61a4cc4f"
+requires: ["solver_channels", "n1_force"]
+provides: ["n4_force"]
+enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+config:
+  enabled: false
+exclusive_with: ["LEGACY"]
+runtime_role: "diagnostic"
 children: []
 version: "v4.1 (2026-07-26 晋升)"
 changed: "2026-07-26 (CT off，但诊断是地基)"

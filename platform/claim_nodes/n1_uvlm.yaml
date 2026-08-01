@@ -30,6 +30,15 @@ guard:
 falsified_when: "guardrail 数值越带（r[L] ±0.15 外）→ validated 自动转 ~partial，需开案"
 depends_on: []
 provides_to: ["N2", "N3", "N4", "N5"]
+implementation: "claim_runtime.components:UVLMComponent"
+implementation_version: "1"
+implementation_hash: "sha256:f4c5d11c28ba5f4d71132c9c601544ab6b9b2728e404df27bac781fd8304dc2c"
+requires: ["solver_channels"]
+provides: ["n1_force"]
+enabled_in: ["v41", "v4_legacy", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+config: {}
+exclusive_with: []
+runtime_role: "physics"
 version: "v4.1 (2026-07-26 晋升)"
 changed: "2026-07-26 (H16pltL2 -> H16+plateau_fn+fsep_lag+geo_stall_vec+le+d_para0.5+uiuc)"
 notes: |

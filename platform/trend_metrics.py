@@ -20,7 +20,8 @@
 
 输入:模型 118 结果 JSON("U_f_tw_aoa" -> {L, T}) + repro_data.json(实测)。
 输出:终端记分卡 + 病灶排序(未捕获 > 低 r > MAE)+ 版本化 JSON(docs/scorecards/)。
-自检门:对 s6_sweep_v4.json 必须复现四判决(dT/dU 反向;19|b10 dL/df 缺口带;
+自检门:对 s6_sweep_v4_legacy.json 必须复现四判决(dT/dU 同号但阻力增长偏弱;
+19|b10 dL/df 缺口带;
 升力 MAE 带;dL/df 族形状失败 r̄<0.5)——不复现则 harness 有 bug,禁用其结论。
 
 用法:python platform/trend_metrics.py <sweep.json> [tag]
@@ -293,14 +294,18 @@ def scorecard(sweep_path, tag=None, quiet=False):
 
 def selfcheck(out):
     """自检门:v4 基线必须复现四判决。"""
-    ok1 = not out["cross"]["dT_dU"]["sign_ok"]                       # dT/dU 反向
+    dtu = out["cross"]["dT_dU"]
+    ok1 = (dtu["sign_ok"] and dtu["model"] < 0.0
+           and abs(dtu["model"]) < abs(dtu["meas"]))                 # 同号但阻力增长偏弱
     r10 = [x for x in out["rows"] if x["curve"] == "19|b|10"][0]
     gap = r10["slope_meas"] - r10["slope_model"]
     ok2 = 1.2 < gap < 2.5                                            # dL/df 缺口带
     ok3 = 0.6 < out["summary"]["lift_mae"] < 1.1                     # 升力 MAE 带
     dldf = out["families"]["dL/df"]
     ok4 = dldf["pr"] < 0.5                                           # dL/df 族形状失败(v4 病历)
-    print(f"自检门: dT/dU反向={ok1} dL/df缺口={gap:+.2f}∈(1.2,2.5)={ok2} "
+    print(f"自检门: dT/dU同号且偏弱={ok1} "
+          f"({dtu['model']:+.3f}/{dtu['meas']:+.3f}) "
+          f"dL/df缺口={gap:+.2f}∈(1.2,2.5)={ok2} "
           f"liftMAE带={ok3} dL/df形状r̄={dldf['pr']:+.2f}<0.5={ok4} -> "
           f"{'PASS' if (ok1 and ok2 and ok3 and ok4) else 'FAIL'}")
     return ok1 and ok2 and ok3 and ok4

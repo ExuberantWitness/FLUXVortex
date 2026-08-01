@@ -1,0 +1,79 @@
+id: M0
+title: "RoboEagle 实验身份与观察算子"
+claim: >
+  Fig17/18/19 是刚性翼、机构和风洞安装共同作用后由六轴天平观测并经滤波、
+  周期平均与坐标变换得到的系统量。数值气动模型与这些曲线比较时，必须显式
+  记录几何代理、运动学、滤波和tare身份；未知机构份额不得被静默归入翼面
+  压力或以常数吸收。
+state: partial
+freeze: false
+evidence:
+  - "Meng et al., Drones 2025, 9, 535：刚性扑翼试件、六轴天平、周期平均和坐标变换"
+  - "g0d_target_domain_spatial_oracle_audit_20260730.md：无公开原始同步压力/PIV/tare，目标域空间oracle NO-GO"
+  - "fig19_cd_frequency_identity_exhaustion_20260729.md + 2026-08-01 双 scope 契约终裁：Fig19(c,d)
+    固定频率一手资产穷尽 UNRESOLVED；confirmed(42 曲线/151 条件)= 晋升域，
+    conditional_fig19_cd(8 曲线/48 条件)= 诊断域(禁晋升/证伪 claim)；H_shared_2p0
+    只是 plausible inference 不写 ground truth。fig171819_benchmark.py 状态
+    FIG19_CD_FREQUENCY_STATUS='conditional_scope'，promotion 只看 confirmed 域。"
+refs:
+  - "researchpaper/Meng2025_Drones_FlappingTwist_RoboEagle_SOURCE.pdf"
+  - "platform/docs/diag/d1_fig18_curve_identity_audit.md"
+  - "platform/docs/diag/g0d_target_domain_spatial_oracle_audit_20260730.md"
+memory:
+  - "M0 是证据/观察边界，不是气动力补丁；enabled_in 为空，不参与运行时力账。"
+guard: []
+depends_on: []
+provides_to: ["N1", "N2", "N3"]
+enabled_in: []
+runtime_role: "diagnostic"
+children:
+  - id: M0.1
+    title: "Fig18 推力曲线身份"
+    claim: >
+      Fig18 推力 U=6 与 U=10 的公开数字化资产已按源图图例和正文纠正；
+      修正后实验与V4.1的dT/dU同号，模型斜率绝对值不足。
+    state: validated
+    freeze: true
+    evidence:
+      - "d1_fig18_curve_identity_audit.md"
+      - "correct_fig18_curve_identity.py 幂等身份修正"
+  - id: M0.2
+    title: "翼、机构与相互作用tare身份"
+    claim: >
+      公开实验没有wing-off/wind-on tare，故周期均值推力中的翼面压力、
+      机构阻力及其相互作用当前不可唯一分离；Fig15静态滑翔只可约束合计
+      系统阻力，不能单独给出动态机构份额。
+    state: open
+    freeze: false
+    evidence:
+      - "Meng 2025公开方法未报告wing-off tare"
+      - "g0d_target_domain_spatial_oracle_audit_20260730.md"
+      - "g0e_fig15_static_discriminator_20260730.md：静态Fig15排除新增阻力常数，但不能分离动态机构tare与翼面分离压力"
+  - id: M0.4
+    title: "冻结V4.1与历史静态黏性锚的配置身份"
+    claim: >
+      冻结Fig17/18/19 V4.1 manifest实际为visc=False，在U=8、AoA=5静态
+      L/D=8.12979而未过Fig15；历史d_para=0.5+visc=True配置才通过静态锚。
+      两者必须作为不同模型身份报告，修复运行时viscous来源账本不得静默
+      改写冻结184工况基线。
+    state: validated
+    freeze: true
+    evidence:
+      - "g0e_fig15_static_discriminator_20260730.md：严格生产网格独立运行、additive visc counterfactual及0-bit气动力不变量"
+      - "lb_sweep118.py BASE未显式设置visc，gpu_run_twist通用默认visc=False"
+  - id: M0.3
+    title: "实验截面与数值几何绑定"
+    claim: >
+      当前N1只使用用户指定的零厚NACA 24xx中弧线代理；标准2406双侧壳
+      验证的是几何公式，不证明Meng 2025试件截面。真实截面、厚度、根部
+      间隙和安装几何保持未披露/未验证。
+    state: open
+    freeze: false
+    evidence:
+      - "NACA2406最早来自2026-06-22用户规格；Git首次引入0667549"
+      - "Meng 2025全文无NACA/2406/E378；前代E378不能证明2025试件身份"
+      - "_v2_robogeom.py只使用m=0.02,p=0.40中弧线"
+notes: |
+  本节点把算法验证、几何绑定和实验观察分开。它不授权改动冻结N1，也不提供
+  任何力贡献。取得作者CAD、截面测量或wing-off tare后，必须先在本节点回写
+  数据身份，再允许相应物理claim晋升。

@@ -2,15 +2,19 @@ id: N5
 title: 扭转耦合响应
 claim: >
   扭转扫升力形状：模型升力随扭转单调升（chop-release 嫌疑），实测 tw15-22 峰后滚落。
-  归因未定（独立节点 vs N2/N3 派生），Phase C-① 通道归因先判，禁先修。
+  精确生产网格已判定为 N3.1 派生观测失败：N1/N2 方向正确，N3 随扭转过供独自翻转总趋势；
+  扩展文献将病灶收敛为无符号 A0 持续力律和缺失的事件/三维状态，而非独立 twist correction。
 state: falsified
 freeze: false
 evidence:
   - "platform/docs/diag/research_symmetry_break.md (tw15-22 峰后滚落)"
   - "Fig17b/Fig19d 扭转扫: 模型 tw45 +9.98/+8.61 vs 实测 +6.06/+8.80"
+  - "platform/docs/diag/research_n3_twist_gate.md (N1/N2/N3 exact production channel attribution)"
+  - "platform/docs/diag/research_n3_landscape_20260727.md (三维扭转/LEV 文献景观)"
 refs:
   - "twist_amp_deg (扭转幅值, 标称=峰-峰半幅)"
-  - "twist_phase_deg=90 (扭转相位 +90, 用户裁定)"
+  - "twist_phase_deg=+90 (当前生产基线；D9 证明不等同于 Figure10 实验身份)"
+  - "twist_phase_deg=-90 (D9 坐标同义身份；尚未晋升生产基线)"
   - "Fig17b/Fig19d 扭转扫数据"
 memory:
   - "feedback_claim_chain_research.md (归因未定前禁修改)"
@@ -18,14 +22,78 @@ guard:
   - id: n5_twist_shape
     metric: "tw15-22 峰后滚落形状"
     band: "实测 tw15-22 峰后滚落, 模型单调升 (D3 病灶)"
-    rule: "Phase C-① 通道归因先判, 禁先修"
+    rule: "N5 只作观测守卫；修复只能发生于有证据的 N3.1 改写"
 falsified_when: "模型升力随扭转单调升 vs 实测峰后滚落 → 已证伪, Phase C 归因未定"
 depends_on: ["N1", "N2", "N3"]
 provides_to: []
-children: []
+implementation: "claim_runtime.components:TwistResponseObserver"
+implementation_version: "1"
+implementation_hash: ""
+requires: ["solver_channels", "n1_force"]
+provides: ["n5_observation"]
+enabled_in: ["v41", "v4_legacy", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+config: {}
+exclusive_with: []
+runtime_role: "diagnostic"
+children:
+  - id: N5.1
+    title: "实测扭转—扑动相位符号身份"
+    claim: >
+      D9 已将 Meng Figure10 的实测运动学唯一映射到代码 -90；当前生产 +90 与
+      原图相反。-90 恢复 lift 的相位机理但不能恢复峰位和 thrust，因此输入身份
+      已闭合，而 N5 的物理响应仍未闭合。
+    state: partial
+    freeze: false
+    evidence:
+      - "Meng et al. 2025 Figure10 原页视觉核对：上止点后 flap下降、twist由0向正"
+      - "Meng et al. 2025 §4.2：该段为 downstroke nose-down twist"
+      - "D6: +90下 lift-dominant |alpha|=7.60/11.06/14.54deg，正负峰绝对值均增"
+      - "D7: -90下 |alpha|=7.60/4.22/1.21deg，双峰衰减且均值峰后回落"
+      - "D8: -90的 L峰仍在tw22.5且T初段方向错误，phase-only不充分"
+      - "platform/docs/diag/research_n3_landscape_20260727.md §12–13"
+      - "platform/docs/diag/research_n3_spatial_loads_20260727.md §4.1 (D9 显式旋转矩阵/左右翼/风轴审计)"
+    children:
+      - id: N5.1a
+        title: "+90 与 Figure10 在代码坐标中同义"
+        claim: "当前 +90 相位使下扑 nose-down twist 降低有效攻角并压低深扭转双峰。"
+        state: falsified
+        freeze: false
+        evidence:
+          - "D6: +90时 lift-dominant |alpha| 与正负峰绝对值均随tw增加"
+          - "Figure10 上止点解析：+90在代码中 dpsi/dt<0，与原图相反"
+      - id: N5.1b
+        title: "仅翻转到 -90 即可恢复完整 twist-family"
+        claim: "-90 可同时恢复 lift 峰位和 thrust 先升后降。"
+        state: falsified
+        freeze: false
+        evidence:
+          - "D8: L15=6.485 < L22.5=6.924，峰位仍错"
+          - "D7: T0=+0.034 > T22.5=-0.151，初段方向错"
+      - id: N5.1c
+        title: "装配角到求解器旋转的坐标同义审计"
+        claim: >
+          当前代码 +x 前缘到后缘、+z 向上且正 psi 为 nose-down；Figure10 上止点
+          后的正 nose-down twist 唯一对应 phi=-pi/2。左右翼 y 镜像和 body→wind
+          力轴变换不改变该局部截面相位身份。
+        state: validated
+        freeze: true
+        evidence:
+          - "Meng Figure10 原页：tau=0 上止点，随后 twist 由0向正"
+          - "Meng §4.2：downstroke 的 positive twist 为 nose-down"
+          - "_v2_robo.py twisted_corners: 正psi使后缘向+z，即nose-down"
+          - "_v2_robo.py aic_sym_kernel: y镜像并反转环绕，x-z截面身份不变"
+          - "D9 相位表：-90=0,+1,0,-1；+90为其反号"
+          - "research_n3_spatial_loads_20260727.md §4.1"
+        guard:
+          - id: n5_kinematic_identity
+            metric: "Figure10 phase identity"
+            band: "paper upper-stop/downstroke positive twist == code phi=-90deg"
+            rule: "若x/z/psi定义或镜像策略变化，必须使本节点失效并重做D9"
 version: "v4.1 (2026-07-26 晋升)"
 changed: "2026-07-27 (D3 病灶入树)"
 notes: |
   N5 是已证伪节点（D3 病灶）。模型升力随扭转单调升（chop-release 嫌疑），实测 tw15-22 峰后滚落。
-  归因未定：独立节点 vs N2/N3 派生。Phase C-① 通道归因先判，禁先修。
-  Phase A 改 N2.2 簿记会改变扭转响应基线 → C 必须在 A/B 定稿后重基线。
+  2026-07-27 精确生产网格归因已定：N1 下降0.930N、N2下降0.869N，方向均正确；
+  N3 增加4.589N并独自翻转趋势。N5 不提供新的力学旋钮，只观察 N3.1 修复是否恢复峰后滚落。
+  D9 完成输入身份审计：Figure10 在当前代码坐标中对应 -90，不再把 D8 的物理
+  NO-GO 解释为相位身份未定。生产 +90、缓存和118仍保持不动，需独立重建基线。

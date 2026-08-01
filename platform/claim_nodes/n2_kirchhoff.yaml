@@ -30,6 +30,18 @@ guard:
 falsified_when: "dL/df Pearson < 0.9 或 巡航点 L/T 越带 → validated 自动转 ~partial"
 depends_on: ["N1"]
 provides_to: ["N3", "N5"]
+implementation: "claim_runtime.components:KirchhoffLBComponent"
+implementation_version: "1"
+implementation_hash: ""
+requires: ["solver_channels", "n1_force"]
+provides: ["n2_force"]
+enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+config:
+  Tp: 1.7
+  Tf: 3.0
+  hybrid: 0.0
+exclusive_with: ["LEGACY"]
+runtime_role: "physics"
 children:
   - id: N2.1
     title: "f(α) 零拟合反演 + Tp/Tf 双时滞"
@@ -42,7 +54,9 @@ children:
     claim: "砍量沿风升力方向施加（lb_chop_zonly），污染精确为零。"
     state: falsified
     freeze: false
-    evidence: ["research_symmetry_break.md D1 证伪（构造性零推力污染=丢分离压差阻）"]
+    evidence:
+      - "research_lb_formula.md：完整 BL 必须分别计算 normal/chordwise force"
+      - "d1_fig18_curve_identity_audit.md：撤销旧 D1 反号归因；该节点仅在力闭合意义上不完整"
   - id: N2.3
     title: "a3d 2D→3D 失速移位"
     claim: "a3d 分离判断 α 下移（有效参数，禁跨截面外推）。"
@@ -55,8 +69,1034 @@ children:
     state: falsified
     freeze: false
     evidence: ["LB_DIAG2 通道分解 (aoa15 角区 +4.6N/周期均)"]
+  - id: N2.5
+    title: "滞后静态极曲线的弦向力闭合"
+    claim: >
+      以 IAG/Bangga 路线从滞后攻角处的静态极曲线取得弦向力，替代而非叠加现有
+      attached_drag/UIUC 通道，并与 UVLM 前缘吸力做唯一簿记。
+    state: open
+    freeze: false
+    evidence:
+      - "d1_fig18_curve_identity_audit.md：dT/dU 同号但模型斜率偏弱，N2.2 非反号主犯"
+      - "Bangga et al. WES 2020：BL eta 阻力敏感，IAG 从 lagged-alpha 静态极曲线取切向力"
+      - "research_n2_chordwise_decision.md：生产力 NO-GO；唯一簿记/静态 CT 锚满足前仅许诊断"
+      - "N3.1j3b4压力公共模态反例：薄面压力跳不能唯一决定厚翼Ct；静态极曲线只能是过渡替代件，最终生产方向是N3.1j3b6实际厚度双侧压力+N2.6黏性状态"
+  - id: N2.6
+    title: "移动壁面环量生成—黏性转移—三维分离释放链"
+    claim: >
+      对RoboEagle厚翼光滑前缘，新生自由剪切层不能由单一“黏性涡量通量”
+      标量直接给定。移动无滑移壁面的界面环量先由壁面加速度与切向压力梯度
+      造成的相对无黏加速度生成，黏性再把该环量转移进流体边界层；表面涡量
+      库存经过三维输运、拉伸、转捩与卷吸后，只有穿过分离流形的守恒通量才是
+      DDE新生片供给q_sep。LESP只可打开起涡拓扑，f2只描述分离程度，二者均
+      不能充当持续LEV幅值；任何供给律不得由目标总力反演。
+    state: partial
+    freeze: false
+    evidence:
+      - "Sudharsan & Sharma, JFM 996 (2024), doi:10.1017/jfm.2024.753：BEF由壁面涡量通量构造并可在时空上定位局部分离涡脱落；LESP只捕获显著影响前缘Cp的事件"
+      - "Terrington, Hourigan & Thompson, JFM 936 A44 (2022), Eq.4.30-4.31：移动无滑移固壁的环量源由壁面加速度与压力梯度给出；黏性负责由界面向流体转移，不创造净环量"
+      - "Gehlert & Babinsky, JFM 915 A50 (2021)：边界层涡片由平移、旋转、局部与远场涡量共同演化，分离点原始涡片强度不存在普适阈值"
+      - "DeVoria & Mohseni 2018, arXiv:1801.07346: vortex-entrainment sheet以面质量、切向内禀流和法向速度跳补足纯涡片缺失的质量/动量闭合"
+      - "Xia & Mohseni, JFM 830 (2017): 新生片方向、强度和相对速度需由Kutta及质量/动量共同确定；其已闭合结果限于尖锐/尖点边缘"
+      - "research_n3_spatial_loads_20260727.md §6：光滑前缘供给边界缺件裁决"
+    memory:
+      - "2026-07-30 G0 N1/N2 ledger-phase witnesses：NO_DECISION_MIXED_SOURCE；仅AoA family支持N2、仅twist首段支持N1，U/f反向且深扭转不支持二者。该证据不授权N2.6 shadow预登记或实现；见n1_n2_ledger_phase_runs/20260730_g0_n1_n2_phase_witness_v2/score.json。"
+      - "2026-07-30 G0c Fig19 AoA梯度见证：NO_DECISION_PROCESSING_SENSITIVE，raw/robust均为MULTIPLE_EXPLANATIONS；f2.6存在Q1/Q2与Q2/Q3多支持，且无量纲Q2在A5→10由raw支持翻为robust反向。仅记录诊断不足，不改变N2.6状态，也不授权shadow预登记或实现；见n1_n2_n3_aoa_ladder_runs/20260730_g0c_aoa_ladder_v1/score.json。"
+    provides_to: ["N3.1j4b5b"]
+    children:
+      - id: N2.6d
+        title: "与N1材料坐标共置的双侧黏性几何壳"
+        claim: >
+          冻结N1继续在零厚度中弧面求解外流势跳；N2.6必须另外拥有共享同一
+          弦展向材料坐标的真实吸力面/压力面几何壳，逐侧提供位置、法向、
+          速度、加速度、曲率和分离流形承载面。双侧壳不得反馈修改N1参考
+          构型或以厚度吸收力误差。
+        state: partial
+        freeze: false
+        evidence:
+          - "_v2_robogeom.py的real_geom只生成NACA-2406中弧面，未生成上下表面"
+          - "NASA TM X-3284与NACA TR-460：四位数翼型由均线与法向厚度分布唯一构造"
+          - "N2.6a逐侧压力梯度、N2.6b侧别库存和N2.6c分离流形均要求真实双侧承载面"
+        provides_to: ["N2.6a", "N2.6b", "N2.6c"]
+        children:
+          - id: N2.6d1
+            title: "NACA-2406参考双侧壳与刚体运动学"
+            claim: >
+              用NACA四位数定义在共享(xi,eta)材料坐标生成2406上下表面；
+              两侧算术中面必须逐点等于冻结N1中弧面，最大总厚度为0.06c且
+              位于约0.30c。任意正确刚体变换必须保持材料配对、厚度和director。
+            state: validated
+            freeze: true
+            evidence:
+              - "viscous_shell_geometry_cases.yaml已在运行前冻结几何与刚体门"
+              - "viscous_shell_geometry.py不消费压力、力或实验目标"
+              - "viscous_shell_geometry_results.json：中面重构8.67e-19、director单位误差1.11e-16、厚度比误差1.30e-7、最大厚度位置误差0.00866c、刚体厚度误差8.17e-17，all_pass=true"
+          - id: N2.6d2
+            title: "柔性壳director、曲率和双侧运动学输运"
+            claim: >
+              在结构弯曲、扭转和膜拱度下，厚度director必须由同一结构构形
+              客观输运，双侧速度/加速度与中面运动功共轭且不得发生翻面；
+              曲率与面积Jacobian必须供N2.6a/b使用。刚体旋转通过不能替代
+              该有限变形门。
+            state: open
+            freeze: false
+            depends_on: ["N2.6d1"]
+            children:
+              - id: N2.6d2a
+                title: "结构化材料中面的客观双侧微分几何"
+                claim: >
+                  对共享(xi,eta)的柔性中面时间快照，客观计算两条协变切向、
+                  director、面积Jacobian、第一/第二基本形式和曲率，并以材料
+                  半厚度生成双侧位置、速度和加速度；刚体变换保持度量/曲率，
+                  退化或翻面必须失败而非修补。
+                state: validated
+                freeze: true
+                evidence:
+                  - "deforming_shell_kinematics_cases.yaml已在实现前冻结刚体/平移/圆柱/翻面门"
+                  - "deforming_shell_kinematics_results.json：全部门通过；刚体曲率误差5.52e-14、平移加速度误差1.42e-14、圆柱面积误差1.61e-5"
+                  - "deforming_shell_kinematics.py与5项单测不消费压力、力、边界层、分离或实验目标"
+                depends_on: ["N2.6d1"]
+              - id: N2.6d2b
+                title: "结构自由度到双侧壳的功共轭运动学映射"
+                claim: >
+                  中面位置和director必须由同一结构自由度及形函数给出，气动
+                  双侧虚功经该Jacobian的转置唯一返回结构；有限差分几何通过
+                  不能替代结构Jacobian、厚度转动惯量或大变形动力学验证。
+                state: open
+                freeze: false
+                depends_on: ["N2.6d2a"]
+      - id: N2.6a
+        title: "双侧移动壁面界面环量生成律"
+        claim: >
+          在每个真实翼面侧，以该侧流体外法向和统一Bernoulli压力计算
+          sigma_w = n × (a_wall + grad_s(p/rho + Phi_g))；符号按FLUXV
+          面向约定逐侧校验。该量是界面环量生成/边界涡量通量条件，不是可直接
+          加到自由LEV片上的经验幅值。薄面上下侧之和必须退化为压力跳表面梯度
+          的配对恒等式，并在闭合翼面上满足全局环量账。
+        state: partial
+        freeze: false
+        evidence:
+          - "Terrington et al., JFM 936 A44 (2022), Eq.4.30-4.31"
+          - "N3.1j3a已验证压力跳账；尚缺双侧势极限、壁面加速度符号门和真实曲面闭合积分门"
+        depends_on: ["N3.1j3b", "N2.6d"]
+        provides_to: ["N2.6b"]
+      - id: N2.6b
+        title: "曲面三维积分边界层状态与矢量涡量库存"
+        claim: >
+          N2.6a生成并由黏性转移的涡量必须先进入随翼面运动的曲面边界层库存；
+          生产输运的基础守恒状态至少包含两切向自由度的质量流亏损M和标量
+          tr(T)，其通量/源项需要张量动量亏损T、动能亏损通量E、壁面剪切与
+          耗散闭合；转捩、非平衡湍流和卷吸还需独立状态或闭合。矢量环量账本
+          只作Kelvin/释放守卫，不能替代IBL状态方程。逐条带二维静态阈值不足
+          以支持扭转、展向流和柔性变形下的载荷分配。
+        state: open
+        freeze: false
+        evidence:
+          - "Terrington et al., JFM 936 A44 (2022), Eq.2.36、4.18-4.20：三维界面环量含面内输运、拉伸/倾斜及法向涡量兼容"
+          - "Gehlert & Babinsky, JFM 915 A50 (2021)：运动学与外部涡量共同决定边界层涡片历史"
+          - "现有LBDynStrip仅逐条带标量状态，不能表示跨展向输运或表面法向涡量"
+          - "research_surface_vorticity_inventory_20260727.md：逐条带生产NO-GO、全黏性VPM验证GO、曲面流形库存生产方向GO"
+          - "research_n2_surface_ibl_closure_20260727.md：三方程IBL的储存量/通量/闭合层级裁决"
+        depends_on: ["N2.6a"]
+        provides_to: ["N2.6c"]
+        children:
+          - id: N2.6b1
+            title: "曲面三维IBL是生产状态，全黏性VPM是场级验证oracle"
+            claim: >
+              生产模型在随柔性翼运动的二维曲面上保存具有侧别和物质身份的
+              三维积分边界层状态，并以张量型面内守恒通量表示横流输运；矢量
+              环量库存并行提供生成—附着—释放账。全黏性涡粒子或CFD仅用于
+              代表工况的场级证据，不作为力拟合器或默认生产状态。逐条带标量
+              L-B不能替代该曲面状态。
+            state: partial
+            freeze: false
+            evidence:
+              - "Terrington et al., JFM 936 A44 (2022)"
+              - "Gehlert & Babinsky, JFM 915 A50 (2021)"
+              - "Koumoutsakos, Leonard & Pepin, JCP 113 (1994), doi:10.1006/jcph.1994.1117"
+              - "Eldredge, JCP 221 (2007), doi:10.1016/j.jcp.2006.06.038"
+              - "Zhang & Eldredge, IJNMF (2008), doi:10.1002/fld.1867；连续变形体证据限于二维"
+              - "尚缺三维曲面状态方程、转捩/卷吸闭合和场级数据门，故保持partial"
+          - id: N2.6b2
+            title: "曲面矢量库存的无闭合守恒账"
+            claim: >
+              对曲面有限体积单元，矢量环量库存变化必须等于壁面转移、内部/
+              外部输运与分离释放的具名守恒账；内部边通量必须以相反符号只
+              装配一次。账本只能报告残差，禁止用残差反推分离释放或加入未命名
+              源项。本节点不提供任何物理输运或分离闭合。
+            state: validated
+            freeze: true
+            evidence:
+              - "surface_inventory_cases.yaml在执行前冻结制造库存、守恒阈值和NO-GO"
+              - "surface_inventory_results.json：局部/内部边/全局残差6.75e-16/6.21e-17/4.46e-16；遗漏释放产生5.0e-3可见残差"
+              - "surface_vorticity_inventory.py与3项单测不含压力、力、LESP、拟合或残差闭合"
+          - id: N2.6b3
+            title: "张量型非定常三维IBL守恒骨架"
+            claim: >
+              在每一侧移动曲面上，以广延量A*M和A*tr(T)离散非定常三维IBL
+              的两切向动量亏损方程与一个动能方程；内部边通量成对抵消，
+              M/T/E/外流梯度/壁面剪切在刚体坐标旋转下客观，并严格退化到
+              二维标量方程。该骨架只校验具名通量和源项，不提供物理闭合。
+            state: validated
+            freeze: true
+            evidence:
+              - "Bempedelis et al., Eqs.6-13、41-48：三方程张量型非定常IBL与曲面有限体积"
+              - "Lokatt & Eller 2016：嵌入曲面的守恒和旋转不变有限体积"
+              - "surface_ibl_manufactured_cases.yaml已在实现前预登记数值门和NO-GO"
+              - "surface_ibl_results.json：平面/移动面积/旋转客观/二维退化门全过；最大守恒残差1.45e-16，遗漏源残差0.10保持可见"
+              - "surface_ibl_state.py与5项单测不含剖面、摩擦、转捩、分离、压力或力闭合"
+            depends_on: ["N2.6d"]
+          - id: N2.6b4
+            title: "横流、壁面剪切、耗散与转捩物理闭合"
+            claim: >
+              T、E、壁面剪切、耗散和转捩必须由可辨识的三维速度剖面或附加
+              输运状态闭合，并用独立场数据验证横流角、动量厚度、形状因子、
+              剪切方向和非平衡记忆；不得由总力或压力残差反演。文献中特定
+              层流Hcrit不具有跨闭合、跨雷诺数和跨运动学可移植性。
+            state: open
+            freeze: false
+            evidence:
+              - "Bempedelis et al.明确指出法向积分丢失的剖面信息必须由闭合补回"
+              - "该文湍流简化忽略横流且不能表示湍流分离，不能直接作为RoboEagle生产闭合"
+              - "Drela三维IBL以附加方程表示分离、交叉剖面和湍流滞后"
+              - "research_n2_ibl_closure_candidates_20260727.md：四候选角色与C0-C3嵌套晋升门"
+            depends_on: ["N2.6b3"]
+            children:
+              - id: N2.6b4a
+                title: "准稳态二维/简化三方程闭合作为生产持续供给"
+                claim: >
+                  准稳态二维IBL或忽略湍流横流的三方程剖面足以在扑翼、
+                  扭转和转捩条件下持续闭合LEV供给。
+                state: falsified
+                freeze: false
+                evidence:
+                  - "Ramanathan PhD：稳态IBL不能预测首次回流后的边界层，只验证起涡前二维层流事件"
+                  - "Bempedelis et al.：首版湍流闭合忽略横流且不能表示湍流分离"
+              - id: N2.6b4b
+                title: "IBL3四加二状态拓扑"
+                claim: >
+                  以四方程crossover/分离剖面状态和两方程应力/转捩输运为
+                  RoboEagle三维闭合的参考上限，可表示横流、湍流大小/方向
+                  滞后及转捩；具体闭合系数须由独立场数据逐级验证。
+                state: partial
+                freeze: false
+                evidence:
+                  - "Drela AIAA 2013-2437：四方程分离/crossover + 两方程Reynolds应力滞后/转捩，旋转不变"
+                  - "尚无RoboEagle大幅扑翼、动态失速和柔性曲面的场级验证"
+              - id: N2.6b4c
+                title: "物理约束场级闭合学习"
+                claim: >
+                  若解析闭合不足，只允许从高保真边界层场学习T/E/D/壁面
+                  剪切/转捩函数，并精确嵌入横流对称、旋转客观、二维极限和
+                  守恒；禁止以总力或压力残差为标签，分布外必须拒绝晋升。
+                state: open
+                freeze: false
+                evidence:
+                  - "Zhang et al. AIAA 2022-1078：稀疏输入、横流对称嵌入及场级模型反演"
+                  - "research_n2_ibl_closure_candidates_20260727.md：许可边界和独立数据门"
+                depends_on: ["N2.6b4b"]
+              - id: N2.6b4d
+                title: "有限IBL亏损矩唯一确定完整VES释放态"
+                claim: >
+                  仅由M、tr(T)或四个IBL厚度矩，无需显式层边缘、速度剖面和
+                  边缘法向运动，即可唯一恢复rho_s、rho_s*v、q和gamma。
+                state: falsified
+                freeze: true
+                evidence:
+                  - "Zhang 2022 MIT PhD Ch.2/App.A：IBL主变量是有限个速度亏损厚度矩，丢失剖面信息需closure补回"
+                  - "DeVoria & Mohseni JFM 866 Eq.5、13-14及§3：VES保存实际层质量/动量和速度跳，Falkner-Skan映射还需99%边缘形状与法向速度"
+                  - "ibl_to_ves_profile_results.json：外流平台使IBL矩变化0而VES质量/动量各变0.2；同M/T单调剖面VES状态各差0.07143"
+              - id: N2.6b4e
+                title: "显式近壁剖面—层边缘同源投影身份"
+                claim: >
+                  给定显式法向坐标、密度、层内速度、外流速度、两侧速度、
+                  片法向和具名edge convention，同一近壁场能够客观且无
+                  力目标地同时投影为IBL亏损矩与bound VES的rho_s、
+                  rho_s*v、gamma和q；edge convention必须作为状态审计，
+                  不能由IBL矩或总力隐式选择。
+                state: validated
+                freeze: true
+                evidence:
+                  - "research_n2_ibl_to_ves_sufficiency_20260727.md：状态秩、gauge反例和许可边界"
+                  - "ibl_to_ves_profile_cases.yaml在实现前冻结解析、旋转、非唯一性与非法输入门"
+                  - "ibl_to_ves_profile_results.json：解析误差6.67e-9、旋转误差5.55e-16、两项非唯一性门通过"
+                  - "near_wall_profile_collapse.py不含压力、力、LESP、结构量或edge选择律"
+                depends_on: ["N2.6b3"]
+              - id: N2.6b4f
+                title: "可辨识的近壁剖面与层边缘动力闭合"
+                claim: >
+                  以独立场数据验证的剖面/附加输运状态，能够在RoboEagle
+                  非定常三维横流、转捩和逆压梯度域内预测双侧近壁速度、
+                  层边缘位置/法向/运动及其历史，并经N2.6b4e同源投影提供
+                  IBL通量闭合和VES junction输入；不得由总力选择edge或剖面。
+                state: open
+                freeze: false
+                evidence:
+                  - "Zhang 2022：四方程IBL变量选择、物理约束场级closure及强黏性—无黏耦合"
+                  - "当前仅验证投影身份，尚无RoboEagle近壁时序场和动态失速域闭合验证"
+                  - "research_n2_profile_state_decision_20260728.md：四加二状态降为可证伪零假设；积分量回归与显式profile/edge decoder分工"
+                  - "near_wall_field_contract_results.json：数据schema/客观性门通过，但物理晋升明确为false"
+                depends_on: ["N2.6b4b", "N2.6b4e"]
+                children:
+                  - id: N2.6b4f1
+                    title: "直接积分量回归足以提供完整profile/edge释放输入"
+                    claim: >
+                      由H1、H2、H12、Re_theta及历史直接回归IBL闭合积分量，
+                      无需显式速度剖面、edge几何/运动或附加剖面状态，即可
+                      唯一提供物质spike与VES release所需的完整近壁输入。
+                    state: falsified
+                    freeze: true
+                    evidence:
+                      - "Zhang 2022 Ch.3明确区分profile-based operator与直接closure-integral regression；其生产回归选择后者"
+                      - "直接回归输出T/E/D/tau_w等积分闭合量，不输出u(n)、rho(n)、edge运动和法向梯度"
+                      - "N2.6b4d反例已证明有限矩到完整VES状态不是单值映射"
+                  - id: N2.6b4f2
+                    title: "四矩加转捩/应力记忆足以条件重构目标域剖面"
+                    claim: >
+                      Q_IBL={delta*_1,delta*_2,theta_11,theta_12}加转捩包络和
+                      应力lag状态，在给定edge状态与局部历史后，足以在
+                      RoboEagle目标域内条件重构双侧近壁剖面，无需额外可输运
+                      剖面残差状态。
+                    state: falsified
+                    freeze: true
+                    evidence:
+                      - "Drela IBL3与Zhang 2022支持四加二状态作为物理参考拓扑"
+                      - "Zhang 2022同时指出启发式profile family可能遗漏真实模态并引入非物理模态"
+                      - "尚无独立动态失速场数据执行条件离散度与leave-one-kinematics-out检验"
+                  - id: N2.6b4f3
+                    title: "独立近壁时序场的无载荷数据契约"
+                    claim: >
+                      N2.6b4f物理证据必须显式包含时间、曲面拓扑/侧别、移动
+                      壁面运动、法向剖面、edge位置/速度/命名规则、Reynolds
+                      区间和流态覆盖；力/力矩、LESP、压力残差和结构响应不得
+                      作为输入标签，制造数据只能验证schema和恒等式。
+                    state: validated
+                    freeze: true
+                    evidence:
+                      - "near_wall_field_contract_cases.yaml在实现前冻结字段、禁止标签、旋转和覆盖门"
+                      - "near_wall_field_contract_results.json：identity通过；旋转残差差2.29e-16；0.02无滑移破坏与lift_target均被检出"
+                      - "制造数据production_evidence_eligible=false，明确缺独立源/审计/分离/转捩覆盖"
+                      - "field_asset_4tu_surging_audit.json：独立PIV归档checksum有效，但动态坐标缺失、网格不一致、Re/时序/近壁身份不满足契约，因而被明确拒绝"
+                      - "external_field_candidate_audit.json：六项公开资产逐项联合审计均NO-GO，禁止跨资产拼接材料事件"
+                    depends_on: ["N2.6b4e"]
+                    children:
+                      - id: N2.6b4f3a
+                        title: "公开场资产的联合资格审计"
+                        claim: >
+                          对4TU、Cambridge、Glasgow、Zenodo feather、
+                          Edinburgh pitching PIV与KTH LES profiles逐项按
+                          N2.6b4f3冻结契约审计；截至2026-07-28没有任何单一
+                          资产同时提供目标Re、连续时间、双侧壁面/edge身份、
+                          三维横流、转捩、分离和移动壁面，因而不得用于生产
+                          晋升，也不得跨资产取并集制造同一材料事件。
+                        state: validated
+                        freeze: true
+                        evidence:
+                          - "external_field_candidate_inventory.yaml：来源、Re、发布表示、允许角色与逐字段覆盖"
+                          - "external_field_candidate_audit.json：production_eligible_assets=[]；本地Zenodo/Edinburgh样本checksum、变量和维度检查通过"
+                          - "research_n2_field_data_audit_20260728.md：Cambridge近壁阴影、Glasgow仅压力、Zenodo仅平均/孤立快照、Edinburgh低Re无壁面身份、KTH静态剖面的逐项裁决"
+                        depends_on: ["N2.6b4f3"]
+                      - id: N2.6b4f3b
+                        title: "目标域合格近壁时序场取得与独立审计"
+                        claim: >
+                          取得至少一个满足N2.6b4f3联合契约的独立目标域场，
+                          或先取得可明确标为二维提前证伪角色的Re约1e5
+                          wall-resolved动态失速连续场；数据必须有版本、
+                          checksum、许可、壁面/edge身份和未参与闭合选择的
+                          test split，二维资产不得使三维生产节点晋升。
+                        state: open
+                        freeze: false
+                        evidence:
+                          - "n2_target_near_wall_field_request_20260728.md：Tier A目标Re周期翼段提前证伪包、Tier B有限翼生产资格包及go/no-go字段"
+                          - "Baldan & Guardone, PoF 37 (2025), doi:10.1063/5.0252828：Re=135k三维WRLES且完整周期DSV要求span/c≥1；数据声明为reasonable request"
+                          - "Baldan 2026博士论文hdl:10589/249257 Appendix F.B.3：PBFM上游存在512×128 O-grid、2048步/周期二维RANS原生体解；POLITesi仅附论文PDF，故新增A0原生体场备选请求但不得冒充三维证据"
+                          - "research_n2_baldan_thesis_field_route_20260728.md：论文PDF checksum、公开附件边界与A0/A1两级取数角色"
+                          - "high_fidelity_field_candidate_inventory_20260728.yaml与审计JSON：第二轮公开空间场仍NO-GO；压力输出资产另行保留"
+                          - "research_n2_n3_high_fidelity_second_pass_20260728.md：V-gate/P-gate拆分及二级取数路线"
+                          - "尚未获得满足Tier A或Tier B身份的实际场文件"
+                        depends_on: ["N2.6b4f3a"]
+                        children:
+                          - id: N2.6b4f3b1
+                            title: "PBFM表面时空场不是三维近壁体速度场"
+                            claim: >
+                              PBFM公开dynamic-stall HDF5是二维可压缩URANS
+                              后处理得到的翼面位置×周期相位压力、密度、温度、
+                              壁面摩擦和切向速度梯度场，不含体速度或三维横流；
+                              它可作为统一面板压力的带域标签表面时空测试资产，
+                              但不能驱动材料flow map、backbone或空间LEV晋升。
+                            state: validated
+                            freeze: true
+                            evidence:
+                              - "Baldan et al., ICLR 2026/arXiv:2506.08604v4 Appendix C.3：二维URANS、2048步/周期、公开表示为翼面位置×相位"
+                              - "PBFM官方dataset_loader.py：8通道拆成6个物理表面场与2个切向cos/sin通道，无体速度"
+                              - "pbfm_dynamic_stall_asset_cases.yaml：官方仓库commit、HF revision、文件大小/LFS SHA与联合覆盖预登记"
+                              - "pbfm_dynamic_stall_asset_results.json：空间场NO-GO，pressure surface-time role保留，physical_promotion=false"
+                              - "research_n2_pbfm_asset_decision_20260728.md：表示身份、缺件/错件和禁止角色"
+                            depends_on: ["N2.6b4f3a"]
+                          - id: N2.6b4f3b2
+                            title: "第二轮高保真公开性审计：压力可验而空间场仍缺"
+                            claim: >
+                              截至2026-07-28，对新增4TU、Princeton、NDSU及
+                              高保真LES/DDES记录做注册表和文件级审计后，仍无
+                              可下载资产满足N2.6b4f3联合速度场契约；4TU
+                              NACA643418 v2虽在摘要中提到PIV，实际公开归档只含
+                              压力采集/处理。公开动态压力可以进入独立输出外验，
+                              但不能使近壁材料场或空间涡态晋升。
+                            state: validated
+                            freeze: true
+                            evidence:
+                              - "high_fidelity_field_candidate_inventory_20260728.yaml：逐资产表示、许可、Re、允许角色与NO-GO原因"
+                              - "high_fidelity_field_candidate_audit.json：远程ZIP中央目录、README/MAT样本及注册表关系的可复查结果，production_field_eligible_assets=[]"
+                              - "audit_high_fidelity_field_candidates.py --deep：不下载整包的Range/CRC/变量级复核"
+                              - "research_n2_n3_high_fidelity_second_pass_20260728.md：日期边界、异常裁决和V/P两门拆分"
+                            depends_on: ["N2.6b4f3a"]
+                  - id: N2.6b4f4
+                    title: "受矩约束的时序profile-edge解码器"
+                    claim: >
+                      在N2.6b4f3合格场数据上，受无滑移、edge、旋转/横流
+                      对称、二维极限和IBL矩一致性约束的时序解码器，能够由
+                      四加二零假设状态及场数据确有必要的最少可输运残差状态，
+                      恢复N2.6c1所需剖面、梯度和edge历史；残差状态不得由
+                      积分载荷选择。
+                    state: open
+                    freeze: false
+                    evidence:
+                      - "research_n2_profile_state_decision_20260728.md：H0/H1条件可辨识性、残差模态和跨运动学预登记"
+                      - "当前仅完成数据契约，尚无合格代表场数据和decoder误差证据"
+                    depends_on: ["N2.6b4f2", "N2.6b4f3b"]
+      - id: N2.6c
+        title: "三维分离流形上的守恒释放"
+        claim: >
+          分离位置是曲面上的时变流形而非独立条带阈值；只有N2.6b库存穿过该
+          流形的矢量环量、质量卷吸和相对运动通量，才能生成具有侧别、方向、
+          强度和物质身份的DDE新生面带。释放后必须与残余附着库存、自由片及
+          全局Kelvin/广义无散条件闭合，不得把BEF或LESP事件指标直接当幅值律。
+        state: open
+        freeze: false
+        evidence:
+          - "Sudharsan & Sharma, JFM 996 (2024), doi:10.1017/jfm.2024.753：BEF适合作局部分离/脱落事件指标"
+          - "DeVoria & Mohseni, JFM 866 (2019)与Xia & Mohseni, JFM 830 (2017)：自由片释放还需质量、动量、卷吸及相对速度闭合"
+          - "尖锐边闭合不能无证据移植为RoboEagle光滑厚翼前缘的生产释放律"
+        depends_on: ["N2.6b"]
+        provides_to: ["N3.1j4b5b"]
+        children:
+          - id: N2.6c1
+            title: "客观有限时间物质-spike三维分离流形"
+            claim: >
+              高度非定常、移动柔性壁面上的生产分离流形必须由近壁物质面
+              最大主曲率的有限时间增长脊客观定义，并保留侧别和材料身份；
+              瞬时壁面剪切拓扑只作候选搜索/对照，不能独立决定分离。
+              LESP/BEF只可作事件证据，任何特定Hcrit不得作为持续释放边界。
+            state: open
+            freeze: false
+            evidence:
+              - "Serra et al. JFM 883 (2020)：移动边界/高度非定常流的物质spike，可在无回流时出现"
+              - "Santhosh et al. JFM 969 (2023)：任意时间依赖三维流的frame-invariant最大主曲率骨架"
+              - "research_n2_separation_manifold_20260727.md：S0-S3层级、缺件与预登记门"
+            depends_on: ["N2.6b4"]
+            children:
+              - id: N2.6c1a
+                title: "瞬时Cf=0/固定Hcrit作为生产分离流形"
+                claim: >
+                  每条带的瞬时壁面剪切为零或固定形状因子临界值足以定义
+                  高度非定常三维扑翼的分离流形。
+                state: falsified
+                freeze: false
+                evidence:
+                  - "Haller JFM 512 (2004)：非定常分离是Lagrangian流形，需壁面历史"
+                  - "Serra et al. JFM 883 (2020)：无流动反向仍可出现物质spike"
+                  - "Santhosh et al. JFM 969 (2023)：移动三维分离需客观曲率演化"
+              - id: N2.6c1b
+                title: "三维物质曲率脊参考oracle"
+                claim: >
+                  从独立高保真近壁速度场推进物质面Weingarten映射并提取最大
+                  主曲率脊，可作为N2.6c1有限时间分离流形的场级参考oracle；
+                  其位置/时刻不得由总力校准。
+                state: open
+                freeze: false
+                evidence:
+                  - "Santhosh et al. JFM 969 (2023)给出三维有限时间及瞬时极限"
+                  - "尚缺RoboEagle代表工况近壁时序场"
+                  - "research_n2_material_spike_oracle_20260728.md：将几何身份、流映射和脊提取拆成三个可独立证伪组件"
+                children:
+                  - id: N2.6c1b1
+                    title: "同一流体材料面的Weingarten变化几何身份"
+                    claim: >
+                      给定同一流体材料面的初末位置和不变材料坐标，第一/第二
+                      基本形式唯一给出W(t0)、W(t)及Wbar=W(t)-W(t0)；其主
+                      曲率变化在proper时变Euclidean观察者变换和材料坐标
+                      重参数化下保持不变。该身份不等于分离脊或物理闭合。
+                    state: validated
+                    freeze: true
+                    evidence:
+                      - "Santhosh et al. JFM 969 (2023), Eqs.3.3、4.1及Proposition 1"
+                      - "material_spike_geometry_cases.yaml在实现前冻结平面、圆柱、静态、折叠、客观性和重参数化门"
+                      - "material_spike_geometry_results.json：圆柱细网格误差1.28e-4、收敛比0.0626、时变观察者残差8.80e-13、重参数化残差2.49e-13"
+                      - "结果明确physical_promotion.eligible=false；模块不接收剪切阈值、LESP、载荷、压力残差或结构状态"
+                  - id: N2.6c1b2
+                    title: "独立近壁场驱动的多层流体材料面流映射"
+                    claim: >
+                      从N2.6b4f3合格的双侧近壁三维时序速度场，以保留材料
+                      身份、侧别和移动壁面相对运动的积分器推进一族近壁流体
+                      材料面，并在步长、层间距和观察者变换下收敛地提供
+                      N2.6c1b1所需初末材料面。
+                    state: open
+                    freeze: false
+                    evidence:
+                      - "Santhosh et al. Algorithm 1先计算flow map并推进wall-parallel material surfaces"
+                      - "当前只有制造几何和数据schema，无代表性独立动态失速速度场"
+                    depends_on: ["N2.6c1b1", "N2.6b4f3"]
+                    children:
+                      - id: N2.6c1b2a
+                        title: "无载荷材料flow-map数值积分身份"
+                        claim: >
+                          对给定光滑三维速度场，固定步长RK4在不改变材料节点
+                          身份和拓扑的前提下四阶收敛地推进多层近壁流体材料面；
+                          该数值身份不证明任何场数据插值或分离物理。
+                        state: validated
+                        freeze: true
+                        evidence:
+                          - "Santhosh et al. Eq.2.3、Eq.3.1-3.2与Algorithm 1"
+                          - "near_wall_material_flow_map_cases.yaml在实现前冻结平移、旋转、时变观察者、无滑移折叠和失败门"
+                          - "near_wall_material_flow_map_results.json：旋转收敛比15.98/16.00、时变观察者误差1.09e-12、无滑移折叠位置误差2.91e-14"
+                          - "结果physical_promotion.eligible=false；实现与DDE自诱导片推进、载荷和结构通道分离"
+                        depends_on: ["N2.6c1b1"]
+                      - id: N2.6c1b2b
+                        title: "合格独立近壁场的客观时空插值与材料面推进"
+                        claim: >
+                          N2.6b4f3合格场数据的时空插值在移动壁面邻域保持
+                          无滑移、侧别和客观性，并驱动N2.6c1b2a在目标Re、
+                          横流、转捩和分离域内得到步长/层距收敛的材料flow map。
+                        state: open
+                        freeze: false
+                        evidence:
+                          - "当前公开资产审计未获得满足目标域契约的可下载代表场"
+                          - "制造解析速度场只验证积分器，不能验证场插值和真实分离"
+                          - "research_n2_field_data_audit_20260728.md与field_asset_4tu_surging_audit.json：已取得4TU独立PIV，但缺动态坐标、壁面/edge身份且仅Re=1.5e4相位平均，禁止强行驱动flow map"
+                          - "external_piv_temporal_interpolation_results.json：Edinburgh连续二维PIV的原始线性时间插值预门NO-GO，不能替代目标场"
+                        depends_on: ["N2.6c1b2a", "N2.6b4f3b"]
+                        children:
+                          - id: N2.6c1b2b0
+                            title: "原始二维PIV线性时间插值足以直接推进材料轨迹"
+                            claim: >
+                              对Edinburgh Re=32k连续二维PIV，固定网格原始
+                              u/v帧经逐点线性时间插值即可形成随时间窗收缩
+                              一致收敛、无需观测误差状态的材料轨迹驱动场。
+                            state: falsified
+                            freeze: true
+                            evidence:
+                              - "external_piv_temporal_interpolation_cases.yaml在抽取相邻帧前冻结中心833、stride 1/2/4、中点/persistence与单调门"
+                              - "external_piv_temporal_interpolation_results.json：坐标残差0且有限；u细窗比0.719但误差0.01464/0.02213/0.01691 m/s不单调，总裁决NO-GO"
+                              - "research_n2_real_field_interpolation_decision_20260728.md：PIV UQ、时间重构和mask是独立缺件，禁止无锚平滑后重走"
+                            depends_on: ["N2.6b4f3a", "N2.6c1b2a"]
+                  - id: N2.6c1b3
+                    title: "正值最大主曲率变化的一维/二维backbone提取"
+                    claim: >
+                      在N2.6c1b2生成的各近壁材料层上，按正值、梯度/
+                      主方向stationarity和负定Hessian/负二阶方向导数条件
+                      提取一维极大点或二维wall-transverse ridge，并证明其
+                      位置、时刻和拓扑对网格、法向层距及时间窗收敛。
+                    state: open
+                    freeze: false
+                    evidence:
+                      - "Santhosh et al. Definition 1、Proposition 2：高kappa_bar_2值本身不足，必须满足极大/脊条件"
+                      - "尚无场级ridge、spiking point/curve及独立CFD/PIV位置对照"
+                    depends_on: ["N2.6c1b2b"]
+                    children:
+                      - id: N2.6c1b3a
+                        title: "backbone正值/驻点/负曲率微分条件身份"
+                        claim: >
+                          在单个结构化近壁材料层上，给定有序主曲率变化和最大
+                          主方向，显式数值误差带下可收敛计算Proposition 2的
+                          正值、梯度/方向导数为零及负定Hessian/负二阶方向
+                          导数条件；候选mask不等于连通分离骨架。
+                        state: validated
+                        freeze: true
+                        evidence:
+                          - "Santhosh et al. Definition 1与Proposition 2"
+                          - "material_backbone_conditions_cases.yaml在实现前冻结2D ridge、1D maximum、downwelling、minimum、收敛和重参数化门"
+                          - "material_backbone_conditions_results.json：Gaussian ridge 41/41且零旁支、孤立maximum唯一；微分误差收敛比3.95/3.99"
+                          - "所有容差均为显式数值输入；结果physical_promotion.eligible=false"
+                        depends_on: ["N2.6c1b1"]
+                      - id: N2.6c1b3b
+                        title: "多层连通backbone与spiking point/curve场级验证"
+                        claim: >
+                          在N2.6c1b2b的独立场材料面族上，将N2.6c1b3a候选
+                          跨网格和法向层连成一维/二维backbone，求其与壁面
+                          的spiking point/curve，并证明拓扑、位置和时刻对
+                          网格、层距、时间窗及数值误差带收敛且符合独立场证据。
+                        state: open
+                        freeze: false
+                        evidence:
+                          - "当前只有制造Gaussian局部条件，无连通、多层或真实分离位置证据"
+                          - "4TU独立PIV因缺动态坐标/壁面身份且Re不匹配不能驱动本节点"
+                        depends_on: ["N2.6c1b2b", "N2.6c1b3a"]
+              - id: N2.6c1c
+                title: "IBL近壁重构驱动的生产spike近似"
+                claim: >
+                  N2.6b4必须输出足够的近壁速度剖面、空间梯度和时间历史，使
+                  低阶有限时间/瞬时spike近似在N2.6c1b oracle误差带内恢复
+                  分离流形；只输出Cf或H不足以闭合。
+                state: open
+                freeze: false
+                depends_on: ["N2.6c1b3b", "N2.6b4f4"]
+          - id: N2.6c2
+            title: "附着库存到涡量—卷吸新生面带的守恒转换"
+            claim: >
+              穿过N2.6c1流形的环量、质量卷吸、动量和相对运动通量共同确定
+              新生自由面带的侧别、位置、方向、强度和物质身份。P2 DDE继续
+              保存势跳及切向涡片强度gamma，但非零法向速度跳q、片面质量
+              rho_s和片内动量必须由独立vortex-entrainment companion state
+              保存；释放项在N2.6b2、VES质量/动量账、自由片Kelvin账和广义
+              无散账中各按物理通道只登记一次。
+            state: open
+            freeze: false
+            evidence:
+              - "DeVoria & Mohseni, JFM 866 (2019), Eqs.6-7、13-15：gamma/q/rho_s/v是独立状态；q=rho_s=0才退化为普通涡片"
+              - "research_n2_vortex_entrainment_release_20260727.md：纯DDE状态秩缺失与VES companion裁决"
+              - "vortex_entrainment_sheet_results.json：正交核、旋转、远场、质量/动量及具名release junction门全过"
+            depends_on: ["N2.6c1c", "N2.6b2"]
+            children:
+              - id: N2.6c2a
+                title: "纯P2 DDE足以保存分离层环量、卷吸质量和法向动量"
+                claim: >
+                  仅用势跳mu_DDE及其切向梯度gamma，即可在不增加独立状态的
+                  情况下同时表示分离剪切层的法向速度跳、片面质量、片内动量
+                  和压力跳。
+                state: falsified
+                freeze: true
+                evidence:
+                  - "DeVoria & Mohseni Eq.13-15：gamma=n×[[u]]与q=-n·[[u]]是线性独立的curl/divergence面源"
+                  - "平面对称制造片轴线上gamma只产生切向速度而q只产生法向速度，禁止分量误差2.96e-19"
+                  - "q=rho_s=0时质量/动量方程才恢复无质量、零压力跳普通涡片"
+              - id: N2.6c2b
+                title: "DDE加vortex-entrainment companion的守恒状态身份"
+                claim: >
+                  P2 DDE的gamma子态与独立q、rho_s、rho_s*v及压力跳共同构成
+                  可守恒表达有限厚度黏性/分离层的零厚度状态；其离面诱导场
+                  由vortex与source两核线性叠加，质量和动量按VES方程推进。
+                  该身份不等于光滑前缘释放闭合。
+                state: validated
+                freeze: true
+                evidence:
+                  - "DeVoria & Mohseni, JFM 866 (2019), Eqs.6-7、13-15"
+                  - "vortex_entrainment_sheet_cases.yaml在实现前冻结方程门和NO-GO"
+                  - "vortex_entrainment_sheet_results.json：旋转误差9.02e-17、source远场误差2.50e-5、守恒残差0、遗漏通道残差可见"
+                  - "vortex_entrainment_sheet.py不含LESP、力目标、涡核或片上自推进"
+              - id: N2.6c2c
+                title: "光滑前缘IBL库存到新生VES的物理junction"
+                claim: >
+                  在N2.6c1物质spike流形上，N2.6b4f重构的两侧近壁场能够唯一
+                  给出新生VES的gamma、q、rho_s、rho_s*v、压力跳、方向和
+                  相对运动，并使所有具名release ledger同时闭合；不得从总力
+                  或压力残差反演缺失通道。
+                state: open
+                freeze: false
+                evidence:
+                  - "Xia & Mohseni JFM 830 (2017)只闭合尖锐边控制体"
+                  - "DeVoria & Mohseni自由片算例主要限于二维尖锐边，不能直接晋升RoboEagle光滑前缘"
+                  - "ibl_to_ves_profile_results.json已证伪由有限IBL矩直接唯一恢复VES；尚缺N2.6b4f、N2.6c1c和独立场级释放数据"
+                depends_on: ["N2.6c1c", "N2.6c2b", "N2.6b4f"]
+                children:
+                  - id: N2.6c2c1
+                    title: "移动分离流形上的相对IBL库存通量恒等式"
+                    claim: >
+                      给定完整IBL状态、附着区外向表面共法向nu、分离流形
+                      相对材料翼面的有符号速度c_rel和曲线测度时，穿出附着区
+                      的动量亏损与能量亏损率分别严格为
+                      [T·nu-c_rel*M]ds和
+                      [(E-T·Ue)·nu-c_rel*tr(T)]ds；该Reynolds输运身份
+                      不确定gamma、q、rho_s、rho_s*v、压力跳或自由片几何。
+                    state: validated
+                    freeze: true
+                    evidence:
+                      - "Cermelli, Fried & Gurtin, JFM 544 (2005)：带移动边界的演化曲面输运定理"
+                      - "research_n2_moving_separation_flux_decision_20260728.md：病因、缺件/错件与许可边界"
+                      - "moving_separation_flux_cases.yaml已在实现前冻结平面、球面、客观性、方向和失败门"
+                      - "moving_separation_flux_results.json：平面残差2.78e-17、球面动量/能量残差6.77e-15/1.11e-16、旋转残差1.91e-17/1.67e-16，physical_promotion=false"
+                      - "moving_separation_flux.py独立于冻结N2.6b3实现，且不接收压力、力、LESP、释放幅值或目标数据"
+                    depends_on: ["N2.6b3"]
+      - id: N2.6e
+        title: "强黏性—无黏相互作用与分离双尾迹 shadow"
+        claim: >
+          双侧非定常积分边界层的质量/动量亏损通过守恒transpiration边界条件
+          强耦合回同一外流势解，分离位置由收敛的边界层状态产生并释放第二
+          剪切尾迹；尾迹反诱导与实际双侧外流共同生成唯一Bernoulli压力。
+          该候选必须作为solver-loop内部联立stage或独立private solver，
+          不得在冻结N1求解完成后追加力。来源二维复现、目标条带降阶和三维
+          生产是三个独立证据层级，低层通过不自动授权高层。
+        state: open
+        freeze: false
+        evidence:
+          - "Riziotis & Voutsinas 2008, doi:10.1002/fld.1525：panel/vortex wake、非定常IBL、transpiration强耦合与double wake"
+          - "Yu et al. 2024, doi:10.1002/we.2889：double-wake系谱的开放复核及k<0.15/分离精度限制"
+          - "n26_svi_dw_prereg_20260730.md：单一候选、零目标拟合边界和预登记kill门"
+          - "g0d_target_domain_spatial_oracle_audit_20260730.md：目标域空间oracle缺失，故必须先过来源论文压力/分离门"
+          - "g0e_fig15_static_discriminator_20260730.md：附着摩擦仅解释U8 Fig18缺口7.46%，排除新增静态阻力常数；e1来源方法实现获授权，e2仍conditional"
+          - "2026-07-30实现审计：现有post-solver ClaimComponent不能实现strong VI；有限厚度双侧无黏解也不可能逐位等于冻结零厚N1压力"
+        depends_on: ["N2.6b3", "N2.6c2b"]
+        provides_to: ["N3"]
+        children:
+          - id: N2.6e1
+            title: "来源论文二维强耦合双尾迹复现"
+            claim: >
+              在不看RoboEagle总力的条件下，以实际双侧面板、非定常IBL、
+              transpiration强耦合、TE/分离双尾迹及唯一总Bernoulli压力复现
+              Riziotis--Voutsinas的NACA0015压力拓扑、分离迁移和滞回方向。
+              零亏损只须返回该求解器自身无黏基线；厚度趋零时才检验N1极限。
+            state: open
+            freeze: false
+            evidence:
+              - "n26_svi_dw_prereg_20260730.md §6A、§8"
+              - "g0e_fig15_static_discriminator_20260730.md：SOURCE-METHOD IMPLEMENTATION GO"
+              - "n26e1_source_response_contract_20260730.md：原程序逐位身份NO-GO；Fig12公开响应复现GO"
+              - "n26e1_fig12/：8面板619个公开模型曲线点+240个实验tap的确定性矢量oracle；主线程视觉复核PASS"
+              - "research_n26e1_missing_closures_20260730.md：Riziotis 2003一手论文补齐Theta_n、a、层/湍流闭合、转捩、Bernoulli/Delta h和Cf=0；公式层GO，整翼重网格状态转移仍未披露"
+            depends_on: ["N2.6e"]
+            provides_to: ["N2.6e2"]
+            children:
+              - id: N2.6e1a
+                title: "二维实际翼面静态附着外流与侧别类型基础"
+                claim: >
+                  闭合顺时针双侧实际翼面上的常源+均匀环量Hess--Smith离散，
+                  在不含主动IBL和尾迹诱导时满足解析Cp、Kutta--Joukowski、
+                  D'Alembert收敛与正负攻角对称；IBL停滞点到尾缘方向、contour
+                  方向、n/Ctau流态和压力/剪切力矩必须显式且不可伪造。
+                state: validated
+                freeze: true
+                evidence:
+                  - "n26e1_s0_actual_surface_foundation_result_20260730.md：15项定向/解析测试通过"
+                  - "svi_dw_types.py、svi_dw_outer_2d.py：S0只接受零亏损/零诱导，越界明确失败"
+              - id: N2.6e1b
+                title: "移动壁面—尾缘新生涡段—材料尾迹的非定常附着外流"
+                claim: >
+                  Eq.4/6/7/8必须在同一时间步联立移动壁面无穿透、束缚环量、
+                  尾缘新生强度与长度，并使历史blob环量物质守恒；尚不包含
+                  主动IBL、分离尾迹或压力闭合。
+                state: open
+                freeze: false
+                evidence:
+                  - "svi_dw_unsteady_outer_2d.py：上下Eq.7分支内部求解并按实际DeltaGamma_B唯一判定，TE迹线具名诊断，Kelvin约束与同源无自诱导材料推进"
+                  - "test_svi_dw_unsteady_outer_2d.py：19项方程/符号/错误predictor/多步Kelvin/Galilean/自诱导守卫通过；独立panel-dt-core收敛尚未完成，故保持open"
+                  - "n26e1b_attached_outer_refinement_result_20260730.md：冻结三轴门NO-GO；代数账和core通过，但32→64面板的两侧TE点迹变化7.87%/9.16%，32→64时间的wake-y质心变化2.92%；禁止下游使用"
+                  - "n26e1b1_source_faithful_te_refinement_result_20260730.md：64/128/256来源忠实加密仍NO-GO；128→256两侧TE迹变化7.33%/9.16%，最近控制点出生离散被证伪，父节点须更换有文献依据的尾缘空间算子后再验证"
+                  - "research_n26e1bc_weak_uk_decision_20260730.md：NACA0015角点指数0.0606803预言余弦网格加倍时8.776%点迹变化，与实测7.33%/9.16%/8.20%一致；e1b不得再作为e1c之前的独立时间provider"
+                depends_on: ["N2.6e1a"]
+                provides_to: ["N2.6e1bc"]
+                children:
+                  - id: N2.6e1b0
+                    title: "32/64层级足以证明最近尾缘控制点出生状态收敛"
+                    claim: >
+                      对来源指定的最近上下控制点Eq.7--8离散，
+                      16/32/64 panels-per-side和16/32/64时间层级已经足以
+                      证明尾缘速度、出生位置、片强度与材料尾迹同时收敛。
+                    state: falsified
+                    freeze: true
+                    evidence:
+                      - "n26e1b_attached_outer_refinement_result_20260730.md：panel 32→64两侧TE迹变化7.87%/9.16%，time 32→64 wake-y质心变化2.92%，原冻结门NO-GO"
+                  - id: N2.6e1b1
+                    title: "来源忠实最近尾缘控制点的渐近加密"
+                    claim: >
+                      不改变Riziotis最近上下控制点的Eq.7--8定义、cosine网格族、
+                      时间步或core，在64/128/256 panels-per-side上，尾缘
+                      速度、均值/跳量、出生长度/强度/环量和wake moments
+                      进入单调Cauchy区且最后两级变化不超过2%。
+                    state: falsified
+                    freeze: true
+                    evidence:
+                      - "n26e1b1_source_faithful_te_refinement_prereg_20260730.md：一手来源身份、固定三层网格、观测量、2%门和禁止项"
+                      - "n26e1b1_source_faithful_te_refinement_result_20260730.md：三层均完成且代数残差<=1.17e-12，但128→256 lower/upper/mean/jump分别变化7.33%/9.16%/8.20%/9.36%，固定网格最近控制点路线NO-GO"
+                      - "n26e1b1_result_to_claim_20260730.md：高置信度falsified/frozen；禁止继续加密、放宽2%门或以出生环量的误差抵消冒充局部状态收敛"
+                      - "n26e1b1_branch_uniqueness_audit_interpretation_20260730.md：99/99次上下支路均成功且唯一选择，branch子门PASS；逐bit重放因<=7.11e-15末位漂移FAIL，不改变NO-GO"
+                    depends_on: ["N2.6e1b0"]
+                  - id: N2.6e1b2
+                    title: "Xia--Mohseni有限角尾缘联立空间矩阵canonical"
+                    claim: >
+                      在actual NACA0015和冻结的可容许previous-state
+                      formation canonical上，以线性节点束缚涡片保留上下
+                      尾缘独立自由度，并将一个有限角forming panel的当前
+                      强度与无穿透、Kelvin及非定常Kutta在同一线性系统
+                      联立；epsilon只能作为趋零数值收敛轴，不能成为经验
+                      常数。本节点不声称无g初始化端点已成为可用时间provider。
+                    state: falsified
+                    freeze: true
+                    evidence:
+                      - "research_n26e1b2_xm_coupled_junction_decision_20260730.md：N2.6e1b1的7--9%非收敛定位为最近控制点空间算子错件；一手文献授权唯一替代件"
+                      - "n26e1b2_xm_coupled_junction_prereg_20260730.md：未执行的v1由预执行符号/数值轴审计取代"
+                      - "n26e1b2_xm_coupled_junction_prereg_v2_20260730.md：冻结CCW符号、previous/current分工、量纲缩放、解析/镜像及panel--epsilon双轴Cauchy门"
+                      - "n26e1b2_xm_coupled_junction_result_20260730.md：27/27完成且代数账通过，但末级epsilon端点gamma1/gamma2变化25.70%/108.97%，末级panel变化8.57%/38.88%；固定epsilon裁切端点状态NO-GO"
+                      - "n26e1b2_result_to_claim_20260730.md：falsified/frozen仅针对固定预算线性节点+epsilon裁切的端点点值provider；连续Xia--Mohseni机理和父节点未被证伪"
+                    depends_on: ["N2.6e1b1", "N3.1j3b6d9"]
+              - id: N2.6e1c
+                title: "双侧非定常IBL—transpiration强相互作用"
+                claim: >
+                  每个附着站以delta*、theta和流态互斥的n或Ctau为三个未知，
+                  将Eq.9/10及其闭合与Eq.11/16外流边界同时Newton收敛；体积
+                  亏损MB与质量亏损rho*MB必须分名，禁止后处理压力补丁。
+                  本节点只保存来源方程组成，不再消费一个先验闭合的e1b
+                  端点provider；实际执行必须进入e1bc同一步联立节点。
+                state: open
+                freeze: false
+                evidence:
+                  - "research_n26e1_missing_closures_20260730.md §§3--6：三状态IBL闭合、BDF2、ncrit=9、Ctau转捩初始化及H0唯一勘误已由一手来源冻结；实现与响应尚未通过"
+                  - "Riziotis & Voutsinas 2008：outer/IBL/transition-stress方程在同一Newton--Raphson系统强耦合"
+                  - "research_n26e1bc_weak_uk_decision_20260730.md：独立e1b→e1c顺序被角点数据和黏性尾缘文献共同否定"
+                depends_on: ["N2.6e1a"]
+                provides_to: ["N2.6e1bc"]
+              - id: N2.6e1bc0
+                title: "有限角regular模态与generic Kelvin出生时间阶"
+                claim: >
+                  在closed NACA0015的generic非零环量率相位，消去首奇异
+                  Kutta模态后的有界regular corner mode若足以独立闭合
+                  material wake出生，则其Xia型立即出射分支所给积分出生
+                  环量时间阶(1+beta)/(1-beta)必须与规范不变Kelvin要求的
+                  实际时间阶一致，同时modal坐标空间收敛；协议失败与物理
+                  缩放反例必须分开记账。
+                state: falsified
+                freeze: true
+                evidence:
+                  - "n26e1b_corner_scaling_diagnosis_20260730.md：beta=0.0606803，raw trace服从有限角幂律而u/r^beta的三层modal坐标明显更稳定"
+                  - "n26e1bc_prereg_independent_audit_20260730.md：原e1bc预登记NOT IMPLEMENTATION-READY，必须先解决有限角弱空间、Kelvin和可观测状态"
+                  - "n26e1bc0_corner_kelvin_scaling_prereg_20260730.md：冻结t*=0.2、空间/时间独立轴、p*=1.1292006、健康门和协议/物理状态机"
+                  - "n26e1bc0_corner_kelvin_scaling_result_20260730.json：6/6协议健康，p_K=0.9606123而p*=1.1292006，最细local order=0.9717438；lower modal末级变化2.662%，五项残差最大2.364e-12"
+                  - "n26e1bc0_result_to_claim_20260730.md：只证伪有界regular outer mode足以独立承担generic Kelvin出生；strong VI、黏性inner/profile与完整moving-interface库存不在本次证伪范围"
+                depends_on: ["N2.6e1a", "N3.1j3b6d9"]
+              - id: N2.6e1bc1
+                title: "有限尾缘角黏性内层选择的受控奇异幅值"
+                claim: >
+                  generic Kelvin出生需要一个由局部黏性尾缘内层选择的有符号
+                  非regular模态幅值B_TE；它必须以有限实体角的匹配/可解性
+                  方程从同一trial的outer、IBL和压力状态得到，并作为环量
+                  基函数进入完整body-wake BIE、规范不变Kelvin、材料WPJ及
+                  唯一Bernoulli面板压力。B_TE不得直接变成附加总力，薄翼
+                  Taha--Rezaei B_v只作source-limit oracle，不授权向
+                  NACA0015或RoboEagle有限角直接移植。
+                state: open
+                freeze: false
+                evidence:
+                  - "n26e1bc0_result_to_claim_20260730.md：健康缩放门得到p_K=0.960612而regular-only p*=1.129201，定位为领先阶黏性inner幅值缺件"
+                  - "research_n26e1bc1_viscous_inner_amplitude_decision_20260730.md：Taha--Rezaei、dos Santos、Riziotis和VES的适用域比较，裁决唯一最小后继为一个受控B_TE状态"
+                  - "Taha & Rezaei, JFM 868 (2019), doi:10.1017/jfm.2019.159：triple-deck选择非零尾缘压力奇异幅值；适用域为薄翼、小扰动和来源规定频率/Re范围"
+                  - "dos Santos, Rezaei & Taha, Physics of Fluids 33, 103606 (2021), doi:10.1063/5.0065293：将该幅值作为附加环量分布接入UVLM并由同一Bernoulli成力；仍是薄面模型"
+                  - "2026 arXiv:2604.16501未给有限实体角inner matching且提出profile-drag tuning，只作低等级实现旁证，禁止作为厚翼生产证据"
+                  - "n26e1bc1_preexecution_feasibility_result_20260730.md：outer首奇异模态是一维不等于黏性inner状态秩为一；B_TE-only直接延拓NO-GO，完整双侧带历史inner仍open"
+                depends_on: ["N2.6e1a", "N2.6e1c", "N3.1j3b6d9"]
+                provides_to: ["N2.6e1bc"]
+                children:
+                  - id: N2.6e1bc1a
+                    title: "Taha--Rezaei/dos Santos薄翼来源极限oracle"
+                    claim: >
+                      在不读取RoboEagle目标的薄翼小扰动范围内，来源固定的
+                      Re^{-1/8}缩放、Chow--Melnik B_e、B_v环量列、Kelvin
+                      和统一压力离散能够复现同行评审来源响应，并在h/dt
+                      加密、符号反演及Re趋无穷极限下收敛。
+                    state: open
+                    freeze: false
+                    evidence:
+                      - "Taha & Rezaei 2019 Eqs.2.2--3.13；dos Santos et al. 2021 Eqs.21--27及公开step/camber/harmonic/non-harmonic cases"
+                      - "n26e1bc1_preexecution_feasibility_result_20260730.md：公开来源无B_e数值表/代码且Eq.26/27身份待冻结，当前PRECONDITION-NO-RUN；只可在finite-angle paper gate成立后作薄翼极限回归"
+                    depends_on: ["N2.6e1a"]
+                    provides_to: ["N2.6e1bc1b"]
+                  - id: N2.6e1bc1x
+                    title: "平板Bv或有限IBL矩直接充当固定实体角B_TE闭合"
+                    claim: >
+                      Taha--Rezaei平板Bv或当前delta*、theta、n/Ctau有限亏损矩
+                      可以无需双侧带历史finite-angle inner BVP，直接给出
+                      closed NACA0015实体尾缘的即时B_TE，并闭合generic
+                      Kelvin出生、材料WPJ和双侧压力。
+                    state: falsified
+                    freeze: true
+                    evidence:
+                      - "n26e1bc1_preexecution_feasibility_result_20260730.md：outer一维模态不推出inner状态秩一；当前状态缺双侧profile、inner场、wake应力/历史、matching与Fredholm/index证据"
+                      - "Gajjar & Turkyilmazoglu 2000, doi:10.1098/rsta.2000.0699：finite-wedge triple-deck按Re^(1/4)缩放并在beta_w约2.56进入分离/失稳；NACA0015目标beta_w约11.5--13.0"
+                      - "Taha & Rezaei 2019：来源是零厚度小扰动平板且a0v携带wake历史，不是固定实体角无历史代数幅值"
+                    depends_on: ["N2.6e1bc0"]
+                  - id: N2.6e1bc1b
+                    title: "实际有限角黏性内外匹配与出生阶"
+                    claim: >
+                      对closed NACA0015的20.595度实体尾缘，angle-aware
+                      inner BVP及其adjoint/Fredholm可解性必须唯一给出
+                      B_TE，并在实体角趋薄极限回收来源B_v；该inner提供的
+                      出生通量须在独立h/dt/inner-resolution轴上呈O(dt)
+                      generic Kelvin阶，而非以Kelvin反解幅值。
+                    state: open
+                    freeze: false
+                    evidence:
+                      - "n26e1bc0_corner_kelvin_scaling_result_20260730.json：regular outer mode不足以给O(dt)出生"
+                      - "当前一手来源未给有限实体角inner matching，故方程、可解性和数值轴闭合前implementation NO-GO"
+                      - "n26e1bc1_preexecution_feasibility_result_20260730.md：先做finite-angle operator/BC/matching/尺度/Fredholm paper gate；A0只在该门成立后作tau趋零回归"
+                    depends_on: ["N2.6e1bc1a", "N3.1j3b6d9"]
+                    provides_to: ["N2.6e1bc1"]
+              - id: N2.6e1bcw0
+                title: "全局束缚环量三项式weak-UK"
+                claim: >
+                  对一般moving trailing-edge control area，可用全局
+                  bound-circulation rate、普通多边形外向涡量通量和两侧
+                  压力差组成dotGamma_b+Jomega-DeltaP/rho=0，并作为与
+                  Kelvin独立的solver closure。
+                state: falsified
+                freeze: true
+                evidence:
+                  - "research_n26e1bc_moving_cv_derivation_20260730.md：严格Reynolds输运要求局部bulk+sheet+atom库存、moving sheet crossing、outer diffusion及物理壁/界面项；全局三项式仅在未满足的窄重命名条件下成立"
+                  - "若Jomega=Gamma_birth/dt，则Kelvin时间差分已给dotGamma_b+Jomega=0，重复强加三项式只会把DeltaP恒等压回零"
+              - id: N2.6e1bc
+                title: "强相互作用—有限角内外区—材料势跃联立"
+                claim: >
+                  二维尖尾缘actual-surface shadow必须把双侧IBL、
+                  transpiration、完整body BIE、材料wake potential jump、
+                  gauge-invariant Kelvin、有限角形成几何和有来源的黏性
+                  inner/profile库存放在同一参考连通DAE stage中；point
+                  gamma_TE不得作为独立状态。完整moving-CV在bulk/sheet/
+                  diffusion/wall-interface primitive可观测前只作future
+                  observer，不得用全局三项式参与选根。压力由同一trial
+                  总势、总速度和势历史产生，收敛后只生成一套panel traction。
+                state: open
+                freeze: false
+                evidence:
+                  - "research_n26e1bc_weak_uk_decision_20260730.md：数据幂律指纹、五组一手文献边界、缺件/错件裁决与唯一候选"
+                  - "n26e1bc_strong_vi_weak_uk_prereg_20260730.md：审计前预登记快照；执行前独立审计后已暂停，不再授权A1/A2"
+                  - "n26e1bc_prereg_independent_audit_20260730.md：方向conditionally admissible，但Kelvin规范不变性、weak-UK控制体推导、CV可观测状态、有限角弱空间、完整残差映射、独立收敛轴和nested DAG语义均为v2 MUST-FIX"
+                  - "n26e1bc_wpj_formula_oracle_result_20260730.md：有向edge差Kelvin、gauge/方向/新生ID与lineage守卫7/7，SVI族103/103；仅formula-oracle GO，A0 physics未执行"
+                  - "research_n26e1bc_moving_cv_derivation_20260730.md：全局三项式WUK已证伪；full local moving-interface balance需当前不可观测的bulk/sheet/diffusion/physical-wall或VES primitive"
+                  - "n26e1bc0_corner_kelvin_scaling_prereg_20260730.md：先以generic非零环量率时间阶裁决regular outer mode是否足以闭合material birth"
+                  - "n26e1bc0_result_to_claim_20260730.md：regular-only子命题已证伪；父节点保持open，后继必须新增有来源的黏性inner/profile幅值或forming-zone库存，禁止复用endpoint gamma或全局三项式weak-UK"
+                  - "Riziotis & Voutsinas 2008：transpiration strong VI；Sun & Wu 2022：有限角幂次空间表示"
+                  - "Taha & Rezaei 2019及Zhu et al. 2020：黏性尾缘可保留非零压力/奇异幅值，经典zero-pressure Kutta并非普适"
+                  - "N3.1j3b6d18c2b3b3b2c2b2b3e2已证伪pressure-residual-only选根；本节点必须保留一致初态、continuation、IBL和动量交叉守卫"
+                depends_on: ["N2.6e1a", "N2.6e1c", "N2.6e1bc1", "N3.1j3b6d5", "N3.1j3b6d9"]
+                provides_to: ["N2.6e1d"]
+              - id: N2.6e1d
+                title: "分离点重网格—第二尾迹—Fig12公开响应"
+                claim: >
+                  仅在IBL收敛后更新网格节点上的分离点；分离后停止IBL与
+                  transpiration，以gamma1/gamma2及TE/SEP两条新生尾迹闭合
+                  N+4外流自由度，并逐相位复现Fig12公开模型压力和分离历史。
+                state: open
+                freeze: false
+                evidence:
+                  - "research_n26e1_missing_closures_20260730.md §§7--9：Cf=0事件、内迭代、统一Bernoulli压力与Delta h直接披露；remesh状态/旧势转移仍为显式NO-GO边界"
+                depends_on: ["N2.6e1bc"]
+          - id: N2.6e2
+            title: "目标域二维条带降阶 shadow"
+            claim: >
+              在e1通过后，以预先冻结且不由Fig17/18/19拟合的目标截面代理和
+              条带映射，生成双侧压力、壁面剪切、条带力矩及全翼材料面板载荷，
+              检验corrected Fig18随U增长的压力阻力缺口。二维条带不能冒充
+              三维横流或连续分离流形。
+            state: open
+            freeze: false
+            evidence:
+              - "n26_svi_dw_prereg_20260730.md §6B；执行授权依赖e1与目标表示门"
+            depends_on: ["N2.6e1"]
+            provides_to: ["N2.6e3"]
+          - id: N2.6e3
+            title: "三维曲面IBL—连续分离流形—统一压力生产闭合"
+            claim: >
+              最终生产模型在随翼运动的双侧曲面上推进含横流的守恒IBL状态，
+              由连续移动分离流形释放空间尾迹，并从同一总势/总速度一次计算
+              全翼压力、剪切、力和力矩，向结构提供功共轭材料面板载荷。
+            state: open
+            freeze: false
+            evidence:
+              - "N2.6b/c与n26_svi_dw_prereg_20260730.md的co-design边界"
+            depends_on: ["N2.6e2", "N2.6c1c", "N2.6c2c"]
+      - id: N2.6f
+        title: "全域二维黏性NS双侧牵引observer"
+        claim: >
+          在当前finite-angle尾缘标量和strong-VI离散尚未闭合时，以版本锁定的
+          全域二维不可压缩Navier--Stokes移动无滑移壁面observer，直接输出
+          双侧压力、壁面剪切、分离拓扑和有限控制体涡量账；该observer只生成
+          N2.6病因证据和材料面板牵引，不向V4.1追加总力，也不冒充三维生产。
+        state: open
+        freeze: false
+        evidence:
+          - "n26e1b1_source_faithful_te_refinement_result_20260730.md：来源最近TE控制点在128→256仍有7.33--9.16%非Cauchy变化"
+          - "n26e1bc1_preexecution_feasibility_result_20260730.md：B_TE-only闭合执行前NO-GO，完整finite-angle inner保持open"
+          - "Schneiders et al., JCP 235 (2013), doi:10.1016/j.jcp.2012.09.038：移动cut-cell NACA0015压力与涡结构验证"
+          - "n26f_full_domain_ns_observer_prereg_20260730.md：唯一solver、来源门、目标单条带和go/no-go已在执行前冻结"
+          - "n26f_s2_result_to_claim_20260730.md：Basilisk moving-EB子实现因独立时间/空间响应与水密边界三门失败而冻结；全域NS observer方向本身未被证伪"
+        depends_on: ["N2.6d1"]
+        provides_to: ["N2.6e2", "N2.6e3"]
+        children:
+          - id: N2.6f1
+            title: "Basilisk moving-airfoil来源与数值独立性门"
+            claim: >
+              固定SHA的Basilisk embedded-boundary路径必须先复现官方静止
+              NACA2414 smoke及Schneiders快速俯仰NACA0015的CL/CD和涡结构，
+              并通过独立空间、时间与一次牵引积分账，才可观察目标代理截面。
+            state: falsified
+            freeze: true
+            evidence:
+              - "n26f_full_domain_ns_observer_prereg_20260730.md §§3--4"
+              - "n26f_s0_source_smoke_result_20260730.md：固定SHA的官方NACA2414算例完成462步，qcc/AMR/静止embedded pressure+viscous force/涡量链S0 PASS；不外推moving physics"
+              - "n26f_source_gate_protocol_amendment_20260730.md：在formal响应评分前冻结分段线性精确积分、日志完成性、DT退化语义及完整黏性traction导出闭合"
+              - "n26f_s1_moving_source_result_20260730.md：official 512pt/c运行return0；CD/CL range-NRMSE=4.672%/6.639%，峰值角误差1.198/2.360deg，44/54deg主涡拓扑视觉PASS；仅S1响应门"
+              - "n26f_s2_source_numerics_result_20260730.md：有效替代时间轴CD/CL L2=8.62%/4.89%、peak=8.77%/13.45%（门3%）；空间256->512亦失败；512pt/c的44/54deg闭合=9.15e-5/8.26e-4（门1e-8）"
+              - "s2_family_result.json：all_runs_complete与instrumentation_neutrality=true，但space/time/traction=false，s2_pass=false"
+            provides_to: ["N2.6f2"]
+          - id: N2.6f2
+            title: "Fig18最大残差工况的单材料条带双侧压力诊断"
+            claim: >
+              在U10、f1.4、nominal-twist22.5、AoA5的y=0.55m冻结条带上，
+              目标独立的NACA2406-like二维NS observer相对同band的N1
+              Bernoulli压力产生超过数值不确定度的额外压力阻力，并由侧别
+              Cp平台、壁剪切过零和分离拓扑共同解释；它不等于完整V4.1局部
+              修正，也不单独授权全翼精度声明。
+            state: open
+            freeze: false
+            evidence:
+              - "n26f_full_domain_ns_observer_prereg_20260730.md §§5--8"
+              - "n26f_s2_result_to_claim_20260730.md：NOT-RUN；必要依赖N2.6f1已falsified/frozen，目标观察未获授权"
+            depends_on: ["N2.6f1"]
+      - id: N2.6g
+        title: "贴体body-fixed MRF二维黏性NS observer"
+        claim: >
+          N2.6f1的moving PLIC/cut-cell实现因独立时空响应和水密牵引门失败后，
+          只允许在同一全域二维黏性NS observer角色内，以拓扑固定、水密材料
+          边界和绝对速度守恒形式替换数值表示。该方向仍只生成来源域和目标域
+          的双侧pressure/full-viscous traction证据，不向V4.1 ForceLedger
+          注力，也不冒充三维横流、转捩或最终生产闭合。
+        state: open
+        freeze: false
+        evidence:
+          - "n26f_s2_result_to_claim_20260730.md：Basilisk moving-EB实现命题falsified/frozen，但全域NS observer父方向未被证伪"
+          - "research_n26g_body_fitted_mrf_decision_20260730.md：移动边界数值错件定位、贴体body-fixed MRF缺件裁决及唯一版本选择"
+          - "Jee & Moser, JCP 231 (2012), doi:10.1016/j.jcp.2012.04.014：刚体固连网格上的守恒绝对速度形式"
+          - "Nektar++ v5.9.0 MovingRefFrame_Rot_naca0012官方回归和MR !1692 pressure-BC修复"
+        depends_on: ["N2.6d1"]
+        provides_to: ["N2.6e2", "N2.6e3"]
+        children:
+          - id: N2.6g1
+            title: "Nektar++ v5.9贴体MRF来源与牵引门"
+            claim: >
+              固定commit f729cda85b6a206e008fd705af8001cfe6e0d6fb的
+              Nektar++ v5.9 VelocityCorrectionScheme/Galerkin/IMEX2
+              body-fixed MovingReferenceFrame，必须先通过官方回归、闭合
+              NACA0015几何、运动/参考系、独立时空Cauchy、一次双侧牵引账
+              和Schneiders来源响应/涡拓扑门，才可观察任何RoboEagle目标。
+            state: open
+            freeze: false
+            evidence:
+              - "n26g1_nektar_mrf_source_prereg_20260730.md：G0--G3、阈值、唯一数值轴、禁止项和失败状态已在执行前冻结"
+              - "n26g1_nektar_mrf_prereg_v3_audit_20260730.md（SHA 9456705d...）：v3在任何build/mesh/flow前因source scope、Hermite变量、hybrid composite映射和IMEX2 checkpoint历史四项机械P0被BLOCKED；未改变N2.6g物理候选"
+              - "n26g1_nektar_mrf_source_prereg_v4_20260730.md（SHA 390d2a2f...）：只封闭上述四项机械P0，保持candidate/source physics/正式数值轴/阈值/target lock不变；独立差分复核通过前执行仍OFF"
+            provides_to: ["N2.6g2"]
+          - id: N2.6g2
+            title: "Fig18最大残差工况的贴体MRF单条带诊断"
+            claim: >
+              只有N2.6g1的G0--G3全部通过后，才允许在冻结U10、f1.4、
+              nominal-twist22.5、AoA5、y=0.55m条带上比较同一材料边界
+              的双侧压力/黏性牵引与V4.1统一压力缺口；该observer输出不得
+              注入力账，单条带结果也不等于全翼Fig17/18/19精度提升。
+            state: open
+            freeze: false
+            evidence:
+              - "n26g1_nektar_mrf_source_prereg_20260730.md §8：G0--G3未通过前TARGET OFF"
+            depends_on: ["N2.6g1"]
 version: "v4.1 (2026-07-26 晋升)"
 changed: "2026-07-27 (N2.4 E1 病灶入树)"
 notes: |
   N2 主节点 validated，但 N2.2/N2.4 是已证伪节点（方向错/双计），N2.3 open（有效参数）。
-  Phase A 的靶点是 N2.2（分离压差阻），不是 N2 整体。
+  2026-07-27 源 PDF 审计发现 Fig18 推力 U6/U10 反标；旧“dT/dU 反号→N2.2”
+  因果边撤销。N2.5 仅作为完整弦向力闭合的开放命题，须先过唯一簿记与量级门，
+  不得作为 D1 常数吸收器。

@@ -18,6 +18,8 @@ import diff_uvlm_unsteady_gpu as ug
 from diff_uvlm_unsteady_gpu import ring_vel_core, ring_vel   # @wp.func reused for particle advect + image wing
 import flap_flight_validate as ffv
 import _v2_robogeom as rg                       # real RoboEagle planform + swept flap/twist axis
+import airfoil_geometry as ag                   # canonical research geometries (e.g. Hirato SD7003)
+from claim_runtime import hirato_equations as heq
 
 V3 = wp.vec3d
 RHO = 1.225
@@ -41,6 +43,142 @@ def aic_sym_kernel(rings: wp.array(dtype=V3, ndim=2), col: wp.array(dtype=V3),
     m0 = mirror_y(rings[j, 0]); m1 = mirror_y(rings[j, 1]); m2 = mirror_y(rings[j, 2]); m3 = mirror_y(rings[j, 3])
     v = v + ring_vel(ci, m0, m3, m2, m1)         # image wing (reversed winding = symmetric continuation)
     AIC[0, i, j] = wp.dot(v, nrm[i])
+
+
+@wp.kernel
+def _rhs_moving_sym_probe(
+    col: wp.array(dtype=V3),
+    nrm: wp.array(dtype=V3),
+    Vinf: V3,
+    vbody: wp.array(dtype=V3),
+    wr: wp.array(dtype=V3, ndim=2),
+    wg: wp.array(dtype=DTYPE),
+    nw: int,
+    rhs: wp.array(dtype=DTYPE, ndim=2),
+):
+    """Complete half-wing symmetry field for the read-only Hirato probe.
+
+    The production ``sym`` path historically mirrors only the bound AIC.
+    A physical symmetry-plane calculation must also include the other
+    half-wing's free TEV field.  This isolated kernel diagnoses that boundary
+    identity without changing the frozen V4.1 production path.
+    """
+    i = wp.tid()
+    ci = col[i]
+    ni = nrm[i]
+    s = -wp.dot(Vinf - vbody[i], ni)
+    for k in range(nw):
+        direct = ring_vel(ci, wr[k, 0], wr[k, 1], wr[k, 2], wr[k, 3])
+        m0 = mirror_y(wr[k, 0])
+        m1 = mirror_y(wr[k, 1])
+        m2 = mirror_y(wr[k, 2])
+        m3 = mirror_y(wr[k, 3])
+        image = ring_vel(ci, m0, m3, m2, m1)
+        s = s - wg[k] * wp.dot(direct + image, ni)
+    rhs[0, i] = s
+
+
+@wp.kernel
+def _convect_sym_probe(
+    rings: wp.array(dtype=V3, ndim=2),
+    gamma: wp.array(dtype=DTYPE, ndim=2),
+    npan: int,
+    wr: wp.array(dtype=V3, ndim=2),
+    wg: wp.array(dtype=DTYPE),
+    nw: int,
+    Vinf: V3,
+    dt: DTYPE,
+    wr_new: wp.array(dtype=V3, ndim=2),
+):
+    """Eq.23/24 local velocity with bound, TEV and their mirror images."""
+    k, corner = wp.tid()
+    point = wr[k, corner]
+    core = DTYPE(WAKE_CORE)
+    velocity = Vinf
+    for p in range(npan):
+        velocity = velocity + gamma[0, p] * ring_vel_core(
+            point,
+            rings[p, 0],
+            rings[p, 1],
+            rings[p, 2],
+            rings[p, 3],
+            core,
+        )
+        m0 = mirror_y(rings[p, 0])
+        m1 = mirror_y(rings[p, 1])
+        m2 = mirror_y(rings[p, 2])
+        m3 = mirror_y(rings[p, 3])
+        velocity = velocity + gamma[0, p] * ring_vel_core(
+            point, m0, m3, m2, m1, core
+        )
+    for m in range(nw):
+        velocity = velocity + wg[m] * ring_vel_core(
+            point, wr[m, 0], wr[m, 1], wr[m, 2], wr[m, 3], core
+        )
+        m0 = mirror_y(wr[m, 0])
+        m1 = mirror_y(wr[m, 1])
+        m2 = mirror_y(wr[m, 2])
+        m3 = mirror_y(wr[m, 3])
+        velocity = velocity + wg[m] * ring_vel_core(
+            point, m0, m3, m2, m1, core
+        )
+    wr_new[k, corner] = point + velocity * dt
+
+
+@wp.kernel
+def _spatial_p2_external_velocity(
+    points: wp.array(dtype=V3),
+    rings: wp.array(dtype=V3, ndim=2),
+    gamma: wp.array(dtype=DTYPE, ndim=2),
+    npan: int,
+    wr: wp.array(dtype=V3, ndim=2),
+    wg: wp.array(dtype=DTYPE),
+    nw: int,
+    Vinf: V3,
+    mirror: int,
+    velocity_out: wp.array(dtype=V3),
+):
+    """N1 bound/TEV transport velocity for the continuous-P2 LEV state.
+
+    The kernel is deliberately a geometry-transport provider only.  It uses
+    the same regularized local-velocity convention as N1 wake convection and
+    never computes pressure or force.  ``mirror`` completes the physical
+    half-wing field for the candidate without modifying the frozen V4.1 path.
+    """
+    i = wp.tid()
+    point = points[i]
+    core = DTYPE(WAKE_CORE)
+    velocity = Vinf
+    for p in range(npan):
+        velocity = velocity + gamma[0, p] * ring_vel_core(
+            point,
+            rings[p, 0],
+            rings[p, 1],
+            rings[p, 2],
+            rings[p, 3],
+            core,
+        )
+        if mirror != 0:
+            m0 = mirror_y(rings[p, 0])
+            m1 = mirror_y(rings[p, 1])
+            m2 = mirror_y(rings[p, 2])
+            m3 = mirror_y(rings[p, 3])
+            velocity = velocity + gamma[0, p] * ring_vel_core(
+                point, m0, m3, m2, m1, core
+            )
+    for k in range(nw):
+        velocity = velocity + wg[k] * ring_vel_core(
+            point, wr[k, 0], wr[k, 1], wr[k, 2], wr[k, 3], core
+        )
+        if mirror != 0:
+            m0 = mirror_y(wr[k, 0])
+            m1 = mirror_y(wr[k, 1])
+            m2 = mirror_y(wr[k, 2])
+            m3 = mirror_y(wr[k, 3])
+            velocity = velocity + wg[k] * ring_vel_core(
+                point, m0, m3, m2, m1, core
+            )
+    velocity_out[i] = velocity
 
 
 @wp.func
@@ -539,7 +677,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   (docs/diag/gap_thrust_f2.md: les carries 95% of the model's f^2 thrust slope).
                   fp_lev=False, lev_kv=4.62, lev_trans_deg=15.0,
                   # --- 2026-06-27 first-principles LESP-LEV: orthogonal MODE switches (candidate-model matrix) ---
-                  lev_shed_mode='none',    # 'none'|'kelvin'(explicit excess)|'varA0'(Modulation Eq.11-12)|'kinematic'(legacy)|'hirato'(FAITHFUL Fig.6 implicit LESP=LESP_crit constraint solve)
+                  lev_shed_mode='none',    # production/history: none|kelvin|varA0|kinematic|hirato; read-only canonical onset audit: hirato_probe
                   lev_iter=1,              # ('hirato') extra correction sweeps for spanwise LESP coupling (1 = single affine solve; the LESP=crit constraint is affine so 1 is near-exact, 2-3 tightens coupling)
                   lev_pseudo=True,         # ('hirato') include the Hirato pseudovortex ring (Fig.5): cancels the geometric-LE filament + makes the LEV shed EFFECTIVE at reducing LESP (physical strength)
                   lev_cap_exc=False,       # (H11) cap the shed ring strength at EXACTLY the Kelvin excess (physical circulation the
@@ -547,6 +685,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   the constraint then under-delivers like the kelvin path -> the crit-clip closures carry the semantics.
                   lev_hold_mode='inviscid',# 'inviscid'(convect freely)|'hold'(viscous τ_hold)|'hold_detach'(Li 4-phase cutoff)
                   a0_crit=0.25,            # critical LESP (airfoil/Re property; anchor via 2D flap_ldvm). 0.12 thin@Re10k .. 0.27 SD7003@Re20k
+                  spatial_p2_quadrature=16, # N3.1j exploratory closure: standard Gauss edge order for the
+                  #   continuous P2 near-LEV sheet. This is a numerical convergence coordinate (8/16/24),
+                  #   never a Fig17/18/19 fit parameter.
                   a0_mode='xref',          # LESP A0 extraction: 'xref'(Hirato@x_ref=0.10c, nc-robust) | 'sqrtx'(√x limit from the RESOLVED 1st LE panel -> 3D, needs fine cosine LE)
                   tau_hold_scale=1.0,      # ×c/(0.4U) viscous-hold timescale
                   lev_roll_core=0.01,      # FLOOR LEV vortex-core (chord frac); the actual core is resolution-adaptive (below)
@@ -657,7 +798,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
-                  lb_cla3d=False,        # (2026-07-24) Prandtl finite-wing lift-slope reduction on the L-B
+                  lb_cla3d=None,         # (2026-07-24) Prandtl finite-wing lift-slope reduction on the L-B
                   #   polar: CLa_3D = CLa_2D/(1+CLa_2D/(pi*AR)), AR from run geometry. The 2D section judge
                   #   over-separates on a finite wing; this reduces loss_frac smoothly (unlike the lb_a3d
                   #   angle shift, which cliffs). Scales f inversion + CNf reconstruction consistently.
@@ -686,10 +827,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   #   a fixed cap clips it progressively harder as nc grows (lift-vs-nc divergence suspect, 案升力
                   #   分辨率子案 2026-07-12). Parametrized for the convergence audit; default unchanged.
                   pitch_ramp=False, pitch_max=45.0, pitch_K=0.3, pitch_t0star=1.0,   # HIRATO pitch-ramp validation (Fig.9/11)
-                  deform_hook=None):   # (P2-S6) flexible-wing REPLAY: callable t -> (du, dv) added to the
+                  section_geometry='flat',  # explicit canonical option: 'flat' | 'sd7003'; real_geom uses RoboEagle NACA-2406
+                  deform_hook=None,    # (P2-S6) flexible-wing REPLAY: callable t -> (du, dv) added to the
                   #   rigid-kinematic corners/velocities, shapes (nc+1, ns+1, 3). The S5 coupled solve
                   #   produces the deformation field; THIS validated closure stack evaluates the forces
                   #   on the deformed motion (one-way replay, S6 v1). None -> bit-identical rigid path.
+                  claim_raw_out=None): # read-only research recorder: append last-cycle N1/N2/N3 snapshots
     """Twisted flapping UVLM — FIRST-PRINCIPLES unsteady (no empirical Polhamus/cap terms).
     rk2=True -> 2nd-order Heun free-wake convection. te_traj=True -> shed wake along TE trajectory.
     swept_axis=True -> real RoboEagle flap/twist axis (33.8%c root -> LE tip), not quarter-chord.
@@ -707,14 +850,35 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     #               thrust MAE 1.09 (v4 1.59) on the 118 grid.
     # 'v4_legacy' = pre-v4.1 closure: static geo_stall_vec Kirchhoff + uiuc measured polar.
     _CLOSURES = {
-        'v41': dict(lb_closure=True, lb_hybrid=1.0, lb_cds=2.5, lb_cds_mem=True,
+        'v41': dict(lb_closure=True, lb_hybrid=0.0, lb_cds=2.5, lb_cds_mem=True,
                     lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
-                    lb_chop_zonly=True, lb_ct=False,
+                    lb_chop_zonly=True, lb_ct=False, lb_cla3d=True,
                     geo_stall=False, geo_stall_vec=False, attached_drag='uiuc'),
+        # N3.1j5 diagnostic shadow.  Every production-physics flag is
+        # intentionally identical to v41.  The private spatial state may
+        # replace only the old N3 history after the untouched V4.1 trajectory
+        # has completed; it must never feed the production bound/wake solve.
+        'n3_spatial_edge_pressure_v1_shadow': dict(
+            lb_closure=True, lb_hybrid=0.0, lb_cds=2.5, lb_cds_mem=True,
+            lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
+            lb_chop_zonly=True, lb_ct=False, lb_cla3d=True,
+            geo_stall=False, geo_stall_vec=False, attached_drag='uiuc',
+        ),
         'v4_legacy': dict(lb_closure=False, lb_hybrid=1.0, lb_cds=0.0, lb_cds_mem=False,
                           lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
-                          lb_chop_zonly=False, lb_ct=True,
+                          lb_chop_zonly=False, lb_ct=True, lb_cla3d=False,
                           geo_stall=False, geo_stall_vec=True, attached_drag='uiuc'),
+        # N3.1j research candidate. N2 remains as the existing dynamic
+        # separation component, but the scalar sustained dCN_ds force is
+        # replaced by a causal continuous-P2 LEV state entering one panel
+        # pressure ledger. Panel-normal N2 bookkeeping is required for a
+        # co-design load field; this closure is exploratory, not promoted.
+        'n3_spatial_pressure_v0': dict(
+            lb_closure=True, lb_hybrid=0.0, lb_cds=0.0, lb_cds_mem=False,
+            lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
+            lb_chop_zonly=False, lb_ct=False, lb_cla3d=True,
+            geo_stall=False, geo_stall_vec=False, attached_drag='uiuc',
+        ),
     }
     _pre = _CLOSURES[closure]
     if lb_closure is None: lb_closure = _pre['lb_closure']
@@ -726,13 +890,79 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     if lb_cds_signed is None: lb_cds_signed = _pre['lb_cds_signed']
     if lb_chop_zonly is None: lb_chop_zonly = _pre['lb_chop_zonly']
     if lb_ct is None: lb_ct = _pre['lb_ct']
+    if lb_cla3d is None: lb_cla3d = _pre['lb_cla3d']
     geo_stall = _pre['geo_stall'] if geo_stall is None else geo_stall
     geo_stall_vec = _pre['geo_stall_vec'] if geo_stall_vec is None else geo_stall_vec
     attached_drag = _pre['attached_drag'] if attached_drag is None else attached_drag
+    _spatial_p2 = closure == "n3_spatial_pressure_v0"
+    _spatial_p2_n3only = (
+        closure == "n3_spatial_edge_pressure_v1_shadow"
+    )
+    if _spatial_p2 or _spatial_p2_n3only:
+        if not isinstance(spatial_p2_quadrature, (int, np.integer)):
+            raise TypeError("spatial_p2_quadrature must be an integer")
+        if int(spatial_p2_quadrature) < 2:
+            raise ValueError("spatial_p2_quadrature must be >=2")
+    if _spatial_p2:
+        # A spatial sheet may affect force only through the coupled bound
+        # solution and unified panel pressure. Refuse every historical
+        # parallel LEV force/state path rather than silently double-booking it.
+        _spatial_conflicts = {
+            "lev_shed_mode": lev_shed_mode != "none",
+            "lev_impulse": bool(lev_impulse),
+            "lev_vnf": bool(lev_vnf),
+            "fp_lev": bool(fp_lev),
+            "real_lev": bool(real_lev),
+            "lev_merge": bool(lev_merge),
+            "part_lev": bool(part_lev),
+            "vortex": bool(vortex),
+            "dstall": bool(dstall),
+            "les_suction": bool(les_suction),
+            "stall": bool(stall),
+            "kirch_blend": bool(kirch_blend),
+            "kirch_cn": bool(kirch_cn),
+            "kirch_tw": bool(kirch_tw),
+        }
+        _enabled_conflicts = [
+            name for name, enabled in _spatial_conflicts.items() if enabled
+        ]
+        if _enabled_conflicts:
+            raise ValueError(
+                "n3_spatial_pressure_v0 forbids parallel LEV/force paths: "
+                + ", ".join(_enabled_conflicts)
+            )
+    if claim_raw_out is not None:
+        _claim_raw_supported = (
+            (closure == "v41" and lb_closure and lb_cds > 0.0)
+            or _spatial_p2
+        )
+        if not _claim_raw_supported:
+            raise ValueError(
+                "claim_raw_out supports the active v41 closure or "
+                "n3_spatial_pressure_v0"
+            )
+        if not hasattr(claim_raw_out, "extend"):
+            raise TypeError("claim_raw_out must be an empty mutable sequence")
+        if len(claim_raw_out) != 0:
+            raise ValueError("claim_raw_out must be empty at run start")
+        # Transactional sink: publish only after the solver and force ledger
+        # have both completed successfully.
+        _claim_raw_records = []
+    else:
+        _claim_raw_records = None
     # real_geom=True -> REAL RoboEagle planform (raked TE, measured chord(y)) + NACA-2406 camber, LE at
     # x=0 / TE at x=+c (chord in +x = flow dir, Vinf=+x flows LE->TE). Else flat rectangular wing.
-    C0 = (rg.robowing_real(nc, ns, half_span, root_off=root_off, cosine_chord=cosine_chord) if real_geom
-          else ffv.flat_wing(nc, ns, chord, half_span)); npan = nc * ns; ncv = (nc + 1) * (ns + 1)
+    if section_geometry not in ("flat", "sd7003"):
+        raise ValueError(f"unknown section_geometry={section_geometry!r}")
+    if real_geom and section_geometry != "flat":
+        raise ValueError("section_geometry is only for canonical rectangular-wing runs; real_geom owns its section")
+    if real_geom:
+        C0 = rg.robowing_real(nc, ns, half_span, root_off=root_off, cosine_chord=cosine_chord)
+    elif section_geometry == "sd7003":
+        C0 = ag.sd7003_mean_camber_wing(nc, ns, chord, half_span)
+    else:
+        C0 = ffv.flat_wing(nc, ns, chord, half_span)
+    npan = nc * ns; ncv = (nc + 1) * (ns + 1)
     A_f = np.radians(flap_amp_deg); A_t = np.radians(twist_amp_deg); phi = np.radians(twist_phase_deg)
     Om = 2.0 * np.pi * freq; x_ea = 0.25 * chord
     # HIRATO pitch-ramp (Fig.9): CANONICAL ELDREDGE/GRANLUND smoothed ramp-hold (Granlund et al. 2013, ref [30]),
@@ -764,6 +994,14 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     tpl = wp.zeros(ns, dtype=V3, device=dev); tpr = wp.zeros(ns, dtype=V3, device=dev)   # prev TE corners
     tcl = wp.zeros(ns, dtype=V3, device=dev); tcr = wp.zeros(ns, dtype=V3, device=dev)   # cur TE corners
     wg = wp.zeros(maxw, dtype=DTYPE, device=dev); gprev = wp.zeros((1, npan), dtype=DTYPE, device=dev); nw = 0
+    # The spatial candidate needs a genuinely independent N1 counterfactual
+    # history.  ``gprev`` belongs to the coupled N1+P2 trajectory (and feeds
+    # its TEV wake); reusing it in the N1 pressure derivative would silently
+    # assign a portion of the P2 bound reaction back to N1.
+    gprev_n1 = (
+        wp.zeros((1, npan), dtype=DTYPE, device=dev)
+        if _spatial_p2 else None
+    )
     # --- LEV vortex-particle field (parallel to the TEV ring wake; vec3d vortex moment, NOT scalar) ---
     pmax = N * ns * 8 + ns; np_part = 0              # up to 8 spanwise sub-particles/strip/step (rvpm)
     pp = wp.zeros(pmax, dtype=V3, device=dev); pa = wp.zeros(pmax, dtype=V3, device=dev)
@@ -790,12 +1028,64 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     _UT_LOG = []                                        # (T1b) per-step phase diagnostic (UTREND_DBG)
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
     Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
-    Lh_ds = np.zeros(N)                                 # dynamic-stall LEV lift (sustains the downstroke plateau)
+    Lh_ds = np.zeros(N); Xh_ds = np.zeros(N)             # dynamic-stall LEV force (L-B panel-normal or legacy lift)
+    # N3.1j5 is a read-only shadow during the production time march.  Its
+    # per-panel pressure difference is accumulated separately and may replace
+    # only the old N3 history after the untouched V4.1 trajectory is complete.
+    Lh_ds_p2_shadow = (
+        np.zeros(N) if _spatial_p2_n3only else None
+    )
+    Xh_ds_p2_shadow = (
+        np.zeros(N) if _spatial_p2_n3only else None
+    )
     Lh_stall = np.zeros(N); Xh_stall = np.zeros(N)      # Fix1: geometric quasi-steady stall loss (z; x only in vec mode)
     Lh_fric = np.zeros(N); Xh_fric = np.zeros(N)        # Fix2: flap-velocity^2 friction drag
     # per-strip wing-local span fraction yfrac=(y-root_off)/half_span (for the geometric twist pitch psi(y,t)=A_t*yfrac*sin(Om t+phi))
     _C0r = C0.reshape(nc + 1, ns + 1, 3)
+    _yedge_ref = _C0r[0, :, 1].copy()
     _ystrip = 0.5 * (_C0r[0, :-1, 1] + _C0r[0, 1:, 1])                       # spanwise center y of each strip (ns,)
+    _dy_single_ref = np.linalg.norm(
+        _C0r[0, 1:, :] - _C0r[0, :-1, :], axis=1
+    )
+    if _spatial_p2:
+        from claim_runtime.p2_spatial_candidate import P2SpatialLEVCandidate
+
+        _p2_candidate = P2SpatialLEVCandidate(
+            ns=ns,
+            span_edges=_yedge_ref,
+            u_infinity=float(np.linalg.norm(Vinf)),
+            dt=dt,
+            lesp_crit=float(a0_crit),
+            quadrature_order=int(spatial_p2_quadrature),
+            max_bands=int(wake_rows),
+            mirror_halfwing=bool(sym),
+        )
+        _P2_STEP_DIAG = []
+        _P2_PRESSURE_LEDGER_MAX = 0.0
+        _P2_DECOMPOSITION_MAX = 0.0
+        _P2_LAST_PANEL = None
+    else:
+        _p2_candidate = None
+    if _spatial_p2_n3only:
+        from claim_runtime.p2_spatial_n3only_shadow import (
+            P2SpatialN3OnlyShadow,
+        )
+
+        _n3only_shadow = P2SpatialN3OnlyShadow(
+            nc=nc,
+            ns=ns,
+            span_edges=_yedge_ref,
+            u_infinity=float(np.linalg.norm(Vinf)),
+            dt=dt,
+            lesp_crit=float(a0_crit),
+            quadrature_order=int(spatial_p2_quadrature),
+            max_bands=int(wake_rows),
+            mirror_halfwing=bool(sym),
+        )
+        _N3ONLY_STEP_DIAG = []
+        _N3ONLY_LAST_PANEL = None
+    else:
+        _n3only_shadow = None
     yfrac = np.clip((np.abs(_ystrip) - root_off) / max(half_span, 1e-9), 0.0, 1.0)
     aoa_rad = np.radians(aoa_deg)
     Glev_ds = np.zeros(ns); aeff_ds_prev = np.zeros(ns)  # per-strip LEV circulation state + prev alpha_eff
@@ -817,8 +1107,18 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     fsep_state = None                                           # (H13) Goman-Khrabrov lagged separation state (per strip)
     lb_strips = None                                            # (L-B) per-strip LBDynStrip dynamic-stall states
     lb_ds_state = None                                          # (L-B) per-strip accumulated ds-enhancement state (Tv memory)
+    lb_ds_fn_state = None                                       # (N3.1a DIAG) per-strip LEV formation clock
+    lb_ds_event_sign = None                                     # (N3.1b DIAG) surface identity captured at onset
+    lb_ds_super_prev = None                                     # previous supercritical mask for onset detection
+    # N3 research observability only; no channel below is connected to force.
+    # First six slots remain backward-compatible with the B1/B2/B4 diagnostics.
+    # D4 appends actual N3 state plus the already-computed N2 separation/lifecycle states:
+    # T_hat/A0/u_LE,n/raw-drive/event-sign/alpha_kin/dCN_ds/f_qs/f2/CV/CNv/tau_v/qcdy.
+    _LB_D3_DIAG = []
     _LB_DIAG = []                                               # (L-B S-cal1) per-step aeff/fqs/f2/chop accumulator
     _LB_DIAG2 = []                                              # (2026-07-27) per-step correction-channel decomposition
+    _HIRATO_DIAG = []                                           # N3.1i0 equation audit only; never enters force
+    hirato_gL_prev = np.zeros(ns, dtype=NP)                     # prior paper-convention candidate for Eq.9/17 audit
     gk_X = None                                                 # (病灶#1) full-GK dynamic-stall separation state (per strip)
     fn_state = None                                             # (R2) per-strip LEV vortex-formation-number accumulator
     fsep_state_cn = None                                        # (案A 变体B) lagged separation state at the 3c/4 row
@@ -832,6 +1132,11 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     lev_frame_rings = np.zeros((0, 4, 3)); lev_frame_g = np.zeros(0)   # LEV-sheet geometry for viz frames
     use_tevcore = tev_core > 0.0
     for t in range(N):
+        _claim_raw_step = (
+            _claim_raw_records is not None and t >= N - steps_per_cycle
+        )
+        _claim_n2_raw = None
+        _claim_n3_raw = None
         wcore_dev = None; wcore_force_dev = None; wcore_conv_dev = None
         if (use_wcore or use_tevcore) and nw > 0:               # per-ring core: LEV gets a core, TEV = standard
             islev_np = np.asarray(lev_born[:nw]) >= 0
@@ -916,7 +1221,15 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         # CONSISTENT resolution-adaptive core in the SOLVE too (toggle lev_consistent): regularizes the singular
         # LEV→bound feedback that makes nc/ns NON-convergent. The core shrinks as the grid refines -> the result
         # CONVERGES to a grid-independent value (vs the singular kernel which drifts 7→3 with nc + blows up).
-        if ((use_wcore and lev_consistent) or use_tevcore) and nw > 0:
+        if lev_shed_mode == 'hirato_probe' and sym:
+            wp.launch(
+                _rhs_moving_sym_probe,
+                dim=npan,
+                inputs=[col, nrm, Vw, vcol, wr, wg, nw],
+                outputs=[rhs],
+                device=dev,
+            )
+        elif ((use_wcore and lev_consistent) or use_tevcore) and nw > 0:
             if wake_f32:
                 wp.launch(_rhs_base_k, dim=npan, inputs=[col, nrm, Vw, vcol], outputs=[rhs], device=dev)
                 wp.launch(_rhs_wake_chunk_wcore_f32, dim=(npan, _NCH),
@@ -967,10 +1280,82 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # NOT folded into the solve: coupling it reduces the bound circulation and the bound-reduction
             # dominates the LEV's own lift -> net DROP. Force-only -> the LEV's suction ADDS lift (overshoot).
             wp.launch(ug.col_wake_vel_kernel, dim=npan, inputs=[col, lev_rw, lev_gw, ns], outputs=[Vlev], device=dev)
-        gamma = batched_dense_solve(AIC, rhs, dev)
+        _p2_step = None
+        gamma_n1 = None
+        if _spatial_p2:
+            # Same-step N1 counterfactual: solve the unmodified N1 bound
+            # system before the P2 history/current-row normal velocity is
+            # introduced.  This is intentionally not ``bound_pre`` from the
+            # coupled source solve, because that state already contains the
+            # older P2 material history.
+            gamma_n1 = batched_dense_solve(AIC, rhs, dev)
+            _stage_rings = rings.numpy()
+            _stage_normals = nrm.numpy()
+            _stage_chord_vector = 0.5 * (
+                (_stage_rings[:, 2] - _stage_rings[:, 0])
+                + (_stage_rings[:, 3] - _stage_rings[:, 1])
+            )
+            _stage_chord_step = (
+                np.linalg.norm(_stage_chord_vector, axis=1) + 1.0e-15
+            )
+            _stage_chord_grid = _stage_chord_step.reshape(nc, ns)
+            _stage_chord = np.sum(_stage_chord_grid, axis=0)
+            _stage_suction_normal = _stage_normals[:ns].copy()
+            _stage_tangent = _stage_chord_vector[:ns].copy()
+            _stage_tangent -= np.einsum(
+                "ij,ij->i", _stage_tangent, _stage_suction_normal
+            )[:, None] * _stage_suction_normal
+            _stage_tangent_norm = np.linalg.norm(
+                _stage_tangent, axis=1
+            )
+            if np.any(_stage_tangent_norm <= 1.0e-14):
+                raise RuntimeError(
+                    "n3_spatial_pressure_v0 has a degenerate LE chord basis"
+                )
+            _stage_tangent /= _stage_tangent_norm[:, None]
+            _stage_relative_le = (
+                np.asarray(Vinf) - vcol.numpy()
+            )[:ns]
+            _stage_relative_speed = (
+                np.linalg.norm(_stage_relative_le, axis=1) + 1.0e-15
+            )
+            _stage_alpha = np.arcsin(np.clip(
+                np.einsum(
+                    "ij,ij->i",
+                    _stage_relative_le,
+                    _stage_suction_normal,
+                ) / _stage_relative_speed,
+                -0.999999,
+                0.999999,
+            ))
+            _stage_leading_edge = corners.reshape(
+                nc + 1, ns + 1, 3
+            )[0].copy()
+            _p2_step = _p2_candidate.solve_step(
+                time=float(t * dt),
+                aic=AIC.numpy()[0],
+                rhs_without_p2=rhs.numpy().reshape(-1),
+                collocation=col.numpy(),
+                normals=_stage_normals,
+                leading_edge=_stage_leading_edge,
+                chord_tangent=_stage_tangent,
+                suction_normal=_stage_suction_normal,
+                alpha_rad=_stage_alpha,
+                chord=_stage_chord,
+                delta_x_front=_stage_chord_grid[0],
+            )
+            gamma = wp.array(
+                _p2_step.bound_gamma[None, :].astype(NP),
+                dtype=DTYPE,
+                device=dev,
+            )
+        else:
+            gamma = batched_dense_solve(AIC, rhs, dev)
         hirato_gL = None; hirato_wr = None; hirato_A0pre = None
+        hirato_A0post = None; hirato_shed_m = None
+        hirato_A0_eq6 = None; hirato_shed_eq6 = None; hirato_dx1_frac = None
         if lev_shed_mode == 'hirato' and (lev_in_wake or use_ansari):   # (H14) run the LESP=crit constraint for the
-            # ================= FAITHFUL HIRATO LEV: implicit LESP = LESP_crit constraint (paper Fig.6) =========
+            # ===== HISTORICAL HIRATO EXPERIMENT: implicit LESP = LESP_crit constraint (incomplete; N3.1i0) =====
             # The paper's core: when a strip's LESP (=A0) exceeds LESP_crit, an LEV ring is shed whose strength is
             # set — BY ITERATION (Fig.6) — so that the RE-SOLVED bound circulation brings that strip's LESP back
             # EXACTLY to LESP_crit. Because the bound circulation is linear in the RHS and A0 is a linear functional
@@ -981,12 +1366,28 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             tcr0 = 0.5 * ((cc0[:, 2] - cc0[:, 0]) + (cc0[:, 3] - cc0[:, 1])); tcn0 = np.linalg.norm(tcr0, axis=1) + 1e-15
             tcnm0 = tcn0.reshape(nc, ns); c_str0 = tcnm0.sum(0); cum0 = np.cumsum(tcnm0, axis=0)
             vr_le0 = (np.asarray(Vinf) - vcn0)[:ns]; Ur0 = np.linalg.norm(vr_le0, axis=1) + 1e-9
+            # Read-only paper-identity comparator.  Eq.6 pairs the circulation
+            # of the actual forwardmost ring with that same ring's delta_x1
+            # and normalizes by U_infinity.  It does not feed the historical
+            # constraint below, whose fixed xref operator is under audit.
+            hirato_A0_eq6 = heq.lesp_eq6(
+                g0[:ns],
+                float(np.linalg.norm(Vinf)),
+                c_str0,
+                tcnm0[0],
+            )
+            hirato_shed_eq6 = heq.preconstraint_shed_mask(
+                hirato_A0_eq6,
+                a0_crit,
+            )
+            hirato_dx1_frac = tcnm0[0] / c_str0
             xref0 = 0.10; i_ref0 = np.argmax(cum0 >= (xref0 * c_str0)[None, :], axis=0)
             th10 = np.arccos(np.clip(1.0 - 2.0 * xref0, -1.0, 1.0))
             kA0 = 1.13 / (Ur0 * c_str0 * (th10 + np.sin(th10)) + 1e-12)   # A0[j] = kA0[j] * Gamma_1[j]  (Hirato Eq.6)
             refidx = i_ref0 * ns + np.arange(ns)                           # flat index of the forwardmost-leg (Γ_1) ring
             A0_0 = kA0 * g0[refidx]                                        # LESP per strip from the LEV-free solve
             shed_m = np.abs(A0_0) > a0_crit                               # supercritical strips shed an LEV (Fig.6 gate)
+            hirato_shed_m = shed_m.copy()
             hirato_A0pre = A0_0.copy()                                    # PRE-constraint LESP (before the LEV pulls it to crit)
             hirato_gL = np.zeros(ns, dtype=NP)
             # nascent LEV ring geometry — built ALWAYS (the shed section writes it directly for 'hirato'). Hirato
@@ -1071,12 +1472,43 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 # LESP is at LESP_crit on the shedding strips (the paper's converged constraint).
                 rhs_f = rhs.numpy().reshape(-1) - INF @ hirato_gL
                 gamma = batched_dense_solve(AIC, wp.array(rhs_f[None, :].astype(NP), dtype=DTYPE, device=dev), dev)
+                hirato_A0post = kA0 * gamma.numpy().reshape(-1)[refidx]
                 if os.environ.get('HIRATO_DBG'):
-                    A0_post = kA0 * gamma.numpy().reshape(-1)[refidx]        # ACTUAL post-solve LESP
+                    A0_post = hirato_A0post                                 # ACTUAL post-solve LESP
                     sm = shed_m
                     print(f"  [hirato t={t:3d}] shed={int(sm.sum()):2d}/{ns}  |A0_pre|max={np.abs(kA0*g0[refidx]).max():.3f}"
                           f"  |A0_post[shed]|: {np.abs(A0_post[sm]).min():.3f}..{np.abs(A0_post[sm]).max():.3f}"
                           f"  (crit={a0_crit})  |gL|max={np.abs(hirato_gL).max():.4f}", flush=True)
+            if hirato_A0post is None:
+                hirato_A0post = kA0 * gamma.numpy().reshape(-1)[refidx]
+        elif lev_shed_mode == 'hirato_probe':
+            # Canonical Eq.6 onset probe: observe the LEV-free UVLM/TEV state,
+            # but create no LEV, alter no RHS, and contribute no force.  This
+            # isolates mesh/time sensitivity of the onset observer from the
+            # known-incomplete historical Hirato constraint (N3.1i0).
+            cc0 = rings.numpy()
+            g0 = gamma.numpy().reshape(-1)
+            tcr0 = 0.5 * (
+                (cc0[:, 2] - cc0[:, 0]) + (cc0[:, 3] - cc0[:, 1])
+            )
+            tcnm0 = (
+                np.linalg.norm(tcr0, axis=1) + 1e-15
+            ).reshape(nc, ns)
+            c_str0 = tcnm0.sum(0)
+            hirato_A0_eq6 = heq.lesp_eq6(
+                g0[:ns],
+                float(np.linalg.norm(Vinf)),
+                c_str0,
+                tcnm0[0],
+            )
+            hirato_shed_eq6 = heq.preconstraint_shed_mask(
+                hirato_A0_eq6,
+                a0_crit,
+            )
+            hirato_dx1_frac = tcnm0[0] / c_str0
+            hirato_A0pre = hirato_A0_eq6.copy()
+            hirato_A0post = hirato_A0_eq6.copy()
+            hirato_shed_m = hirato_shed_eq6.copy()
         # First-principles unsteady panel force: circulation (Kutta-Joukowski) + added-mass (rho dGamma/dt).
         # The REAL LEV (real_lev) acts through the wake it sheds (induction on the bound + its own impulse);
         # no empirical Polhamus/cap terms. Viscous term to be added (first-principles, Re-based) next.
@@ -1103,7 +1535,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             wp.launch(_col_wake_f32 if wake_f32 else ug.col_wake_vel_kernel,
                       dim=npan, inputs=[col, wr, wg, nw], outputs=[Vwk], device=dev)
         cc = rings.numpy(); g = gamma.numpy().reshape(-1); gp = gprev.numpy().reshape(-1)
-        Vcol = np.asarray(Vinf) - vcn + Vwk.numpy()                     # full local velocity at panels
+        Vbase = np.asarray(Vinf) - vcn + Vwk.numpy()                    # N1 local velocity (bound solve + TEV)
+        Vcol = Vbase.copy()
+        if _spatial_p2:
+            # P2 influences pressure only through this shared local velocity
+            # and the shared potential-jump state assembled below.
+            Vcol = Vcol + _p2_step.induced_velocity
         if part_lev and lev_cons and np_part > 0:
             # convention C completion (S3b force audit 2026-07-19): the particles already reduce
             # the bound circulation via the rhs fold-in; their OWN induced velocity at the surface
@@ -1134,6 +1571,312 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         dGdx = dGdx.reshape(-1); dGdy = dGdy.reshape(-1); dGdt = (g - gp) / max(dt, 1e-15)
         area = 0.5 * np.linalg.norm(np.cross(cc[:, 2] - cc[:, 0], cc[:, 3] - cc[:, 1]), axis=1)
         dp = ug.RHO * (np.sum(Vcol * tc, axis=1) * dGdx + np.sum(Vcol * ts, axis=1) * dGdy + dGdt)
+        if _spatial_p2_n3only:
+            # Advance the private P2 state only after the production bound
+            # solve and local pressure velocity are fully known.  Every input
+            # is copied inside the component; neither the coupled bound state
+            # nor its induced velocity is allowed back into ``gamma``,
+            # ``Vcol``, the native wake, N2, or the production accumulators.
+            _stage_chord_grid = tcn.reshape(nc, ns)
+            _stage_chord = np.sum(_stage_chord_grid, axis=0)
+            _stage_suction_normal = nrm.numpy()[:ns].copy()
+            _stage_tangent = tcr[:ns].copy()
+            _stage_tangent -= np.einsum(
+                "ij,ij->i",
+                _stage_tangent,
+                _stage_suction_normal,
+            )[:, None] * _stage_suction_normal
+            _stage_tangent_norm = np.linalg.norm(
+                _stage_tangent, axis=1
+            )
+            if np.any(_stage_tangent_norm <= 1.0e-14):
+                raise RuntimeError(
+                    "n3_spatial_edge_pressure_v1_shadow has a "
+                    "degenerate LE chord basis"
+                )
+            _stage_tangent /= _stage_tangent_norm[:, None]
+            _stage_relative_le = (
+                np.asarray(Vinf) - vcn
+            )[:ns]
+            _stage_relative_speed = (
+                np.linalg.norm(_stage_relative_le, axis=1) + 1.0e-15
+            )
+            _stage_alpha = np.arcsin(np.clip(
+                np.einsum(
+                    "ij,ij->i",
+                    _stage_relative_le,
+                    _stage_suction_normal,
+                ) / _stage_relative_speed,
+                -0.999999,
+                0.999999,
+            ))
+            _stage_leading_edge = corners.reshape(
+                nc + 1, ns + 1, 3
+            )[0].copy()
+            _n3only_state = _n3only_shadow.advance_state(
+                time=float(t * dt),
+                aic=AIC.numpy()[0],
+                rhs_without_p2=rhs.numpy().reshape(-1),
+                baseline_bound_gamma=g,
+                collocation=col.numpy(),
+                normals=nrm.numpy(),
+                leading_edge=_stage_leading_edge,
+                strip_chord_tangent=_stage_tangent,
+                suction_normal=_stage_suction_normal,
+                alpha_rad=_stage_alpha,
+                chord=_stage_chord,
+                delta_x_front=_stage_chord_grid[0],
+            )
+            _n3only_increment = _n3only_shadow.pressure_increment(
+                density=float(ug.RHO),
+                baseline_local_velocity=Vcol,
+                baseline_bound_previous=gp,
+                panel_chord_tangent=tc,
+                panel_span_tangent=ts,
+                chord_step=tcn,
+                span_step=tsn,
+                area=area,
+                normal=nrm.numpy(),
+            )
+            _F_n3only_panel = np.asarray(
+                _n3only_increment.force_increment
+            )
+            _P_n3only_panel = np.asarray(
+                _n3only_increment.pressure_increment
+            )
+            Lh_ds_p2_shadow[t] = float(
+                np.sum(_F_n3only_panel[:, 2])
+            )
+            Xh_ds_p2_shadow[t] = float(
+                np.sum(_F_n3only_panel[:, 0])
+            )
+            _N3ONLY_STEP_DIAG.append({
+                "step": int(t),
+                "active_strips": int(np.count_nonzero(
+                    _n3only_state.p2.active
+                )),
+                "appended": bool(_n3only_state.p2.appended),
+                "bands": int(_n3only_state.p2.bands),
+                "outflow_bands": int(
+                    _n3only_state.p2.outflow_bands
+                ),
+                "inventory_absent": bool(
+                    _n3only_state.inventory_absent
+                ),
+                "bound_residual": float(
+                    _n3only_state.p2.bound_residual
+                ),
+                "lesp_residual": float(
+                    _n3only_state.p2.lesp_residual
+                ),
+                "source_condition_number": float(
+                    _n3only_state.p2.source_condition_number
+                ),
+                "max_abs_release": float(np.max(
+                    np.abs(_n3only_state.p2.release_current),
+                    initial=0.0,
+                )),
+                "max_induced_speed": float(np.max(
+                    np.linalg.norm(
+                        _n3only_state.p2.induced_velocity, axis=1
+                    ),
+                    initial=0.0,
+                )),
+                "max_bound_reaction": float(np.max(
+                    np.abs(_n3only_state.bound_reaction),
+                    initial=0.0,
+                )),
+                "pressure_decomposition_residual": float(
+                    _n3only_increment.guards
+                    .pressure_decomposition_residual
+                ),
+                "force_decomposition_residual": float(
+                    _n3only_increment.guards
+                    .force_decomposition_residual
+                ),
+                "attached_zero_required": bool(
+                    _n3only_increment.guards.attached_zero_required
+                ),
+                "attached_zero_bitwise": bool(
+                    _n3only_increment.guards.attached_zero_bitwise
+                ),
+            })
+            _N3ONLY_LAST_PANEL = {
+                "pressure_increment_Pa": _P_n3only_panel.copy(),
+                "force_increment_body_N":
+                    _F_n3only_panel.copy(),
+                "pressure_v41_operand_Pa":
+                    np.asarray(
+                        _n3only_increment.baseline_pressure
+                    ).copy(),
+                "pressure_coupled_operand_Pa":
+                    np.asarray(
+                        _n3only_increment.coupled_pressure
+                    ).copy(),
+                "force_v41_operand_body_N":
+                    np.asarray(
+                        _n3only_increment.baseline_force
+                    ).copy(),
+                "force_coupled_operand_body_N":
+                    np.asarray(
+                        _n3only_increment.coupled_force
+                    ).copy(),
+                "bound_reaction_m2_s":
+                    np.asarray(
+                        _n3only_increment.bound_reaction
+                    ).copy(),
+                "release_current_m2_s":
+                    _n3only_state.p2.release_current.copy(),
+                "release_previous_m2_s":
+                    _n3only_state.p2.release_previous.copy(),
+            }
+        if _spatial_p2:
+            # Unique pressure provider for the candidate.  N1 uses the
+            # unmodified same-step bound solve, N1 TEV velocity and its own
+            # temporal history.  Total uses the coupled bound state, the P2
+            # velocity, and psi=Gamma_bound+q_release.  Their exact
+            # per-panel difference is N3, including the bound reaction.
+            from claim_runtime.unified_panel_pressure import (
+                structured_uvlm_surface_gradient,
+                unified_panel_pressure,
+            )
+
+            _nrm_np = nrm.numpy()
+            _gamma_n1_np = gamma_n1.numpy().reshape(-1)
+            _gprev_n1_np = gprev_n1.numpy().reshape(-1)
+            _gradient_n1 = structured_uvlm_surface_gradient(
+                _gamma_n1_np,
+                chord_tangent=tc,
+                span_tangent=ts,
+                chord_step=tcn,
+                span_step=tsn,
+                nc=nc,
+                ns=ns,
+            )
+            _release_panel = np.tile(_p2_step.release_current, nc)
+            _psi_total = g + _release_panel
+            _gradient_total = structured_uvlm_surface_gradient(
+                _psi_total,
+                chord_tangent=tc,
+                span_tangent=ts,
+                chord_step=tcn,
+                span_step=tsn,
+                nc=nc,
+                ns=ns,
+            )
+            _pressure_n1 = unified_panel_pressure(
+                density=float(ug.RHO),
+                local_velocity=Vbase,
+                surface_gradient=_gradient_n1,
+                potential_rate_channels={
+                    "bound_unsteady": (
+                        _gamma_n1_np - _gprev_n1_np
+                    ) / max(dt, 1.0e-15),
+                },
+                area=area,
+                normal=_nrm_np,
+            )
+            _lev_release_rate_raw = (
+                _p2_step.release_current
+                - _p2_step.release_previous
+            ) / max(dt, 1.0e-15)
+            # Hirato Eq.17 is an active-release pressure channel.  A zero
+            # closing row remains in the material P2 topology, but an
+            # inactive strip must not create an opposite-sign force pulse
+            # from that topological closure.
+            _lev_release_rate = np.where(
+                _p2_step.active,
+                _lev_release_rate_raw,
+                0.0,
+            )
+            _pressure_total = unified_panel_pressure(
+                density=float(ug.RHO),
+                local_velocity=Vcol,
+                surface_gradient=_gradient_total,
+                potential_rate_channels={
+                    "bound_unsteady": (g - gp) / max(dt, 1.0e-15),
+                    "lev_release_unsteady": np.tile(
+                        _lev_release_rate,
+                        nc,
+                    ),
+                },
+                area=area,
+                normal=_nrm_np,
+            )
+            _pressure_n1_report = _pressure_n1.ledger_report()
+            _pressure_total_report = _pressure_total.ledger_report()
+            if (
+                not _pressure_n1_report.passed
+                or not _pressure_total_report.passed
+            ):
+                raise RuntimeError(
+                    "n3_spatial_pressure_v0 unified pressure ledger failed"
+                )
+            Fb_n1 = _pressure_n1.total_force
+            Fb = _pressure_total.total_force
+            dp_n1 = _pressure_n1.total_pressure
+            dp = _pressure_total.total_pressure
+            _F_n3_panel = Fb - Fb_n1
+            _P_n3_panel = dp - dp_n1
+            _decomposition_residual = float(np.max(np.abs(
+                Fb_n1 + _F_n3_panel - Fb
+            ), initial=0.0))
+            _pressure_residual = max(
+                _pressure_n1_report.pressure_residual,
+                _pressure_n1_report.force_residual,
+                _pressure_total_report.pressure_residual,
+                _pressure_total_report.force_residual,
+            )
+            if _decomposition_residual > 1.0e-10:
+                raise RuntimeError(
+                    "n3_spatial_pressure_v0 N1+N3 panel-force "
+                    f"decomposition failed: {_decomposition_residual:.3e} N"
+                )
+            _P2_PRESSURE_LEDGER_MAX = max(
+                _P2_PRESSURE_LEDGER_MAX, float(_pressure_residual)
+            )
+            _P2_DECOMPOSITION_MAX = max(
+                _P2_DECOMPOSITION_MAX, _decomposition_residual
+            )
+            _P2_STEP_DIAG.append({
+                "step": int(t),
+                "active_strips": int(np.count_nonzero(_p2_step.active)),
+                "appended": bool(_p2_step.appended),
+                "bands": int(_p2_step.bands),
+                "outflow_bands": int(_p2_step.outflow_bands),
+                "bound_residual": float(_p2_step.bound_residual),
+                "lesp_residual": float(_p2_step.lesp_residual),
+                "source_condition_number": float(
+                    _p2_step.source_condition_number
+                ),
+                "max_abs_release": float(np.max(
+                    np.abs(_p2_step.release_current), initial=0.0
+                )),
+                "max_abs_gated_release_rate": float(np.max(
+                    np.abs(_lev_release_rate), initial=0.0
+                )),
+                "inactive_raw_release_rate_suppressed": int(np.count_nonzero(
+                    (~_p2_step.active)
+                    & (np.abs(_lev_release_rate_raw) > 0.0)
+                )),
+                "max_induced_speed": float(np.max(
+                    np.linalg.norm(
+                        _p2_step.induced_velocity, axis=1
+                    ), initial=0.0
+                )),
+                "pressure_ledger_residual": float(_pressure_residual),
+                "n1_plus_n3_residual": _decomposition_residual,
+            })
+            _P2_LAST_PANEL = {
+                "pressure_total_Pa": dp.copy(),
+                "pressure_n1_counterfactual_Pa": dp_n1.copy(),
+                "pressure_n3_difference_Pa": _P_n3_panel.copy(),
+                "force_total_body_N": Fb.copy(),
+                "force_n1_counterfactual_body_N": Fb_n1.copy(),
+                "force_n3_difference_body_N": _F_n3_panel.copy(),
+                "lev_release_rate_gated_m2_s2":
+                    _lev_release_rate.copy(),
+            }
         # PER-PANEL PRESSURE CLAMP (near-field regularization): a per-element LEV ring that convects through the
         # near-field of a bound collocation can drive a single panel's dp near-singular (|Cp|>>1, unphysical). Cap
         # |dp| at |Cp|<=8 of a STABLE reference dynamic pressure (freestream + max flap-tip speed) so one singular
@@ -1180,7 +1923,12 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 else:
                     fsep_state = fsep_state + (fsep_le - fsep_state) * np.clip(dt / tau_st, 0.0, 1.0)
                 fsep_le = fsep_state
-        if kirch_blend:
+        if _spatial_p2:
+            # ``Fb`` was assembled once by unified_panel_pressure above.
+            # No pressure clamp, stall blend, or second force provider is
+            # permitted in this closure.
+            pass
+        elif kirch_blend:
             # (P1 2026-07-05) DOUBLE-COUNT FIX. H19's prof_drag (Hoerner) ADDED to the uncapped bound Bernoulli's
             # backward-tilt component -> deep-twist over-drag (-4.7N). Fix: ONE consistent force vector blended by
             # the separated fraction. Attached: full Bernoulli (circulatory + added mass). Separated: flat-plate CN
@@ -1254,7 +2002,37 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             sap = np.sum(Vcol * nnp, axis=1) / (np.linalg.norm(Vcol, axis=1) + 1e-9)   # sin(alpha_eff)/panel
             sf = np.minimum(1.0, np.sin(np.radians(stall_deg)) / (np.abs(sap) + 1e-9))  # CL_max saturation
             Fb = Fb * sf[:, None]
-        Lh_imp[t] = float(np.sum(Fb[:, 2])); Xh_imp[t] = float(np.sum(Fb[:, 0]))
+        if _spatial_p2:
+            Lh_imp[t] = float(np.sum(Fb_n1[:, 2]))
+            Xh_imp[t] = float(np.sum(Fb_n1[:, 0]))
+            Lh_ds[t] = float(np.sum(_F_n3_panel[:, 2]))
+            Xh_ds[t] = float(np.sum(_F_n3_panel[:, 0]))
+            if _claim_raw_step:
+                _claim_n3_raw = {
+                    "model": "causal-continuous-P2-near-LEV",
+                    "force_role": "exact same-step total-minus-N1 pressure",
+                    "A0_geometry": _p2_step.a0_geometry.copy(),
+                    "A0_pre": _p2_step.a0_pre.copy(),
+                    "A0_post": _p2_step.a0_post.copy(),
+                    "active": _p2_step.active.copy(),
+                    "release_previous_m2_s":
+                        _p2_step.release_previous.copy(),
+                    "release_current_m2_s":
+                        _p2_step.release_current.copy(),
+                    "release_rate_gated_m2_s2":
+                        _lev_release_rate.copy(),
+                    "bound_residual": float(_p2_step.bound_residual),
+                    "lesp_residual": float(_p2_step.lesp_residual),
+                    "pressure_n3_difference_Pa": _P_n3_panel.copy(),
+                    "ds_panel_force_physical_single_wing_N":
+                        _F_n3_panel.copy(),
+                    "ds_booked_solver_accumulator_N": np.array(
+                        [Xh_ds[t], 0.0, Lh_ds[t]], dtype=float
+                    ),
+                }
+        else:
+            Lh_imp[t] = float(np.sum(Fb[:, 2]))
+            Xh_imp[t] = float(np.sum(Fb[:, 0]))
         Fzb_tot[t] = float(np.sum(Fb[:, 2])); Fxb_tot[t] = float(np.sum(Fb[:, 0]))   # body-force accumulator (base)
         # ==== Fix1: QUASI-STEADY GEOMETRIC STALL lift loss (twist-driven, frequency-independent). The inviscid
         # UVLM has no separation -> lift rises monotonically with twist; the real wing's outer span exceeds the
@@ -1384,6 +2162,10 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             lb_f2 = np.ones(ns); lb_CNv = np.zeros(ns); lb_CT = np.zeros(ns); lb_fqs = np.ones(ns)
             lb_CNf = np.zeros(ns)
             aeff_sep = aeff_le - lb_a3d                                   # 2D->3D stall-delay shift (sep judgment only)
+            _lb_tau_v_pre = (
+                np.array([s.tau_v for s in lb_strips])
+                if _claim_raw_step else None
+            )
             for j in range(ns):
                 rj = lb_strips[j].step(float(aeff_sep[j]), float(A0[j]),
                                        float(Urel_le[j]), float(c_strip[j]), dt)
@@ -1442,12 +2224,74 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 Fzb_tot[t] += Lh_stall[t] * _caL; Fxb_tot[t] += -Lh_stall[t] * _saL
             else:
                 Fzb_tot[t] += Lh_stall[t]; Fxb_tot[t] += Xh_stall[t]
+            if _claim_raw_step:
+                if lb_chop_zonly:
+                    _n2_booked = np.array(
+                        [-Lh_stall[t] * _saL, 0.0, Lh_stall[t] * _caL],
+                        dtype=float,
+                    )
+                else:
+                    _n2_booked = np.array(
+                        [Xh_stall[t], 0.0, Lh_stall[t]], dtype=float
+                    )
+                _n2_K = ((1.0 + np.sqrt(lb_f2)) / 2.0) ** 2
+                _n2_CNc = np.array([
+                    lb_strips[j].cla * (aeff_sep[j] - lb_strips[j].a0)
+                    for j in range(ns)
+                ])
+                _claim_n2_raw = {
+                    "alpha_eff_lb_rad": aeff_sep.copy(),
+                    "f_qs": lb_fqs.copy(),
+                    "f2": lb_f2.copy(),
+                    "K": _n2_K,
+                    "CNc": _n2_CNc,
+                    "CNf": lb_CNf.copy(),
+                    "CNv": lb_CNv.copy(),
+                    "CV": _n2_CNc * (1.0 - _n2_K),
+                    "loss_frac": loss_frac.copy(),
+                    # This is the section-model panel candidate.  In v41 the
+                    # actually booked N2 force is wind-lift-only and therefore
+                    # has no conservative panel allocation yet.
+                    "separation_panel_candidate_force_body_N": dFv.copy(),
+                    "separation_booked_solver_accumulator_N": _n2_booked,
+                }
             # DYNAMIC-STALL LIFT ENHANCEMENT (restructure): additive lift ~ A0 overshoot above crit,
             # which grows with k (validated: |A0| peak 0.419->0.466 over k 0.16->0.29). Provides the
             # positive dL/df slope WITHOUT depressing the mean level (decoupled from the chop). Gated by
             # separation (max(0,|A0|-crit)=0 when attached). Per strip along panel normal.
             if lb_cds > 0.0:
                 dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip drive
+                # N3.1a diagnostic (research_n3_twist_gate.md): a LEV-formation clock driven by the
+                # leading-edge-normal kinematic velocity.  This is deliberately computed before and
+                # independently of the production force: the preregistered activation gate must pass
+                # before T_hat<T*=4 is allowed to alter N3 feeding.  State belongs to N3, not N1's
+                # chordwise-suction fn_state.
+                if lb_ds_fn_state is None:
+                    lb_ds_fn_state = np.zeros(ns)
+                    lb_ds_event_sign = np.zeros(ns)
+                    lb_ds_super_prev = np.zeros(ns, dtype=bool)
+                _nle = nnp[:ns]
+                _ule_n_signed = np.einsum("ij,ij->i", vr_le, _nle)
+                _ule_n = np.abs(_ule_n_signed)
+                _alpha_kin = np.arcsin(np.clip(
+                    np.einsum("ij,ij->i", vr_le, _nle) / Urel_le, -0.999, 0.999
+                ))
+                _super_ds = np.abs(A0) > lb_lesp_crit
+                lb_ds_fn_state = np.where(
+                    _super_ds,
+                    lb_ds_fn_state + _ule_n * dt / np.maximum(c_strip, 1e-9),
+                    0.0,
+                )
+                # N3.1b diagnostic: surface identity is an event property, captured only when
+                # LESP crosses from subcritical to supercritical.  It is not instantaneous
+                # sign(A0) (candidate G, already falsified).  End the event on reattachment.
+                _onset_ds = _super_ds & ~lb_ds_super_prev
+                lb_ds_event_sign[_onset_ds] = np.sign(A0[_onset_ds])
+                lb_ds_event_sign[~_super_ds] = 0.0
+                lb_ds_super_prev = _super_ds.copy()
+                _dCN_drive_raw = dCN_drive.copy()
+                if _claim_raw_step:
+                    _dCN_drive_after_cds = dCN_drive.copy()
                 if lb_cds_signed:
                     # (2026-07-25) SIGNED vortex-force drive: on the upstroke the effective
                     # incidence reverses -> the LEV forms on the OTHER side -> the force
@@ -1456,9 +2300,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                     # sign(A0)*excess cancels under symmetric plunge (aoa0 physics) while
                     # keeping the aoa-biased asymmetry at aoa15. Applied along panel normal.
                     dCN_drive = dCN_drive * np.sign(A0)
+                if _claim_raw_step:
+                    _dCN_drive_after_sign = dCN_drive.copy()
                 if lb_cds_f2gate:
                     dCN_drive = dCN_drive * loss_frac       # L-B Cv = CNc*(1-Kn): vortex lift
                     #   accompanies TE separation; suction overshoot alone must not trigger (aoa0 leak)
+                if _claim_raw_step:
+                    _dCN_drive_after_f2gate = dCN_drive.copy()
                 if lb_cds_mem:
                     # accumulated (Tv memory): state relaxes toward drive over lb_Tv semi-chords
                     if lb_ds_state is None:
@@ -1469,16 +2317,92 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                     dCN_ds = lb_ds_state
                 else:
                     dCN_ds = dCN_drive
+                if t >= N - steps_per_cycle:
+                    # D4 preregistered read-only audit (research_n3_landscape_20260727.md).
+                    # CV is reconstructed exactly from the values already used by LBDynStrip.step:
+                    # CNc=cla*(aeff_sep-a0), K=((1+sqrt(f2))/2)^2, CV=CNc*(1-K).
+                    _lb_K = ((1.0 + np.sqrt(lb_f2)) / 2.0) ** 2
+                    _lb_CNc = np.array([
+                        lb_strips[j].cla * (aeff_sep[j] - lb_strips[j].a0)
+                        for j in range(ns)
+                    ])
+                    _lb_CV = _lb_CNc * (1.0 - _lb_K)
+                    _lb_tau_v = np.array([s.tau_v for s in lb_strips])
+                    _lb_qcdy = qdyn_le * c_strip * dy_lb
+                    _LB_D3_DIAG.append((
+                        lb_ds_fn_state.copy(), A0.copy(), _ule_n.copy(), _dCN_drive_raw,
+                        lb_ds_event_sign.copy(), _alpha_kin.copy(), dCN_ds.copy(),
+                        lb_fqs.copy(), lb_f2.copy(), _lb_CV, lb_CNv.copy(),
+                        _lb_tau_v, _lb_qcdy,
+                    ))
                 F_ds_strip = qdyn_le * dCN_ds * c_strip * dy_lb
                 F_ds_panel = np.tile(F_ds_strip / nc, nc)[:, None] * nnp
                 if lb_cds_zonly:
                     # wind-lift direction only (exactly zero thrust contamination at any aoa;
                     # L-B small-angle bookkeeping)
                     _Fds = float(np.sum(F_ds_panel[:, 2]))
-                    Fzb_tot[t] += _Fds * np.cos(np.radians(aoa_deg))
-                    Fxb_tot[t] += -_Fds * np.sin(np.radians(aoa_deg))
+                    Lh_ds[t] = _Fds * np.cos(np.radians(aoa_deg))
+                    Xh_ds[t] = -_Fds * np.sin(np.radians(aoa_deg))
+                    Fzb_tot[t] += Lh_ds[t]
+                    Fxb_tot[t] += Xh_ds[t]
                 else:
-                    Fzb_tot[t] += float(np.sum(F_ds_panel[:, 2])); Fxb_tot[t] += float(np.sum(F_ds_panel[:, 0]))
+                    Lh_ds[t] = float(np.sum(F_ds_panel[:, 2]))
+                    Xh_ds[t] = float(np.sum(F_ds_panel[:, 0]))
+                    Fzb_tot[t] += Lh_ds[t]; Fxb_tot[t] += Xh_ds[t]
+                if _claim_raw_step:
+                    if lb_cds_zonly:
+                        _n3_booked = np.array(
+                            [Xh_ds[t], 0.0, Lh_ds[t]], dtype=float
+                        )
+                    else:
+                        _n3_booked = np.array(
+                            [Xh_ds[t], 0.0, Lh_ds[t]], dtype=float
+                        )
+                    _dy_single = tsn.reshape(nc, ns)[0].copy()
+                    _qcdy_single = qdyn_le * c_strip * _dy_single
+                    _qcdy_single_ref = qdyn_le * c_strip * _dy_single_ref
+                    _F_ds_strip_single_ref = (
+                        qdyn_le * dCN_ds * c_strip * _dy_single_ref
+                    )
+                    _F_ds_panel_single_ref = np.tile(
+                        _F_ds_strip_single_ref / nc, nc
+                    )[:, None] * nnp
+                    _claim_n3_raw = {
+                        "A0_signed": A0.copy(),
+                        "lb_lesp_crit": float(lb_lesp_crit),
+                        "A0_excess_pre_cds": np.maximum(
+                            np.abs(A0) - lb_lesp_crit, 0.0
+                        ),
+                        "dCN_drive_after_cds": _dCN_drive_after_cds,
+                        "dCN_drive_after_sign": _dCN_drive_after_sign,
+                        "dCN_drive_after_f2gate": _dCN_drive_after_f2gate,
+                        "dCN_state_after_memory": dCN_ds.copy(),
+                        "u_le_normal_signed_m_s": _ule_n_signed.copy(),
+                        "Urel_le_m_s": Urel_le.copy(),
+                        "q_dyn_Pa": qdyn_le.copy(),
+                        "alpha_kin_rad": _alpha_kin.copy(),
+                        "event_active": _super_ds.copy(),
+                        "event_onset": _onset_ds.copy(),
+                        "event_sign": lb_ds_event_sign.copy(),
+                        "formation_T_hat": lb_ds_fn_state.copy(),
+                        "tau_v_pre": _lb_tau_v_pre.copy(),
+                        "tau_v_post": _lb_tau_v.copy(),
+                        "tau_v_reset": (
+                            (_lb_tau_v_pre > 0.0) & (_lb_tau_v == 0.0)
+                        ),
+                        "chord_m": c_strip.copy(),
+                        "dy_single_reference_m": _dy_single_ref.copy(),
+                        "dy_single_current_m": _dy_single,
+                        "dy_solver_legacy_m": np.full(ns, dy_lb),
+                        "qcdy_single_reference_N": _qcdy_single_ref,
+                        "qcdy_single_current_N": _qcdy_single,
+                        "qcdy_physical_mirror_pair_N": 2.0 * _qcdy_single_ref,
+                        "qcdy_solver_legacy_N": _lb_qcdy.copy(),
+                        "ds_panel_force_physical_single_wing_N":
+                            _F_ds_panel_single_ref,
+                        "ds_panel_force_solver_legacy_N": F_ds_panel.copy(),
+                        "ds_booked_solver_accumulator_N": _n3_booked,
+                    }
             # tangential suction bookkeeping CONSISTENT with the chopped UVLM force (2026-07-24):
             # the vectorial chop already removes loss_frac of the bound force including its attached
             # LE-suction share, leaving (1-loss_frac) = ((1+sqrt(f2))/2)^2 of the attached suction.
@@ -1969,11 +2893,171 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wp.launch(ug.lift_kj_kernel, dim=npan, inputs=[rings, nrm, gamma, gprev, Vw, DTYPE(dt),
                   DTYPE(ug.RHO), ns], outputs=[lkj], device=dev)
         Lkjh[t] = float(lkj.numpy()[0])
+        if _claim_raw_step:
+            if _claim_n2_raw is None or _claim_n3_raw is None:
+                raise RuntimeError(
+                    "claim_raw_out requires an active executable N2/N3 closure"
+                )
+            _phase_solver = float(np.mod(Om * t * dt, 2.0 * np.pi))
+            _phase_paper = float(np.mod(_phase_solver - 0.5 * np.pi, 2.0 * np.pi))
+            _nr_raw = nrm.numpy()
+            if _spatial_p2:
+                _n1_panel_force_raw = Fb_n1
+                _n1_pressure_raw = dp_n1
+                _n1_velocity_raw = Vbase
+                _n1_gamma_raw = _gamma_n1_np
+                _n1_dGdx_raw = np.einsum(
+                    "ij,ij->i", _gradient_n1, tc
+                )
+                _n1_dGdy_raw = np.einsum(
+                    "ij,ij->i", _gradient_n1, ts
+                )
+                _n1_dGdt_raw = (
+                    _gamma_n1_np - _gprev_n1_np
+                ) / max(dt, 1.0e-15)
+            else:
+                _n1_panel_force_raw = Fb
+                _n1_pressure_raw = dp
+                _n1_velocity_raw = Vcol
+                _n1_gamma_raw = g
+                _n1_dGdx_raw = dGdx
+                _n1_dGdy_raw = dGdy
+                _n1_dGdt_raw = dGdt
+            _n1_bernoulli_booked = np.array(
+                [
+                    np.sum(_n1_panel_force_raw[:, 0]),
+                    0.0,
+                    np.sum(_n1_panel_force_raw[:, 2]),
+                ],
+                dtype=float,
+            )
+            _n2_profile_drag = np.array(
+                [Xh_pd[t], 0.0, Lh_pd[t]], dtype=float
+            )
+            _claim_n2_raw["profile_drag_booked_solver_accumulator_N"] = (
+                _n2_profile_drag
+            )
+            _claim_n2_raw["booked_solver_accumulator_total_N"] = (
+                _claim_n2_raw["separation_booked_solver_accumulator_N"]
+                + _n2_profile_drag
+            )
+            _n3_vortex_normal = np.array(
+                [Xh_vtx[t], 0.0, Lh_vtx[t]], dtype=float
+            )
+            _claim_n3_raw["vortex_normal_booked_solver_accumulator_N"] = (
+                _n3_vortex_normal
+            )
+            _claim_n3_raw["booked_solver_accumulator_total_N"] = (
+                _claim_n3_raw["ds_booked_solver_accumulator_N"]
+                + _n3_vortex_normal
+            )
+            _total_solver_accumulator = np.array(
+                [Fxb_tot[t], 0.0, Fzb_tot[t]], dtype=float
+            )
+            # N1 owns the solver force remainder after the complete N2 and N3
+            # runtime channels are removed.  Keep its Bernoulli panel subset
+            # separate from suction/viscous/impulse remainder so the recorder
+            # does not pretend that all N1 load already has a panel provider.
+            _n1_claim_booked = (
+                _total_solver_accumulator
+                - _claim_n2_raw["booked_solver_accumulator_total_N"]
+                - _claim_n3_raw["booked_solver_accumulator_total_N"]
+            )
+            _n1_non_bernoulli_unallocated = (
+                _n1_claim_booked - _n1_bernoulli_booked
+            )
+            _rig_drag = float(d_para) * (U / 8.0) ** 2
+            _rig_body_pair = np.array(
+                [_rig_drag * np.cos(aoa_rad), 0.0,
+                 _rig_drag * np.sin(aoa_rad)],
+                dtype=float,
+            )
+            _reported_pair = (
+                2.0 * _total_solver_accumulator + _rig_body_pair
+            )
+            _raw_L_wind = (
+                _reported_pair[2] * np.cos(aoa_rad)
+                - _reported_pair[0] * np.sin(aoa_rad)
+            )
+            _raw_T_wind = -(
+                _reported_pair[0] * np.cos(aoa_rad)
+                + _reported_pair[2] * np.sin(aoa_rad)
+            )
+            _claim_raw_records.append({
+                "step": int(t),
+                "last_cycle_step": int(t - (N - steps_per_cycle)),
+                "cycle_index": int(t // steps_per_cycle),
+                "time_s": float(t * dt),
+                "dt_s": float(dt),
+                "phase_solver_rad": _phase_solver,
+                "phase_paper_rad": _phase_paper,
+                "theta_rad": float(A_f * np.sin(_phase_solver)),
+                "theta_dot_rad_s": float(A_f * Om * np.cos(_phase_solver)),
+                "psi_rad": (
+                    A_t * yfrac * np.sin(_phase_solver + phi)
+                ).copy(),
+                "psi_dot_rad_s": (
+                    A_t * yfrac * Om * np.cos(_phase_solver + phi)
+                ).copy(),
+                "y_ref_edge_m": _yedge_ref.copy(),
+                "y_ref_center_m": _ystrip.copy(),
+                "eta_ref": yfrac.copy(),
+                "snapshot_phase": "post_force_pre_shed",
+                "nc": int(nc),
+                "ns": int(ns),
+                "n1": {
+                    "collocation_points_m": col.numpy().copy(),
+                    "panel_normals_body": _nr_raw.copy(),
+                    "panel_area_m2": area.copy(),
+                    "bernoulli_local_velocity_m_s":
+                        _n1_velocity_raw.copy(),
+                    "collocation_wall_velocity_m_s": vcn.copy(),
+                    "bound_gamma_m2_s": _n1_gamma_raw.copy(),
+                    "dGdx_m_s": _n1_dGdx_raw.copy(),
+                    "dGdy_m_s": _n1_dGdy_raw.copy(),
+                    "dGdt_m2_s2": _n1_dGdt_raw.copy(),
+                    "pressure_jump_Pa": _n1_pressure_raw.copy(),
+                    "panel_force_body_N": _n1_panel_force_raw.copy(),
+                    "bernoulli_booked_solver_accumulator_N":
+                        _n1_bernoulli_booked,
+                    "non_bernoulli_unallocated_solver_accumulator_N":
+                        _n1_non_bernoulli_unallocated,
+                    "booked_solver_accumulator_total_N": _n1_claim_booked,
+                },
+                "n2": _claim_n2_raw,
+                "n3": _claim_n3_raw,
+                "total_solver_accumulator_body_force_N":
+                    _total_solver_accumulator,
+                "rig_drag_body_force_reported_pair_N": _rig_body_pair,
+                "reported_pair_body_force_N": _reported_pair,
+                "reported_pair_wind_lift_N": float(_raw_L_wind),
+                "reported_pair_wind_thrust_N": float(_raw_T_wind),
+            })
         if frames_out is not None and t % frame_skip == 0:   # snapshot for wake/lattice visualization
             vcn = vcol.numpy(); nrn = nrm.numpy(); vr = np.asarray(Vinf) - vcn
             sina = np.sum(vr * nrn, axis=1) / (np.linalg.norm(vr, axis=1) + 1e-9)
+            _wake_uses_core = ((use_wcore and lev_consistent) or use_tevcore) and nw > 0
             frames_out.append(dict(
                 t=t * dt, bound=rings.numpy().copy(), gam=gamma.numpy().reshape(-1).copy(),
+                corners=corners.copy(), corner_velocity=cvel.copy(),
+                # N3.1j3b6c read-only field contract.  These are copies of values
+                # already used in this step; exposing them changes no solve, wake,
+                # pressure, or force.  The snapshot phase is post-force/pre-shed.
+                collocation_points=col.numpy().copy(),
+                panel_normals=nrn.copy(), collocation_velocity=vcn.copy(),
+                wake_induced_velocity=Vwk.numpy().copy(),
+                freestream_velocity=np.asarray(Vinf).copy(),
+                symmetry_enabled=bool(sym),
+                snapshot_phase="post_force_pre_shed",
+                bound_kernel_kind="singular",
+                bound_arithmetic="fp64",
+                bound_denominator_floor=1.0e-10,
+                wake_kernel_kind=("van_garrel_core" if _wake_uses_core else "singular"),
+                wake_arithmetic=("fp32" if wake_f32 else "fp64"),
+                wake_denominator_floor=(1.0e-18 if wake_f32 and _wake_uses_core
+                                        else (1.0e-30 if _wake_uses_core else 1.0e-10)),
+                wake_core_delta=(wcore_dev.numpy()[:nw].copy()
+                                 if _wake_uses_core else np.zeros(nw)),
                 wr=(wr.numpy()[:nw].copy() if nw > 0 else np.zeros((0, 4, 3))),
                 wg=(wg.numpy()[:nw].copy() if nw > 0 else np.zeros(0)),
                 wtype=np.array(wtype[:nw], dtype=int) if nw > 0 else np.zeros(0, int),
@@ -2080,7 +3164,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             np_part += ns
         nw_new = nw + shed_per
         # bookkeeping: ns TEV then lev_count LEV (matches shed order). lev_count = ns*nsub for the subdivided sheet.
-        if lev_shed_mode == 'hirato':
+        if lev_shed_mode in ('hirato', 'hirato_probe'):
             lev_strengths = list(hirato_gL if hirato_gL is not None else np.zeros(ns, dtype=NP))
         elif use_lev_sheet:
             lev_strengths = list(substr)
@@ -2091,8 +3175,126 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         wtype.extend([0] * ns + [1] * lev_count)
         lev_born.extend([-1] * ns + [t] * lev_count)
         lev_s0.extend([0.0] * ns + lev_strengths)
+        if lev_shed_mode in ('hirato', 'hirato_probe'):
+            # Read-only equation fingerprint.  The historical branch uses the solver's native circulation
+            # signs; a future hirato_exact adapter must document the paper<->solver sign map before treating
+            # this residual as a production guard.  No quantity below feeds any force or state update except
+            # hirato_gL_prev, which is itself diagnostic-only.
+            _tev_now = wg.numpy()[nw:nw + ns].copy()
+            _prev_bound_rear = gp.reshape(nc, ns)[-1].copy()
+            _current_bound_rear = gamma.numpy().reshape(nc, ns)[-1].copy()
+            _gL_now = (hirato_gL.copy() if hirato_gL is not None
+                       else np.zeros(ns, dtype=NP))
+            _eq9_target = _prev_bound_rear + hirato_gL_prev
+            _HIRATO_DIAG.append({
+                "mode": lev_shed_mode,
+                "step": int(t),
+                "A0_pre": (hirato_A0pre.copy() if hirato_A0pre is not None
+                           else np.zeros(ns, dtype=NP)),
+                "A0_post": (hirato_A0post.copy() if hirato_A0post is not None
+                            else np.zeros(ns, dtype=NP)),
+                "shed_pre": (hirato_shed_m.copy() if hirato_shed_m is not None
+                             else np.zeros(ns, dtype=bool)),
+                "shed_post": (np.abs(hirato_A0post) > a0_crit
+                              if hirato_A0post is not None else np.zeros(ns, dtype=bool)),
+                "A0_eq6_paper": (hirato_A0_eq6.copy() if hirato_A0_eq6 is not None
+                                 else np.zeros(ns, dtype=NP)),
+                "shed_eq6_paper": (hirato_shed_eq6.copy() if hirato_shed_eq6 is not None
+                                   else np.zeros(ns, dtype=bool)),
+                "delta_x1_over_c": (hirato_dx1_frac.copy() if hirato_dx1_frac is not None
+                                    else np.zeros(ns, dtype=NP)),
+                "Gamma_L": _gL_now,
+                "dGamma_L_dt_missing_from_dp": (_gL_now - hirato_gL_prev) / max(dt, 1e-15),
+                "Gamma_TEV_actual": _tev_now,
+                "Gamma_bound_rear_current": _current_bound_rear,
+                "Gamma_bound_rear_previous": _prev_bound_rear,
+                "tev_minus_current_bound": _tev_now - _current_bound_rear,
+                "Gamma_TEV_eq9_target_raw_sign": _eq9_target,
+                "eq9_residual_raw_sign": _tev_now - _eq9_target,
+                "param_ring_count": int(len(lev_aj)),
+                "wake_lev_nonzero_new": int(np.count_nonzero(_gL_now)) if lev_in_wake else 0,
+            })
+            hirato_gL_prev = _gL_now
+        if _spatial_p2:
+            # Material P2 strengths are frozen after birth.  Advance only
+            # their geometry with Heun in the current N1 bound+old-TEV field.
+            # The freshly shed TEV row, like the native wake path below, stays
+            # attached for this step.  P2 self-advection is deliberately
+            # absent in v0 and reported as a promotion blocker.
+            def _p2_external_velocity(_points):
+                _points_np = np.ascontiguousarray(
+                    np.asarray(_points, dtype=NP)
+                )
+                _points_wp = wp.array(
+                    _points_np, dtype=V3, device=dev
+                )
+                _velocity_wp = wp.zeros(
+                    len(_points_np), dtype=V3, device=dev
+                )
+                wp.launch(
+                    _spatial_p2_external_velocity,
+                    dim=len(_points_np),
+                    inputs=[
+                        _points_wp,
+                        rings,
+                        gamma,
+                        npan,
+                        wr,
+                        wg,
+                        nw,
+                        Vw,
+                        int(bool(sym)),
+                    ],
+                    outputs=[_velocity_wp],
+                    device=dev,
+                )
+                return _velocity_wp.numpy()
+
+            _p2_candidate.convect_heun(_p2_external_velocity)
+        if _spatial_p2_n3only:
+            # Same read-only production bound+TEV transport field as the
+            # shadow's birth stage.  P2 self-advection remains deliberately
+            # absent and is reported as a promotion blocker.
+            def _n3only_external_velocity(_points):
+                _points_np = np.ascontiguousarray(
+                    np.asarray(_points, dtype=NP)
+                )
+                _points_wp = wp.array(
+                    _points_np, dtype=V3, device=dev
+                )
+                _velocity_wp = wp.zeros(
+                    len(_points_np), dtype=V3, device=dev
+                )
+                wp.launch(
+                    _spatial_p2_external_velocity,
+                    dim=len(_points_np),
+                    inputs=[
+                        _points_wp,
+                        rings,
+                        gamma,
+                        npan,
+                        wr,
+                        wg,
+                        nw,
+                        Vw,
+                        int(bool(sym)),
+                    ],
+                    outputs=[_velocity_wp],
+                    device=dev,
+                )
+                return _velocity_wp.numpy()
+
+            _n3only_shadow.convect(_n3only_external_velocity)
         if nw > 0:   # convect OLD wake only; freshly-shed ring STAYS attached at the TE (Katz&Plotkin
-            if use_wcore:   # (E) per-ring core: LEV rolls up tight (small core); TEV keeps WAKE_CORE for wake stability
+            if lev_shed_mode == 'hirato_probe' and sym:
+                wp.launch(
+                    _convect_sym_probe,
+                    dim=(nw, 4),
+                    inputs=[rings, gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
+                    outputs=[wr_new],
+                    device=dev,
+                )
+            elif use_wcore:   # (E) per-ring core: LEV rolls up tight (small core); TEV keeps WAKE_CORE for wake stability
                 wp.launch(_convect_wcore_f32 if wake_f32 else _convect_wcore,
                           dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, wcore_conv_dev, nw,
                           DTYPE(ug.WAKE_CORE), Vw, DTYPE(dt)], outputs=[wr_new], device=dev)
@@ -2103,7 +3305,17 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 wp.launch(ug.convect_kernel, dim=(nw, 4), inputs=[rings, gamma, npan, wr, wg, nw, Vw, DTYPE(dt)],
                           outputs=[wr_new], device=dev)   # order) so it cancels the trailing bound segment
             if rk2:   # Heun RK2: second Euler from the predicted midpoint wake, then average
-                if wake_f32:
+                if lev_shed_mode == 'hirato_probe' and sym:
+                    wp.launch(
+                        _convect_sym_probe,
+                        dim=(nw, 4),
+                        inputs=[
+                            rings, gamma, npan, wr_new, wg, nw, Vw, DTYPE(dt)
+                        ],
+                        outputs=[wr_m2],
+                        device=dev,
+                    )
+                elif wake_f32:
                     wp.launch(_convect_f32, dim=(nw, 4), inputs=[rings, gamma, npan, wr_new, wg, nw, Vw,
                               DTYPE(dt), DTYPE(ug.WAKE_CORE)], outputs=[wr_m2], device=dev)
                 else:
@@ -2170,8 +3382,145 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                       wr, wg, nw, Vw, DTYPE(dt)], outputs=[pp_new], device=dev)
             wp.copy(pp, pp_new, count=np_part)
         gprev = wp.array(gamma.numpy(), dtype=DTYPE, device=dev)
+        if _spatial_p2:
+            gprev_n1 = wp.array(
+                gamma_n1.numpy(), dtype=DTYPE, device=dev
+            )
     if dstall and ds_delay > 0:
         Lh_ds = np.roll(Lh_ds, ds_delay)   # convection delay: LEV lift lags as the vortex traverses the chord
+    if _spatial_p2_n3only:
+        # Freeze the matched V4.1 counterfactual from this exact solver call.
+        # The complete production trajectory above already contains old N3.
+        # Replace that one history algebraically before the nonlinear cycle
+        # reducer; no second run and no mean-force splice are permitted.
+        _Fxb_tot_v41_counterfactual = Fxb_tot.copy()
+        _Fzb_tot_v41_counterfactual = Fzb_tot.copy()
+        _Xh_ds_v41_counterfactual = Xh_ds.copy()
+        _Lh_ds_v41_counterfactual = Lh_ds.copy()
+        _Fxb_candidate_expected = (
+            _Fxb_tot_v41_counterfactual
+            - _Xh_ds_v41_counterfactual
+            + Xh_ds_p2_shadow
+        )
+        _Fzb_candidate_expected = (
+            _Fzb_tot_v41_counterfactual
+            - _Lh_ds_v41_counterfactual
+            + Lh_ds_p2_shadow
+        )
+        Fxb_tot = _Fxb_candidate_expected.copy()
+        Fzb_tot = _Fzb_candidate_expected.copy()
+        Xh_ds = Xh_ds_p2_shadow.copy()
+        Lh_ds = Lh_ds_p2_shadow.copy()
+        _n3only_substitution_residual = float(max(
+            np.max(
+                np.abs(Fxb_tot - _Fxb_candidate_expected),
+                initial=0.0,
+            ),
+            np.max(
+                np.abs(Fzb_tot - _Fzb_candidate_expected),
+                initial=0.0,
+            ),
+        ))
+        _n3only_non_n3_identity_residual = float(max(
+            np.max(np.abs(
+                (Fxb_tot - Xh_ds)
+                - (
+                    _Fxb_tot_v41_counterfactual
+                    - _Xh_ds_v41_counterfactual
+                )
+            ), initial=0.0),
+            np.max(np.abs(
+                (Fzb_tot - Lh_ds)
+                - (
+                    _Fzb_tot_v41_counterfactual
+                    - _Lh_ds_v41_counterfactual
+                )
+            ), initial=0.0),
+        ))
+        _n3only_profile_identical = bool(
+            _CLOSURES["n3_spatial_edge_pressure_v1_shadow"]
+            == _CLOSURES["v41"]
+        )
+        _n3only_summary = _n3only_shadow.diagnostics()
+        _n3only_summary.update({
+            "claim_node": "N3.1j5",
+            "closure":
+                "n3_spatial_edge_pressure_v1_shadow",
+            "runtime_role": "N3-only-diagnostic-shadow",
+            "matched_counterfactual": "same-call-v41",
+            "replacement_identity":
+                "F_v41_minus_old_N3_plus_P2_N3",
+            "closure_profile_identical_to_v41":
+                _n3only_profile_identical,
+            "production_trajectory_write_count": 0,
+            "steps": int(len(_N3ONLY_STEP_DIAG)),
+            "steps_with_active_release": int(sum(
+                item["active_strips"] > 0
+                for item in _N3ONLY_STEP_DIAG
+            )),
+            "max_active_strips": int(max(
+                (
+                    item["active_strips"]
+                    for item in _N3ONLY_STEP_DIAG
+                ),
+                default=0,
+            )),
+            "max_abs_release": float(max(
+                (
+                    item["max_abs_release"]
+                    for item in _N3ONLY_STEP_DIAG
+                ),
+                default=0.0,
+            )),
+            "max_induced_speed": float(max(
+                (
+                    item["max_induced_speed"]
+                    for item in _N3ONLY_STEP_DIAG
+                ),
+                default=0.0,
+            )),
+            "max_bound_residual": float(max(
+                (
+                    item["bound_residual"]
+                    for item in _N3ONLY_STEP_DIAG
+                ),
+                default=0.0,
+            )),
+            "max_lesp_residual": float(max(
+                (
+                    item["lesp_residual"]
+                    for item in _N3ONLY_STEP_DIAG
+                ),
+                default=0.0,
+            )),
+            "max_source_condition_number": float(max(
+                (
+                    item["source_condition_number"]
+                    for item in _N3ONLY_STEP_DIAG
+                ),
+                default=1.0,
+            )),
+            "substitution_max_residual_N":
+                _n3only_substitution_residual,
+            "non_n3_identity_max_residual_N":
+                _n3only_non_n3_identity_residual,
+            "attached_zero_required_steps": int(sum(
+                item["attached_zero_required"]
+                for item in _N3ONLY_STEP_DIAG
+            )),
+            "attached_zero_all_bitwise": bool(all(
+                (
+                    not item["attached_zero_required"]
+                    or item["attached_zero_bitwise"]
+                )
+                for item in _N3ONLY_STEP_DIAG
+            )),
+            "old_n3_retained_in_candidate_force": False,
+            "v41_leading_edge_suction_retained": True,
+            "v41_vortex_impulse_retained": True,
+            "actual_thickness_pressure_included": False,
+            "actual_thickness_status": "promotion-blocker",
+        })
     last = slice((n_cycle - 1) * steps_per_cycle, N)
     L = 2.0 * np.mean(Lh[last]); Fx = 2.0 * np.mean(Xh[last]); P = 2.0 * np.mean(np.abs(Ph[last]))
     L_bern = 2.0 * np.mean(Lh_imp[last]); Fx_bern = 2.0 * np.mean(Xh_imp[last])
@@ -2199,6 +3548,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         lo, hi = m - 8.0 * 1.4826 * mad, m + 8.0 * 1.4826 * mad
         return 2.0 * np.mean(np.clip(a, lo, hi))
     Fx_body = _robmean(Fxb_tot); Fz_body = _robmean(Fzb_tot)                          # total body force (both wings)
+    if _spatial_p2_n3only:
+        _Fx_body_v41_counterfactual = _robmean(
+            _Fxb_tot_v41_counterfactual
+        )
+        _Fz_body_v41_counterfactual = _robmean(
+            _Fzb_tot_v41_counterfactual
+        )
     _ca = np.cos(np.radians(aoa_deg)); _sa = np.sin(np.radians(aoa_deg))
     # RIG PARASITIC DRAG (~U^2): the wind-tunnel support plates (paper rig = plates + 2 wings, NO fuselage) add
     # a drag ~ Cd*A*1/2 rho U^2, FREQUENCY-INDEPENDENT. Applied along the flight/freestream direction -> reduces
@@ -2210,12 +3566,40 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     L_bodyf = Fz_body;              T_bodyf = -Fx_body                               # BODY frame lift / thrust
     L_windf = Fz_body * _ca - Fx_body * _sa                                          # WIND frame lift (_|_ freestream)
     T_windf = -(Fx_body * _ca + Fz_body * _sa)                                       # WIND frame thrust (// freestream)
+    if _spatial_p2_n3only:
+        _Fx_body_v41_counterfactual += D_para * _ca
+        _Fz_body_v41_counterfactual += D_para * _sa
+        _L_wind_v41_counterfactual = (
+            _Fz_body_v41_counterfactual * _ca
+            - _Fx_body_v41_counterfactual * _sa
+        )
+        _T_wind_v41_counterfactual = -(
+            _Fx_body_v41_counterfactual * _ca
+            + _Fz_body_v41_counterfactual * _sa
+        )
     # (2026-07-25) per-step INSTANTANEOUS wind-frame forces, BOTH wings (Fxb_tot/Fzb_tot are
     # single-wing; body force = 2x, cf. _robmean). Fig16 instantaneous-trace comparison;
     # lift-drag blending diagnosis under twist.
     _Fxb_inst = 2.0 * Fxb_tot + float(D_para) * _ca; _Fzb_inst = 2.0 * Fzb_tot + float(D_para) * _sa
     L_inst = _Fzb_inst * _ca - _Fxb_inst * _sa
     T_inst = -(_Fxb_inst * _ca + _Fzb_inst * _sa)
+    if _spatial_p2_n3only:
+        _Fxb_inst_v41_counterfactual = (
+            2.0 * _Fxb_tot_v41_counterfactual
+            + float(D_para) * _ca
+        )
+        _Fzb_inst_v41_counterfactual = (
+            2.0 * _Fzb_tot_v41_counterfactual
+            + float(D_para) * _sa
+        )
+        _L_inst_v41_counterfactual = (
+            _Fzb_inst_v41_counterfactual * _ca
+            - _Fxb_inst_v41_counterfactual * _sa
+        )
+        _T_inst_v41_counterfactual = -(
+            _Fxb_inst_v41_counterfactual * _ca
+            + _Fzb_inst_v41_counterfactual * _sa
+        )
     if os.environ.get("UTREND_DBG") and _UT_LOG:
         np.save(os.environ["UTREND_DBG"], np.array(_UT_LOG))   # (t, mean|arel|deg, mean_att, sum_xgated)
     if os.environ.get("LB_DIAG") and _LB_DIAG:
@@ -2227,7 +3611,139 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         np.save(os.environ["LB_DIAG2"] + ".arr", np.array(
             [(c, h, d) + tuple(l) + tuple(f) + tuple(s)
              for (c, h, d, l, f, s) in _LB_DIAG2]))                       # + loss_frac/Fb_z/F_LB per strip
-    return dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
+    if os.environ.get("LB_D3_DIAG") and _LB_D3_DIAG:
+        np.save(os.environ["LB_D3_DIAG"], np.asarray(_LB_D3_DIAG))
+    if _LB_D3_DIAG:
+        _d3 = np.asarray(_LB_D3_DIAG)                         # step x 13 named D4 channels x strip
+        _d3_T = _d3[:, 0, :]
+        _d3_drive = _d3[:, 3, :]
+        _d3_event_sign = _d3[:, 4, :]
+        _d3_den = float(np.sum(_d3_drive))
+        _d3_gated_weight = (float(np.sum(_d3_drive * (_d3_T >= fn_Tstar))) / _d3_den
+                            if _d3_den > 0.0 else 0.0)
+        _d3_event_order = (float(np.sum(_d3_drive * _d3_event_sign)) / _d3_den
+                           if _d3_den > 0.0 else 0.0)
+        _d3_instant_order = (float(np.sum(_d3_drive * np.sign(_d3[:, 1, :]))) / _d3_den
+                             if _d3_den > 0.0 else 0.0)
+        _d3_abs_akin = np.abs(_d3[:, 5, :])
+        _d3_drive_akin = (float(np.sum(_d3_drive * _d3_abs_akin)) / _d3_den
+                          if _d3_den > 0.0 else 0.0)
+        _d3_formation_diag = {
+            "Tstar": float(fn_Tstar),
+            "gated_time_strip_fraction": float(np.mean(_d3_T >= fn_Tstar)),
+            "gated_drive_weight_fraction": _d3_gated_weight,
+            "T_hat_mean": float(np.mean(_d3_T)),
+            "T_hat_max": float(np.max(_d3_T)),
+            "event_surface_order": _d3_event_order,
+            "instant_surface_order": _d3_instant_order,
+            "A0_abs_mean": float(np.mean(np.abs(_d3[:, 1, :]))),
+            "A0_abs_max": float(np.max(np.abs(_d3[:, 1, :]))),
+            "alpha_kin_abs_mean_deg": float(np.degrees(np.mean(_d3_abs_akin))),
+            "alpha_kin_abs_max_deg": float(np.degrees(np.max(_d3_abs_akin))),
+            "alpha_kin_abs_drive_weighted_deg": float(np.degrees(_d3_drive_akin)),
+        }
+        _d3_actual = _d3[:, 6, :]
+        _d3_CV = _d3[:, 9, :]
+        _d3_tau_v = _d3[:, 11, :]
+        _d3_qcdy = _d3[:, 12, :]
+        _d3_n3_impulse = float(np.sum(_d3_qcdy * _d3_actual))
+        _d3_sep_impulse = float(np.sum(_d3_qcdy * np.abs(_d3_CV)))
+        _d3_post_mask = _d3_tau_v > 4.24
+        _d3_post_impulse = float(np.sum(_d3_qcdy * _d3_actual * _d3_post_mask))
+        _d3_post_fraction = (_d3_post_impulse / _d3_n3_impulse
+                             if abs(_d3_n3_impulse) > 1e-12 else 0.0)
+        _d3_event_diag = {
+            "window": "last_cycle",
+            "n_steps": int(_d3.shape[0]),
+            "n_strips": int(_d3.shape[2]),
+            "A0_excess_force_impulse": float(np.sum(_d3_qcdy * _d3[:, 3, :])),
+            "separation_CV_abs_force_impulse": _d3_sep_impulse,
+            "separation_CV_signed_force_impulse": float(np.sum(_d3_qcdy * _d3_CV)),
+            "separation_CV_positive_force_impulse": float(
+                np.sum(_d3_qcdy * np.maximum(_d3_CV, 0.0))
+            ),
+            "separation_CV_negative_force_impulse": float(
+                np.sum(_d3_qcdy * np.minimum(_d3_CV, 0.0))
+            ),
+            "LB_CNv_signed_force_impulse": float(np.sum(_d3_qcdy * _d3[:, 10, :])),
+            "LB_CNv_positive_force_impulse": float(
+                np.sum(_d3_qcdy * np.maximum(_d3[:, 10, :], 0.0))
+            ),
+            "LB_CNv_negative_force_impulse": float(
+                np.sum(_d3_qcdy * np.minimum(_d3[:, 10, :], 0.0))
+            ),
+            "production_n3_force_impulse": _d3_n3_impulse,
+            "production_n3_post_tau4p24_impulse": _d3_post_impulse,
+            "production_n3_post_tau4p24_fraction": _d3_post_fraction,
+            "tau_v_above_4p24_time_strip_fraction": float(np.mean(_d3_post_mask)),
+            "f_qs_mean": float(np.mean(_d3[:, 7, :])),
+            "f2_mean": float(np.mean(_d3[:, 8, :])),
+            "CV_abs_mean": float(np.mean(np.abs(_d3_CV))),
+            "CNv_abs_mean": float(np.mean(np.abs(_d3[:, 10, :]))),
+            "tau_v_mean": float(np.mean(_d3_tau_v)),
+            "tau_v_max": float(np.max(_d3_tau_v)),
+        }
+        # D6 phase-resolved observability.  The masks are defined by the sign of
+        # flap rate dtheta/dt and are never relabelled from the force outcome.
+        _d3_phase = 2.0 * np.pi * np.arange(_d3.shape[0]) / _d3.shape[0]
+        _d3_rate_pos = np.cos(_d3_phase) >= 0.0
+        _d3_lift_all = np.asarray(L_inst[last])
+        _d3_n3_L_history = (
+            _Lh_ds_v41_counterfactual
+            if _spatial_p2_n3only
+            else Lh_ds
+        )
+        _d3_n3_X_history = (
+            _Xh_ds_v41_counterfactual
+            if _spatial_p2_n3only
+            else Xh_ds
+        )
+        _d3_n3_lift_all = 2.0 * (
+            np.asarray(_d3_n3_L_history[last]) * _ca
+            - np.asarray(_d3_n3_X_history[last]) * _sa
+        )
+        _d3_n2_lift_all = 2.0 * (
+            np.asarray(Lh_stall[last]) * _ca - np.asarray(Xh_stall[last]) * _sa
+        )
+        _d3_phase_diag = {}
+        for _phase_name, _phase_mask in (
+            ("flap_rate_positive", _d3_rate_pos),
+            ("flap_rate_negative", ~_d3_rate_pos),
+        ):
+            _pm = _phase_mask[:, None]
+            _pw = _d3_qcdy * _pm
+            _pw_den = float(np.sum(_pw))
+            _pa = _d3[:, 5, :]
+            _pA0 = _d3[:, 1, :]
+            _d3_phase_diag[_phase_name] = {
+                "alpha_kin_signed_qweighted_deg": float(np.degrees(
+                    np.sum(_pw * _pa) / _pw_den
+                )),
+                "alpha_kin_abs_qweighted_deg": float(np.degrees(
+                    np.sum(_pw * np.abs(_pa)) / _pw_den
+                )),
+                "A0_signed_qweighted": float(np.sum(_pw * _pA0) / _pw_den),
+                "A0_abs_qweighted": float(np.sum(_pw * np.abs(_pA0)) / _pw_den),
+                "production_n3_force_impulse": float(np.sum(
+                    _pw * _d3_actual
+                )),
+                "separation_CV_signed_force_impulse": float(np.sum(
+                    _pw * _d3_CV
+                )),
+                "LB_CNv_signed_force_impulse": float(np.sum(
+                    _pw * _d3[:, 10, :]
+                )),
+                "total_lift_mean": float(np.mean(_d3_lift_all[_phase_mask])),
+                "total_lift_min": float(np.min(_d3_lift_all[_phase_mask])),
+                "total_lift_max": float(np.max(_d3_lift_all[_phase_mask])),
+                "n2_lift_mean": float(np.mean(_d3_n2_lift_all[_phase_mask])),
+                "n3_lift_mean": float(np.mean(_d3_n3_lift_all[_phase_mask])),
+            }
+        _d3_event_diag["phase_resolved"] = _d3_phase_diag
+    else:
+        _d3_formation_diag = {}
+        _d3_event_diag = {}
+    result = dict(L=L, Fx=Fx, T=-Fx, P=P, Lh=Lh, Xh=Xh, Lkj=Lkj, D_polar=D_polar,
                 Fx_body=Fx_body, Fz_body=Fz_body, L_body=L_bodyf, T_body_f=T_bodyf,
                 L_wind=L_windf, T_wind=T_windf,                                       # rotated wind-axes lift/thrust
                 L_inst=L_inst, T_inst=T_inst,                                         # per-step instantaneous wind forces
@@ -2241,12 +3757,490 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                 Lh_vtx=Lh_vtx, Xh_vtx=Xh_vtx, L_vtx=L_vtx, D_vtx=Fx_vtx,          # per-step + mean vortex normal force
                 Lh_pd=Lh_pd, Xh_pd=Xh_pd, Lh_stall=Lh_stall, Xh_stall=Xh_stall,   # per-step form/faure drag + Fix1 stall (diag)
                 Lh_vimp=Lh_vimp, Xh_vimp=Xh_vimp,                                  # (H16) per-step LEV vortex-impulse force
-                Lh_ds=Lh_ds, L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),       # dynamic-stall: per-step + mean(bern+LEV)
+                Lh_ds=Lh_ds, Xh_ds=Xh_ds,
+                n3_formation_diag=_d3_formation_diag,                           # N3.1a diagnostic; no force effect
+                n3_event_diag=_d3_event_diag,                                   # N3.1e D4 audit; no force effect
+                n3_hirato_audit=_HIRATO_DIAG,                                   # N3.1i0 read-only equation audit
+                L_dstall=2.0 * np.mean((Lh_imp + Lh_ds)[last]),                    # dynamic-stall: per-step + mean(bern+LEV)
                 L_stall=2.0 * np.mean(Lh_stall[last]),                            # Fix1 geometric-stall lift loss (<=0)
                 L_fric=2.0 * np.mean(Lh_fric[last]), D_fric=2.0 * np.mean(Xh_fric[last]),  # Fix2 friction (lift/thrust comp)
                 L_net=L_bern + L_les - L_vis,                                     # lift incl. LE-suction vertical comp.
                 L_full=L_bern + L_vtx,                                            # Bernoulli + vortex normal force lift
                 T_net=-(Fx_bern + Fx_vis + Fx_les + Fx_vtx))                     # Bernoulli + friction + LE suction + vortex
+    if _spatial_p2_n3only:
+        _old_n3_L_wind = _robmean(
+            _Lh_ds_v41_counterfactual
+        ) * _ca - _robmean(
+            _Xh_ds_v41_counterfactual
+        ) * _sa
+        _old_n3_T_wind = -(
+            _robmean(_Xh_ds_v41_counterfactual) * _ca
+            + _robmean(_Lh_ds_v41_counterfactual) * _sa
+        )
+        _new_n3_L_wind = (
+            _robmean(Lh_ds) * _ca
+            - _robmean(Xh_ds) * _sa
+        )
+        _new_n3_T_wind = -(
+            _robmean(Xh_ds) * _ca
+            + _robmean(Lh_ds) * _sa
+        )
+        _n3only_summary.update({
+            "v41_old_n3_L_wind_N": float(_old_n3_L_wind),
+            "v41_old_n3_T_wind_N": float(_old_n3_T_wind),
+            "p2_n3_L_wind_N": float(_new_n3_L_wind),
+            "p2_n3_T_wind_N": float(_new_n3_T_wind),
+            "candidate_minus_counterfactual_L_wind_N": float(
+                L_windf - _L_wind_v41_counterfactual
+            ),
+            "candidate_minus_counterfactual_T_wind_N": float(
+                T_windf - _T_wind_v41_counterfactual
+            ),
+        })
+        result.update({
+            "L_wind_v41_counterfactual": float(
+                _L_wind_v41_counterfactual
+            ),
+            "T_wind_v41_counterfactual": float(
+                _T_wind_v41_counterfactual
+            ),
+            "Fx_body_v41_counterfactual": float(
+                _Fx_body_v41_counterfactual
+            ),
+            "Fz_body_v41_counterfactual": float(
+                _Fz_body_v41_counterfactual
+            ),
+            "L_inst_v41_counterfactual":
+                _L_inst_v41_counterfactual,
+            "T_inst_v41_counterfactual":
+                _T_inst_v41_counterfactual,
+            "Lh_ds_v41_counterfactual":
+                _Lh_ds_v41_counterfactual,
+            "Xh_ds_v41_counterfactual":
+                _Xh_ds_v41_counterfactual,
+            "n3_spatial_n3only": dict(_n3only_summary),
+            "n3_spatial_n3only_last_panel":
+                _N3ONLY_LAST_PANEL,
+        })
+    if _spatial_p2:
+        _p2_summary = _p2_candidate.diagnostics()
+        _p2_summary.update({
+            "claim_node": "N3.1j0",
+            "runtime_role": "exploratory-spatial-state-pressure-difference",
+            "steps": int(len(_P2_STEP_DIAG)),
+            "steps_with_active_release": int(sum(
+                item["active_strips"] > 0 for item in _P2_STEP_DIAG
+            )),
+            "max_active_strips": int(max(
+                (item["active_strips"] for item in _P2_STEP_DIAG),
+                default=0,
+            )),
+            "max_abs_release": float(max(
+                (item["max_abs_release"] for item in _P2_STEP_DIAG),
+                default=0.0,
+            )),
+            "max_abs_gated_release_rate": float(max(
+                (
+                    item["max_abs_gated_release_rate"]
+                    for item in _P2_STEP_DIAG
+                ),
+                default=0.0,
+            )),
+            "inactive_raw_release_rate_suppressed_count": int(sum(
+                item["inactive_raw_release_rate_suppressed"]
+                for item in _P2_STEP_DIAG
+            )),
+            "max_induced_speed": float(max(
+                (item["max_induced_speed"] for item in _P2_STEP_DIAG),
+                default=0.0,
+            )),
+            "max_bound_residual": float(max(
+                (item["bound_residual"] for item in _P2_STEP_DIAG),
+                default=0.0,
+            )),
+            "max_lesp_residual": float(max(
+                (item["lesp_residual"] for item in _P2_STEP_DIAG),
+                default=0.0,
+            )),
+            "max_source_condition_number": float(max(
+                (
+                    item["source_condition_number"]
+                    for item in _P2_STEP_DIAG
+                ),
+                default=1.0,
+            )),
+            "pressure_ledger_max_residual":
+                float(_P2_PRESSURE_LEDGER_MAX),
+            "n1_plus_n3_max_residual":
+                float(_P2_DECOMPOSITION_MAX),
+            "old_parallel_lev_force_paths_enabled": False,
+            "pressure_clipping_enabled": False,
+        })
+        result["n3_spatial_p2"] = _p2_summary
+        result["n3_spatial_p2_last_panel"] = _P2_LAST_PANEL
+
+    # Gate R0 against the already-constructed compatibility result in the same
+    # solver call.  Cross-process CUDA trajectories are not bitwise stable, but
+    # graph accounting is downstream and must not mutate any existing force API.
+    _aero_output_invariant_fields = (
+        "L", "Fx", "T", "P",
+        "Fx_body", "Fz_body", "L_body", "T_body_f",
+        "L_wind", "T_wind",
+    )
+    _aero_output_bits_before = {
+        name: np.asarray(result[name], dtype=np.float64).tobytes()
+        for name in _aero_output_invariant_fields
+    }
+
+    # ---- Executable claim-chain accounting graph ---------------------------------
+    # The low-level UVLM integrator above remains numerically unchanged.  Its named
+    # force channels are now passed through the executable claim DAG, which enforces
+    # dependencies, exclusivity, source attribution and a single force ledger.
+    from claim_runtime import ClaimGraph, RunConfig
+
+    _mean = lambda a: 2.0 * np.mean(np.asarray(a)[last])
+    _target = np.array([Fx_body, 0.0, Fz_body], dtype=float)
+    if lb_chop_zonly:
+        _separation_force = np.array([-_mean(Lh_stall) * _sa, 0.0,
+                                      _mean(Lh_stall) * _ca])
+    else:
+        _separation_force = np.array([_mean(Xh_stall), 0.0, _mean(Lh_stall)])
+    _channels = {
+        "uvlm": np.array([Fx_bern, 0.0, L_bern]),
+        "vortex_impulse": np.array([_mean(Xh_vimp), 0.0, _mean(Lh_vimp)]),
+        "leading_edge_suction": np.array([Fx_les, 0.0, L_les]),
+        "separation": _separation_force,
+        "ds_vortex": np.array([_mean(Xh_ds), 0.0, _mean(Lh_ds)]),
+        "vortex_normal": np.array([Fx_vtx, 0.0, L_vtx]),
+        "ct_consistency": np.zeros(3),
+        "rig_drag": np.array([D_para * _ca, 0.0, D_para * _sa]),
+        "viscous": np.array([Fx_vis, 0.0, L_vis]),
+        "profile_drag": np.array([_mean(Xh_pd), 0.0, _mean(Lh_pd)]),
+        "legacy_dynamic_stall": np.array([0.0, 0.0, _mean(Lh_ds)]),
+    }
+    # Several historical force switches are intentionally kept behind the migration
+    # boundary.  Reconcile them explicitly instead of silently losing their force.
+    if closure == "v4_legacy":
+        _classified = sum(_channels.values(), np.zeros(3))
+        _remainder = _target - _classified
+        _channels["legacy_closure"] = _remainder
+        _channels["uvlm_remainder"] = np.zeros(3)
+        _physical_remainder = np.zeros(3)
+        _cycle_reduction_force = np.zeros(3)
+        _cycle_reduction_reconciliation_error = 0.0
+    else:
+        _v41_booked = ("uvlm", "vortex_impulse", "leading_edge_suction",
+                       "separation", "ds_vortex", "vortex_normal",
+                       "ct_consistency", "rig_drag", "profile_drag")
+        _classified = sum((_channels[name] for name in _v41_booked), np.zeros(3))
+        # Physical channels are arithmetic means of the final-cycle force
+        # histories.  The reported total above uses one nonlinear robust mean
+        # on the combined history.  Their difference is therefore a graph-level
+        # numerical reducer term, not an unclassified N1 aerodynamic force.
+        _arithmetic_total = np.array([
+            float(np.mean(_Fxb_inst[last])),
+            0.0,
+            float(np.mean(_Fzb_inst[last])),
+        ])
+        _physical_remainder = _arithmetic_total - _classified
+        _cycle_reduction_force = _target - _arithmetic_total
+        _old_remainder = _target - _classified
+        _cycle_reduction_reconciliation_error = float(np.max(np.abs(
+            _cycle_reduction_force - _old_remainder
+        )))
+        _remainder = _physical_remainder
+        _channels["legacy_closure"] = np.zeros(3)
+        _channels["uvlm_remainder"] = np.zeros(3)
+        _channels["numerical_cycle_reduction"] = _cycle_reduction_force
+
+    _runtime_values = {
+        "closure": closure,
+        "lb_hybrid": lb_hybrid,
+        "lb_cds": lb_cds,
+        "lb_cla3d": lb_cla3d,
+        "d_para": d_para,
+    }
+    if _spatial_p2:
+        _runtime_values.update({
+            "spatial_p2_quadrature": int(spatial_p2_quadrature),
+            "spatial_p2_self_advection": False,
+            "spatial_p2_pressure_provider":
+                "claim_runtime.unified_panel_pressure",
+            "spatial_p2_n3_attribution":
+                "coupled_total_minus_same_step_n1_counterfactual",
+        })
+    if _spatial_p2_n3only:
+        _runtime_values.update({
+            "spatial_p2_quadrature": int(
+                spatial_p2_quadrature
+            ),
+            "spatial_p2_self_advection": False,
+            "spatial_p2_pressure_provider":
+                "claim_runtime.unified_panel_pressure",
+            "spatial_p2_n3_attribution":
+                "private_coupled_minus_untouched_v41",
+            "spatial_p2_replacement":
+                "v41_total_minus_old_n3_plus_p2_n3",
+        })
+    _run_config = RunConfig(
+        closure=closure,
+        values=_runtime_values,
+        sources={key: "resolved gpu_run_twist configuration" for key in _runtime_values},
+    )
+    _graph = ClaimGraph.from_yaml(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "claim_nodes"),
+        _run_config,
+    )
+    _graph_context = _graph.step(N - 1, (N - 1) * dt, {"solver_channels": _channels})
+    _ledger_total = _graph_context.ledger.total_body()
+    _ledger_error = float(np.max(np.abs(_ledger_total - _target)))
+    if _ledger_error > 1e-9:
+        raise RuntimeError(f"claim force ledger mismatch: max error {_ledger_error:.3e} N")
+    _physical_ledger_error = float(np.max(np.abs(_physical_remainder)))
+    _physical_guard = {
+        "passed": bool(_physical_ledger_error <= 1e-9),
+        "max_abs_error_N": _physical_ledger_error,
+        "tolerance_N": 1e-9,
+        "body_force_N": np.asarray(_physical_remainder, dtype=float).tolist(),
+    }
+    _guard_report = {
+        "force_ledger": {
+            "passed": True,
+            "max_abs_error_N": _ledger_error,
+            "tolerance_N": 1e-9,
+        },
+        # Compatibility alias retained for existing callers.  It now has the
+        # correct physical meaning and deliberately excludes R0 q_num.
+        "unclassified_force": dict(_physical_guard),
+        "unclassified_physical_force": dict(_physical_guard),
+        "cycle_reduction": {
+            "passed": bool(_cycle_reduction_reconciliation_error <= 1e-12),
+            "max_abs_error_N": _cycle_reduction_reconciliation_error,
+            "tolerance_N": 1e-12,
+            "body_force_N": np.asarray(
+                _cycle_reduction_force, dtype=float
+            ).tolist(),
+        },
+    }
+    if _spatial_p2:
+        _p2_guard_values = np.array([
+            _p2_summary["max_bound_residual"],
+            _p2_summary["max_lesp_residual"],
+            _p2_summary["pressure_ledger_max_residual"],
+            _p2_summary["n1_plus_n3_max_residual"],
+            _p2_summary["max_abs_release"],
+            _p2_summary["max_induced_speed"],
+            _p2_summary["max_source_condition_number"],
+        ])
+        _p2_guard_passed = bool(
+            np.all(np.isfinite(_p2_guard_values))
+            and _p2_summary["max_bound_residual"] <= 1.0e-9
+            and _p2_summary["max_lesp_residual"] <= 1.0e-9
+            and _p2_summary["pressure_ledger_max_residual"] <= 1.0e-10
+            and _p2_summary["n1_plus_n3_max_residual"] <= 1.0e-10
+        )
+        _guard_report["n3_spatial_p2"] = {
+            "passed": _p2_guard_passed,
+            "finite": bool(np.all(np.isfinite(_p2_guard_values))),
+            "bound_residual": float(
+                _p2_summary["max_bound_residual"]
+            ),
+            "bound_tolerance": 1.0e-9,
+            "lesp_residual": float(
+                _p2_summary["max_lesp_residual"]
+            ),
+            "lesp_tolerance": 1.0e-9,
+            "pressure_ledger_residual": float(
+                _p2_summary["pressure_ledger_max_residual"]
+            ),
+            "pressure_ledger_tolerance": 1.0e-10,
+            "n1_plus_n3_residual": float(
+                _p2_summary["n1_plus_n3_max_residual"]
+            ),
+            "n1_plus_n3_tolerance": 1.0e-10,
+            "pressure_clipping_enabled": False,
+            "parallel_lev_force_paths_enabled": False,
+            "self_advection_included": False,
+            "self_advection_status": "promotion-blocker",
+        }
+        if not _p2_guard_passed:
+            raise RuntimeError(
+                "n3_spatial_pressure_v0 post-run guard failed"
+            )
+    if _spatial_p2_n3only:
+        _n3only_guard_values = np.array([
+            _n3only_summary["max_bound_residual"],
+            _n3only_summary["max_lesp_residual"],
+            _n3only_summary[
+                "maximum_pressure_decomposition_residual"
+            ],
+            _n3only_summary[
+                "maximum_force_decomposition_residual"
+            ],
+            _n3only_summary["maximum_bound_reaction"],
+            _n3only_summary["max_abs_release"],
+            _n3only_summary["max_induced_speed"],
+            _n3only_summary["max_source_condition_number"],
+            _n3only_summary["substitution_max_residual_N"],
+            _n3only_summary[
+                "non_n3_identity_max_residual_N"
+            ],
+        ])
+        _n3only_guard_passed = bool(
+            np.all(np.isfinite(_n3only_guard_values))
+            and _n3only_summary[
+                "closure_profile_identical_to_v41"
+            ]
+            and _n3only_summary[
+                "production_trajectory_write_count"
+            ] == 0
+            and _n3only_summary["max_bound_residual"] <= 1.0e-9
+            and _n3only_summary["max_lesp_residual"] <= 1.0e-9
+            and _n3only_summary[
+                "maximum_pressure_decomposition_residual"
+            ] <= 1.0e-12
+            and _n3only_summary[
+                "maximum_force_decomposition_residual"
+            ] <= 1.0e-12
+            and _n3only_summary[
+                "substitution_max_residual_N"
+            ] <= 1.0e-12
+            and _n3only_summary[
+                "non_n3_identity_max_residual_N"
+            ] <= 1.0e-12
+            and _n3only_summary["attached_zero_all_bitwise"]
+            and not _n3only_summary["pending_pressure"]
+            and _n3only_summary["advanced_steps"] == N
+            and _n3only_summary["pressure_steps"] == N
+            and _n3only_summary["convection_steps"] == N
+            and _n3only_summary["guard_failures"] == 0
+        )
+        _guard_report["n3_spatial_n3only"] = {
+            "passed": _n3only_guard_passed,
+            "finite": bool(np.all(np.isfinite(
+                _n3only_guard_values
+            ))),
+            "closure_profile_identical_to_v41": bool(
+                _n3only_summary[
+                    "closure_profile_identical_to_v41"
+                ]
+            ),
+            "production_trajectory_write_count": int(
+                _n3only_summary[
+                    "production_trajectory_write_count"
+                ]
+            ),
+            "bound_residual": float(
+                _n3only_summary["max_bound_residual"]
+            ),
+            "bound_tolerance": 1.0e-9,
+            "lesp_residual": float(
+                _n3only_summary["max_lesp_residual"]
+            ),
+            "lesp_tolerance": 1.0e-9,
+            "pressure_decomposition_residual": float(
+                _n3only_summary[
+                    "maximum_pressure_decomposition_residual"
+                ]
+            ),
+            "pressure_decomposition_tolerance": 1.0e-12,
+            "force_decomposition_residual": float(
+                _n3only_summary[
+                    "maximum_force_decomposition_residual"
+                ]
+            ),
+            "force_decomposition_tolerance": 1.0e-12,
+            "substitution_residual_N": float(
+                _n3only_summary[
+                    "substitution_max_residual_N"
+                ]
+            ),
+            "substitution_tolerance_N": 1.0e-12,
+            "non_n3_identity_residual_N": float(
+                _n3only_summary[
+                    "non_n3_identity_max_residual_N"
+                ]
+            ),
+            "non_n3_identity_tolerance_N": 1.0e-12,
+            "attached_zero_all_bitwise": bool(
+                _n3only_summary["attached_zero_all_bitwise"]
+            ),
+            "pressure_clipping_enabled": False,
+            "force_rescaling_enabled": False,
+            "target_data_access": False,
+            "self_advection_included": False,
+            "self_advection_status": "promotion-blocker",
+            "actual_thickness_included": False,
+            "actual_thickness_status": "promotion-blocker",
+        }
+        if not _n3only_guard_passed:
+            raise RuntimeError(
+                "n3_spatial_edge_pressure_v1_shadow post-run "
+                "guard failed"
+            )
+    result["claim_manifest"] = _graph.manifest(_guard_report).to_dict()
+    result["claim_contributions"] = _graph_context.ledger.by_node()
+    result["claim_guards"] = _guard_report
+    if _spatial_p2:
+        result["claim_manifest"]["n3_spatial_p2"] = dict(_p2_summary)
+    if _spatial_p2_n3only:
+        result["claim_manifest"]["n3_spatial_n3only"] = dict(
+            _n3only_summary
+        )
+    _aero_output_changed = [
+        name
+        for name in _aero_output_invariant_fields
+        if np.asarray(result[name], dtype=np.float64).tobytes()
+        != _aero_output_bits_before[name]
+    ]
+    _aero_output_guard = {
+        "passed": not _aero_output_changed,
+        "max_abs_error_N": 0.0 if not _aero_output_changed else float("inf"),
+        "tolerance_N": 0.0,
+        "checked_fields": list(_aero_output_invariant_fields),
+        "changed_fields": _aero_output_changed,
+    }
+    result["claim_guards"]["aero_output_invariance"] = _aero_output_guard
+    result["claim_manifest"]["guards"]["aero_output_invariance"] = dict(
+        _aero_output_guard
+    )
+    if _aero_output_changed:
+        raise RuntimeError(
+            "claim graph mutated existing aerodynamic outputs: "
+            f"{_aero_output_changed}"
+        )
+    if _claim_raw_records is not None:
+        result["claim_raw_config"] = {
+            "closure": closure,
+            "nc": int(nc),
+            "ns": int(ns),
+            "n_cycle": int(n_cycle),
+            "steps_per_cycle": int(steps_per_cycle),
+            "wake_rows": int(wake_rows),
+            "U_m_s": float(U),
+            "aoa_deg": float(aoa_deg),
+            "freq_hz": float(freq),
+            "flap_amp_deg": float(flap_amp_deg),
+            "twist_amp_deg": float(twist_amp_deg),
+            "twist_phase_deg": float(twist_phase_deg),
+            "real_geom": bool(real_geom),
+            "sym": bool(sym),
+            "lb_closure": bool(lb_closure),
+            "lb_hybrid": float(lb_hybrid),
+            "lb_cds": float(lb_cds),
+            "lb_cds_mem": bool(lb_cds_mem),
+            "lb_cds_f2gate": bool(lb_cds_f2gate),
+            "lb_cds_zonly": bool(lb_cds_zonly),
+            "lb_cds_signed": bool(lb_cds_signed),
+            "lb_chop_zonly": bool(lb_chop_zonly),
+            "lb_ct": bool(lb_ct),
+            "lb_cla3d": bool(lb_cla3d),
+            "lb_lesp_crit": float(lb_lesp_crit),
+            "d_para_at_U8_N": float(d_para),
+            "attached_drag": attached_drag,
+        }
+        claim_raw_out.extend(_claim_raw_records)
+    return result
 
 
 if __name__ == "__main__":

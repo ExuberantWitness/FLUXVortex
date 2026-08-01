@@ -1,0 +1,32 @@
+id: LEGACY
+title: Legacy closure compatibility adapter
+claim: >
+  v4_legacy and non-production research switches remain executable through one
+  isolated compatibility component; they may not be enabled together with the
+  v41 N2/N3/N4 production closure.
+state: open
+freeze: false
+evidence:
+  - "v4_legacy frozen 118-condition baseline"
+refs:
+  - "_v2_robo.py historical closure branches"
+memory:
+  - "feedback_baseline_reproducibility.md"
+guard: []
+falsified_when: ""
+depends_on: ["N1"]
+provides_to: []
+implementation: "claim_runtime.components:LegacyClosureComponent"
+implementation_version: "1"
+implementation_hash: ""
+requires: ["solver_channels", "n1_force"]
+provides: ["legacy_force"]
+enabled_in: ["v4_legacy"]
+config: {}
+exclusive_with: ["N2", "N3", "N4"]
+runtime_role: "compatibility"
+children: []
+version: "runtime-v1"
+changed: "2026-07-27 executable claim graph"
+notes: |
+  This node is a migration boundary, not a new aerodynamic claim.
