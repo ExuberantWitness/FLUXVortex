@@ -643,3 +643,57 @@ R: UVLM + L-B 修正层在 4 参数空间(f/tw/aoa/U)复现 RoboEagle 实测 L/D
   `test_fig171819_claim_attribution.py` 47/47 绿。M0 节点新增终裁证据。
   数值验证:当前工作树 v41 在 lb_sweep184 BASE(H16+kelvin+a0_crit=0.27+visc=False)
   下三点复现缓存最大差 0.100N < 0.15N 门;184(105013) 与旧缓存 118 点零差。
+- 2026-08-02: **N2.6-QSSEP shadow 候选战役结束 — 相对 V4.1 全指标对照晋升**（七步流程 ⑦ 写回）。
+  候选 `n26_qssep_v0_shadow`（v41 + 准定常分离压差阻 C_D,sep=1.8，loss_frac 门控、纯
+  freestream -x 阻力；文献锚 DeLaurier 1993 cross-flow drag / Pomerenk & Ristroph 2025
+  sin²α；零对实测拟合）完整 184 条件/50 曲线扫描完成（runs/20260802_080021）。
+  **confirmed 域(晋升域)全指标**：T MAE 1.610→1.004(−38%)、T bias +1.608→+0.847(−47%)、
+  L MAE 0.978→0.979(±0.001)、L bias +0.036→−0.042、T trend 0.905→0.857(唯一回退=
+  弱相关曲线 18|c|(6.0,2.0))、L trend 0.238 不变；**红线 0/25 条 L 曲线 >0.15N**
+  (最差 19|b|10 ΔMAE=+0.144)。**conditional_fig19_cd(诊断域)**：T MAE 2.100→1.357(−35%)、
+  T bias +2.085→+1.023(−51%)、L MAE −7%、L bias −11%。
+  **aoa15 过冲量化(诊断红旗)**：T bias +0.94→−0.34(近零)，但极端角区(tw35-45×aoa15)
+  从欠阻翻为过阻 −1.3~−2.3N，|err| 0.987→1.078 略增——sin² 在极端有效攻角过应用，
+  记入候选局限，不阻塞晋升(全部 16 个 aoa15 工况属诊断域)。
+  裁决：**晋升**（6/8 confirmed 指标占优/持平、诊断域全优、红线零破、dT/df 形状保持）；
+  候选命题入 N2.6 证据账，v4.2 = v41 + qssep 成为下一战役基线候选。
+  预登记：docs/diag/phase3_prereg_n26_qssep_20260801.md；结果明细见
+  docs/diag/phase3_result_n26_qssep_20260802.md。
+- 2026-08-02: **战役 2 候选 N3.1-FEATHER 证伪（go/no-go G2 FAIL，七步⑦写回）**。
+  定位：L(twist) 25/25 斜率反号（P1/P8 现象学）→ N3 通道 tw0→45 +4.589N 独自翻转
+  （research_n3_twist_gate）+ N3.1.0 falsified 变体仍在生产（lb_cds·max(0,|A0|−crit)）。
+  文献：扭转削 LEV 方向一手锚 6 篇（Wu 2025 鸽翼 CFD / PoF 2023 feathering 幅值 /
+  Premachandran-Giacobello / Yang 2023 风洞 / Leishman-Beddoes / P&M JFM 2024）。
+  形式演化：F1 Lindenburg 饱和律数值证伪（封顶值 > 实际供给）→ F2 feathering 调制
+  （signed/绝对值/比例三版代数形式，v4 比例调制 G1 PASS 斜率 +0.110→−0.004 N/deg
+  但 G2 FAIL tw22.5 过修正 −2.0N）。**证伪根因**：线性 g 与 W2 阈值型定量
+  （Aθ=15° LEV 完整、40° 消失）冲突。**禁重走**（线性/任意形状调参）；未来候选
+  须以 W2 15°/40° 双锚点新预登记。方向价值：扭转调制能修复反号（G1 实证）。
+  文档：phase3_c2_lesion/lit/direction_verdict/prereg/result 系列。
+- 2026-08-03: **战役 2 方向 B 全方向测试 — 结构不可达（用户裁定"所有方向都测试一下"）**。
+  聚焦 flapping wing modeling（DeLaurier α'/χ、Polhamus cosα·sin²α、Han K_V(α,J)、
+  涡龄标度、Lindenburg 饱和）10 个方向 × 4 工况 D3 代理测试：
+  ① Polhamus 家族（α_kin/aeff 口径）斜率仍正（+0.0011~0.0025）；
+  ② Lindenburg 家族（直供/卸载型）压不住（+0.0032~0.0045）；
+  ③ 增量×饱和因子（D3b）斜率负但复活 candidate G 瞬时符号（已证伪红线）；
+  ④ 涡龄/feathering χ 修正量级不足（+0.195/+0.268）。
+  **结论：在"不动攻角映射（N5 域）+ 不复活瞬时符号"双约束下，N3.1 供给律形状
+  自由度不足以翻转 L(twist) 正斜率**——病灶真修复需重开 N5 域或新攻角映射证据。
+  战役 2 状态升级：FALSIFIED + STRUCTURALLY UNREACHABLE（禁重走）。
+  文档：phase3_c2_direction_tests_20260803.md + phase3_c2_lit_flapping_modeling_20260803.md。
+- 2026-08-03: **N5 域重开论证 — 结论：不重开（守卫正确性强化）**。用户指示 N5 重开论证；
+  三旋钮全测：① N3.1 形状/驱动源不可达（direction_tests 10 方向）；② 运动学相位
+  +90→−90 修复 L 反号（斜率 +0.091→−0.014 N/deg）但摧毁 T（tw22.5 T_wind −4.31→−0.37，
+  推力损失 ~4N，N5.1 旧结论复现）——相位绑 T 通道不可用；③ 攻角映射几何项：α_kin
+  扭转响应正确（±ψ 1:1 相位调制，feathering 语义），无需重开。
+  **病灶终定位**：N3 供给驱动攻角用 LESP 反演（arcsin|A0|），扭转响应 r=+0.64 恒正，
+  与运动学物理相反——N3.1 内部口径问题，修正路径已全部证伪（B1/B2/G + 10 方向）。
+  **L(twist) 反号 = 结构不可达（双登记）**；L trend 0.238 为可接受残差。重开论证关闭，
+  战役 3 方向转向候选 A（T 通道）或收束。文档：phase3_c2_n5_reopen_argument_20260803.md。
+- 2026-08-03: **N5 相位旋钮生产网格复核（12 case × nc12）**。用户裁定"测试太 toy，
+  至少 10 case"——12 case 覆盖 U6/8/10 × f1.4/2.0/2.6 × tw0/22.5/45 × aoa0/5/15，
+  每 case 双相位对照测量值：**+90 更优 11/12**（−90 仅 6_2.6_45_5 极端点略好，
+  该点两相位均差）。**nc4 quick 的"−90 修复 L"为快环假象**（−90 生产网格 L 欠供
+  5-10N、T 欠阻）——纪律教训复证（快环 bias 符号与生产相反）。**相位旋钮关闭
+  （+90 保持）**；N5 不重开结论以生产网格证据最终确认。结果落档
+  /tmp/phase_test_12_results.json（12 case 双相位 + 测量对照）。
