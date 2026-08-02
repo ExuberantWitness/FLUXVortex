@@ -29,7 +29,7 @@ implementation_version: "1"
 implementation_hash: "sha256:1b35c6edc52bf23b04c8e8fc3b9bb5cbac39baa958c4e071b9d5abca61a4cc4f"
 requires: ["solver_channels", "n1_force"]
 provides: ["n4_force"]
-enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow", "n26_qssep_v0_shadow", "n31_feather_v0_shadow"]
 config:
   enabled: false
 exclusive_with: ["LEGACY"]

@@ -45,7 +45,7 @@ class UVLMComponent(_ChannelComponent):
 
 
 class KirchhoffLBComponent(_ChannelComponent):
-    channel_names = ("separation", "profile_drag")
+    channel_names = ("separation", "profile_drag", "sep_drag_qs")
 
 
 class DSVortexComponent(_ChannelComponent):

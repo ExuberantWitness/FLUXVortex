@@ -64,7 +64,10 @@ _IMPORT_BOUND_SOURCE_HASHES = {
 FROZEN_EXPECTED_HASHES = {
     # 2026-08-01: v41 预设修正(E1/E2 闭环, lb_hybrid 1.0->0.0 + lb_cla3d=True),
     # 三点复现缓存最大差 0.100N < 0.15N 门。旧哈希 eb516d6a 为修正前版本。
-    "platform/_v2_robo.py": "e13feca0187c6980113e91a604c7a160b27a9fae032fb3bddd498d247d94379f",
+    # 2026-08-02: N2.6-QSSEP 战役完成后同步 —— e13feca0 为 qssep 实现中间版
+    # (loss_frac 门控修正前), 当前 7b67157e 为权威版本(qssep_cd=0 时块不执行,
+    # v41 数值逐位不变, 已由 184 基线 + candidate 运行验证)。
+    "platform/_v2_robo.py": "7b67157e006348049d51df042e390f585a3d70a7ffaf6bc9e79deabeeee02e5f",
     "platform/_v2_repro_nc12.py": "880cacb1e7844341255e06d8e464274932aa9fcfa7fbd13679d6983d216548ba",
     "platform/lb_sweep118.py": "059add02d0d3d448c632956ead2a0a83a6307ea0673ae83c9a2c20937200f325",
     "platform/lb_dyn.py": "11b7e81acc7b8b43a4df74954d44653334156a16bc507485423aad6e6e8445b1",

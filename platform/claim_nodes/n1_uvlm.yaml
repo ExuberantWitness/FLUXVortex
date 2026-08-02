@@ -35,7 +35,7 @@ implementation_version: "1"
 implementation_hash: "sha256:f4c5d11c28ba5f4d71132c9c601544ab6b9b2728e404df27bac781fd8304dc2c"
 requires: ["solver_channels"]
 provides: ["n1_force"]
-enabled_in: ["v41", "v4_legacy", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+enabled_in: ["v41", "v4_legacy", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow", "n26_qssep_v0_shadow", "n31_feather_v0_shadow"]
 config: {}
 exclusive_with: []
 runtime_role: "physics"

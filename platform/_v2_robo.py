@@ -688,6 +688,9 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   spatial_p2_quadrature=16, # N3.1j exploratory closure: standard Gauss edge order for the
                   #   continuous P2 near-LEV sheet. This is a numerical convergence coordinate (8/16/24),
                   #   never a Fig17/18/19 fit parameter.
+                  qssep_cd=None,            # (N2.6-QSSEP 2026-08-01) quasi-steady separated pressure
+                  #   drag coefficient, cross-flow form drag (DeLaurier 1993; Pomerenk & Ristroph
+                  #   2025). 0=off. None=take from closure preset. Literature flat-plate value 1.8-1.98.
                   a0_mode='xref',          # LESP A0 extraction: 'xref'(Hirato@x_ref=0.10c, nc-robust) | 'sqrtx'(√x limit from the RESOLVED 1st LE panel -> 3D, needs fine cosine LE)
                   tau_hold_scale=1.0,      # ×c/(0.4U) viscous-hold timescale
                   lev_roll_core=0.01,      # FLOOR LEV vortex-core (chord frac); the actual core is resolution-adaptive (below)
@@ -795,6 +798,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
                   lb_cds_signed=None,   # (2026-07-25) SIGNED vortex-force drive sign(A0)*excess:
                   #   the LEV forms on the opposite side on the upstroke -> force flips -> symmetric
                   #   cancellation at aoa0 (measured +0.06), aoa-bias asymmetry kept at aoa15.
+                  n31_feather=None,     # (N3.1-FEATHER 2026-08-02, prereg n31_feather_v0_shadow):
+                  #   analytically remove the twist (feathering) geometric contribution from the
+                  #   N3 drive incidence: A0,kin = sin(alpha_kin - psi(y,t)), k=1 chord-rotation
+                  #   geometry (zero fitting). Physics: twist reduces effective incidence and
+                  #   weakens the LEV (Wu 2025 dove-wing CFD; Yang 2023 wind-tunnel negative-
+                  #   incidence unloading; P&M JFM 2024: delta=6deg -> C_L -11%). Fixes the
+                  #   L(twist) slope reversal (N3 +4.589N over tw0->45 inverts the measured trend).
                   lb_a3d=0.0,            # (S-cal2) 2D->3D stall-delay shift (rad): the separation JUDGMENT sees
                   #   alpha_eff - lb_a3d (3D finite wing stalls later than the 2D section via spanwise-flow LEV
                   #   stabilization). Shifts only the separation state, NOT the UVLM force. Zero at default.
@@ -864,6 +874,36 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             lb_chop_zonly=True, lb_ct=False, lb_cla3d=True,
             geo_stall=False, geo_stall_vec=False, attached_drag='uiuc',
         ),
+        # N2.6-QSSEP (2026-08-01, Phase 3 prereg): quasi-steady separated
+        # pressure drag, cross-flow form drag.  Every production-physics flag
+        # identical to v41; the only addition is the separated pressure drag
+        # channel dN_sep = C_D,sep * 0.5*rho*U^2 * c * dy * sin^2(alpha_eff)
+        # along the local panel normal.  Fingerprint: T bias +0.70/+1.63/+2.18
+        # @ U6/8/10, f-independent, aoa15 covered by N3.3 -> quasi-steady
+        # separated pressure drag deficit (DeLaurier 1993 crossflow drag,
+        # C_D,sep=1.8 flat-plate).  shadow/minimal: v41 untouched.
+        'n26_qssep_v0_shadow': dict(
+            lb_closure=True, lb_hybrid=0.0, lb_cds=2.5, lb_cds_mem=True,
+            lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
+            lb_chop_zonly=True, lb_ct=False, lb_cla3d=True,
+            geo_stall=False, geo_stall_vec=False, attached_drag='uiuc',
+            qssep_cd=1.8,
+        ),
+        # N3.1-FEATHER (2026-08-02, campaign-2 prereg n31_feather_v0_shadow):
+        # N3 drive incidence has the twist (feathering) geometric contribution
+        # analytically removed (A0,kin = sin(alpha_kin - psi), k=1 chord-rotation
+        # geometry, zero fitting).  Fingerprint: L(twist) slope reversed 25/25
+        # curves (model +0.007..+0.093 N/deg vs measured -0.010..-0.052), N3
+        # channel +4.589N over tw0->45 inverts the measured trend.  Literature:
+        # twist reduces effective incidence and weakens the LEV (Wu 2025;
+        # Yang 2023; P&M JFM 2024).  shadow/minimal: v41 untouched.
+        'n31_feather_v0_shadow': dict(
+            lb_closure=True, lb_hybrid=0.0, lb_cds=2.5, lb_cds_mem=True,
+            lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
+            lb_chop_zonly=True, lb_ct=False, lb_cla3d=True,
+            geo_stall=False, geo_stall_vec=False, attached_drag='uiuc',
+            n31_feather=True,
+        ),
         'v4_legacy': dict(lb_closure=False, lb_hybrid=1.0, lb_cds=0.0, lb_cds_mem=False,
                           lb_cds_f2gate=False, lb_cds_zonly=False, lb_cds_signed=False,
                           lb_chop_zonly=False, lb_ct=True, lb_cla3d=False,
@@ -888,9 +928,13 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     if lb_cds_f2gate is None: lb_cds_f2gate = _pre['lb_cds_f2gate']
     if lb_cds_zonly is None: lb_cds_zonly = _pre['lb_cds_zonly']
     if lb_cds_signed is None: lb_cds_signed = _pre['lb_cds_signed']
+    if n31_feather is None:
+        n31_feather = bool(_pre.get('n31_feather', False))   # N3.1-FEATHER: 0=off unless closure enables
     if lb_chop_zonly is None: lb_chop_zonly = _pre['lb_chop_zonly']
     if lb_ct is None: lb_ct = _pre['lb_ct']
     if lb_cla3d is None: lb_cla3d = _pre['lb_cla3d']
+    if qssep_cd is None:
+        qssep_cd = _pre.get('qssep_cd', 0.0)   # N2.6-QSSEP: 0=off unless closure enables
     geo_stall = _pre['geo_stall'] if geo_stall is None else geo_stall
     geo_stall_vec = _pre['geo_stall_vec'] if geo_stall_vec is None else geo_stall_vec
     attached_drag = _pre['attached_drag'] if attached_drag is None else attached_drag
@@ -1029,6 +1073,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     Lh_les = np.zeros(N); Xh_les = np.zeros(N)         # leading-edge suction thrust (Garrick/DeLaurier dTs)
     Lh_vtx = np.zeros(N); Xh_vtx = np.zeros(N)         # high-alpha vortex normal force (Polhamus, lift+drag)
     Lh_ds = np.zeros(N); Xh_ds = np.zeros(N)             # dynamic-stall LEV force (L-B panel-normal or legacy lift)
+    Lh_qssep = np.zeros(N); Xh_qssep = np.zeros(N)       # (N2.6-QSSEP) quasi-steady separated pressure drag
     # N3.1j5 is a read-only shadow during the production time march.  Its
     # per-panel pressure difference is accumulated separately and may replace
     # only the old N3 history after the untouched V4.1 trajectory is complete.
@@ -2260,7 +2305,26 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             # positive dL/df slope WITHOUT depressing the mean level (decoupled from the chop). Gated by
             # separation (max(0,|A0|-crit)=0 when attached). Per strip along panel normal.
             if lb_cds > 0.0:
-                dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip drive
+                if n31_feather:
+                    # N3.1-FEATHER (2026-08-02, prereg n31_feather_v0_shadow).
+                    # FALSIFIED 2026-08-02 (go/no-go G2 FAIL, see
+                    # phase3_c2_result_n31_feather_falsified_20260802.md): no algebraic
+                    # form (signed subtraction / magnitude-ratio modulation / kinematic
+                    # drive-source replacement) satisfies both G1 (slope reversal,
+                    # PASS at +0.110 -> -0.004 N/deg) and G2 (tw22.5 |dL| < 0.3N,
+                    # FAIL at -2.0N).  The required response is THRESHOLD-SHAPED
+                    # (tw<=~15 deg nearly unchanged, tw>=~30 deg strong suppression);
+                    # literature (PoF 2023) anchors only A_theta=15 deg (optimal) and
+                    # ~40 deg (LEV absent) — the in-between shape has no closed form,
+                    # so per chain-of-evidence discipline no free-shape modulation is
+                    # allowed.  Kept as falsified asset, NOT production.
+                    # v4 (G1-PASS) form preserved for the record:
+                    _psi_t_f = A_t * yfrac * np.sin(Om * (t * dt) + phi)   # per-strip geom twist (rad)
+                    _aa0 = np.abs(np.arcsin(np.clip(A0, -0.999, 0.999)))
+                    _g_f = np.clip((_aa0 - np.abs(_psi_t_f)) / np.maximum(_aa0, 1e-9), 0.0, 1.0)
+                    dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0) * _g_f
+                else:
+                    dCN_drive = lb_cds * np.maximum(np.abs(A0) - lb_lesp_crit, 0.0)   # per-strip drive
                 # N3.1a diagnostic (research_n3_twist_gate.md): a LEV-formation clock driven by the
                 # leading-edge-normal kinematic velocity.  This is deliberately computed before and
                 # independently of the production force: the preregistered activation gate must pass
@@ -2417,6 +2481,30 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
             if lb_ct:
                 Xh_pd[t] = float(np.sum(dD_ct))                                 # +Fx = drag (suction loss)
                 Fxb_tot[t] += Xh_pd[t]
+            # ==== N2.6-QSSEP (2026-08-01, Phase 3 prereg n26_qssep_v0_shadow) ====
+            # Quasi-steady separated pressure drag (cross-flow form drag):
+            #   dD_sep[j] = C_D,sep * 0.5*rho*U^2 * c[j] * dy[j] * sin^2(alpha_eff[j])
+            # Free-stream dynamic pressure (f-INDEPENDENT by construction - the T-bias
+            # fingerprint +0.70/+1.63/+2.18 @ U6/8/10 is f-flat), literature flat-plate
+            # C_D,sep=1.8 (DeLaurier 1993 crossflow drag; Pomerenk & Ristroph 2025
+            # C_D^S=C_D^(pi/2)*sin^2(alpha), C_D^(pi/2)~1.8).
+            # DIRECTION: freestream -x (pure drag), NOT panel normal.  DeLaurier's
+            # separated-flow bookkeeping sets chordwise forces (T_s/D_c/D_f) to zero
+            # and the crossflow drag is a DRAG on the section; the separated-flow
+            # LIFT share is already handled by the N2 chop (validated N2.1).  Applying
+            # along the panel normal leaked +1.94N spurious lift (G4 would fail) -
+            # corrected 2026-08-01 after the G1/G4 probe.
+            # SEPARATION GATE: x loss_frac (existing N2.1 separated fraction).
+            # Pure sin2(aeff) over-applies 2.4x (aeff peaks 21.7deg on downstroke
+            # where N3.3/N2 chop already cover part); loss_frac-gated gives 0.93N
+            # vs 0.82N needed at U8 (1.14x, on-target) - the drag lives in the
+            # SEPARATED fraction only, zero when attached (no N1 double-count).
+            if qssep_cd and qssep_cd > 0.0:
+                q_free = 0.5 * ug.RHO * U * U                    # free-stream dynamic pressure
+                _sin2 = np.sin(np.clip(aeff_sep, -np.pi / 2, np.pi / 2)) ** 2
+                dD_qssep_strip = qssep_cd * q_free * _sin2 * loss_frac * c_strip * dy_lb
+                Xh_qssep[t] = float(np.sum(dD_qssep_strip))     # +Fx = drag
+                Fxb_tot[t] += Xh_qssep[t]
         # ==== S3b rVPM LEV-particle feeding (research_rvpm_arch V3): one particle per supercritical
         # strip per step; strength from the A0-PIN closed form (A0 is a LINEAR functional of the rhs in
         # 'downwash' mode, and the particle enters the rhs directly -> per-strip 1x1 solve, no AIC
@@ -3916,6 +4004,7 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
         "rig_drag": np.array([D_para * _ca, 0.0, D_para * _sa]),
         "viscous": np.array([Fx_vis, 0.0, L_vis]),
         "profile_drag": np.array([_mean(Xh_pd), 0.0, _mean(Lh_pd)]),
+        "sep_drag_qs": np.array([_mean(Xh_qssep), 0.0, _mean(Lh_qssep)]),
         "legacy_dynamic_stall": np.array([0.0, 0.0, _mean(Lh_ds)]),
     }
     # Several historical force switches are intentionally kept behind the migration
@@ -3931,7 +4020,8 @@ def gpu_run_twist(nc=4, ns=10, chord=0.287, half_span=0.80, U=8.0, aoa_deg=5.0,
     else:
         _v41_booked = ("uvlm", "vortex_impulse", "leading_edge_suction",
                        "separation", "ds_vortex", "vortex_normal",
-                       "ct_consistency", "rig_drag", "profile_drag")
+                       "ct_consistency", "rig_drag", "profile_drag",
+                       "sep_drag_qs")
         _classified = sum((_channels[name] for name in _v41_booked), np.zeros(3))
         # Physical channels are arithmetic means of the final-cycle force
         # histories.  The reported total above uses one nonlinear robust mean

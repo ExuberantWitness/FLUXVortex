@@ -14,3 +14,17 @@ build/
 *.npz
 /platform/data_external/
 /platform/external/
+
+# D 类: ARIS 自动生成 / 一次性 scratch (2026-08-02)
+.aris/
+.pagecheck.*/
+hirato_page.html
+DERIVATION_PACKAGE*.md
+MANIFEST.md
+findings.md
+
+# scratch 图与 checkpoint 缓存 (2026-08-03 提交分类)
+platform/docs/hirato_rollup_profile.png
+platform/docs/mesh_cosine_nc24.png
+platform/docs/repro_fig*.png
+platform/docs/*.npz.ckpt

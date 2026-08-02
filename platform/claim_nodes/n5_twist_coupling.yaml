@@ -31,7 +31,7 @@ implementation_version: "1"
 implementation_hash: ""
 requires: ["solver_channels", "n1_force"]
 provides: ["n5_observation"]
-enabled_in: ["v41", "v4_legacy", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+enabled_in: ["v41", "v4_legacy", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow", "n26_qssep_v0_shadow", "n31_feather_v0_shadow"]
 config: {}
 exclusive_with: []
 runtime_role: "diagnostic"

@@ -37,7 +37,7 @@ implementation_version: "1"
 implementation_hash: ""
 requires: ["solver_channels", "n1_force", "n2_force"]
 provides: ["n3_force"]
-enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow", "n26_qssep_v0_shadow", "n31_feather_v0_shadow"]
 config:
   cds: 2.5
   Tv: 6.0
@@ -56,6 +56,9 @@ children:
       - "research_symmetry_break.md 候选 F (cds=2.5) / 候选 G (瞬时 signed 证伪)"
       - "research_n3_twist_gate.md: 精确通道归因 + Gharib/Onoue/Manar/Meng 机理裁决"
       - "research_n3_landscape_20260727.md: Ramesh/Narsipur/Deparday/Sheng/Li/Joshi 等来源综合"
+      - "phase3_c2_result_n31_feather_falsified_20260802.md: 扭转(feathering)调制候选证伪(G2 tw22.5 过修正 −2.0N; 线性 g 与 PoF2023 阈值型定量冲突)"
+    memory:
+      - "2026-08-02 战役 2 证伪：N3 供给的扭转调制方向可执行（G1 斜率 +0.110→−0.004 N/deg 反号修复实证），但线性比例形式 G2 FAIL（tw22.5 L 过修正 −2.0N）。禁重走：线性/任意形状 g；未来候选须以 PoF 2023 Aθ=15°/40° 双锚点定义阈值型形状并新预登记。攻角输入口径（LESP 反演 23° vs 运动学 45°）为关键自由度。"
     children:
       - id: N3.1.0
         title: "|A0|-crit 直接作为持续涡力幅值"

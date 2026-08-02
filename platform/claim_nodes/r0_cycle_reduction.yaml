@@ -41,7 +41,7 @@ requires:
   - "n4_force"
   - "n6_force"
 provides: ["r0_cycle_reduction"]
-enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow"]
+enabled_in: ["v41", "n3_spatial_pressure_v0", "n3_spatial_edge_pressure_v1_shadow", "n26_qssep_v0_shadow", "n31_feather_v0_shadow"]
 config: {}
 exclusive_with: []
 runtime_role: "diagnostic"
