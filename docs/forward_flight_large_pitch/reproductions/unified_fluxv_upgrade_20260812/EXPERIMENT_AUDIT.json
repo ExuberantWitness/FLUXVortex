@@ -1,0 +1,97 @@
+{
+  "audit_skill": "experiment-audit",
+  "verdict": "WARN",
+  "reason_code": "post_hoc_no_held_out_confirmation",
+  "summary": "No integrity failure was found. The same exploratory periodic-v2 path has lower specified point-estimate errors on two previously viewed frozen tasks, but the result is post-hoc, non-causal, and not held-out confirmation.",
+  "audited_input_hashes": {
+    "runs/20260812_periodic_v2_ullt_full/run_manifest.json": "sha256:bde75a5a88245c7bec1acc614dfc6f5d6231b6726efaec761ae2aaf3bd0606c8",
+    "runs/20260812_periodic_v2_ullt_full/summary.json": "sha256:5115f0a7f56ea19b0ef181d0ab8a852f44630d7d42b71994e6febb1f5a6f72c7",
+    "runs/20260812_periodic_v2_ullt_full/accuracy_metrics.csv": "sha256:89e0ab7499e42ce55103bb5be57784be35c7df8d466e3477c2423b1cfd163050",
+    "runs/20260812_periodic_v2_ullt_full/yang2025_mean_characteristics.csv": "sha256:3f51c58c051436ef93e87fa7164eff004693d98ec1f2f468420f665c251ba7a1",
+    "runs/20260812_periodic_v2_ullt_full/izraelevitz2017_fig11_phase_histories.csv": "sha256:6baaaa8b68e324351b28e1bd62c783f1cc3a6d3687193e1551722ea147a0e4c7",
+    "source_data/izraelevitz2017_fig11_digitized.csv": "sha256:b3fd20cea68d61664720425b9c7da27d4b5d87a89c80d7296c04887860e141bc",
+    "plev2025/source_data/yang2025_fig11_rigid_digitized.csv": "sha256:0351a59d601513a2c0e1605863f3afeeb41bf9d0dc57e73cc54b5b9167d2a8ea",
+    "platform/forward_flight_benchmarks/augmented_uvpm.py": "sha256:8e2836747e95ebba71b76db03c994bae07e583f14270c76f657632aa52af01d1",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "sha256:b767e3c19ca0ace739759c65f8648c0916ebca9baaf311eed7bd4cc8e3ef88f3",
+    "platform/forward_flight_benchmarks/ullt_attached.py": "sha256:f9558d0f3f1e4cf3606e8588fcd19040410e9ebe7b53c0cba00912cb0d597197"
+  },
+  "trace_path": ".aris/traces/experiment-audit/2026-08-12_run01/",
+  "agent_id": "/root/final_integrity_audit",
+  "verdict_id": "/root/final_integrity_audit",
+  "executor_model": "codex-gpt-5.6-sol",
+  "executor_family": "openai",
+  "reviewer_model": "gpt-5.6-sol",
+  "reviewer_family": "openai",
+  "reviewer_reasoning": "ultra",
+  "review_independence": "same-family",
+  "acceptance_status": "provisional",
+  "generated_at": "2026-08-12T18:56:43+08:00",
+  "date": "2026-08-12",
+  "auditor": "gpt-5.6-sol-ultra",
+  "overall_verdict": "warn",
+  "integrity_status": "warn",
+  "claim_support": "qualified_only",
+  "checks": {
+    "gt_provenance": {
+      "status": "pass",
+      "details": "Yang means are digitized wind-tunnel observations; Yang Proposed and Izraelevitz Figure 11 are correctly labeled numerical references. No model-derived fake GT was found."
+    },
+    "score_normalization": {
+      "status": "pass",
+      "details": "Raw residual metrics are used; range-NRMSE uses reference range; no prediction-self-normalization or phase fitting was found."
+    },
+    "result_existence": {
+      "status": "warn",
+      "details": "All claimed result files exist, all metrics recompute exactly, and listed hashes match. The manifest is not yet a complete transitive hash closure and one-factor convergence remains unfinished."
+    },
+    "dead_code": {
+      "status": "warn",
+      "details": "Core paths and tests execute, but Yang v2 mean metrics are structurally invariant to the ULLT shape mechanism. Old FluxV and prescribed Ptera are one load channel."
+    },
+    "scope": {
+      "status": "warn",
+      "details": "Two viewed tasks, post-hoc shared gate, no held-out confirmation, no Yang phase truth, and periodic two-pass rather than online causal execution."
+    },
+    "eval_type": {
+      "yang2025_cycle_means": "real_gt_digitized",
+      "yang2025_phase_histories": "simulation_only_no_gt_diagnostic",
+      "izraelevitz2017_fig11": "simulation_only_digitized_numerical_reference"
+    }
+  },
+  "closed_items": {
+    "periodic_derivative_endpoint_bug": true,
+    "yang15_ullt_closure_jump_lift_n": 0.0010275686201016432,
+    "yang15_v2_closure_jump_lift_n": 0.001027568620101671,
+    "tests_passed": 23,
+    "tests_failed": 0,
+    "metrics_recompute_max_abs_difference": 0.0,
+    "listed_manifest_hashes_verified": true
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "impact": "supported_with_qualifier",
+      "text": "Lower specified point-estimate errors on the two previously viewed frozen tasks."
+    },
+    {
+      "id": "C2",
+      "impact": "supported",
+      "text": "Yang cycle-mean improvement belongs to the v1 UVLM/polar mean channel."
+    },
+    {
+      "id": "C3",
+      "impact": "unsupported",
+      "text": "The v2 ULLT mechanism improves Yang accuracy."
+    },
+    {
+      "id": "C4",
+      "impact": "supported_with_qualifier",
+      "text": "Lower raw-phase error against the Izraelevitz numerical UVLM reference."
+    },
+    {
+      "id": "C5",
+      "impact": "unsupported",
+      "text": "General, causal, online production readiness."
+    }
+  ]
+}

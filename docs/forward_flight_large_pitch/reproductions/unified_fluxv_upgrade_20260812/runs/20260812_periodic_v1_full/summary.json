@@ -1,0 +1,39 @@
+{
+  "status": "complete",
+  "quality": "full",
+  "yang2025": {
+    "old_fluxv_mae_gf": {
+      "lift": 6.8548706331454285,
+      "drag": 12.921663799275619
+    },
+    "augmented_v1_mae_gf": {
+      "lift": 3.951623329809685,
+      "drag": 2.0624943150103707
+    },
+    "relative_reduction_percent": {
+      "lift": 42.35305753689415,
+      "drag": 84.03847718800738
+    }
+  },
+  "izraelevitz2017_fig11": {
+    "old_fluxv_raw_phase_rmse": {
+      "lift": 2.4309904322866043,
+      "drag": 0.9531268336996641
+    },
+    "augmented_v1_raw_phase_rmse": {
+      "lift": 2.2799673826259346,
+      "drag": 0.9207791019222205
+    },
+    "relative_reduction_percent": {
+      "lift": 6.212408228962732,
+      "drag": 3.3938538538341705
+    }
+  },
+  "gates": {
+    "yang_both_mae_improved": true,
+    "izraelevitz_both_raw_phase_rmse_improved": true,
+    "joint_non_degradation_gate": true,
+    "strong_cross_paper_accuracy_claim": false
+  },
+  "claim_classification": "exploratory joint improvement, not a strong cross-paper accuracy result"
+}

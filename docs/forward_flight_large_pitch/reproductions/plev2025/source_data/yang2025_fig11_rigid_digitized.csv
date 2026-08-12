@@ -1,0 +1,7 @@
+aoa_deg,test_lift_gf,proposed_lift_gf,test_thrust_gf,proposed_thrust_gf,digitization_uncertainty_gf
+0,2.0,0.0,0.5,0.0,0.4
+5,17.4,15.8,-0.1,-1.4,0.4
+10,31.5,29.8,-5.1,-5.2,0.4
+15,38.7,40.2,-14.1,-10.8,0.4
+20,42.9,48.2,-21.0,-17.5,0.4
+25,45.3,53.3,-27.8,-24.9,0.4

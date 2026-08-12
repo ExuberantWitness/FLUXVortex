@@ -1,0 +1,293 @@
+{
+  "run_id": "20260812_periodic_v1_full",
+  "status": "complete",
+  "quality": "full",
+  "model": "fluxv_periodic_v1",
+  "model_identity": "UVPMHybridSolver prescribed-wake UVLM load ledger plus source-derived periodic AC gains and a shared separated-incidence polar residual",
+  "causality_scope": "periodic two-pass postprocessing; not yet an online transient production solver",
+  "execution_fast_path": {
+    "enabled": true,
+    "reason": "current VPM particles are one-way diagnostics and do not enter the UVLM AIC or load channel",
+    "regression": "platform/tests/test_augmented_uvpm.py::test_particle_fast_path_is_exactly_load_equivalent_on_smoke_case",
+    "effect": "skip particle shedding/advection while retaining identical loads"
+  },
+  "force_contract": {
+    "ptera_lift": "L=-Fz_W",
+    "ptera_thrust": "T=+Fx_W",
+    "plotted_drag": "D=-T=-Fx_W",
+    "yang_units": "single-wing gf, 1 gf=0.00980665 N",
+    "izraelevitz_paper_scaling": "CLalpha=CL/sin(15deg), CDalpha=CD/sin(15deg)"
+  },
+  "comparability_limits": [
+    "Yang local models use nominal four-bar kinematics; the paper's LDS history is unpublished.",
+    "Yang Test and Authors' Proposed values are digitized cycle means; no experimental phase trace is public.",
+    "Izraelevitz paper UVLM is a numerical reference, not experimental ground truth.",
+    "Old FluxV and Ptera prescribed-wake UVLM are the same load channel.",
+    "Izraelevitz local Ptera discretization is not demonstrably time/space converged.",
+    "The 15--20 degree polar gate is exploratory and was introduced after the v0 diagnostic."
+  ],
+  "source_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/plev2025/runs/20260808_multimodel_full/mean_characteristics.csv": "3f197ffb144e67f2682af887497fd90a24183355cc14559086f3cfef1a062512",
+    "docs/forward_flight_large_pitch/reproductions/plev2025/runs/20260808_multimodel_full/phase_histories.csv": "46c6f696b947dd74f8efa977c76910897f4d1d902c78819f2d80c084ddc285e9",
+    "docs/forward_flight_large_pitch/reproductions/runs/20260807_rigid_firstpass/izraelevitz_fig11_exact/phase_histories.csv": "99090e84a8f5d5e5105740f7a7ec7796dc0a806eef4c81d8ecbe1bdaf0a7d50c",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig11_digitized.csv": "b3fd20cea68d61664720425b9c7da27d4b5d87a89c80d7296c04887860e141bc"
+  },
+  "yang_audit": {
+    "cells": {
+      "0": {
+        "setup": {
+          "case_id": "yang2025_fig11_rigid",
+          "grid_chord_span": [
+            8,
+            12
+          ],
+          "steps_per_cycle": 100.0,
+          "requested_steps_per_cycle": 100,
+          "cycles": 3,
+          "max_wake_cycles": 2,
+          "aoa_deg": 0.0,
+          "flap_min_deg": -32.44519629847329,
+          "flap_max_deg": 39.107903159051645,
+          "flap_mean_deg": 3.3313534302891767,
+          "flap_amplitude_deg": 35.77654972876247,
+          "wing_root_offset_m": 0.08,
+          "rotation_point_offset_Gs_Ler_m": [
+            0.0,
+            -0.08,
+            0.0
+          ],
+          "kinematics": "nominal-fourbar-from-rounded-JFS-2025-links",
+          "paper_input_missing": "per-case laser-displacement wing-angle history",
+          "airfoil_adapter": "zero-camber NACA0012 mean surface for 1 mm balsa plate"
+        },
+        "cycle_range": [
+          200,
+          299
+        ],
+        "runtime_s": 9.113902766999672,
+        "max_abs_local_alpha_deg": 28.913236037635745,
+        "component_identity_max_abs_n": 0.0,
+        "particle_count": 0
+      },
+      "5": {
+        "setup": {
+          "case_id": "yang2025_fig11_rigid",
+          "grid_chord_span": [
+            8,
+            12
+          ],
+          "steps_per_cycle": 100.0,
+          "requested_steps_per_cycle": 100,
+          "cycles": 3,
+          "max_wake_cycles": 2,
+          "aoa_deg": 5.0,
+          "flap_min_deg": -32.44519629847329,
+          "flap_max_deg": 39.107903159051645,
+          "flap_mean_deg": 3.3313534302891767,
+          "flap_amplitude_deg": 35.77654972876247,
+          "wing_root_offset_m": 0.08,
+          "rotation_point_offset_Gs_Ler_m": [
+            0.0,
+            -0.08,
+            0.0
+          ],
+          "kinematics": "nominal-fourbar-from-rounded-JFS-2025-links",
+          "paper_input_missing": "per-case laser-displacement wing-angle history",
+          "airfoil_adapter": "zero-camber NACA0012 mean surface for 1 mm balsa plate"
+        },
+        "cycle_range": [
+          200,
+          299
+        ],
+        "runtime_s": 8.865090937997593,
+        "max_abs_local_alpha_deg": 33.913228688342926,
+        "component_identity_max_abs_n": 0.0,
+        "particle_count": 0
+      },
+      "10": {
+        "setup": {
+          "case_id": "yang2025_fig11_rigid",
+          "grid_chord_span": [
+            8,
+            12
+          ],
+          "steps_per_cycle": 100.0,
+          "requested_steps_per_cycle": 100,
+          "cycles": 3,
+          "max_wake_cycles": 2,
+          "aoa_deg": 10.0,
+          "flap_min_deg": -32.44519629847329,
+          "flap_max_deg": 39.107903159051645,
+          "flap_mean_deg": 3.3313534302891767,
+          "flap_amplitude_deg": 35.77654972876247,
+          "wing_root_offset_m": 0.08,
+          "rotation_point_offset_Gs_Ler_m": [
+            0.0,
+            -0.08,
+            0.0
+          ],
+          "kinematics": "nominal-fourbar-from-rounded-JFS-2025-links",
+          "paper_input_missing": "per-case laser-displacement wing-angle history",
+          "airfoil_adapter": "zero-camber NACA0012 mean surface for 1 mm balsa plate"
+        },
+        "cycle_range": [
+          200,
+          299
+        ],
+        "runtime_s": 8.847671768002328,
+        "max_abs_local_alpha_deg": 38.91322139498162,
+        "component_identity_max_abs_n": 0.0,
+        "particle_count": 0
+      },
+      "15": {
+        "setup": {
+          "case_id": "yang2025_fig11_rigid",
+          "grid_chord_span": [
+            8,
+            12
+          ],
+          "steps_per_cycle": 100.0,
+          "requested_steps_per_cycle": 100,
+          "cycles": 3,
+          "max_wake_cycles": 2,
+          "aoa_deg": 15.0,
+          "flap_min_deg": -32.44519629847329,
+          "flap_max_deg": 39.107903159051645,
+          "flap_mean_deg": 3.3313534302891767,
+          "flap_amplitude_deg": 35.77654972876247,
+          "wing_root_offset_m": 0.08,
+          "rotation_point_offset_Gs_Ler_m": [
+            0.0,
+            -0.08,
+            0.0
+          ],
+          "kinematics": "nominal-fourbar-from-rounded-JFS-2025-links",
+          "paper_input_missing": "per-case laser-displacement wing-angle history",
+          "airfoil_adapter": "zero-camber NACA0012 mean surface for 1 mm balsa plate"
+        },
+        "cycle_range": [
+          200,
+          299
+        ],
+        "runtime_s": 8.862259863999498,
+        "max_abs_local_alpha_deg": 43.913214213058765,
+        "component_identity_max_abs_n": 0.0,
+        "particle_count": 0
+      },
+      "20": {
+        "setup": {
+          "case_id": "yang2025_fig11_rigid",
+          "grid_chord_span": [
+            8,
+            12
+          ],
+          "steps_per_cycle": 100.0,
+          "requested_steps_per_cycle": 100,
+          "cycles": 3,
+          "max_wake_cycles": 2,
+          "aoa_deg": 20.0,
+          "flap_min_deg": -32.44519629847329,
+          "flap_max_deg": 39.107903159051645,
+          "flap_mean_deg": 3.3313534302891767,
+          "flap_amplitude_deg": 35.77654972876247,
+          "wing_root_offset_m": 0.08,
+          "rotation_point_offset_Gs_Ler_m": [
+            0.0,
+            -0.08,
+            0.0
+          ],
+          "kinematics": "nominal-fourbar-from-rounded-JFS-2025-links",
+          "paper_input_missing": "per-case laser-displacement wing-angle history",
+          "airfoil_adapter": "zero-camber NACA0012 mean surface for 1 mm balsa plate"
+        },
+        "cycle_range": [
+          200,
+          299
+        ],
+        "runtime_s": 8.80239516599977,
+        "max_abs_local_alpha_deg": 48.913207197233184,
+        "component_identity_max_abs_n": 0.0,
+        "particle_count": 0
+      },
+      "25": {
+        "setup": {
+          "case_id": "yang2025_fig11_rigid",
+          "grid_chord_span": [
+            8,
+            12
+          ],
+          "steps_per_cycle": 100.0,
+          "requested_steps_per_cycle": 100,
+          "cycles": 3,
+          "max_wake_cycles": 2,
+          "aoa_deg": 25.0,
+          "flap_min_deg": -32.44519629847329,
+          "flap_max_deg": 39.107903159051645,
+          "flap_mean_deg": 3.3313534302891767,
+          "flap_amplitude_deg": 35.77654972876247,
+          "wing_root_offset_m": 0.08,
+          "rotation_point_offset_Gs_Ler_m": [
+            0.0,
+            -0.08,
+            0.0
+          ],
+          "kinematics": "nominal-fourbar-from-rounded-JFS-2025-links",
+          "paper_input_missing": "per-case laser-displacement wing-angle history",
+          "airfoil_adapter": "zero-camber NACA0012 mean surface for 1 mm balsa plate"
+        },
+        "cycle_range": [
+          200,
+          299
+        ],
+        "runtime_s": 8.8468824019983,
+        "max_abs_local_alpha_deg": 53.91320040089961,
+        "component_identity_max_abs_n": 0.0,
+        "particle_count": 0
+      }
+    },
+    "baseline_reproduction": {
+      "0": 0.0,
+      "5": 0.0,
+      "10": 0.0,
+      "15": 0.0,
+      "20": 0.0,
+      "25": 0.0
+    }
+  },
+  "izraelevitz_audit": {
+    "setup": {
+      "grid_chord_semispan": [
+        4,
+        12
+      ],
+      "steps_per_cycle": 24.0,
+      "requested_steps_per_cycle": 24,
+      "cycles": 4,
+      "tip_chord_regularization_m": 0.0002,
+      "quarter_chord_line_x_m": 0.0,
+      "heave_law": "z=h*cos(omega*t)",
+      "pitch_law": "theta=theta_max*sin(omega*t), about straight quarter chord"
+    },
+    "cycle_range": [
+      72,
+      95
+    ],
+    "runtime_s": 1.7984712310026225,
+    "max_abs_local_alpha_deg": 14.672692618459436,
+    "component_identity_max_abs_n": 0.0,
+    "baseline_reproduction_max_abs_coefficient": 6.908696581708895e-06,
+    "mean_CT_old_rerun": 0.41029313326765154,
+    "mean_CT_improved": 0.41029313326765154,
+    "unsteady_ac_gain": 0.85,
+    "circulatory_ac_gain": 0.9101698376462753,
+    "polar_mean_delta_lift_n": 0.0,
+    "polar_mean_delta_drag_n": 0.0,
+    "particle_count": 0
+  },
+  "gates": {
+    "yang_both_mae_improved": true,
+    "izraelevitz_both_raw_phase_rmse_improved": true,
+    "joint_non_degradation_gate": true,
+    "strong_cross_paper_accuracy_claim": false
+  }
+}

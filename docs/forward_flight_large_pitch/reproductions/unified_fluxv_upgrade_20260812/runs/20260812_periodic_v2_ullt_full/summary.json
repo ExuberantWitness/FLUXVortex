@@ -1,0 +1,33 @@
+{
+  "status": "complete",
+  "model": "fluxv_periodic_v2",
+  "yang2025_mae_gf": {
+    "old": {
+      "lift": 6.8548706331454285,
+      "drag": 12.921663799275619
+    },
+    "v2": {
+      "lift": 3.9516233298096837,
+      "drag": 2.062494315010371
+    },
+    "authors_proposed": {
+      "lift": 3.35,
+      "drag": 1.9333333333333336
+    }
+  },
+  "izraelevitz_raw_phase_rmse": {
+    "old": {
+      "lift": 2.4309904322866043,
+      "drag": 0.9531268336996641
+    },
+    "v2": {
+      "lift": 0.15462403554627924,
+      "drag": 0.2293151372478351
+    },
+    "local_one_state_ullt": {
+      "lift": 0.1546241324350353,
+      "drag": 0.31420003387843926
+    }
+  },
+  "claim": "same exploratory periodic v2 improves both benchmarks without observation-derived residuals; transient/causal production claim not supported"
+}
