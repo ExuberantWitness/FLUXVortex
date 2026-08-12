@@ -1,0 +1,104 @@
+series,model_label,data_role,theta_max_deg,phase_offset_deg,observation_id,replicate,CT,CT_error_minus,CT_error_plus,mean_thrust_n,mean_drag_n,profile_drag_coefficient
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,15.0,obs_01,1,0.123091624,0.011190235,0.011190029,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,15.0,obs_02,2,0.144850206,0.011190269,0.011190064,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,30.0,obs_03,1,0.179661361,0.011187596,0.011192668,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,45.0,obs_04,1,0.234370817,0.011189755,0.011190509,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,60.0,obs_05,1,0.230641242,0.011192805,0.011190064,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,75.0,obs_06,1,0.212612201,0.011189687,0.011190509,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,75.0,obs_07,2,0.205152638,0.011190235,0.010568313,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,90.0,obs_08,1,0.191475779,0.011190235,0.011190029,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,15.0,105.0,obs_09,1,0.163500449,0.011190269,0.011190064,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,25.0,45.0,obs_10,1,0.095981895,0.011160582,0.011160779,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,25.0,60.0,obs_11,1,0.106249906,0.011160952,0.011160459,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,25.0,75.0,obs_12,1,0.084374756,0.01116041,0.011161001,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,25.0,90.0,obs_13,1,0.043303596,0.010714543,0.011160607,,,
+scherer_1968_experiment,Scherer 1968 experiment,experimental_observation,25.0,105.0,obs_14,1,0.012053646,0.011160779,0.011160632,,,
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,15.0,,1,0.276023417,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,30.0,,1,0.261724911,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,45.0,,1,0.24680469,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,60.0,,1,0.232506184,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,75.0,,1,0.220072688,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,90.0,,1,0.210123315,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,15.0,105.0,,1,0.203287525,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,15.0,,1,0.269182349,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,30.0,,1,0.255508164,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,45.0,,1,0.241206985,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,60.0,,1,0.227532799,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,75.0,,1,0.214477588,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,90.0,,1,0.204530819,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,15.0,105.0,,1,0.197070777,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,15.0,,1,0.347515947,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,30.0,,1,0.323270603,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,45.0,,1,0.302133702,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,60.0,,1,0.28534847,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,75.0,,1,0.274780054,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,90.0,,1,0.271050033,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,15.0,105.0,,1,0.274780054,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,15.0,,1,0.212946468,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,30.0,,1,0.186607232,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,45.0,,1,0.15937513,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,60.0,,1,0.133928712,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,75.0,,1,0.111606957,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,90.0,,1,0.094195892,,,,,0.057
+authors_6state_ullt,Authors' six-state ULLT,numerical_reference,25.0,105.0,,1,0.083482038,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,15.0,,1,0.208035728,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,30.0,,1,0.183482225,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,45.0,,1,0.157142989,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,60.0,,1,0.131696571,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,75.0,,1,0.109374815,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,90.0,,1,0.091517736,,,,,0.057
+authors_1state_ullt,Authors' one-state ULLT,numerical_reference,25.0,105.0,,1,0.079910769,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,25.0,30.0,,1,0.212053601,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,25.0,45.0,,1,0.175000118,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,25.0,60.0,,1,0.145982284,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,25.0,75.0,,1,0.127232338,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,25.0,90.0,,1,0.120535915,,,,,0.057
+authors_qs_added_mass,Authors' quasi-steady + added mass,numerical_reference,25.0,105.0,,1,0.12678588,,,,,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,15.0,,1,0.25061642364265885,,,36.05106745436225,-36.05106745436225,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,15.0,,1,-0.23495779720433044,,,-33.79858060706869,33.79858060706869,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,15.0,,1,-0.23495779720433044,,,-33.79858060706869,33.79858060706869,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,15.0,,1,0.2388151102751092,,,34.35345347488009,-34.35345347488009,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,30.0,,1,0.23699089504971355,,,34.09104087962343,-34.09104087962343,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,30.0,,1,-0.1413231708614505,,,-20.32927886982778,20.32927886982778,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,30.0,,1,-0.1413231708614505,,,-20.32927886982778,20.32927886982778,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,30.0,,1,0.22580815812707464,,,32.482408862364764,-32.482408862364764,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,45.0,,1,0.22365860775936844,,,32.173196943303864,-32.173196943303864,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,45.0,,1,-0.053618110081386734,,,-7.71294265245619,7.71294265245619,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,45.0,,1,-0.053618110081386734,,,-7.71294265245619,7.71294265245619,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,45.0,,1,0.21168446754642195,,,30.450721894579857,-30.450721894579857,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,60.0,,1,0.21199313802880002,,,30.495124014040506,-30.495124014040506,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,60.0,,1,0.02362597267740586,,,3.398586262975856,-3.398586262975856,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,60.0,,1,0.02362597267740586,,,3.398586262975856,-3.398586262975856,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,60.0,,1,0.19758734406172604,,,28.422856592408415,-28.422856592408415,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,75.0,,1,0.20311578289311827,,,29.218120200159905,-29.218120200159905,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,75.0,,1,0.08905713546640565,,,12.810831594059866,-12.810831594059866,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,75.0,,1,0.08905713546640565,,,12.810831594059866,-12.810831594059866,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,75.0,,1,0.18462482324736162,,,26.558203408610918,-26.558203408610918,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,90.0,,1,0.1977414696647283,,,28.445027495773477,-28.445027495773477,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,90.0,,1,0.1530149688460518,,,22.011139107394005,-22.011139107394005,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,90.0,,1,0.1530149688460518,,,22.011139107394005,-22.011139107394005,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,90.0,,1,0.17375650208115645,,,24.994799966076744,-24.994799966076744,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,15.0,105.0,,1,0.1961129737363473,,,28.210769039324802,-28.210769039324802,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,15.0,105.0,,1,0.19225233132969163,,,27.65541724794354,-27.65541724794354,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,15.0,105.0,,1,0.19225233132969163,,,27.65541724794354,-27.65541724794354,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,15.0,105.0,,1,0.16570173190432105,,,23.83612465360592,-23.83612465360592,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,25.0,45.0,,1,0.11968876282358074,,,17.217178345160967,-17.217178345160967,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,25.0,45.0,,1,-0.2277961834126508,,,-32.76838546609076,32.76838546609076,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,25.0,45.0,,1,-0.2277961834126508,,,-32.76838546609076,32.76838546609076,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,25.0,45.0,,1,0.1274338191725328,,,18.331301453357696,-18.331301453357696,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,25.0,60.0,,1,0.09692827746013025,,,13.943092069387822,-13.943092069387822,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,25.0,60.0,,1,-0.10514466030135917,,,-15.125015295865422,15.125015295865422,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,25.0,60.0,,1,-0.10514466030135917,,,-15.125015295865422,15.125015295865422,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,25.0,60.0,,1,0.10177943115004079,,,14.640928493531392,-14.640928493531392,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,25.0,75.0,,1,0.07958366197720826,,,11.448076404986,-11.448076404986,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,25.0,75.0,,1,-0.006743180591028429,,,-0.9700037005185838,0.9700037005185838,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,25.0,75.0,,1,-0.006743180591028429,,,-0.9700037005185838,0.9700037005185838,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,25.0,75.0,,1,0.0788421815284886,,,11.341414753349802,-11.341414753349802,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,25.0,90.0,,1,0.06908804703750882,,,9.938286596854246,-9.938286596854246,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,25.0,90.0,,1,0.06892285459128097,,,9.91452373273165,-9.91452373273165,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,25.0,90.0,,1,0.06892285459128097,,,9.91452373273165,-9.91452373273165,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,25.0,90.0,,1,0.06042423047281193,,,8.692000216870396,-8.692000216870396,0.057
+fluxv_uvpm,FluxV old (UVLM + source Cd0),local_model_prediction,25.0,105.0,,1,0.0658269238104921,,,9.469175388078082,-9.469175388078082,0.057
+fluxv_periodic_v1,FluxV v1 (UVLM/polar + source Cd0),local_model_prediction,25.0,105.0,,1,0.0658269238104921,,,9.469175388078082,-9.469175388078082,0.057
+fluxv_periodic_v2,FluxV v2 (UVLM/ULLT/polar + source Cd0),local_model_prediction,25.0,105.0,,1,0.0658269238104921,,,9.469175388078082,-9.469175388078082,0.057
+one_state_ullt_local,Local one-state ULLT + source Cd0,local_model_prediction,25.0,105.0,,1,0.04777564297481443,,,6.872506208996072,-6.872506208996072,0.057

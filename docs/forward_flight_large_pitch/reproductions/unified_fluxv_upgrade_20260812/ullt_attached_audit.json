@@ -1,0 +1,195 @@
+{
+  "model_input_policy": "no digitized load is read by ullt_attached.py",
+  "izraelevitz2017": {
+    "paper_uvlm_CLalpha_RMSE": 0.1546241324350353,
+    "paper_uvlm_CDalpha_RMSE": 0.31420003387843926,
+    "paper_uvlm_CLalpha_range_NRMSE": 0.01359400603270209,
+    "paper_uvlm_CDalpha_range_NRMSE": 0.08820150018452533,
+    "digitized_paper_1_state_CLalpha_RMSE": 0.07657593680811701,
+    "digitized_paper_1_state_CDalpha_RMSE": 0.02945850429402012,
+    "CLalpha_min": -5.838721916084224,
+    "CLalpha_max": 5.838721995346271,
+    "CDalpha_min": -3.657973633946909,
+    "CDalpha_max": -0.22373769902794727,
+    "CDalpha_mean": -1.8393593379753366
+  },
+  "yang2025_by_aoa": [
+    {
+      "aoa_deg": 0.0,
+      "model": "one_state_ullt",
+      "mean_lift_gf": 0.07093741587419643,
+      "mean_drag_gf": -6.442362796831062,
+      "lift_error_gf": -1.9290625841258036,
+      "drag_error_gf": -5.942362796831062,
+      "mean_global_separation_fraction": 0.28516280713450215
+    },
+    {
+      "aoa_deg": 0.0,
+      "model": "uvlm_plus_polar",
+      "mean_lift_gf": 0.18357793112414547,
+      "mean_drag_gf": -2.2063695827518495,
+      "lift_error_gf": -1.8164220688758546,
+      "drag_error_gf": -1.7063695827518495,
+      "mean_global_separation_fraction": 0.28516280713450215
+    },
+    {
+      "aoa_deg": 0.0,
+      "model": "ullt_uvlm_polar_load_blend",
+      "mean_lift_gf": 0.07452082771069635,
+      "mean_drag_gf": -4.306085203805031,
+      "lift_error_gf": -1.9254791722893037,
+      "drag_error_gf": -3.806085203805031,
+      "mean_global_separation_fraction": 0.28516280713450215
+    },
+    {
+      "aoa_deg": 5.0,
+      "model": "one_state_ullt",
+      "mean_lift_gf": 14.086874636986748,
+      "mean_drag_gf": -5.907721442637669,
+      "lift_error_gf": -3.313125363013251,
+      "drag_error_gf": -6.007721442637669,
+      "mean_global_separation_fraction": 0.30560149987972673
+    },
+    {
+      "aoa_deg": 5.0,
+      "model": "uvlm_plus_polar",
+      "mean_lift_gf": 12.503560782813155,
+      "mean_drag_gf": -0.8730554975505507,
+      "lift_error_gf": -4.896439217186844,
+      "drag_error_gf": -0.9730554975505507,
+      "mean_global_separation_fraction": 0.30560149987972673
+    },
+    {
+      "aoa_deg": 5.0,
+      "model": "ullt_uvlm_polar_load_blend",
+      "mean_lift_gf": 12.890889483696022,
+      "mean_drag_gf": -2.6101124528406605,
+      "lift_error_gf": -4.509110516303977,
+      "drag_error_gf": -2.7101124528406606,
+      "mean_global_separation_fraction": 0.30560149987972673
+    },
+    {
+      "aoa_deg": 10.0,
+      "model": "one_state_ullt",
+      "mean_lift_gf": 28.100243028934347,
+      "mean_drag_gf": -4.303332211502515,
+      "lift_error_gf": -3.3997569710656528,
+      "drag_error_gf": -9.403332211502516,
+      "mean_global_separation_fraction": 0.3741902057889259
+    },
+    {
+      "aoa_deg": 10.0,
+      "model": "uvlm_plus_polar",
+      "mean_lift_gf": 24.15707484152685,
+      "mean_drag_gf": 3.2372631360731265,
+      "lift_error_gf": -7.34292515847315,
+      "drag_error_gf": -1.862736863926873,
+      "mean_global_separation_fraction": 0.3741902057889259
+    },
+    {
+      "aoa_deg": 10.0,
+      "model": "ullt_uvlm_polar_load_blend",
+      "mean_lift_gf": 24.502950365665026,
+      "mean_drag_gf": 2.639878756374901,
+      "lift_error_gf": -6.997049634334974,
+      "drag_error_gf": -2.4601212436250988,
+      "mean_global_separation_fraction": 0.3741902057889259
+    },
+    {
+      "aoa_deg": 15.0,
+      "model": "one_state_ullt",
+      "mean_lift_gf": 42.10698956981755,
+      "mean_drag_gf": -1.6190741627643477,
+      "lift_error_gf": 3.406989569817547,
+      "drag_error_gf": -15.719074162764347,
+      "mean_global_separation_fraction": 0.46370891664747654
+    },
+    {
+      "aoa_deg": 15.0,
+      "model": "uvlm_plus_polar",
+      "mean_lift_gf": 34.6345638495195,
+      "mean_drag_gf": 9.818964584046274,
+      "lift_error_gf": -4.065436150480501,
+      "drag_error_gf": -4.281035415953726,
+      "mean_global_separation_fraction": 0.46370891664747654
+    },
+    {
+      "aoa_deg": 15.0,
+      "model": "ullt_uvlm_polar_load_blend",
+      "mean_lift_gf": 34.816187956673545,
+      "mean_drag_gf": 9.734786830302602,
+      "lift_error_gf": -3.883812043326458,
+      "drag_error_gf": -4.365213169697398,
+      "mean_global_separation_fraction": 0.46370891664747654
+    },
+    {
+      "aoa_deg": 20.0,
+      "model": "one_state_ullt",
+      "mean_lift_gf": 56.10273694977577,
+      "mean_drag_gf": 2.1620744871455435,
+      "lift_error_gf": 13.202736949775769,
+      "drag_error_gf": -18.837925512854458,
+      "mean_global_separation_fraction": 0.543066748875572
+    },
+    {
+      "aoa_deg": 20.0,
+      "model": "uvlm_plus_polar",
+      "mean_lift_gf": 43.50565273170054,
+      "mean_drag_gf": 18.264094074196453,
+      "lift_error_gf": 0.6056527317005447,
+      "drag_error_gf": -2.7359059258035465,
+      "mean_global_separation_fraction": 0.543066748875572
+    },
+    {
+      "aoa_deg": 20.0,
+      "model": "ullt_uvlm_polar_load_blend",
+      "mean_lift_gf": 43.675682738372856,
+      "mean_drag_gf": 18.1885912692952,
+      "lift_error_gf": 0.7756827383728577,
+      "drag_error_gf": -2.8114087307048017,
+      "mean_global_separation_fraction": 0.543066748875572
+    },
+    {
+      "aoa_deg": 25.0,
+      "model": "one_state_ullt",
+      "mean_lift_gf": 70.08261403928944,
+      "mean_drag_gf": 7.064204947102215,
+      "lift_error_gf": 24.78261403928944,
+      "drag_error_gf": -20.735795052897785,
+      "mean_global_separation_fraction": 0.6352076964107666
+    },
+    {
+      "aoa_deg": 25.0,
+      "model": "uvlm_plus_polar",
+      "mean_lift_gf": 50.28143849859815,
+      "mean_drag_gf": 28.61628476793908,
+      "lift_error_gf": 4.981438498598152,
+      "drag_error_gf": 0.8162847679390808,
+      "mean_global_separation_fraction": 0.6352076964107666
+    },
+    {
+      "aoa_deg": 25.0,
+      "model": "ullt_uvlm_polar_load_blend",
+      "mean_lift_gf": 50.58982659560744,
+      "mean_drag_gf": 28.344116227741935,
+      "lift_error_gf": 5.289826595607444,
+      "drag_error_gf": 0.5441162277419345,
+      "mean_global_separation_fraction": 0.6352076964107666
+    }
+  ],
+  "yang2025_summary": {
+    "one_state_ullt": {
+      "lift_MAE_gf": 8.339047579514578,
+      "drag_MAE_gf": 12.77436852991464
+    },
+    "ullt_uvlm_polar_load_blend": {
+      "lift_MAE_gf": 3.8968267833725023,
+      "drag_MAE_gf": 2.782842838069154
+    },
+    "uvlm_plus_polar": {
+      "lift_MAE_gf": 3.9513856375525074,
+      "drag_MAE_gf": 2.062564675654271
+    }
+  },
+  "hybrid_caveat": "global load-level blend using the area-weighted local separation gate; not a UVLM pressure-channel decomposition"
+}

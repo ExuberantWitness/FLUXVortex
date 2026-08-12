@@ -1,0 +1,101 @@
+{
+  "status": "complete",
+  "quality": "full",
+  "model": "fluxv_periodic_v3_persistent",
+  "metrics": [
+    {
+      "gate": "yang2025_experiment",
+      "model": "fluxv_periodic_v3_persistent",
+      "channel": "lift",
+      "units": "gf",
+      "mae": 3.579140887281918,
+      "rmse": 3.994509560495535,
+      "bias": -1.5500386666077184,
+      "max_abs_error": 6.254446888733906,
+      "range_nrmse": 0.09225195289828027,
+      "prediction_half_amplitude": 25.144701505231755,
+      "reference_half_amplitude": 21.65,
+      "half_amplitude_error": 3.494701505231756
+    },
+    {
+      "gate": "yang2025_experiment",
+      "model": "fluxv_periodic_v3_persistent",
+      "channel": "drag",
+      "units": "gf",
+      "mae": 3.8910606280721987,
+      "rmse": 4.247283825094796,
+      "bias": -3.647627358235656,
+      "max_abs_error": 5.941994699500527,
+      "range_nrmse": 0.15008070053338504,
+      "prediction_half_amplitude": 17.486147254505077,
+      "reference_half_amplitude": 14.15,
+      "half_amplitude_error": 3.336147254505077
+    },
+    {
+      "gate": "izraelevitz2017_fig11_numerical",
+      "model": "fluxv_periodic_v3_persistent",
+      "channel": "lift",
+      "units": "paper_scaled_coefficient",
+      "mae": 0.11508190349543071,
+      "rmse": 0.15462413244751905,
+      "bias": -0.0024957016177840604,
+      "max_abs_error": 0.33170303509569976,
+      "range_nrmse": 0.013594006033799615,
+      "prediction_half_amplitude": 5.838721955715249,
+      "reference_half_amplitude": 5.687217295,
+      "half_amplitude_error": 0.15150466071524882,
+      "positive_peak_phase_error_cycle": 0.015625,
+      "negative_peak_phase_error_cycle": 0.0078125
+    },
+    {
+      "gate": "izraelevitz2017_fig11_numerical",
+      "model": "fluxv_periodic_v3_persistent",
+      "channel": "drag",
+      "units": "paper_scaled_coefficient",
+      "mae": 0.2520183180377571,
+      "rmse": 0.3142000340902896,
+      "bias": -0.2178361784371527,
+      "max_abs_error": 0.5780507289832031,
+      "range_nrmse": 0.08820150024399548,
+      "prediction_half_amplitude": 1.7171179674594812,
+      "reference_half_amplitude": 1.781149035,
+      "half_amplitude_error": -0.0640310675405189,
+      "positive_peak_phase_error_cycle": 0.0078125,
+      "negative_peak_phase_error_cycle": 0.015625
+    },
+    {
+      "gate": "izraelevitz2017_fig14_scherer_experiment",
+      "model": "fluxv_periodic_v3_persistent",
+      "channel": "mean_CT",
+      "units": "coefficient",
+      "mae": 0.033951069917194224,
+      "rmse": 0.0471854978167865,
+      "bias": 0.01634010064380129,
+      "max_abs_error": 0.11796963878143447,
+      "observation_count": 14
+    },
+    {
+      "gate": "izraelevitz2017_fig14_scherer_experiment",
+      "model": "fluxv_periodic_v3_mean_passthrough",
+      "channel": "mean_CT",
+      "units": "coefficient",
+      "mae": 0.03494645023827676,
+      "rmse": 0.052043586911637955,
+      "bias": 0.028297514526308555,
+      "max_abs_error": 0.1297709521489841,
+      "observation_count": 14
+    }
+  ],
+  "gates": {
+    "yang_better_than_frozen_old": true,
+    "fig11_both_rmse_below_0_5": true,
+    "fig14_rmse_below_frozen_old": true
+  },
+  "numerical_sensitivity": {
+    "comparison": "smoke-to-full changes grid, time step, and cycles together",
+    "interpretation": "development sensitivity only; not formal convergence",
+    "fig14_max_abs_delta_CT": 0.005548485905849027,
+    "predeclared_target_CT": 0.005,
+    "target_passed": false
+  }
+}

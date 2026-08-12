@@ -1,0 +1,94 @@
+{
+  "status": "complete",
+  "metrics_all_observations": {
+    "authors_1state_ullt": {
+      "model": "authors_1state_ullt",
+      "model_label": "Authors' one-state ULLT",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.045836362000000005,
+      "RMSE_CT": 0.06321186471439749,
+      "bias_CT": 0.04539229871428572,
+      "max_abs_error_CT": 0.14609072499999998,
+      "range_NRMSE": 0.2843319048639634,
+      "RMS_uncertainty_units": 5.657184536404585
+    },
+    "authors_6state_ullt": {
+      "model": "authors_6state_ullt",
+      "model_label": "Authors' six-state ULLT",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.050136246285714274,
+      "RMSE_CT": 0.06703650983157537,
+      "bias_CT": 0.050136246285714274,
+      "max_abs_error_CT": 0.15293179299999998,
+      "range_NRMSE": 0.3015354573380001,
+      "RMS_uncertainty_units": 5.999715968683075
+    },
+    "authors_qs_added_mass": {
+      "model": "authors_qs_added_mass",
+      "model_label": "Authors' quasi-steady + added mass",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.09781366307142858,
+      "RMSE_CT": 0.11207894056970873,
+      "bias_CT": 0.09781366307142858,
+      "max_abs_error_CT": 0.22442432299999998,
+      "range_NRMSE": 0.5041398289910262,
+      "RMS_uncertainty_units": 10.03519493754955
+    },
+    "fluxv_periodic_v1": {
+      "model": "fluxv_periodic_v1",
+      "model_label": "FluxV v1 (UVLM/polar + source Cd0)",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.18331375220940946,
+      "RMSE_CT": 0.22259793067358163,
+      "bias_CT": -0.1678645495334859,
+      "max_abs_error_CT": 0.37980800320433045,
+      "range_NRMSE": 1.0012628789414635,
+      "RMS_uncertainty_units": 19.91598808681198
+    },
+    "fluxv_periodic_v2": {
+      "model": "fluxv_periodic_v2",
+      "model_label": "FluxV v2 (UVLM/ULLT/polar + source Cd0)",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.18331375220940946,
+      "RMSE_CT": 0.22259793067358163,
+      "bias_CT": -0.1678645495334859,
+      "max_abs_error_CT": 0.37980800320433045,
+      "range_NRMSE": 1.0012628789414635,
+      "RMS_uncertainty_units": 19.91598808681198
+    },
+    "fluxv_uvpm": {
+      "model": "fluxv_uvpm",
+      "model_label": "FluxV old (UVLM + source Cd0)",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.03484069088542465,
+      "RMSE_CT": 0.05114662300705755,
+      "bias_CT": 0.02698264674424514,
+      "max_abs_error_CT": 0.12752479964265884,
+      "range_NRMSE": 0.2300615052674341,
+      "RMS_uncertainty_units": 4.5738063738157795
+    },
+    "one_state_ullt_local": {
+      "model": "one_state_ullt_local",
+      "model_label": "Local one-state ULLT + source Cd0",
+      "theta_max_deg": "all",
+      "observation_count": 14,
+      "MAE_CT": 0.033879199452801156,
+      "RMSE_CT": 0.04636083952617762,
+      "bias_CT": 0.015025232861737884,
+      "max_abs_error_CT": 0.11572348627510921,
+      "range_NRMSE": 0.20853467736047082,
+      "RMS_uncertainty_units": 4.146454864083454
+    }
+  },
+  "result_files": {
+    "predictions": "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/mean_thrust_vs_phase.csv",
+    "metrics": "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/accuracy_metrics.csv",
+    "profile_drag_sensitivity": "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/profile_drag_sensitivity.csv"
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "run_id": "20260812_periodic_v2_ullt_full",
+  "status": "complete",
+  "base_run": "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v1_full",
+  "base_run_manifest_sha256": "8974326405655f00107aefa8b276a113abf105c0ea0e1d630826252b57989df4",
+  "model": "fluxv_periodic_v2",
+  "model_semantics": "UVLM/polar owns cycle mean and separated alternating load; source-constrained one-state ULLT owns attached alternating load; a shared 15--20 degree local-incidence gate is area-averaged; blend is recentered",
+  "observation_fit": "none",
+  "causality_scope": "periodic two-pass; not online transient production",
+  "execution_fast_path": "inherits the base run's tested load-equivalent no-particle path; VPM particles remain one-way diagnostics in current FluxV",
+  "comparability_limits": [
+    "Yang phase histories have no public experimental/author phase truth.",
+    "Yang uses nominal four-bar motion rather than unpublished LDS history.",
+    "Izraelevitz UVLM is numerical reference, not experiment.",
+    "The v2 mean is inherited from v1 UVLM/polar; ULLT changes only periodic shape.",
+    "The 15--20 degree gate is exploratory after a failed v0 diagnostic."
+  ],
+  "environment": {
+    "python": "3.12.13",
+    "numpy": "2.4.6",
+    "pterasoftware": "5.0.0",
+    "fluxvortex": "0.9.0"
+  },
+  "source_code_hashes": {
+    "platform/forward_flight_benchmarks/run_unified_ullt_extension.py": "2bf7697f5e75b4c42b022b898daa5eef3264fc49ed84e0fc7680b9e40ae18c6a",
+    "platform/forward_flight_benchmarks/augmented_uvpm.py": "8e2836747e95ebba71b76db03c994bae07e583f14270c76f657632aa52af01d1",
+    "platform/forward_flight_benchmarks/ullt_attached.py": "f9558d0f3f1e4cf3606e8588fcd19040410e9ebe7b53c0cba00912cb0d597197",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "b767e3c19ca0ace739759c65f8648c0916ebca9baaf311eed7bd4cc8e3ef88f3"
+  },
+  "base_artifact_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v1_full/run_manifest.json": "8974326405655f00107aefa8b276a113abf105c0ea0e1d630826252b57989df4",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v1_full/yang2025_mean_characteristics.csv": "58aebfcc987d102512342e845206a1d3b0556fcaf0d40f3c5747f4c922a8e443",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v1_full/yang2025_phase_histories.csv": "18e801f3d7ca7f72404e177f33cd55cf218a7f2daa01effb6310ec2faf5298e2",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v1_full/izraelevitz2017_fig11_phase_histories.csv": "5d4319edbe158d86d246dd4a160b9c5d4ddb80c6c8b555c2b45612e4ff81d56d"
+  },
+  "audit": {
+    "yang": {
+      "0": {
+        "mean_separation_fraction": 0.28516280713450215,
+        "min_separation_fraction": 0.0,
+        "max_separation_fraction": 0.5897635479314346,
+        "v2_mean_matches_v1_lift_n": 1.951563910473908e-17,
+        "v2_mean_matches_v1_drag_n": 0.0,
+        "ullt_periodic_closure_jump_lift_n": 0.0027483245387585065,
+        "ullt_periodic_closure_jump_drag_n": 0.001267620453640525,
+        "v2_periodic_closure_jump_lift_n": 0.0028040021986808217,
+        "v2_periodic_closure_jump_drag_n": 0.0007801415674530202,
+        "runtime_s": 1.373875745000987
+      },
+      "5": {
+        "mean_separation_fraction": 0.30560149987972673,
+        "min_separation_fraction": 0.0,
+        "max_separation_fraction": 0.807054724568454,
+        "v2_mean_matches_v1_lift_n": 2.7755575615628914e-17,
+        "v2_mean_matches_v1_drag_n": 1.0408340855860843e-17,
+        "ullt_periodic_closure_jump_lift_n": 0.0022760528397956503,
+        "ullt_periodic_closure_jump_drag_n": 0.0008711383500264458,
+        "v2_periodic_closure_jump_lift_n": 0.002301305734909276,
+        "v2_periodic_closure_jump_drag_n": 0.0007214773401754276,
+        "runtime_s": 1.205630578999262
+      },
+      "10": {
+        "mean_separation_fraction": 0.3741902057889259,
+        "min_separation_fraction": 0.0,
+        "max_separation_fraction": 0.9893448187787592,
+        "v2_mean_matches_v1_lift_n": 2.7755575615628914e-17,
+        "v2_mean_matches_v1_drag_n": 2.0816681711721685e-17,
+        "ullt_periodic_closure_jump_lift_n": 0.0016957591767540192,
+        "ullt_periodic_closure_jump_drag_n": 0.0004756867916557439,
+        "v2_periodic_closure_jump_lift_n": 0.0018540921078136208,
+        "v2_periodic_closure_jump_drag_n": 0.0005675329073838165,
+        "runtime_s": 1.1578714690003835
+      },
+      "15": {
+        "mean_separation_fraction": 0.46370891664747654,
+        "min_separation_fraction": 0.0,
+        "max_separation_fraction": 1.0,
+        "v2_mean_matches_v1_lift_n": 0.0,
+        "v2_mean_matches_v1_drag_n": 2.7755575615628914e-17,
+        "ullt_periodic_closure_jump_lift_n": 0.0010275686201016432,
+        "ullt_periodic_closure_jump_drag_n": 9.676016211611349e-05,
+        "v2_periodic_closure_jump_lift_n": 0.001027568620101671,
+        "v2_periodic_closure_jump_drag_n": 9.676016211609961e-05,
+        "runtime_s": 1.2022947180012125
+      },
+      "20": {
+        "mean_separation_fraction": 0.543066748875572,
+        "min_separation_fraction": 0.0,
+        "max_separation_fraction": 1.0,
+        "v2_mean_matches_v1_lift_n": 5.551115123125783e-17,
+        "v2_mean_matches_v1_drag_n": 0.0,
+        "ullt_periodic_closure_jump_lift_n": 0.00029264537620943276,
+        "ullt_periodic_closure_jump_drag_n": 0.00025144731479577985,
+        "v2_periodic_closure_jump_lift_n": 0.00029264537620943276,
+        "v2_periodic_closure_jump_drag_n": 0.00025144731479577465,
+        "runtime_s": 1.159439024002495
+      },
+      "25": {
+        "mean_separation_fraction": 0.6352076964107666,
+        "min_separation_fraction": 0.014572176390499274,
+        "max_separation_fraction": 1.0,
+        "v2_mean_matches_v1_lift_n": 0.0,
+        "v2_mean_matches_v1_drag_n": 0.0,
+        "ullt_periodic_closure_jump_lift_n": 0.0004873851487512959,
+        "ullt_periodic_closure_jump_drag_n": 0.0005560714322215138,
+        "v2_periodic_closure_jump_lift_n": 0.0005678980452379911,
+        "v2_periodic_closure_jump_drag_n": 0.0006039052864508232,
+        "runtime_s": 1.1507192179997219
+      }
+    },
+    "izraelevitz": {
+      "mean_separation_fraction": 0.0,
+      "max_separation_fraction": 0.0,
+      "v2_mean_CT": 0.4102906465459494,
+      "v1_mean_CT": 0.4102906465459494,
+      "local_ullt_surface_gain": 0.9101698376462753,
+      "local_ullt_max_abs_alpha_deg": 23.919486868659906
+    }
+  },
+  "result_artifact_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/summary.json": "5115f0a7f56ea19b0ef181d0ab8a852f44630d7d42b71994e6febb1f5a6f72c7",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/accuracy_metrics.csv": "89e0ab7499e42ce55103bb5be57784be35c7df8d466e3477c2423b1cfd163050",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/yang2025_mean_characteristics.csv": "3f51c58c051436ef93e87fa7164eff004693d98ec1f2f468420f665c251ba7a1",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/yang2025_phase_histories.csv": "34e7f1d3d0a4f03d73e2dc2a5ed7d4d8c9f14ee91d34c0770552cf59fe5706fb",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/izraelevitz2017_fig11_phase_histories.csv": "6baaaa8b68e324351b28e1bd62c783f1cc3a6d3687193e1551722ea147a0e4c7"
+  }
+}

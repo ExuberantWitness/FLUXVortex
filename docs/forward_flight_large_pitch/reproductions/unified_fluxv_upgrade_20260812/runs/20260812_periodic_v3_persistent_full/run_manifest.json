@@ -1,0 +1,721 @@
+{
+  "run_id": "20260812_periodic_v3_persistent_full",
+  "status": "complete",
+  "quality": "full",
+  "model": "fluxv_periodic_v3_persistent",
+  "introduced_after_fig14_failure": true,
+  "observation_fit": "none, but model selection is post-Figure-14 and exploratory",
+  "model_semantics": "persistence-weighted periodic mean owner and AC gate: p=0 selects one-state ULLT, p=1 selects UVLM/full-angle-polar; no case id",
+  "not_claimed": [
+    "causal transient model",
+    "leading-edge-vortex suction-loss closure",
+    "independent Figure-14 confirmation"
+  ],
+  "fig14_profile_drag": {
+    "coefficient": 0.057,
+    "velocity_reference_fraction_chord": 0.75,
+    "polar_and_profile_constructed_as_separate_ledgers": true,
+    "added_exactly_once": true
+  },
+  "base_runs": [
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full"
+  ],
+  "base_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/run_manifest.json": "bde75a5a88245c7bec1acc614dfc6f5d6231b6726efaec761ae2aaf3bd0606c8",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/run_manifest.json": "1980cb616812860cbbb1f902c92c18db59cdca0027d46dca9593bbb5e74ab200"
+  },
+  "source_hashes": {
+    "platform/forward_flight_benchmarks/run_periodic_v3_regression.py": "7be94d0f0969117ca138fb8fdebc553601ecf1bd4190a97e122fc4a22f9e6bca",
+    "platform/forward_flight_benchmarks/periodic_load_ownership.py": "06eb3e01ab02f1199bd604474803189e4c5997907c44585193916219fa7a2913",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "ab8b3cfaf708ce15e32906fcf8ddde0a5b499fe423d1298fac86ea8bd78504cf",
+    "platform/forward_flight_benchmarks/ullt_attached.py": "f9558d0f3f1e4cf3606e8588fcd19040410e9ebe7b53c0cba00912cb0d597197",
+    "platform/forward_flight_benchmarks/plot_periodic_v3_regression.py": "246c065501940af53b13f6b789c1a0a626ad05c52805af15d77b55fcfdf13ae2",
+    "platform/tests/test_periodic_load_ownership.py": "83a58033ac530d8d5ed0e682461bc801720f4d6150573a491959ef0612a72b9a",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig11_digitized.csv": "b3fd20cea68d61664720425b9c7da27d4b5d87a89c80d7296c04887860e141bc",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig14_digitized.csv": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf"
+  },
+  "audit": {
+    "yang": {
+      "0": {
+        "cycle_step_range": [
+          200,
+          299
+        ],
+        "persistence_fraction": 9.109588978427563e-05,
+        "strip_persistence_fraction": [
+          1.3721796491958862e-05,
+          2.0946980368992593e-05,
+          2.994444058976144e-05,
+          4.08452583217643e-05,
+          5.3783500437156026e-05,
+          6.88896501205437e-05,
+          8.628457321616461e-05,
+          0.00010607430755878503,
+          0.0001283458715589238,
+          0.00015316419530244263,
+          0.00018057019155935346,
+          0.00021057991188546099
+        ],
+        "mean_separation_fraction": 0.28516280713450215,
+        "mean_effective_separation_fraction": 2.5977159649299252e-05
+      },
+      "5": {
+        "cycle_step_range": [
+          200,
+          299
+        ],
+        "persistence_fraction": 0.4214178246321099,
+        "strip_persistence_fraction": [
+          0.7500820992374543,
+          0.6380414031478959,
+          0.5526879519399227,
+          0.48668861356386606,
+          0.4345828437197822,
+          0.39280530674182906,
+          0.3585591226898162,
+          0.33023274999163804,
+          0.3062041930186981,
+          0.28579873996149585,
+          0.2682755054521893,
+          0.25305536612073104
+        ],
+        "mean_separation_fraction": 0.30560149987972673,
+        "mean_effective_separation_fraction": 0.12878591928362443
+      },
+      "10": {
+        "cycle_step_range": [
+          200,
+          299
+        ],
+        "persistence_fraction": 0.7239792412165214,
+        "strip_persistence_fraction": [
+          1.0,
+          0.9890258238867113,
+          0.9232830369748352,
+          0.8498532470640764,
+          0.781500838745739,
+          0.7209304757364288,
+          0.667992617688752,
+          0.6219422378678929,
+          0.5817717446943642,
+          0.5467444680082417,
+          0.5159142603124012,
+          0.48879214361881534
+        ],
+        "mean_separation_fraction": 0.3741902057889259,
+        "mean_effective_separation_fraction": 0.27090594125772055
+      },
+      "15": {
+        "cycle_step_range": [
+          200,
+          299
+        ],
+        "persistence_fraction": 0.8872696465003658,
+        "strip_persistence_fraction": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.9816263457195727,
+          0.9392621888020264,
+          0.8926631417860332,
+          0.8466678535160717,
+          0.8033687316106883,
+          0.7633546702662403,
+          0.7268019034730495,
+          0.6934909228307085
+        ],
+        "mean_separation_fraction": 0.46370891664747654,
+        "mean_effective_separation_fraction": 0.4114348465528741
+      },
+      "20": {
+        "cycle_step_range": [
+          200,
+          299
+        ],
+        "persistence_fraction": 0.9666058953244676,
+        "strip_persistence_fraction": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.9820496508858745,
+          0.9528732038589751,
+          0.9206003165030561,
+          0.8878134668616385,
+          0.8559341057840654
+        ],
+        "mean_separation_fraction": 0.543066748875572,
+        "mean_effective_separation_fraction": 0.52493152101782
+      },
+      "25": {
+        "cycle_step_range": [
+          200,
+          299
+        ],
+        "persistence_fraction": 0.9960205186334337,
+        "strip_persistence_fraction": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.9997831039435042,
+          0.9864402462399426,
+          0.9660228734177577
+        ],
+        "mean_separation_fraction": 0.6352076964107666,
+        "mean_effective_separation_fraction": 0.6326798992190004
+      }
+    },
+    "fig11": {
+      "movement": {
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 256.0,
+        "requested_steps_per_cycle": 256,
+        "cycles": 4,
+        "tip_chord_regularization_m": 0.0002,
+        "quarter_chord_line_x_m": 0.0,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*sin(omega*t), about straight quarter chord"
+      },
+      "cycle_step_range": [
+        768,
+        1023
+      ],
+      "persistence_fraction": 0.0,
+      "strip_persistence_fraction": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mean_separation_fraction": 0.0,
+      "metrics": [
+        {
+          "gate": "izraelevitz2017_fig11_numerical",
+          "model": "fluxv_periodic_v3_persistent",
+          "channel": "lift",
+          "units": "paper_scaled_coefficient",
+          "mae": 0.11508190349543071,
+          "rmse": 0.15462413244751905,
+          "bias": -0.0024957016177840604,
+          "max_abs_error": 0.33170303509569976,
+          "range_nrmse": 0.013594006033799615,
+          "prediction_half_amplitude": 5.838721955715249,
+          "reference_half_amplitude": 5.687217295,
+          "half_amplitude_error": 0.15150466071524882,
+          "positive_peak_phase_error_cycle": 0.015625,
+          "negative_peak_phase_error_cycle": 0.0078125
+        },
+        {
+          "gate": "izraelevitz2017_fig11_numerical",
+          "model": "fluxv_periodic_v3_persistent",
+          "channel": "drag",
+          "units": "paper_scaled_coefficient",
+          "mae": 0.2520183180377571,
+          "rmse": 0.3142000340902896,
+          "bias": -0.2178361784371527,
+          "max_abs_error": 0.5780507289832031,
+          "range_nrmse": 0.08820150024399548,
+          "prediction_half_amplitude": 1.7171179674594812,
+          "reference_half_amplitude": 1.781149035,
+          "half_amplitude_error": -0.0640310675405189,
+          "positive_peak_phase_error_cycle": 0.0078125,
+          "negative_peak_phase_error_cycle": 0.015625
+        }
+      ]
+    },
+    "fig14": {
+      "theta_15_psi_15": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.30332314782271724,
+        "v1_inviscid_CT": -0.1704497596567224,
+        "old_inviscid_CT": 0.3151244611902669,
+        "source_Cd0_CT": -0.06226188504128276
+      },
+      "theta_15_psi_30": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.29010844616375253,
+        "v1_inviscid_CT": -0.07702288282477257,
+        "old_inviscid_CT": 0.30129118308639147,
+        "source_Cd0_CT": -0.06226188504128276
+      },
+      "theta_15_psi_45": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.2756571380048866,
+        "v1_inviscid_CT": 0.010354560377077913,
+        "old_inviscid_CT": 0.2876312782178331,
+        "source_Cd0_CT": -0.06226188504128277
+      },
+      "theta_15_psi_60": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.26113238138996564,
+        "v1_inviscid_CT": 0.08717101000564546,
+        "old_inviscid_CT": 0.2755381753570396,
+        "source_Cd0_CT": -0.062261885041282786
+      },
+      "theta_15_psi_75": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.24766822715037706,
+        "v1_inviscid_CT": 0.1521005393694211,
+        "old_inviscid_CT": 0.2661591867961337,
+        "source_Cd0_CT": -0.0622618850412828
+      },
+      "theta_15_psi_90": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.2362556093416525,
+        "v1_inviscid_CT": 0.21551407610654788,
+        "old_inviscid_CT": 0.26024057692522434,
+        "source_Cd0_CT": -0.062261885041282744
+      },
+      "theta_15_psi_105": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.22764930161264577,
+        "v1_inviscid_CT": 0.2541999010380164,
+        "old_inviscid_CT": 0.25806054344467205,
+        "source_Cd0_CT": -0.06226188504128276
+      },
+      "theta_25_psi_45": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.19273149633376987,
+        "v1_inviscid_CT": -0.16249850625141368,
+        "old_inviscid_CT": 0.18498643998481784,
+        "source_Cd0_CT": -0.062261885041282786
+      },
+      "theta_25_psi_60": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.16639571459664063,
+        "v1_inviscid_CT": -0.04052837685475936,
+        "old_inviscid_CT": 0.16154456090673008,
+        "source_Cd0_CT": -0.062261885041282806
+      },
+      "theta_25_psi_75": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.14265645174132938,
+        "v1_inviscid_CT": 0.05707108962181235,
+        "old_inviscid_CT": 0.14339793219004904,
+        "source_Cd0_CT": -0.06226188504128277
+      },
+      "theta_25_psi_90": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.12336195215639635,
+        "v1_inviscid_CT": 0.1318605762748654,
+        "old_inviscid_CT": 0.13202576872109323,
+        "source_Cd0_CT": -0.062261885041282786
+      },
+      "theta_25_psi_105": {
+        "cycle_step_range": [
+          384,
+          511
+        ],
+        "persistence_fraction": 0.0,
+        "strip_persistence_fraction": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ullt_inviscid_CT": 0.10981667430394904,
+        "v1_inviscid_CT": 0.1278679551396267,
+        "old_inviscid_CT": 0.1278679551396267,
+        "source_Cd0_CT": -0.06226188504128277
+      }
+    }
+  },
+  "limitations": [
+    "v3 is a periodic two-pass/post-hoc owner, not an online solver",
+    "Figure 11 is numerical UVLM reference, not experiment",
+    "Figure 14 publishes cycle means only",
+    "Passing Figure 14 by ULLT ownership does not resolve LEV suction physics",
+    "Figure-14 smoke-to-full max |delta CT|=0.00555 slightly exceeds the 0.005 development target"
+  ],
+  "result_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v3_persistent_full/yang2025_v3_mean_characteristics.csv": "f328ada71473deff8fd2e02dad1b8005bf4a50f652e48617dc515f455245b47a",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v3_persistent_full/yang2025_v3_phase_histories.csv": "0db15a4e87225720c560b39ba4fe2e9a0b9a12c8d20145a9e548006fc1944eb2",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v3_persistent_full/izraelevitz2017_fig11_v3_phase_histories.csv": "c0f5a928d16f462aa30efa79f7ff9169bc4b8eab688d7c257acd18699d5cb8af",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v3_persistent_full/izraelevitz2017_fig14_v3_mean_thrust.csv": "417f8770f966319b5c98c3bcddcbbe5fb76eb6271ac6037eafeec4f9f43b9367",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v3_persistent_full/v3_accuracy_metrics.csv": "a3e919fabe85c9bdc29135136e591164c65df3582fe940206345c692554abb38"
+  }
+}

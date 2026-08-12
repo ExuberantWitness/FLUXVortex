@@ -1,0 +1,683 @@
+{
+  "status": "complete",
+  "evaluation_type": "real_gt_digitized_experimental_cycle_mean",
+  "quality": "full",
+  "case": {
+    "case_id": "izraelevitz2017_fig14_scherer_experiment",
+    "aspect_ratio": 3.0,
+    "chord_m": 0.1016,
+    "freestream_m_s": 3.048,
+    "rho_kg_m3": 1000.0,
+    "nu_m2_s": 1e-06,
+    "strouhal": 0.2,
+    "heave_to_chord": 0.6,
+    "profile_drag_coefficient": 0.057,
+    "scherer_static_profile_drag_coefficient": 0.027,
+    "pivot_fraction_chord": 0.75,
+    "section_name": "NACA 63A015",
+    "span_m": 0.30479999999999996,
+    "semispan_m": 0.15239999999999998,
+    "area_m2": 0.030967679999999994,
+    "heave_amplitude_m": 0.06095999999999999,
+    "angular_frequency_rad_s": 31.415926535897935,
+    "frequency_hz": 5.000000000000001,
+    "period_s": 0.19999999999999996,
+    "reduced_frequency_midspan": 0.5235987755982989,
+    "dimensional_scaling": "Scherer geometry: c=4 in, b=12 in, NACA 63A015, AR=3 and pivot=0.75c. U=10 ft/s realizes J'=6 at f=5 Hz; Figure 14 comparisons use nondimensional CT.",
+    "profile_drag_source_conflict": "Izraelevitz 2017 applies Cd0=0.057, whereas Scherer 1968 reports static CD0=0.027. The main reproduction follows Izraelevitz and a fixed 0.027 sensitivity is reported.",
+    "geometry_adapter": "Scherer describes slightly rounded rectangular tips. The UVLM uses a rectangular planform; symmetric NACA 63A015 has a flat mean camber surface, represented by Ptera's zero-camber adapter."
+  },
+  "evidence_roles": {
+    "Figure_11": "numerical UVLM method audit; not experiment",
+    "Figure_14": "Scherer 1968 experimental cycle-mean thrust benchmark"
+  },
+  "profile_drag_policy": {
+    "main": 0.057,
+    "main_source": "Izraelevitz 2017 Figure-14 implementation text",
+    "fixed_sensitivity": 0.027,
+    "sensitivity_source": "Scherer 1968 static foil tests",
+    "selection_by_observation_error": false
+  },
+  "condition_count": 12,
+  "experimental_observation_count": 14,
+  "audit": {
+    "theta_15_psi_15": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 15.0,
+        "ptera_pitch_phase_deg": 105.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 37.69698066977656,
+      "mean_global_separation_fraction": 0.7111597583324027,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.3151244611902669,
+          "fluxv_periodic_v1": -0.1704497596567224,
+          "fluxv_periodic_v2": -0.1704497596567224,
+          "one_state_ullt_local": 0.30332314782271724
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.2845680223519263,
+          "fluxv_periodic_v1": -0.20100619849506304,
+          "fluxv_periodic_v2": -0.20100619849506304,
+          "one_state_ullt_local": 0.2727667089843766
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.25061642364265885,
+          "fluxv_periodic_v1": -0.23495779720433044,
+          "fluxv_periodic_v2": -0.23495779720433044,
+          "one_state_ullt_local": 0.2388151102751092
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_15_psi_30": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 30.0,
+        "ptera_pitch_phase_deg": 120.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 34.301430094738144,
+      "mean_global_separation_fraction": 0.6751316070558646,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.30129118308639147,
+          "fluxv_periodic_v1": -0.07702288282477257,
+          "fluxv_periodic_v2": -0.07702288282477257,
+          "one_state_ullt_local": 0.29010844616375253
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.27083315191112295,
+          "fluxv_periodic_v1": -0.10748091400004106,
+          "fluxv_periodic_v2": -0.10748091400004106,
+          "one_state_ullt_local": 0.25965041498848407
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.23699089504971355,
+          "fluxv_periodic_v1": -0.1413231708614505,
+          "fluxv_periodic_v2": -0.1413231708614505,
+          "one_state_ullt_local": 0.22580815812707464
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_15_psi_45": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 45.0,
+        "ptera_pitch_phase_deg": 135.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 30.550114837450984,
+      "mean_global_separation_fraction": 0.6255623246647377,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.2876312782178331,
+          "fluxv_periodic_v1": 0.010354560377077913,
+          "fluxv_periodic_v2": 0.010354560377077913,
+          "one_state_ullt_local": 0.2756571380048866
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.2573284343164551,
+          "fluxv_periodic_v1": -0.019948283524300076,
+          "fluxv_periodic_v2": -0.019948283524300076,
+          "one_state_ullt_local": 0.24535429410350862
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.22365860775936844,
+          "fluxv_periodic_v1": -0.053618110081386734,
+          "fluxv_periodic_v2": -0.053618110081386734,
+          "one_state_ullt_local": 0.21168446754642195
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_15_psi_60": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 60.0,
+        "ptera_pitch_phase_deg": 150.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 26.564623396325214,
+      "mean_global_separation_fraction": 0.5554187868504087,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.2755381753570396,
+          "fluxv_periodic_v1": 0.08717101000564546,
+          "fluxv_periodic_v2": 0.08717101000564546,
+          "one_state_ullt_local": 0.26113238138996564
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.24543789451734713,
+          "fluxv_periodic_v1": 0.057070729165953016,
+          "fluxv_periodic_v2": 0.057070729165953016,
+          "one_state_ullt_local": 0.23103210055027315
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.21199313802880002,
+          "fluxv_periodic_v1": 0.02362597267740586,
+          "fluxv_periodic_v2": 0.02362597267740586,
+          "one_state_ullt_local": 0.19758734406172604
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_15_psi_75": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 75.0,
+        "ptera_pitch_phase_deg": 165.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 22.52248325886731,
+      "mean_global_separation_fraction": 0.4498818757474403,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.2661591867961337,
+          "fluxv_periodic_v1": 0.1521005393694211,
+          "fluxv_periodic_v2": 0.1521005393694211,
+          "one_state_ullt_local": 0.24766822715037706
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.2362965217894422,
+          "fluxv_periodic_v1": 0.12223787436272958,
+          "fluxv_periodic_v2": 0.12223787436272958,
+          "one_state_ullt_local": 0.21780556214368554
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.20311578289311827,
+          "fluxv_periodic_v1": 0.08905713546640565,
+          "fluxv_periodic_v2": 0.08905713546640565,
+          "one_state_ullt_local": 0.18462482324736162
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_15_psi_90": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 90.0,
+        "ptera_pitch_phase_deg": 180.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 18.818952599217297,
+      "mean_global_separation_fraction": 0.23789205504104383,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.26024057692522434,
+          "fluxv_periodic_v1": 0.21551407610654788,
+          "fluxv_periodic_v2": 0.21551407610654788,
+          "one_state_ullt_local": 0.2362556093416525
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.23063573664393675,
+          "fluxv_periodic_v1": 0.18590923582526028,
+          "fluxv_periodic_v2": 0.18590923582526028,
+          "one_state_ullt_local": 0.2066507690603649
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.1977414696647283,
+          "fluxv_periodic_v1": 0.1530149688460518,
+          "fluxv_periodic_v2": 0.1530149688460518,
+          "one_state_ullt_local": 0.17375650208115645
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_15_psi_105": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 15.0,
+        "phase_offset_deg": 105.0,
+        "ptera_pitch_phase_deg": -165.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 16.24830764193115,
+      "mean_global_separation_fraction": 0.026557844541448522,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.25806054344467205,
+          "fluxv_periodic_v1": 0.2541999010380164,
+          "fluxv_periodic_v2": 0.2541999010380164,
+          "one_state_ullt_local": 0.22764930161264577
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.22871695779336035,
+          "fluxv_periodic_v1": 0.22485631538670464,
+          "fluxv_periodic_v2": 0.22485631538670464,
+          "one_state_ullt_local": 0.19830571596133406
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.1961129737363473,
+          "fluxv_periodic_v1": 0.19225233132969163,
+          "fluxv_periodic_v2": 0.19225233132969163,
+          "one_state_ullt_local": 0.16570173190432105
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_25_psi_45": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 25.0,
+        "phase_offset_deg": 45.0,
+        "ptera_pitch_phase_deg": 135.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 34.25255617631819,
+      "mean_global_separation_fraction": 0.647461060463379,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.18498643998481784,
+          "fluxv_periodic_v1": -0.16249850625141368,
+          "fluxv_periodic_v2": -0.16249850625141368,
+          "one_state_ullt_local": 0.19273149633376987
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.15405596132949498,
+          "fluxv_periodic_v1": -0.19342898490673655,
+          "fluxv_periodic_v2": -0.19342898490673655,
+          "one_state_ullt_local": 0.16180101767844704
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.11968876282358074,
+          "fluxv_periodic_v1": -0.2277961834126508,
+          "fluxv_periodic_v2": -0.2277961834126508,
+          "one_state_ullt_local": 0.1274338191725328
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_25_psi_60": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 25.0,
+        "phase_offset_deg": 60.0,
+        "ptera_pitch_phase_deg": 150.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 28.499100668536204,
+      "mean_global_separation_fraction": 0.5532785889071417,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.16154456090673008,
+          "fluxv_periodic_v1": -0.04052837685475936,
+          "fluxv_periodic_v2": -0.04052837685475936,
+          "one_state_ullt_local": 0.16639571459664063
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.13093684769518277,
+          "fluxv_periodic_v1": -0.07113609006630665,
+          "fluxv_periodic_v2": -0.07113609006630665,
+          "one_state_ullt_local": 0.1357880013850933
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.09692827746013025,
+          "fluxv_periodic_v1": -0.10514466030135917,
+          "fluxv_periodic_v2": -0.10514466030135917,
+          "one_state_ullt_local": 0.10177943115004079
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_25_psi_75": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 25.0,
+        "phase_offset_deg": 75.0,
+        "ptera_pitch_phase_deg": 165.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 22.201612146111064,
+      "mean_global_separation_fraction": 0.38082374420493503,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.14339793219004904,
+          "fluxv_periodic_v1": 0.05707108962181235,
+          "fluxv_periodic_v2": 0.05707108962181235,
+          "one_state_ullt_local": 0.14265645174132938
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.11317011998396657,
+          "fluxv_periodic_v1": 0.02684327741572988,
+          "fluxv_periodic_v2": 0.02684327741572988,
+          "one_state_ullt_local": 0.11242863953524691
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.07958366197720826,
+          "fluxv_periodic_v1": -0.006743180591028429,
+          "fluxv_periodic_v2": -0.006743180591028429,
+          "one_state_ullt_local": 0.0788421815284886
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_25_psi_90": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 25.0,
+        "phase_offset_deg": 90.0,
+        "ptera_pitch_phase_deg": 180.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 15.43449585693711,
+      "mean_global_separation_fraction": 0.0014710029292303519,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.13202576872109323,
+          "fluxv_periodic_v1": 0.1318605762748654,
+          "fluxv_periodic_v2": 0.1318605762748654,
+          "one_state_ullt_local": 0.12336195215639635
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.10221316371307956,
+          "fluxv_periodic_v1": 0.10204797126685172,
+          "fluxv_periodic_v2": 0.10204797126685172,
+          "one_state_ullt_local": 0.09354934714838269
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.06908804703750882,
+          "fluxv_periodic_v1": 0.06892285459128097,
+          "fluxv_periodic_v2": 0.06892285459128097,
+          "one_state_ullt_local": 0.06042423047281193
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    },
+    "theta_25_psi_105": {
+      "movement": {
+        "case_id": "izraelevitz2017_fig14_scherer_experiment",
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_cycle": 128.0,
+        "requested_steps_per_cycle": 128,
+        "cycles": 4,
+        "max_wake_cycles": 2,
+        "theta_max_deg": 25.0,
+        "phase_offset_deg": 105.0,
+        "ptera_pitch_phase_deg": -165.0,
+        "pivot_fraction_chord": 0.75,
+        "heave_law": "z=h*cos(omega*t)",
+        "pitch_law": "theta=theta_max*cos(omega*t+psi)",
+        "profile_drag_coefficient": 0.057,
+        "airfoil_adapter": "zero-camber Ptera mean surface for Scherer NACA 63A015; UVLM does not represent symmetric-section thickness",
+        "tip_shape_adapter": "rectangular tip; Scherer reports slightly rounded tips",
+        "profile_drag_source_conflict": "main Cd0=0.057 follows Izraelevitz Figure 14; fixed sensitivity Cd0=0.027 follows Scherer 1968 static tests"
+      },
+      "cycle_step_range": [
+        384,
+        511
+      ],
+      "output_samples": 128,
+      "max_abs_quarter_chord_alpha_deg": 8.525400877744719,
+      "mean_global_separation_fraction": 0.0,
+      "profile_drag_sensitivity_CT": {
+        "0.000": {
+          "fluxv_uvpm": 0.1278679551396267,
+          "fluxv_periodic_v1": 0.1278679551396267,
+          "fluxv_periodic_v2": 0.1278679551396267,
+          "one_state_ullt_local": 0.10981667430394904
+        },
+        "0.027": {
+          "fluxv_uvpm": 0.09848009819424716,
+          "fluxv_periodic_v1": 0.09848009819424716,
+          "fluxv_periodic_v2": 0.09848009819424716,
+          "one_state_ullt_local": 0.08042881735856948
+        },
+        "0.057": {
+          "fluxv_uvpm": 0.0658269238104921,
+          "fluxv_periodic_v1": 0.0658269238104921,
+          "fluxv_periodic_v2": 0.0658269238104921,
+          "one_state_ullt_local": 0.04777564297481443
+        }
+      },
+      "v1_component_identity_max_abs_n": 0.0
+    }
+  },
+  "environment": {
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "numpy": "2.4.6"
+  },
+  "source_sha256": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig14_digitized.csv": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf",
+    "platform/forward_flight_benchmarks/run_izraelevitz_scherer_experiment.py": "255b32d2248e60ce781a5455fec54f940e17653b5a02078767c37be211b8618b",
+    "platform/forward_flight_benchmarks/cases.py": "56ae0b20c247d2dac822a1ebb9332bdae24367c76bc4fd3f7783729baace33a9",
+    "platform/forward_flight_benchmarks/ptera_adapter.py": "c1122aab49867a5968bdaeb15556d737be2a22c8eba1252cc71f6f0c6f1f81a9",
+    "platform/forward_flight_benchmarks/augmented_uvpm.py": "8e2836747e95ebba71b76db03c994bae07e583f14270c76f657632aa52af01d1",
+    "platform/forward_flight_benchmarks/ullt_attached.py": "f9558d0f3f1e4cf3606e8588fcd19040410e9ebe7b53c0cba00912cb0d597197",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "3e26056c621737be81f9609a9d45645857fd60f26a605f55f794d57e9d282c9f"
+  },
+  "result_sha256": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/mean_thrust_vs_phase.csv": "045117c0ebea9484d6be4aa7ef2c19825731daa9a5aa8641341bc56b77b8fcd7",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/accuracy_metrics.csv": "31a785626a4c6a4f9ff46784e76f9cb859d7bdb094310fabbd5869af4160763d",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/profile_drag_sensitivity.csv": "28b0633a10a174e73e77a76f6f1cfd9d68cd51d967e2bbdee6f1c26528b266ef",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/run.log": "5c04c67a2c7d0c98499d94bab1d9f887d52b6d32f919a889b9e281245033d37b"
+  },
+  "limitations": [
+    "Figure 14 publishes cycle-mean thrust only, not experimental phase loads.",
+    "Experimental markers and error bars are digitized from vector artwork.",
+    "Scherer reports slightly rounded tips; the local UVLM uses rectangular tips.",
+    "The periodic v1/v2 upgrade remains exploratory/post-hoc and is not an online causal solver."
+  ]
+}

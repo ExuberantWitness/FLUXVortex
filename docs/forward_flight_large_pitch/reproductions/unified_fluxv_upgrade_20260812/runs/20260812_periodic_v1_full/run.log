@@ -1,0 +1,7 @@
+Yang AoA=0: L=0.1836 gf, D=-2.2065 gf, runtime=9.11s
+Yang AoA=5: L=12.5035 gf, D=-0.8728 gf, runtime=8.87s
+Yang AoA=10: L=24.1572 gf, D=3.2369 gf, runtime=8.85s
+Yang AoA=15: L=34.6339 gf, D=9.8207 gf, runtime=8.86s
+Yang AoA=20: L=43.5063 gf, D=18.2628 gf, runtime=8.80s
+Yang AoA=25: L=50.2816 gf, D=28.6161 gf, runtime=8.85s
+Izraelevitz Fig11: mean CT=0.410293, runtime=1.80s
