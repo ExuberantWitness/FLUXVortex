@@ -39,33 +39,56 @@ from flap_ldvm import _induced_many
 
 
 class LDVM2D:
-    def __init__(self, U=1.0, c=1.0, ndiv=70, naterm=35, dt=0.015, rho=1.0,
-                 lesp_crit=0.11, camber_m=0.0, camber_p=0.40, pivot_xc=0.0,
-                 core_rc=0.02, max_wake=100000):
+    def __init__(
+        self,
+        U=1.0,
+        c=1.0,
+        ndiv=70,
+        naterm=35,
+        dt=0.015,
+        rho=1.0,
+        lesp_crit=0.11,
+        camber_m=0.0,
+        camber_p=0.40,
+        pivot_xc=0.0,
+        core_rc=0.02,
+        max_wake=100000,
+    ):
         self.U, self.c, self.rho, self.dt = float(U), float(c), float(rho), float(dt)
         self.ndiv, self.naterm = int(ndiv), int(naterm)
         self.lesp_crit = float(lesp_crit)
         self.xp = float(pivot_xc) * self.c
         self.rc = float(core_rc) * self.c
         self.max_wake = int(max_wake)
-        self.th = np.linspace(0.0, np.pi, self.ndiv)                 # incl. endpoints (UNSflow)
+        self.th = np.linspace(0.0, np.pi, self.ndiv)  # incl. endpoints (UNSflow)
         self.xs = 0.5 * self.c * (1.0 - np.cos(self.th))
         xc = self.xs / self.c
         m, p = camber_m, camber_p
-        self.dzc = np.where(xc < p, 2.0 * m / (p * p) * (p - xc),
-                            2.0 * m / ((1.0 - p) ** 2) * (p - xc)) if m > 0 else np.zeros(self.ndiv)
-        self.tx = []; self.ty = []; self.tg = []                     # TEV (ccw = -UNSflow s)
-        self.lx = []; self.ly = []; self.lg = []                     # LEV
+        self.dzc = (
+            np.where(
+                xc < p,
+                2.0 * m / (p * p) * (p - xc),
+                2.0 * m / ((1.0 - p) ** 2) * (p - xc),
+            )
+            if m > 0
+            else np.zeros(self.ndiv)
+        )
+        self.tx = []
+        self.ty = []
+        self.tg = []  # TEV (ccw = -UNSflow s)
+        self.lx = []
+        self.ly = []
+        self.lg = []  # LEV
         self.it = 0
-        self._lev_prev_it = -99                                      # levflag
-        self.gam_lost = 0.0                                          # trimmed circulation sink
-        self._AF_prev = np.zeros(4)                                  # previous POST-LEV A0..A3
-        self.sx = 0.0; self.sy = 0.0                                 # pivot world position
+        self._lev_prev_it = -99  # levflag
+        self.gam_lost = 0.0  # trimmed circulation sink
+        self._AF_prev = np.zeros(4)  # previous POST-LEV A0..A3
+        self.sx = 0.0
+        self.sy = 0.0  # pivot world position
 
     # ---------------------------------------------------------------- helpers
     def _world(self, x):
-        return (self.sx + (x - self.xp) * self._ca,
-                self.sy - (x - self.xp) * self._sa)
+        return (self.sx + (x - self.xp) * self._ca, self.sy - (x - self.xp) * self._sa)
 
     def _a0(self, W):
         return -np.trapezoid(W, self.th) / (np.pi * self.U)
@@ -79,8 +102,14 @@ class LDVM2D:
 
     def _wcol(self, px, py):
         """Downwash column of a unit-ccw vortex at the plate stations (role as in W)."""
-        u, w = _induced_many(self._wx, self._wy, np.array([px]), np.array([py]),
-                             np.array([1.0]), np.array([self.rc]))
+        u, w = _induced_many(
+            self._wx,
+            self._wy,
+            np.array([px]),
+            np.array([py]),
+            np.array([1.0]),
+            np.array([self.rc]),
+        )
         return -(u * self._sa + w * self._ca) + self.dzc * (u * self._ca - w * self._sa)
 
     # ---------------------------------------------------------------- step
@@ -93,18 +122,29 @@ class LDVM2D:
         self.sy += hdot * dt
         self._wx, self._wy = self._world(self.xs)
 
-        tvx = np.array(self.tx); tvy = np.array(self.ty); tvg = np.array(self.tg)
-        lvx = np.array(self.lx); lvy = np.array(self.ly); lvg = np.array(self.lg)
-        rct = np.full(len(tvx), self.rc); rcl = np.full(len(lvx), self.rc)
+        tvx = np.array(self.tx)
+        tvy = np.array(self.ty)
+        tvg = np.array(self.tg)
+        lvx = np.array(self.lx)
+        lvy = np.array(self.ly)
+        lvg = np.array(self.lg)
+        rct = np.full(len(tvx), self.rc)
+        rcl = np.full(len(lvx), self.rc)
 
         # wake-induced velocities at the stations, then downwash (UNSflow update_downwash;
         # hdot UP-positive: +hdot*ca; camber term uses the full local chordwise velocity)
         uu, ww = _induced_many(self._wx, self._wy, tvx, tvy, tvg, rct)
         ul, wl = _induced_many(self._wx, self._wy, lvx, lvy, lvg, rcl)
-        ui = uu + ul; wi = ww + wl
-        W = (-U * sa - ui * sa + hdot * ca - wi * ca
-             - dalpha * (self.xs - self.xp)
-             + self.dzc * (ui * ca + U * ca + hdot * sa - wi * sa))
+        ui = uu + ul
+        wi = ww + wl
+        W = (
+            -U * sa
+            - ui * sa
+            + hdot * ca
+            - wi * ca
+            - dalpha * (self.xs - self.xp)
+            + self.dzc * (ui * ca + U * ca + hdot * sa - wi * sa)
+        )
 
         # fresh TEV: first = TE + (0.5*U*dt, 0); else 1/3 rule (place_tev)
         tex, tey = self._world(c)
@@ -117,15 +157,22 @@ class LDVM2D:
 
         # Kelvin (total form; == UNSflow incremental): -Gamma_b + S_old + gT = 0
         S_old = float(np.sum(tvg) + np.sum(lvg)) + self.gam_lost
-        G0 = self._gamb(W); GT = self._gamb(tcol)
+        G0 = self._gamb(W)
+        GT = self._gamb(tcol)
         gT = (G0 - S_old) / (1.0 - GT)
 
         # PRE-LEV (TEV-only) coefficients -> rates (UNSflow update_a2a3adot semantics)
         W_pre = W + gT * tcol
-        AF_pre = np.array([self._a0(W_pre), self._an(W_pre, 1),
-                           self._an(W_pre, 2), self._an(W_pre, 3)])
+        AF_pre = np.array(
+            [
+                self._a0(W_pre),
+                self._an(W_pre, 1),
+                self._an(W_pre, 2),
+                self._an(W_pre, 3),
+            ]
+        )
         dAF = (AF_pre - self._AF_prev) / dt if self.it > 1 else np.zeros(4)
-        a0 = AF_pre[0]                                               # LESP
+        a0 = AF_pre[0]  # LESP
 
         shed_lev = abs(a0) > self.lesp_crit
         gL = 0.0
@@ -143,13 +190,18 @@ class LDVM2D:
             lcol = self._wcol(nlx, nly)
             # 2x2 (KelvinKutta, linear): Kelvin + A0 pinned at sign(a0)*crit
             GL = self._gamb(lcol)
-            a0T = self._a0(tcol); a0L = self._a0(lcol)
+            a0T = self._a0(tcol)
+            a0L = self._a0(lcol)
             Amat = np.array([[1.0 - GT, 1.0 - GL], [a0T, a0L]])
             rhs = np.array([G0 - S_old, np.sign(a0) * self.lesp_crit - self._a0(W)])
             gT, gL = np.linalg.solve(Amat, rhs)
-            self.lx.append(nlx); self.ly.append(nly); self.lg.append(float(gL))
+            self.lx.append(nlx)
+            self.ly.append(nly)
+            self.lg.append(float(gL))
             self._lev_prev_it = self.it
-        self.tx.append(ntx); self.ty.append(nty); self.tg.append(float(gT))
+        self.tx.append(ntx)
+        self.ty.append(nty)
+        self.tg.append(float(gT))
 
         # final (POST-LEV) downwash, coefficients, and previous-value bookkeeping
         Wt = W + gT * tcol + (gL * lcol if shed_lev else 0.0)
@@ -160,16 +212,28 @@ class LDVM2D:
         gam_th = AF[0] * (1.0 + np.cos(self.th))
         Wn = Wt / U
         for k in range(1, self.naterm + 1):
-            ak = AF[k] if k <= 3 else 2.0 * np.trapezoid(Wn * np.cos(k * self.th), self.th) / np.pi
+            ak = (
+                AF[k]
+                if k <= 3
+                else 2.0 * np.trapezoid(Wn * np.cos(k * self.th), self.th) / np.pi
+            )
             gam_th = gam_th + ak * np.sin(k * self.th) * np.sin(self.th)
         gam_th = gam_th * U * c
-        bv = 0.5 * (gam_th[1:] + gam_th[:-1]) * np.diff(self.th)     # thin-positive segments
-        bx = 0.5 * (self._wx[1:] + self._wx[:-1]); by = 0.5 * (self._wy[1:] + self._wy[:-1])
+        bv = (
+            0.5 * (gam_th[1:] + gam_th[:-1]) * np.diff(self.th)
+        )  # thin-positive segments
+        bx = 0.5 * (self._wx[1:] + self._wx[:-1])
+        by = 0.5 * (self._wy[1:] + self._wy[:-1])
 
         # forces (calc_forces): uind/wind at stations from the FULL wake (incl. fresh)
-        tvx = np.array(self.tx); tvy = np.array(self.ty); tvg = np.array(self.tg)
-        lvx = np.array(self.lx); lvy = np.array(self.ly); lvg = np.array(self.lg)
-        rct = np.full(len(tvx), self.rc); rcl = np.full(len(lvx), self.rc)
+        tvx = np.array(self.tx)
+        tvy = np.array(self.ty)
+        tvg = np.array(self.tg)
+        lvx = np.array(self.lx)
+        lvy = np.array(self.ly)
+        lvg = np.array(self.lg)
+        rct = np.full(len(tvx), self.rc)
+        rcl = np.full(len(lvx), self.rc)
         u2, w2 = _induced_many(self._wx, self._wy, tvx, tvy, tvg, rct)
         u3, w3 = _induced_many(self._wx, self._wy, lvx, lvy, lvg, rcl)
         u_wk = (u2 + u3) * ca - (w2 + w3) * sa
@@ -181,16 +245,23 @@ class LDVM2D:
 
         # convect wake (wakeroll): mutual + bound segments (ccw = -bv), then trim
         nt, nl = len(self.tx), len(self.lx)
-        wxa = np.concatenate([tvx, lvx]); wya = np.concatenate([tvy, lvy])
+        wxa = np.concatenate([tvx, lvx])
+        wya = np.concatenate([tvy, lvy])
         ub, wb = _induced_many(wxa, wya, bx, by, -bv, np.full(len(bv), self.rc))
         ut, wt = _induced_many(wxa, wya, tvx, tvy, tvg, rct)
         ulv, wlv = _induced_many(wxa, wya, lvx, lvy, lvg, rcl)
-        uc = ub + ut + ulv; wc = wb + wt + wlv
+        uc = ub + ut + ulv
+        wc = wb + wt + wlv
         for i in range(nt):
-            self.tx[i] += uc[i] * dt; self.ty[i] += wc[i] * dt
+            self.tx[i] += uc[i] * dt
+            self.ty[i] += wc[i] * dt
         for i in range(nl):
-            self.lx[i] += uc[nt + i] * dt; self.ly[i] += wc[nt + i] * dt
-        for arr_x, arr_y, arr_g in ((self.tx, self.ty, self.tg), (self.lx, self.ly, self.lg)):
+            self.lx[i] += uc[nt + i] * dt
+            self.ly[i] += wc[nt + i] * dt
+        for arr_x, arr_y, arr_g in (
+            (self.tx, self.ty, self.tg),
+            (self.lx, self.ly, self.lg),
+        ):
             if len(arr_x) > self.max_wake:
                 k = len(arr_x) - self.max_wake
                 self.gam_lost += float(np.sum(arr_g[:k]))
@@ -199,9 +270,23 @@ class LDVM2D:
         # cumulative bound circulation up to x_ref (production Hirato-Eq.6 A0-extraction audit)
         xmid = 0.5 * (self.xs[1:] + self.xs[:-1])
         gcum01 = float(np.sum(bv[xmid <= 0.10 * c]))
-        return dict(CLf=cn * ca + cs * sa, CDf=cn * sa - cs * ca, CNf=cn, CSf=cs,
-                    A0=AF[0], AF=AF, dAF=dAF, gamb=float(np.sum(bv)), gcum01=gcum01,
-                    lesp=a0, n_lev=len(self.lx), n_tev=len(self.tx))
+        return dict(
+            CLf=cn * ca + cs * sa,
+            CDf=cn * sa - cs * ca,
+            CNf=cn,
+            CNc=cnc,
+            CNnc=cnnc,
+            CNnonl=nonl,
+            CSf=cs,
+            A0=AF[0],
+            AF=AF,
+            dAF=dAF,
+            gamb=float(np.sum(bv)),
+            gcum01=gcum01,
+            lesp=a0,
+            n_lev=len(self.lx),
+            n_tev=len(self.tx),
+        )
 
 
 if __name__ == "__main__":
@@ -211,10 +296,15 @@ if __name__ == "__main__":
         a = np.radians(ad)
         for it in range(400):
             r = m.step(a, 0.0, 0.0)
-        print(f"a={ad}: CLf={r['CLf']:+.3f} (2pi sa={2*np.pi*np.sin(a):+.3f}, Wagner@t*=6 ~0.91x)"
-              f"  A0={r['A0']:+.4f} (sa={np.sin(a):+.4f})  Gb={r['gamb']:+.4f}", flush=True)
+        print(
+            f"a={ad}: CLf={r['CLf']:+.3f} (2pi sa={2*np.pi*np.sin(a):+.3f}, Wagner@t*=6 ~0.91x)"
+            f"  A0={r['A0']:+.4f} (sa={np.sin(a):+.4f})  Gb={r['gamb']:+.4f}",
+            flush=True,
+        )
     m = LDVM2D(U=1.0, c=1.0, dt=0.015, lesp_crit=99.0)
     for it in range(200):
-        r = m.step(0.0, 0.0, -0.05)                                  # steady plunge DOWN
-    print(f"plunge-down hdot=-0.05: CLf={r['CLf']:+.3f} (expect ~ +2pi*0.05*Wagner=+0.28)",
-          flush=True)
+        r = m.step(0.0, 0.0, -0.05)  # steady plunge DOWN
+    print(
+        f"plunge-down hdot=-0.05: CLf={r['CLf']:+.3f} (expect ~ +2pi*0.05*Wagner=+0.28)",
+        flush=True,
+    )

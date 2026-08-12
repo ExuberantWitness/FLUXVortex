@@ -12,6 +12,17 @@ from .cases import (
     YangCase,
     Yang2025RigidCase,
 )
+from .causal_incidence_owner import (
+    DEFAULT_CAUSAL_OWNER,
+    CausalIncidenceOwnerParameters,
+    causal_incidence_persistence,
+)
+from .ldvm_uvlm_correction import (
+    LDVMSectionSettings,
+    LESPThreshold,
+    project_ldvm_delta_to_finite_wing,
+    run_ldvm_separation_pair,
+)
 from .yang_plev import (
     IMPLEMENTATION_CONVENTIONS,
     MODEL_SCOPE_LIMITATIONS,
@@ -31,6 +42,13 @@ __all__ = [
     "IzraelevitzSchererCase",
     "YangCase",
     "Yang2025RigidCase",
+    "DEFAULT_CAUSAL_OWNER",
+    "CausalIncidenceOwnerParameters",
+    "causal_incidence_persistence",
+    "LDVMSectionSettings",
+    "LESPThreshold",
+    "project_ldvm_delta_to_finite_wing",
+    "run_ldvm_separation_pair",
     "IMPLEMENTATION_CONVENTIONS",
     "MODEL_SCOPE_LIMITATIONS",
     "YANG_2025_PARAMETERS",
