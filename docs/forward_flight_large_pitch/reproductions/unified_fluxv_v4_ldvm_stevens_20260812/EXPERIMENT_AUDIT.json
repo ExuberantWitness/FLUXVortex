@@ -1,0 +1,24 @@
+{
+  "audit_skill": "experiment-audit",
+  "date": "2026-08-13",
+  "auditor": "gpt-5.6-sol-ultra",
+  "review_independence": "same-family",
+  "acceptance_status": "provisional",
+  "overall_verdict": "warn",
+  "integrity_status": "qualified_with_warnings",
+  "summary": "Headline arithmetic and declared hashes pass; evidence scope, weighting sensitivity, post-onset coupling semantics, and incomplete convergence require qualified claims.",
+  "checks": {
+    "gt_provenance": {"status": "warn", "details": "Real digitized experimental GT is identified; source PDFs are not vendored and Figure 11 is numerical."},
+    "score_normalization": {"status": "warn", "details": "No self-normalization; Figure 14 14-marker weighting gives 49.3% improvement versus 36.8% for 12 unique conditions."},
+    "result_existence": {"status": "pass", "details": "All headline values independently recomputed; all declared source/result hashes match."},
+    "dead_code": {"status": "warn", "details": "One shadowed core-ratio setting, a test-only helper, and no end-to-end v4 Figure-11 history."},
+    "scope": {"status": "warn", "details": "Development cases only; no conservative 3-D common wake, full convergence, or untouched confirmation."},
+    "eval_type": "mixed_real_gt_numerical_reference_and_development_proxy"
+  },
+  "claims": [
+    {"id": "aggregate_old_fluxv_improvement", "impact": "supported_with_qualifiers"},
+    {"id": "universal_generalization", "impact": "unsupported"},
+    {"id": "conservative_3d_ldvm_uvlm", "impact": "unsupported"}
+  ],
+  "trace_path": ".aris/traces/experiment-audit/2026-08-13_run01/"
+}

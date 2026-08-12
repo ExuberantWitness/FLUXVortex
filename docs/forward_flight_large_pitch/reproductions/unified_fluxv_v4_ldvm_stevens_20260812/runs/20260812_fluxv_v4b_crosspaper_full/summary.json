@@ -1,0 +1,97 @@
+{
+  "fig11_ldvm_onset_audit": {
+    "branch": "attached_one_state_ullt",
+    "lesp_critical": 0.29,
+    "material_lev_count": 0,
+    "max_abs_pre_cap_lesp": 0.21513035655361562,
+    "shedding_fraction": 0.0
+  },
+  "fig11_no_onset_exact_v2_reference": [
+    {
+      "bias": "-0.002489690750703148",
+      "channel": "lift",
+      "half_amplitude_error": "0.15150466071524704",
+      "mae": "0.11508180957563252",
+      "max_abs_error": "0.33169702422861835",
+      "model": "fluxv_periodic_v2",
+      "model_label": "FluxV augmented v2 (ULLT-state, exploratory)",
+      "negative_peak_phase_error_cycle": "0.0078125",
+      "paper": "izraelevitz2017_fig11",
+      "positive_peak_phase_error_cycle": "0.015625",
+      "prediction_half_amplitude": "5.838721955715247",
+      "range_nrmse": "0.013593997514585843",
+      "reference": "paper_uvlm",
+      "reference_half_amplitude": "5.687217295",
+      "rmse": "0.15462403554627924",
+      "units": "paper_scaled_coefficient"
+    },
+    {
+      "bias": "0.036281832709461094",
+      "channel": "drag",
+      "half_amplitude_error": "-0.06403106754051913",
+      "mae": "0.2024251840090755",
+      "max_abs_error": "0.3746912054304872",
+      "model": "fluxv_periodic_v2",
+      "model_label": "FluxV augmented v2 (ULLT-state, exploratory)",
+      "negative_peak_phase_error_cycle": "0.015625",
+      "paper": "izraelevitz2017_fig11",
+      "positive_peak_phase_error_cycle": "0.0078125",
+      "prediction_half_amplitude": "1.717117967459481",
+      "range_nrmse": "0.06437281011912489",
+      "reference": "paper_uvlm",
+      "reference_half_amplitude": "1.781149035",
+      "rmse": "0.2293151372478351",
+      "units": "paper_scaled_coefficient"
+    }
+  ],
+  "fig14_metrics": {
+    "bias": -0.0016271387469068035,
+    "mae": 0.019783350410798355,
+    "max_abs": 0.05372213118673688,
+    "rmse": 0.02594916701432961
+  },
+  "limitations": [
+    "LDVM wake remains independent 2-D strips, not a coupled 3-D LEV row",
+    "paired LDVM is an additive discrepancy, not a conservative common-wake coupling",
+    "Yang uses nominal four-bar rather than unpublished LDS motion",
+    "LESP mappings are source-derived hypotheses and require new confirmation",
+    "current LDVM time step is a development discretization, not convergence"
+  ],
+  "model_semantics": "phase-resolved causal two-pole incidence owner blends a retained UVLM+paired-LDVM discrepancy branch with a retained UVLM+full-angle-polar persistent branch; one-state ULLT is the separate Figure-11 attached-flow limit",
+  "result_hashes": {
+    "fluxv_v4_yang_fig14_comparison.pdf": "6637e651f599ba35f27f5e17491db681a693e8228d6b64ed0b5cf04a299ae403",
+    "fluxv_v4_yang_fig14_comparison.png": "3e07a85b765863683db1654e53944e5e50d15e6cc2f49177d12f0275ab895738",
+    "izraelevitz2017_fig14_v4_mean_thrust.csv": "d5f4486b6bdcc03024e48d10ac6cb916d6e11c4951ecf77f38f0f783451766be",
+    "yang2025_v4_mean_characteristics.csv": "4ffe759e9fe23f0eede5c77b94bc4b0a2e7a25cede2dce7f6bcba0e5bd92771a"
+  },
+  "run_id": "20260812_fluxv_v4b_crosspaper_full",
+  "source_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/accuracy_metrics.csv": "89e0ab7499e42ce55103bb5be57784be35c7df8d466e3477c2423b1cfd163050",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/yang2025_mean_characteristics.csv": "3f51c58c051436ef93e87fa7164eff004693d98ec1f2f468420f665c251ba7a1",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_periodic_v2_ullt_full/yang2025_phase_histories.csv": "34e7f1d3d0a4f03d73e2dc2a5ed7d4d8c9f14ee91d34c0770552cf59fe5706fb",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/runs/20260812_scherer_fig14_experiment_full/mean_thrust_vs_phase.csv": "045117c0ebea9484d6be4aa7ef2c19825731daa9a5aa8641341bc56b77b8fcd7",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig14_digitized.csv": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/source_data/izraelevitz2017_fig14_local_phase_cache.csv": "e64c67eec46f32caefd2712753084963fb867f30b661b18fb71aeae95837b8b8",
+    "platform/forward_flight_benchmarks/causal_incidence_owner.py": "1fdfba4c3a270f2cddf18cd43cd7de0c7c691dddd4c7c971faf8e12072c9b901",
+    "platform/forward_flight_benchmarks/ldvm_uvlm_correction.py": "d72d794242ab702bcd95ab1f5aaf6e623a87722eb1474f073124f6f60031db13",
+    "platform/forward_flight_benchmarks/run_v4_crosspaper.py": "1b227af5ef03959b39ba8150fa0d066e33be5cda14db1133b32dcd5998590667",
+    "platform/ldvm_fourier.py": "bf81c46e10f70c005cdde0a79c180592305334469d3f1c1c45282b265f81030d"
+  },
+  "status": "development_mechanism_diagnostic",
+  "steps_per_cycle": 256,
+  "yang_metrics": {
+    "drag": {
+      "bias": -2.3921235804549537,
+      "mae": 2.643997473596851,
+      "max_abs": 5.025842113635248,
+      "rmse": 2.94815530552663
+    },
+    "lift": {
+      "bias": -2.7451642174907653,
+      "mae": 4.554509816656029,
+      "max_abs": 8.368361402092152,
+      "rmse": 5.239584000138488
+    }
+  },
+  "yang_strip_count": 12
+}

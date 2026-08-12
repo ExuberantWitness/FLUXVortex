@@ -1,0 +1,180 @@
+{
+  "run_id": "20260812_stevens2017_v4b_full",
+  "status": "complete",
+  "quality": "full",
+  "started_at_utc": "2026-08-12T15:47:30.559073+00:00",
+  "finished_at_utc": "2026-08-12T16:18:04.935942+00:00",
+  "runtime_s": 1834.3768695219987,
+  "canonical_command": "PYTHONPATH=platform:src NUMBA_DISABLE_JIT=1 python -m forward_flight_benchmarks.run_stevens2017_benchmark --quality full --output docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/runs/20260812_stevens2017_v4b_full",
+  "argv": [
+    "/tmp/fluxv-v4-ldvm-stevens/platform/forward_flight_benchmarks/run_stevens2017_benchmark.py",
+    "--quality",
+    "full",
+    "--output",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/runs/20260812_stevens2017_v4b_full"
+  ],
+  "environment": {
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "randomness": "none"
+  },
+  "case": {
+    "case_id": "stevens2017_pitching_flat_plate",
+    "chord_m": 0.12,
+    "effective_aspect_ratio": 4.0,
+    "thickness_fraction": 0.025,
+    "reynolds": 10000.0,
+    "freestream_m_s": 0.08,
+    "rho_kg_m3": 998.0,
+    "maximum_pitch_deg": 45.0,
+    "reduced_pitch_rate": 0.39269908169872414,
+    "eldredge_smoothing": 11.0,
+    "warmup_chords": 2.0,
+    "observation_chords": 5.0,
+    "waveform_period_chords": 12.0,
+    "span_m": 0.48,
+    "semispan_m": 0.24,
+    "area_m2": 0.0576,
+    "nu_m2_s": 9.6e-07,
+    "convective_time_s": 1.5,
+    "pitch_rate_rad_s": 0.5235987755982989,
+    "waveform_period_s": 18.0,
+    "dimensional_speed_provenance": "U=0.080 m/s is the similarity speed implied by the reported wind-off alpha_dot=0.523 rad/s and k=0.392; the inviscid coefficient prediction depends on k, not on this scale choice."
+  },
+  "axes": [
+    {
+      "axis": "leading_edge_axis",
+      "pivot_fraction_chord": 0.0
+    },
+    {
+      "axis": "mid_chord_axis",
+      "pivot_fraction_chord": 0.5
+    }
+  ],
+  "experimental_contract": {
+    "source": "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/source_data/stevens2017_fig21_experiment_digitized.csv",
+    "source_figure": 21,
+    "observed_channels": [
+      "CL"
+    ],
+    "experimental_drag_available": false,
+    "drag_metrics_computed": false,
+    "digitization_sha256": "793c3c2af626de1f8e46e788e814f4735c903d3dfb198cd5e5257964fdac51fa",
+    "sample_count_per_axis": 501,
+    "statistical_independence_claimed": false
+  },
+  "scoring_windows": [
+    {
+      "name": "primary_0_to_5",
+      "start_s_over_c": 0.0,
+      "end_s_over_c": 5.0,
+      "primary": true
+    },
+    {
+      "name": "startup_sensitivity_0p05_to_5",
+      "start_s_over_c": 0.05,
+      "end_s_over_c": 5.0,
+      "primary": false
+    }
+  ],
+  "no_experiment_parameter_tuning": {
+    "enforced_for_threshold": true,
+    "execution_order": "both model predictions completed before CSV load",
+    "ldvm_threshold_selection": "single frozen lesp_critical=0.11 inherited from the pre-existing ldvm_fourier.py diagnostic default; no Stevens sweep or fit",
+    "development_disclosure": "the additive separated-minus-attached architecture was evaluated after the first old/LDVM smoke comparison; Stevens is therefore a development transfer test, not an untouched confirmation set"
+  },
+  "models": {
+    "fluxv_old": {
+      "role": "baseline_prediction",
+      "semantics": "unmodified FluxV UVPMHybridSolver load channel: prescribed-wake Ptera UVLM; VPM particles are one-way and do not feed back into loads"
+    },
+    "ldvm_diagnostic": {
+      "role": "diagnostic_only",
+      "lesp_critical": 0.11,
+      "steps_per_chord": 96,
+      "semantics": "clean-room Ramesh LDVM v2.5 two-dimensional section dynamics, integrated as independent strips with a Prandtl slope ratio; this is not a three-dimensional LDVM or the final UVLM-coupled model",
+      "not_claimed": "three-dimensional LDVM or UVLM-coupled production model"
+    },
+    "fluxv_v4_ldvm_increment": {
+      "role": "development_prediction",
+      "lesp_critical": 0.11,
+      "semantics": "FluxV v4 diagnostic: retained finite-wing UVLM plus causal clean-room Ramesh LDVM separated-minus-attached increment; normal force scales with g and quadratic axial suction with g^2",
+      "uvlm_retained": true,
+      "not_claimed": "fully coupled three-dimensional material-LEV wake or an independent held-out confirmation"
+    }
+  },
+  "prediction_audit": {
+    "leading_edge_axis": {
+      "pivot_fraction_chord": 0.0,
+      "movement": {
+        "case_id": "stevens2017_pitching_flat_plate",
+        "pivot_fraction_chord": 0.0,
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_chord": 64,
+        "num_steps": 449,
+        "delta_time_s": 0.0234375,
+        "pitch_trigger_step": 128,
+        "max_wake_rows": 384,
+        "airfoil_adapter": "zero-camber NACA0012 mean surface for the 2.5%-thick rounded-LE carbon plate; thickness and exact LE radius are not represented",
+        "symmetry_adapter": "Ptera symmetric full wing represents the skim-plate mirror of the physical half-wing; reference area is the effective full-wing area",
+        "motion": "Wang-Eldredge a_s=11 pitch-up over one convected chord; distant periodic closure lies outside the scored 0<=s/c<=5 window"
+      },
+      "fluxv_old_runtime_s": 910.9082485670006,
+      "ldvm_diagnostic_runtime_s": 6.649486239999533,
+      "fluxv_old_particle_count": 8597
+    },
+    "mid_chord_axis": {
+      "pivot_fraction_chord": 0.5,
+      "movement": {
+        "case_id": "stevens2017_pitching_flat_plate",
+        "pivot_fraction_chord": 0.5,
+        "grid_chord_semispan": [
+          4,
+          12
+        ],
+        "steps_per_chord": 64,
+        "num_steps": 449,
+        "delta_time_s": 0.0234375,
+        "pitch_trigger_step": 128,
+        "max_wake_rows": 384,
+        "airfoil_adapter": "zero-camber NACA0012 mean surface for the 2.5%-thick rounded-LE carbon plate; thickness and exact LE radius are not represented",
+        "symmetry_adapter": "Ptera symmetric full wing represents the skim-plate mirror of the physical half-wing; reference area is the effective full-wing area",
+        "motion": "Wang-Eldredge a_s=11 pitch-up over one convected chord; distant periodic closure lies outside the scored 0<=s/c<=5 window"
+      },
+      "fluxv_old_runtime_s": 909.7561581659975,
+      "ldvm_diagnostic_runtime_s": 6.705672967997089,
+      "fluxv_old_particle_count": 8501
+    }
+  },
+  "limitations": [
+    "Figure 21 publishes lift only; predicted CD has no experimental target",
+    "501 curve samples are interpolated and correlated, not independent repeats",
+    "the LE-axis startup impulse is digitization/filter sensitive",
+    "LDVM diagnostic uses independent 2-D sections and a Prandtl slope ratio",
+    "UVLM mean-surface geometry omits the exact rounded-leading-edge section"
+  ],
+  "source_hashes": {
+    "platform/forward_flight_benchmarks/run_stevens2017_benchmark.py": "0e0aa6f903f697908863667c3a18bbba5d0720dce03b34cfa10269f41e9b300f",
+    "platform/forward_flight_benchmarks/stevens2017.py": "564ec631a9f9810b2ec6b03a2bf33c2441f1a585f3479f826e630e6485613416",
+    "platform/ldvm_fourier.py": "bf81c46e10f70c005cdde0a79c180592305334469d3f1c1c45282b265f81030d",
+    "platform/forward_flight_benchmarks/ldvm_uvlm_correction.py": "d72d794242ab702bcd95ab1f5aaf6e623a87722eb1474f073124f6f60031db13",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/source_data/stevens2017_fig21_experiment_digitized.csv": "793c3c2af626de1f8e46e788e814f4735c903d3dfb198cd5e5257964fdac51fa"
+  },
+  "result_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/runs/20260812_stevens2017_v4b_full/stevens2017_lift_histories.csv": "9d31a9f5e2357e2381bd4e2a5758f3fc596b8c7c6e782f75fac84671cb8a5003",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/runs/20260812_stevens2017_v4b_full/stevens2017_lift_metrics.csv": "2d0f861fc738c430c6d4ab344fd760f39299a0f9078c1d80ee0456ede2f73cca",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/runs/20260812_stevens2017_v4b_full/figures/stevens2017_lift_comparison.png": "a9ba118730604f685da41e94fbcb416981495532163a800c2d29492aa37839eb",
+    "docs/forward_flight_large_pitch/reproductions/unified_fluxv_v4_ldvm_stevens_20260812/runs/20260812_stevens2017_v4b_full/figures/stevens2017_lift_comparison.pdf": "2784d1d362ecd3ebd28158a770143896af99ddf8bd56cad9828f4e8a46a39a57"
+  },
+  "headline_primary_lift_rmse": {
+    "leading_edge_axis:fluxv_old": 1.054040880192652,
+    "leading_edge_axis:fluxv_v4_ldvm_increment": 0.8591820107027733,
+    "leading_edge_axis:ldvm_diagnostic": 0.9428770084570923,
+    "mid_chord_axis:fluxv_old": 0.5471821716717927,
+    "mid_chord_axis:fluxv_v4_ldvm_increment": 0.4394104803488893,
+    "mid_chord_axis:ldvm_diagnostic": 1.0207245469636168
+  }
+}
