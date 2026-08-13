@@ -1,5 +1,14 @@
 """Rigid forward-flight benchmarks reconstructed from published papers."""
 
+from .baik2012 import (
+    BAIK_2012_CASES,
+    Baik2012Case,
+    apply_declared_v4b_transfer,
+    baik_kinematics,
+    build_baik_movement,
+    run_baik_old_fluxv,
+    sharp_fourier_lowpass,
+)
 from .cases import (
     IZRAELEVITZ_2017,
     IZRAELEVITZ_2017_FIG11,
@@ -32,6 +41,13 @@ from .yang_plev import (
 )
 
 __all__ = [
+    "BAIK_2012_CASES",
+    "Baik2012Case",
+    "apply_declared_v4b_transfer",
+    "baik_kinematics",
+    "build_baik_movement",
+    "run_baik_old_fluxv",
+    "sharp_fourier_lowpass",
     "IZRAELEVITZ_2017",
     "IZRAELEVITZ_2017_FIG11",
     "IZRAELEVITZ_2017_FIG14_SCHERER",
