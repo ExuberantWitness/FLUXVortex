@@ -1,0 +1,271 @@
+{
+  "case": {
+    "area_m2": 0.045599999999999995,
+    "case_id": "W2",
+    "chord_m": 0.076,
+    "effective_alpha_amplitude_deg": 14.0,
+    "experimental_filter_harmonic": 3,
+    "freestream_m_s": 0.067067708335063,
+    "frequency_hz": 0.2808988764044944,
+    "geometric_aspect_ratio": 7.894736842105263,
+    "heave_to_chord": 0.5,
+    "implemented_pitch_amplitude_deg": 33.75595383033294,
+    "kinematic_strouhal": 0.3183098861837907,
+    "mean_alpha_deg": 8.0,
+    "nu_m2_s": 1.0194291666929575e-06,
+    "peak_plunge_induced_alpha_deg": 47.75595383033294,
+    "period_s": 3.56,
+    "pitch_amplitude_deg": 33.73,
+    "pivot_fraction_chord": 0.25,
+    "published_pitch_amplitude_rounding_delta_deg": 0.02595383033294496,
+    "reduced_frequency": 1.0,
+    "reynolds": 5000.0,
+    "rho_kg_m3": 998.2,
+    "rounded_leading_edge_radius_m": 0.002375,
+    "rounded_trailing_edge_radius_m": 0.002375,
+    "span_m": 0.6,
+    "strouhal": 0.32,
+    "thickness_m": 0.00475,
+    "thickness_to_chord": 0.0625
+  },
+  "ldvm_settings": [
+    {
+      "configuration": "time_64",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "uvlm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 256,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "reference",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "uvlm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 256,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "span_12",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "uvlm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 256,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "cycles_4",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "uvlm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 256,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "ldvm_time_256",
+      "delta_time_convective": 0.01227184630308513,
+      "family": "ldvm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 256,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 256,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "reference",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "ldvm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 256,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "wake_128",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "ldvm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 128,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    },
+    {
+      "configuration": "wake_384",
+      "delta_time_convective": 0.006135923151542565,
+      "family": "ldvm_single_factor",
+      "integration_cycles": 3,
+      "integration_steps_per_cycle": 512,
+      "section": {
+        "attached_lesp_critical": 1000000.0,
+        "core_radius_chord": 0.02,
+        "core_radius_time_step_ratio": 1.3,
+        "max_wake_steps": 384,
+        "naterm": 14,
+        "ndiv": 32
+      }
+    }
+  ],
+  "provenance": {
+    "completed_at_utc": "2026-08-13T15:20:46.637680+00:00",
+    "environment": {
+      "package_versions": {
+        "fluxvortex": "0.9.0",
+        "matplotlib": "3.10.9",
+        "numba": "0.65.1",
+        "numpy": "2.4.6",
+        "pterasoftware": "5.0.0",
+        "scipy": "1.17.1"
+      },
+      "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+      "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+    },
+    "git": {
+      "available": true,
+      "branch": "agent/fluxv-v4b-baik-2012",
+      "dirty": true,
+      "revision": "a3453cfa3aee0a240448e6aee75b061a7dab6d9a",
+      "status_entry_count": 56,
+      "status_porcelain": [
+        " M platform/forward_flight_benchmarks/__init__.py",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/CHECKLIST.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/NUMERICAL_SENSITIVITY.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/PLAN.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/SOURCE_AUDIT.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/SUMMARY_REPORT_ZH.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/USAGE.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/accuracy_metrics.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filter_diagnostic.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filter_diagnostic.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filtered_old_v4b.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filtered_old_v4b.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/model_phase_histories.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/scored_phase_samples.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/accuracy_metrics.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/baik2012_w1_w4_filter_diagnostic.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/baik2012_w1_w4_filter_diagnostic.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/baik2012_w1_w4_filtered_old_v4b.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/baik2012_w1_w4_filtered_old_v4b.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/model_phase_histories.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/scored_phase_samples.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/accuracy_metrics.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filter_diagnostic.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filter_diagnostic.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filtered_old_v4b.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filtered_old_v4b.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/model_phase_histories.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/scored_phase_samples.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_ldvm_controlled/w2_ldvm_controlled_sensitivity.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_ldvm_controlled_reproducible/w2_ldvm_controlled_sensitivity.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_one_factor/w2_one_factor_sensitivity.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/DIGITIZATION_AND_PROVENANCE.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig524_527_digitization_overlay.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig528_531_theodorsen_lift_markers.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig528_531_theodorsen_marker_overlay.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd_source_pixels.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extract_baik2012_fig524_527.py",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extract_baik2012_fig528_531_theodorsen.py",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-000.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-001.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-002.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-003.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-000.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-001.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-002.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-003.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-004.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-005.jpg",
+        "?? platform/forward_flight_benchmarks/baik2012.py",
+        "?? platform/forward_flight_benchmarks/run_baik2012_benchmark.py",
+        "?? platform/forward_flight_benchmarks/run_baik2012_ldvm_sensitivity.py",
+        "?? platform/forward_flight_benchmarks/run_baik2012_sensitivity.py",
+        "?? platform/forward_flight_benchmarks/run_provenance.py",
+        "?? platform/tests/test_baik2012.py",
+        "?? platform/tests/test_baik2012_run_provenance.py"
+      ],
+      "status_porcelain_sha256": "6505dbad862675a0b0751509f4bc89aee75ebc6b3d8264b682cce2696a152717"
+    },
+    "invocation": {
+      "argv": [
+        "/tmp/fluxv-v4b-baik/platform/forward_flight_benchmarks/run_baik2012_sensitivity.py",
+        "--output-dir",
+        "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_one_factor_reproducible"
+      ],
+      "executable": "/home/exuber/anaconda3/envs/fluxvortex/bin/python",
+      "parsed_arguments": {
+        "allow_existing_output": false,
+        "output_dir": "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_one_factor_reproducible",
+        "resolved_output_dir": "/tmp/fluxv-v4b-baik/docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_one_factor_reproducible"
+      }
+    },
+    "started_at_utc": "2026-08-13T15:09:52.082067+00:00"
+  },
+  "result_hashes": {
+    "w2_one_factor_sensitivity.csv": "53c72fa08b52474b6612a3ba9417d6adcca1116dbbbbf71d7d4ba83fcbec84b7"
+  },
+  "run_id": "20260813_w2_one_factor_reproducible",
+  "scope": "one factor at a time around (4 chord, 8 span, 128 steps/cycle, 3 cycles, LDVM 512 steps/cycle, 256 wake steps)",
+  "source_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd.csv": "4de6b01cd8072959e5b780053f311efa92ab5a94f17940dd122df340ad638f2f",
+    "platform/flap_ldvm.py": "107d83576cad0a2b7b16c8de29a6d3c17b1e1493321fdfec549545a9987e91e1",
+    "platform/forward_flight_benchmarks/baik2012.py": "a8305a6058d02aad12b9acb376b8a38d217789bc767fcc91a15b3fa07434a86d",
+    "platform/forward_flight_benchmarks/cases.py": "56ae0b20c247d2dac822a1ebb9332bdae24367c76bc4fd3f7783729baace33a9",
+    "platform/forward_flight_benchmarks/causal_incidence_owner.py": "1fdfba4c3a270f2cddf18cd43cd7de0c7c691dddd4c7c971faf8e12072c9b901",
+    "platform/forward_flight_benchmarks/ldvm_uvlm_correction.py": "d72d794242ab702bcd95ab1f5aaf6e623a87722eb1474f073124f6f60031db13",
+    "platform/forward_flight_benchmarks/ptera_adapter.py": "c1122aab49867a5968bdaeb15556d737be2a22c8eba1252cc71f6f0c6f1f81a9",
+    "platform/forward_flight_benchmarks/run_baik2012_sensitivity.py": "70bdcf9f50171e91e62317fbb3d5725ce18277d25be24b8de2bbc523fa477061",
+    "platform/forward_flight_benchmarks/run_provenance.py": "d281c6e480c27edeedca48e950e2fb8356e9894ab32756e675e65fa7516d72fa",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "ab8b3cfaf708ce15e32906fcf8ddde0a5b499fe423d1298fac86ea8bd78504cf",
+    "platform/ldvm_fourier.py": "bf81c46e10f70c005cdde0a79c180592305334469d3f1c1c45282b265f81030d",
+    "pyproject.toml": "269ec49f161ed8fc517e07e416706a76b0388f92c3f9d044eddcfcf4355613f3",
+    "src/fluxvortex/kernel.py": "96861ac082b47c830aed11c136648d00d0611ea1cc63c9ba344639e0db706f72",
+    "src/fluxvortex/particles.py": "c4779acc9d20dbad9d5bd6a944de66da5b74e47c2336c8829c1699d5052ee9f4",
+    "src/fluxvortex/solver.py": "1fab59f268a8af1c3935ebd2210012c2f13ab452df210268a5b3fb3324ae3b94"
+  },
+  "warning": "LDVM time refinement holds the configured core radius fixed at rc/c=0.02, but the original ldvm_time_256 row retains twice the physical wake duration; use the controlled sensitivity run for time-refinement claims"
+}

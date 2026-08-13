@@ -1,0 +1,66 @@
+{
+  "acceptance_status": "provisional",
+  "agent_id": "/root/baik_full_audit",
+  "audit_skill": "experiment-audit",
+  "audited_input_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/accuracy_metrics.csv": "sha256:7e4be6b57b33390e2feab2110a06e66947b62e43fea6dc5cb92554505868755b",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/scored_phase_samples.csv": "sha256:66fbff1b6fb922440096dacd60e207f5b6220ef3cebb710dc360d57a60740ff2",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible/summary.json": "sha256:bef53c5ecb0f56adb198e85f240a0bf7adab5ebb1623a2eee9a6f9911ec622b9",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_ldvm_controlled_reproducible/run_manifest.json": "sha256:19ca8fb764070ea0f109d7f36b4d571ffd166aa19af016ecbf1822bc2f6b010e",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_one_factor_reproducible/run_manifest.json": "sha256:010562add11321879c092e38cefb9c6f63408fd3dfa66d10030870dd8f699584",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd.csv": "sha256:4de6b01cd8072959e5b780053f311efa92ab5a94f17940dd122df340ad638f2f"
+  },
+  "auditor": "fresh-same-family-codex-agent",
+  "checks": {
+    "dead_code": {
+      "details": "Production metric/filter/model paths are executed; one historical free-tip object-name warning remains.",
+      "status": "pass"
+    },
+    "eval_type": "real_gt",
+    "gt_provenance": {
+      "details": "Digitized corrected-total direct-force histories from Baik dissertation Figures 5.24--5.27; no model-derived GT.",
+      "status": "pass"
+    },
+    "result_existence": {
+      "details": "52 metric rows and 20800 samples independently recompute; canonical hashes match.",
+      "status": "pass"
+    },
+    "scope": {
+      "details": "Four correlated development conditions; free-tip/thin-surface surrogate and unconverged material wake require qualified claims.",
+      "status": "warn"
+    },
+    "score_normalization": {
+      "details": "Raw coefficient errors; no prediction-derived normalization or phase/amplitude/offset fit.",
+      "status": "pass"
+    }
+  },
+  "claims": [
+    {
+      "id": "C1_reconstruction",
+      "impact": "supported"
+    },
+    {
+      "id": "C2_v4b_improves_frozen_settings",
+      "impact": "supported_with_qualifier"
+    },
+    {
+      "id": "C3_high_accuracy_generalization_convergence",
+      "impact": "unsupported"
+    }
+  ],
+  "date": "2026-08-13",
+  "executor_family": "openai",
+  "executor_model": "codex",
+  "generated_at": "2026-08-13T23:30:00+08:00",
+  "integrity_status": "warn",
+  "overall_verdict": "warn",
+  "reason_code": "qualified_scope_and_numerical_sensitivity",
+  "review_independence": "same-family",
+  "reviewer_family": "openai",
+  "reviewer_model": "inherited-codex-agent",
+  "reviewer_reasoning": "inherited",
+  "summary": "Artifact arithmetic and provenance pass; broad accuracy/generalization claims remain unsupported because boundary-condition and convergence limitations are material.",
+  "trace_path": ".aris/traces/experiment-audit/2026-08-13_run01/",
+  "verdict": "WARN",
+  "verdict_id": "/root/baik_full_audit"
+}

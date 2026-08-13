@@ -1,0 +1,662 @@
+{
+  "aggregate": {
+    "fluxv_old_filtered": {
+      "macro_case_bias_CD": -0.333101530368159,
+      "macro_case_bias_CL": -0.4943512241495659,
+      "macro_case_mae_CD": 0.3539290599288827,
+      "macro_case_mae_CL": 0.5932040240622711,
+      "macro_case_rmse_CD": 0.4072770179039473,
+      "macro_case_rmse_CL": 0.69484037203046
+    },
+    "fluxv_v4b_filtered": {
+      "macro_case_bias_CD": -0.23270043332752377,
+      "macro_case_bias_CL": -0.45456206647319103,
+      "macro_case_mae_CD": 0.29775702781560043,
+      "macro_case_mae_CL": 0.5488634322616158,
+      "macro_case_rmse_CD": 0.34515241896270754,
+      "macro_case_rmse_CL": 0.6575418666678028
+    },
+    "published_standard_theodorsen_digitized": {
+      "macro_case_bias_CL": -0.557095568817336,
+      "macro_case_mae_CL": 0.6654390121905159,
+      "macro_case_rmse_CL": 0.8206244631558031
+    }
+  },
+  "case_manifests": {
+    "W1": {
+      "case": {
+        "area_m2": 0.045599999999999995,
+        "case_id": "W1",
+        "chord_m": 0.076,
+        "effective_alpha_amplitude_deg": 14.0,
+        "experimental_filter_harmonic": 7,
+        "freestream_m_s": 0.0669736442280012,
+        "frequency_hz": 0.1402524544179523,
+        "geometric_aspect_ratio": 7.894736842105263,
+        "heave_to_chord": 0.5,
+        "implemented_pitch_amplitude_deg": 13.18211042886766,
+        "kinematic_strouhal": 0.15915494309189535,
+        "mean_alpha_deg": 8.0,
+        "nu_m2_s": 1.0179993922656183e-06,
+        "peak_plunge_induced_alpha_deg": 27.18211042886766,
+        "period_s": 7.13,
+        "pitch_amplitude_deg": 13.16,
+        "pivot_fraction_chord": 0.25,
+        "published_pitch_amplitude_rounding_delta_deg": 0.022110428867659238,
+        "reduced_frequency": 0.5,
+        "reynolds": 5000.0,
+        "rho_kg_m3": 998.2,
+        "rounded_leading_edge_radius_m": 0.002375,
+        "rounded_trailing_edge_radius_m": 0.002375,
+        "span_m": 0.6,
+        "strouhal": 0.16,
+        "thickness_m": 0.00475,
+        "thickness_to_chord": 0.0625
+      },
+      "filter_maximum_harmonic": 7,
+      "movement": {
+        "actual_steps_per_cycle": 128.0,
+        "airfoil_adapter": "Baik-2012-zero-camber-mean-surface-adapter",
+        "case": {
+          "area_m2": 0.045599999999999995,
+          "case_id": "W1",
+          "chord_m": 0.076,
+          "effective_alpha_amplitude_deg": 14.0,
+          "experimental_filter_harmonic": 7,
+          "freestream_m_s": 0.0669736442280012,
+          "frequency_hz": 0.1402524544179523,
+          "geometric_aspect_ratio": 7.894736842105263,
+          "heave_to_chord": 0.5,
+          "implemented_pitch_amplitude_deg": 13.18211042886766,
+          "kinematic_strouhal": 0.15915494309189535,
+          "mean_alpha_deg": 8.0,
+          "nu_m2_s": 1.0179993922656183e-06,
+          "peak_plunge_induced_alpha_deg": 27.18211042886766,
+          "period_s": 7.13,
+          "pitch_amplitude_deg": 13.16,
+          "pivot_fraction_chord": 0.25,
+          "published_pitch_amplitude_rounding_delta_deg": 0.022110428867659238,
+          "reduced_frequency": 0.5,
+          "reynolds": 5000.0,
+          "rho_kg_m3": 998.2,
+          "rounded_leading_edge_radius_m": 0.002375,
+          "rounded_trailing_edge_radius_m": 0.002375,
+          "span_m": 0.6,
+          "strouhal": 0.16,
+          "thickness_m": 0.00475,
+          "thickness_to_chord": 0.0625
+        },
+        "cycles": 3,
+        "grid_chord_span": [
+          4,
+          8
+        ],
+        "integrated_raw_heave_amplitude_m": 0.037999999558111536,
+        "integrated_to_printed_amplitude_ratio": 0.9999999883713562,
+        "max_wake_cycles": 2,
+        "motion": "theta=-theta0*sin(2*pi*t/T); h_dot/U=-tan(alpha_pl,max*sin(2*pi*t/T)); h(0)=+h0*c",
+        "phase_origin": "upper plunge limit; 0<t/T<0.5 is downstroke",
+        "printed_heave_amplitude_m": 0.038,
+        "requested_steps_per_cycle": 128,
+        "spacing_extrema": [
+          -1.0,
+          1.0
+        ],
+        "span_adapter": "one full 600 mm free-tip surrogate for the wall-to-wall/end-plated quasi-2D experiment; Ptera has no wall-image/endplate boundary",
+        "thickness_limitation": "physical t/c=6.25% rounded plate; UVLM represents only its zero-camber mean surface and cannot resolve thickness/viscous edge effects"
+      },
+      "old_runtime_s": 123.48368695400131,
+      "source_conflict_sensitivity": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.19 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.19
+      },
+      "source_cycle_step_range": [
+        256,
+        383
+      ],
+      "v4b_ldvm_max_wake_steps": 256,
+      "v4b_ldvm_settings": {
+        "delta_time_convective": 0.01227184630308513,
+        "integration_cycles": 3,
+        "integration_steps_per_cycle": 512,
+        "section": {
+          "attached_lesp_critical": 1000000.0,
+          "core_radius_chord": 0.02,
+          "core_radius_time_step_ratio": 1.3,
+          "max_wake_steps": 256,
+          "naterm": 14,
+          "ndiv": 32
+        }
+      },
+      "v4b_ldvm_steps_per_cycle": 512,
+      "v4b_mean_persistence": 0.7695022134227171,
+      "v4b_mean_shedding_fraction": 0.5,
+      "v4b_primary_lesp": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.11 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.11
+      }
+    },
+    "W2": {
+      "case": {
+        "area_m2": 0.045599999999999995,
+        "case_id": "W2",
+        "chord_m": 0.076,
+        "effective_alpha_amplitude_deg": 14.0,
+        "experimental_filter_harmonic": 3,
+        "freestream_m_s": 0.067067708335063,
+        "frequency_hz": 0.2808988764044944,
+        "geometric_aspect_ratio": 7.894736842105263,
+        "heave_to_chord": 0.5,
+        "implemented_pitch_amplitude_deg": 33.75595383033294,
+        "kinematic_strouhal": 0.3183098861837907,
+        "mean_alpha_deg": 8.0,
+        "nu_m2_s": 1.0194291666929575e-06,
+        "peak_plunge_induced_alpha_deg": 47.75595383033294,
+        "period_s": 3.56,
+        "pitch_amplitude_deg": 33.73,
+        "pivot_fraction_chord": 0.25,
+        "published_pitch_amplitude_rounding_delta_deg": 0.02595383033294496,
+        "reduced_frequency": 1.0,
+        "reynolds": 5000.0,
+        "rho_kg_m3": 998.2,
+        "rounded_leading_edge_radius_m": 0.002375,
+        "rounded_trailing_edge_radius_m": 0.002375,
+        "span_m": 0.6,
+        "strouhal": 0.32,
+        "thickness_m": 0.00475,
+        "thickness_to_chord": 0.0625
+      },
+      "filter_maximum_harmonic": 3,
+      "movement": {
+        "actual_steps_per_cycle": 128.0,
+        "airfoil_adapter": "Baik-2012-zero-camber-mean-surface-adapter",
+        "case": {
+          "area_m2": 0.045599999999999995,
+          "case_id": "W2",
+          "chord_m": 0.076,
+          "effective_alpha_amplitude_deg": 14.0,
+          "experimental_filter_harmonic": 3,
+          "freestream_m_s": 0.067067708335063,
+          "frequency_hz": 0.2808988764044944,
+          "geometric_aspect_ratio": 7.894736842105263,
+          "heave_to_chord": 0.5,
+          "implemented_pitch_amplitude_deg": 33.75595383033294,
+          "kinematic_strouhal": 0.3183098861837907,
+          "mean_alpha_deg": 8.0,
+          "nu_m2_s": 1.0194291666929575e-06,
+          "peak_plunge_induced_alpha_deg": 47.75595383033294,
+          "period_s": 3.56,
+          "pitch_amplitude_deg": 33.73,
+          "pivot_fraction_chord": 0.25,
+          "published_pitch_amplitude_rounding_delta_deg": 0.02595383033294496,
+          "reduced_frequency": 1.0,
+          "reynolds": 5000.0,
+          "rho_kg_m3": 998.2,
+          "rounded_leading_edge_radius_m": 0.002375,
+          "rounded_trailing_edge_radius_m": 0.002375,
+          "span_m": 0.6,
+          "strouhal": 0.32,
+          "thickness_m": 0.00475,
+          "thickness_to_chord": 0.0625
+        },
+        "cycles": 3,
+        "grid_chord_span": [
+          4,
+          8
+        ],
+        "integrated_raw_heave_amplitude_m": 0.03799999961182531,
+        "integrated_to_printed_amplitude_ratio": 0.9999999897848767,
+        "max_wake_cycles": 2,
+        "motion": "theta=-theta0*sin(2*pi*t/T); h_dot/U=-tan(alpha_pl,max*sin(2*pi*t/T)); h(0)=+h0*c",
+        "phase_origin": "upper plunge limit; 0<t/T<0.5 is downstroke",
+        "printed_heave_amplitude_m": 0.038,
+        "requested_steps_per_cycle": 128,
+        "spacing_extrema": [
+          -1.0,
+          1.0
+        ],
+        "span_adapter": "one full 600 mm free-tip surrogate for the wall-to-wall/end-plated quasi-2D experiment; Ptera has no wall-image/endplate boundary",
+        "thickness_limitation": "physical t/c=6.25% rounded plate; UVLM represents only its zero-camber mean surface and cannot resolve thickness/viscous edge effects"
+      },
+      "old_runtime_s": 123.68053047799913,
+      "source_conflict_sensitivity": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.19 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.19
+      },
+      "source_cycle_step_range": [
+        256,
+        383
+      ],
+      "v4b_ldvm_max_wake_steps": 256,
+      "v4b_ldvm_settings": {
+        "delta_time_convective": 0.006135923151542565,
+        "integration_cycles": 3,
+        "integration_steps_per_cycle": 512,
+        "section": {
+          "attached_lesp_critical": 1000000.0,
+          "core_radius_chord": 0.02,
+          "core_radius_time_step_ratio": 1.3,
+          "max_wake_steps": 256,
+          "naterm": 14,
+          "ndiv": 32
+        }
+      },
+      "v4b_ldvm_steps_per_cycle": 512,
+      "v4b_mean_persistence": 0.7722785457342657,
+      "v4b_mean_shedding_fraction": 0.6640625,
+      "v4b_primary_lesp": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.11 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.11
+      }
+    },
+    "W3": {
+      "case": {
+        "area_m2": 0.045599999999999995,
+        "case_id": "W3",
+        "chord_m": 0.076,
+        "effective_alpha_amplitude_deg": 14.0,
+        "experimental_filter_harmonic": 3,
+        "freestream_m_s": 0.067067708335063,
+        "frequency_hz": 0.2808988764044944,
+        "geometric_aspect_ratio": 7.894736842105263,
+        "heave_to_chord": 0.25,
+        "implemented_pitch_amplitude_deg": 13.18211042886766,
+        "kinematic_strouhal": 0.15915494309189535,
+        "mean_alpha_deg": 8.0,
+        "nu_m2_s": 1.0194291666929575e-06,
+        "peak_plunge_induced_alpha_deg": 27.18211042886766,
+        "period_s": 3.56,
+        "pitch_amplitude_deg": 13.16,
+        "pivot_fraction_chord": 0.25,
+        "published_pitch_amplitude_rounding_delta_deg": 0.022110428867659238,
+        "reduced_frequency": 1.0,
+        "reynolds": 5000.0,
+        "rho_kg_m3": 998.2,
+        "rounded_leading_edge_radius_m": 0.002375,
+        "rounded_trailing_edge_radius_m": 0.002375,
+        "span_m": 0.6,
+        "strouhal": 0.16,
+        "thickness_m": 0.00475,
+        "thickness_to_chord": 0.0625
+      },
+      "filter_maximum_harmonic": 3,
+      "movement": {
+        "actual_steps_per_cycle": 128.0,
+        "airfoil_adapter": "Baik-2012-zero-camber-mean-surface-adapter",
+        "case": {
+          "area_m2": 0.045599999999999995,
+          "case_id": "W3",
+          "chord_m": 0.076,
+          "effective_alpha_amplitude_deg": 14.0,
+          "experimental_filter_harmonic": 3,
+          "freestream_m_s": 0.067067708335063,
+          "frequency_hz": 0.2808988764044944,
+          "geometric_aspect_ratio": 7.894736842105263,
+          "heave_to_chord": 0.25,
+          "implemented_pitch_amplitude_deg": 13.18211042886766,
+          "kinematic_strouhal": 0.15915494309189535,
+          "mean_alpha_deg": 8.0,
+          "nu_m2_s": 1.0194291666929575e-06,
+          "peak_plunge_induced_alpha_deg": 27.18211042886766,
+          "period_s": 3.56,
+          "pitch_amplitude_deg": 13.16,
+          "pivot_fraction_chord": 0.25,
+          "published_pitch_amplitude_rounding_delta_deg": 0.022110428867659238,
+          "reduced_frequency": 1.0,
+          "reynolds": 5000.0,
+          "rho_kg_m3": 998.2,
+          "rounded_leading_edge_radius_m": 0.002375,
+          "rounded_trailing_edge_radius_m": 0.002375,
+          "span_m": 0.6,
+          "strouhal": 0.16,
+          "thickness_m": 0.00475,
+          "thickness_to_chord": 0.0625
+        },
+        "cycles": 3,
+        "grid_chord_span": [
+          4,
+          8
+        ],
+        "integrated_raw_heave_amplitude_m": 0.018999999779055768,
+        "integrated_to_printed_amplitude_ratio": 0.9999999883713562,
+        "max_wake_cycles": 2,
+        "motion": "theta=-theta0*sin(2*pi*t/T); h_dot/U=-tan(alpha_pl,max*sin(2*pi*t/T)); h(0)=+h0*c",
+        "phase_origin": "upper plunge limit; 0<t/T<0.5 is downstroke",
+        "printed_heave_amplitude_m": 0.019,
+        "requested_steps_per_cycle": 128,
+        "spacing_extrema": [
+          -1.0,
+          1.0
+        ],
+        "span_adapter": "one full 600 mm free-tip surrogate for the wall-to-wall/end-plated quasi-2D experiment; Ptera has no wall-image/endplate boundary",
+        "thickness_limitation": "physical t/c=6.25% rounded plate; UVLM represents only its zero-camber mean surface and cannot resolve thickness/viscous edge effects"
+      },
+      "old_runtime_s": 122.41193730400119,
+      "source_conflict_sensitivity": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.19 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.19
+      },
+      "source_cycle_step_range": [
+        256,
+        383
+      ],
+      "v4b_ldvm_max_wake_steps": 256,
+      "v4b_ldvm_settings": {
+        "delta_time_convective": 0.006135923151542565,
+        "integration_cycles": 3,
+        "integration_steps_per_cycle": 512,
+        "section": {
+          "attached_lesp_critical": 1000000.0,
+          "core_radius_chord": 0.02,
+          "core_radius_time_step_ratio": 1.3,
+          "max_wake_steps": 256,
+          "naterm": 14,
+          "ndiv": 32
+        }
+      },
+      "v4b_ldvm_steps_per_cycle": 512,
+      "v4b_mean_persistence": 0.7722785457342659,
+      "v4b_mean_shedding_fraction": 0.5078125,
+      "v4b_primary_lesp": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.11 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.11
+      }
+    },
+    "W4": {
+      "case": {
+        "area_m2": 0.045599999999999995,
+        "case_id": "W4",
+        "chord_m": 0.076,
+        "effective_alpha_amplitude_deg": 14.0,
+        "experimental_filter_harmonic": 7,
+        "freestream_m_s": 0.0669736442280012,
+        "frequency_hz": 0.1402524544179523,
+        "geometric_aspect_ratio": 7.894736842105263,
+        "heave_to_chord": 1.0,
+        "implemented_pitch_amplitude_deg": 33.75595383033294,
+        "kinematic_strouhal": 0.3183098861837907,
+        "mean_alpha_deg": 8.0,
+        "nu_m2_s": 1.0179993922656183e-06,
+        "peak_plunge_induced_alpha_deg": 47.75595383033294,
+        "period_s": 7.13,
+        "pitch_amplitude_deg": 33.73,
+        "pivot_fraction_chord": 0.25,
+        "published_pitch_amplitude_rounding_delta_deg": 0.02595383033294496,
+        "reduced_frequency": 0.5,
+        "reynolds": 5000.0,
+        "rho_kg_m3": 998.2,
+        "rounded_leading_edge_radius_m": 0.002375,
+        "rounded_trailing_edge_radius_m": 0.002375,
+        "span_m": 0.6,
+        "strouhal": 0.32,
+        "thickness_m": 0.00475,
+        "thickness_to_chord": 0.0625
+      },
+      "filter_maximum_harmonic": 7,
+      "movement": {
+        "actual_steps_per_cycle": 128.0,
+        "airfoil_adapter": "Baik-2012-zero-camber-mean-surface-adapter",
+        "case": {
+          "area_m2": 0.045599999999999995,
+          "case_id": "W4",
+          "chord_m": 0.076,
+          "effective_alpha_amplitude_deg": 14.0,
+          "experimental_filter_harmonic": 7,
+          "freestream_m_s": 0.0669736442280012,
+          "frequency_hz": 0.1402524544179523,
+          "geometric_aspect_ratio": 7.894736842105263,
+          "heave_to_chord": 1.0,
+          "implemented_pitch_amplitude_deg": 33.75595383033294,
+          "kinematic_strouhal": 0.3183098861837907,
+          "mean_alpha_deg": 8.0,
+          "nu_m2_s": 1.0179993922656183e-06,
+          "peak_plunge_induced_alpha_deg": 47.75595383033294,
+          "period_s": 7.13,
+          "pitch_amplitude_deg": 33.73,
+          "pivot_fraction_chord": 0.25,
+          "published_pitch_amplitude_rounding_delta_deg": 0.02595383033294496,
+          "reduced_frequency": 0.5,
+          "reynolds": 5000.0,
+          "rho_kg_m3": 998.2,
+          "rounded_leading_edge_radius_m": 0.002375,
+          "rounded_trailing_edge_radius_m": 0.002375,
+          "span_m": 0.6,
+          "strouhal": 0.32,
+          "thickness_m": 0.00475,
+          "thickness_to_chord": 0.0625
+        },
+        "cycles": 3,
+        "grid_chord_span": [
+          4,
+          8
+        ],
+        "integrated_raw_heave_amplitude_m": 0.07599999922365062,
+        "integrated_to_printed_amplitude_ratio": 0.9999999897848767,
+        "max_wake_cycles": 2,
+        "motion": "theta=-theta0*sin(2*pi*t/T); h_dot/U=-tan(alpha_pl,max*sin(2*pi*t/T)); h(0)=+h0*c",
+        "phase_origin": "upper plunge limit; 0<t/T<0.5 is downstroke",
+        "printed_heave_amplitude_m": 0.076,
+        "requested_steps_per_cycle": 128,
+        "spacing_extrema": [
+          -1.0,
+          1.0
+        ],
+        "span_adapter": "one full 600 mm free-tip surrogate for the wall-to-wall/end-plated quasi-2D experiment; Ptera has no wall-image/endplate boundary",
+        "thickness_limitation": "physical t/c=6.25% rounded plate; UVLM represents only its zero-camber mean surface and cannot resolve thickness/viscous edge effects"
+      },
+      "old_runtime_s": 120.82109802900231,
+      "source_conflict_sensitivity": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.19 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.19
+      },
+      "source_cycle_step_range": [
+        256,
+        383
+      ],
+      "v4b_ldvm_max_wake_steps": 256,
+      "v4b_ldvm_settings": {
+        "delta_time_convective": 0.01227184630308513,
+        "integration_cycles": 3,
+        "integration_steps_per_cycle": 512,
+        "section": {
+          "attached_lesp_critical": 1000000.0,
+          "core_radius_chord": 0.02,
+          "core_radius_time_step_ratio": 1.3,
+          "max_wake_steps": 256,
+          "naterm": 14,
+          "ndiv": 32
+        }
+      },
+      "v4b_ldvm_steps_per_cycle": 512,
+      "v4b_mean_persistence": 0.769502213422717,
+      "v4b_mean_shedding_fraction": 0.421875,
+      "v4b_primary_lesp": {
+        "reynolds": 5000.0,
+        "section_family": "rounded flat plate",
+        "source": "Ramesh 2013 thesis flat-plate Re=1000: section 4.3.5 and Figures 4.19/4.21 use Lcrit=0.11 while Table 4.1 prints 0.19; declared value=0.11 is a frozen cross-Re/thickness transfer hypothesis, not a Baik force fit",
+        "source_role": "published flat-plate transfer hypothesis; no Baik force fit",
+        "value": 0.11
+      }
+    }
+  },
+  "cases": [
+    "W1",
+    "W2",
+    "W3",
+    "W4"
+  ],
+  "environment": {
+    "numpy": "2.4.6",
+    "package_versions": {
+      "fluxvortex": "0.9.0",
+      "matplotlib": "3.10.9",
+      "numba": "0.65.1",
+      "numpy": "2.4.6",
+      "pterasoftware": "5.0.0",
+      "scipy": "1.17.1"
+    },
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+    "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+  },
+  "ground_truth": "Baik dissertation Figures 5.24--5.27 corrected-total direct-force histories",
+  "metric_contract": "400 unique equally-spaced experimental phase samples; no phase/amplitude/offset fit; model filtered with the source's ideal 1 Hz Fourier cutoff; case metrics followed by equal-case macro average",
+  "provenance": {
+    "completed_at_utc": "2026-08-13T15:07:38.226961+00:00",
+    "environment": {
+      "package_versions": {
+        "fluxvortex": "0.9.0",
+        "matplotlib": "3.10.9",
+        "numba": "0.65.1",
+        "numpy": "2.4.6",
+        "pterasoftware": "5.0.0",
+        "scipy": "1.17.1"
+      },
+      "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+      "python": "3.12.13 | packaged by conda-forge | (main, Mar  5 2026, 16:50:00) [GCC 14.3.0]"
+    },
+    "git": {
+      "available": true,
+      "branch": "agent/fluxv-v4b-baik-2012",
+      "dirty": true,
+      "revision": "a3453cfa3aee0a240448e6aee75b061a7dab6d9a",
+      "status_entry_count": 48,
+      "status_porcelain": [
+        " M platform/forward_flight_benchmarks/__init__.py",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/CHECKLIST.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/NUMERICAL_SENSITIVITY.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/PLAN.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/SOURCE_AUDIT.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/SUMMARY_REPORT_ZH.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/USAGE.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/accuracy_metrics.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filter_diagnostic.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filter_diagnostic.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filtered_old_v4b.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/baik2012_w1_w4_filtered_old_v4b.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/model_phase_histories.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full/scored_phase_samples.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/accuracy_metrics.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filter_diagnostic.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filter_diagnostic.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filtered_old_v4b.pdf",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/baik2012_w1_w4_filtered_old_v4b.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/model_phase_histories.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_smoke/scored_phase_samples.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_ldvm_controlled/w2_ldvm_controlled_sensitivity.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/sensitivity/20260813_w2_one_factor/w2_one_factor_sensitivity.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/DIGITIZATION_AND_PROVENANCE.md",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig524_527_digitization_overlay.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig528_531_theodorsen_lift_markers.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig528_531_theodorsen_marker_overlay.png",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd_source_pixels.csv",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extract_baik2012_fig524_527.py",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extract_baik2012_fig528_531_theodorsen.py",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-000.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-001.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-002.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/extracted/fig-003.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-000.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-001.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-002.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-003.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-004.jpg",
+        "?? docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/theodorsen/fig-005.jpg",
+        "?? platform/forward_flight_benchmarks/baik2012.py",
+        "?? platform/forward_flight_benchmarks/run_baik2012_benchmark.py",
+        "?? platform/forward_flight_benchmarks/run_baik2012_ldvm_sensitivity.py",
+        "?? platform/forward_flight_benchmarks/run_baik2012_sensitivity.py",
+        "?? platform/forward_flight_benchmarks/run_provenance.py",
+        "?? platform/tests/test_baik2012.py",
+        "?? platform/tests/test_baik2012_run_provenance.py"
+      ],
+      "status_porcelain_sha256": "4ad356f9ccf3d4923331902e1b9da5509b9e7af4f326a5ec62fa9b8bd5b2bf64"
+    },
+    "invocation": {
+      "argv": [
+        "/tmp/fluxv-v4b-baik/platform/forward_flight_benchmarks/run_baik2012_benchmark.py",
+        "--quality",
+        "full",
+        "--output-dir",
+        "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible"
+      ],
+      "executable": "/home/exuber/anaconda3/envs/fluxvortex/bin/python",
+      "parsed_arguments": {
+        "allow_existing_output": false,
+        "cases": [
+          "W1",
+          "W2",
+          "W3",
+          "W4"
+        ],
+        "ldvm_max_wake_steps": null,
+        "ldvm_steps_per_cycle": null,
+        "output_dir": "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible",
+        "quality": "full",
+        "resolved_output_dir": "/tmp/fluxv-v4b-baik/docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/runs/20260813_baik2012_w1_w4_full_reproducible",
+        "skip_lesp_source_sensitivity": false
+      }
+    },
+    "started_at_utc": "2026-08-13T14:58:49.217427+00:00"
+  },
+  "quality": "full",
+  "result_hashes": {
+    "accuracy_metrics.csv": "7e4be6b57b33390e2feab2110a06e66947b62e43fea6dc5cb92554505868755b",
+    "baik2012_w1_w4_filter_diagnostic.pdf": "bbca2bb7d789e9482c62c34f02e2a2ce3ab71761a9fc1f855af485dca04d78d8",
+    "baik2012_w1_w4_filter_diagnostic.png": "47470e72cf9aa8d87c6a560832f743521f347c7d51ee90ab127ccea0b05c1db0",
+    "baik2012_w1_w4_filtered_old_v4b.pdf": "4a68282baad4cb00314b9a39a550309920730e269444ba386fa9692c3649bc33",
+    "baik2012_w1_w4_filtered_old_v4b.png": "9e1f593becde44b786b1c62ae23d2c3bbd92c6e09c4bdee182d23dd6e82a45df",
+    "model_phase_histories.csv": "1a64788c931e39a320ff0b4d1f061a3906969a9926a84f004b015289ec6fd188",
+    "scored_phase_samples.csv": "66fbff1b6fb922440096dacd60e207f5b6220ef3cebb710dc360d57a60740ff2"
+  },
+  "run_id": "20260813_baik2012_w1_w4_full_reproducible",
+  "scientific_scope": [
+    "W1--W4 are quasi-2D wall/endplate water-channel cases at Re=5000",
+    "the UVLM adapter is a physical-span free-tip zero-camber mean surface",
+    "6.25% thickness, rounded edges, viscosity and wall images are unresolved",
+    "Lcrit=0.11 is a cross-Re/thickness source transfer, not a Baik fit",
+    "the Lcrit=0.19 Table-4.1 conflict is reported only as sensitivity",
+    "this benchmark was inspected during model development and is not held out"
+  ],
+  "source_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/DIGITIZATION_AND_PROVENANCE.md": "976f80d36b634153cd8bd88a9ffe89323e590e083ed94200c1d28c0cc375e9ba",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_fig528_531_theodorsen_lift_markers.csv": "01d7e411887ce221200d6780edfbed33d78da73d4077aabf1f727ee4e84a700c",
+    "docs/forward_flight_large_pitch/reproductions/baik2012_w1_w4/source_data/baik2012_w1_w4_corrected_total_cl_cd.csv": "4de6b01cd8072959e5b780053f311efa92ab5a94f17940dd122df340ad638f2f",
+    "platform/flap_ldvm.py": "107d83576cad0a2b7b16c8de29a6d3c17b1e1493321fdfec549545a9987e91e1",
+    "platform/forward_flight_benchmarks/baik2012.py": "a8305a6058d02aad12b9acb376b8a38d217789bc767fcc91a15b3fa07434a86d",
+    "platform/forward_flight_benchmarks/cases.py": "56ae0b20c247d2dac822a1ebb9332bdae24367c76bc4fd3f7783729baace33a9",
+    "platform/forward_flight_benchmarks/causal_incidence_owner.py": "1fdfba4c3a270f2cddf18cd43cd7de0c7c691dddd4c7c971faf8e12072c9b901",
+    "platform/forward_flight_benchmarks/ldvm_uvlm_correction.py": "d72d794242ab702bcd95ab1f5aaf6e623a87722eb1474f073124f6f60031db13",
+    "platform/forward_flight_benchmarks/ptera_adapter.py": "c1122aab49867a5968bdaeb15556d737be2a22c8eba1252cc71f6f0c6f1f81a9",
+    "platform/forward_flight_benchmarks/run_baik2012_benchmark.py": "4d3d05c6c2ed5f9d2735f0e60d87d4c738d5e7fc9999f5589e4b155a9167675b",
+    "platform/forward_flight_benchmarks/run_provenance.py": "d281c6e480c27edeedca48e950e2fb8356e9894ab32756e675e65fa7516d72fa",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "ab8b3cfaf708ce15e32906fcf8ddde0a5b499fe423d1298fac86ea8bd78504cf",
+    "platform/ldvm_fourier.py": "bf81c46e10f70c005cdde0a79c180592305334469d3f1c1c45282b265f81030d",
+    "pyproject.toml": "269ec49f161ed8fc517e07e416706a76b0388f92c3f9d044eddcfcf4355613f3",
+    "src/fluxvortex/kernel.py": "96861ac082b47c830aed11c136648d00d0611ea1cc63c9ba344639e0db706f72",
+    "src/fluxvortex/particles.py": "c4779acc9d20dbad9d5bd6a944de66da5b74e47c2336c8829c1699d5052ee9f4",
+    "src/fluxvortex/solver.py": "1fab59f268a8af1c3935ebd2210012c2f13ab452df210268a5b3fb3324ae3b94"
+  },
+  "status": "development_transfer_validation_not_held_out"
+}

@@ -1,0 +1,87 @@
+{
+  "curve_identity": {
+    "open_circle": "standard Theodorsen",
+    "cross": "Theodorsen with C(k)=1",
+    "thick_line": "measured (not extracted here)"
+  },
+  "phase_or_amplitude_fit": false,
+  "model_output_used_to_fill_gt": false,
+  "panels": [
+    {
+      "case": "W1",
+      "image": 0,
+      "figure": "5.28",
+      "pdf_page": 208,
+      "printed_page": 183,
+      "x0": 100,
+      "x1": 647,
+      "yt": 116,
+      "yb": 543,
+      "vtop": 3.0,
+      "vbot": -1.0,
+      "source_image_sha256": "f213b4ae1551d9f89e61474c4d84f6554431db39bb365c974730471b3a29a7b9",
+      "standard_marker_count": 29,
+      "Ck1_marker_count": 0,
+      "Ck1_status": "identity frozen, raster points not published: automated trace rejected",
+      "standard_marker_count_raw_detector": 29
+    },
+    {
+      "case": "W2",
+      "image": 1,
+      "figure": "5.29",
+      "pdf_page": 208,
+      "printed_page": 183,
+      "x0": 94,
+      "x1": 652,
+      "yt": 98,
+      "yb": 539,
+      "vtop": 6.0,
+      "vbot": -4.0,
+      "source_image_sha256": "2ab9a5fbc483f3c6f18c804231c00bc4e520f22e23e5f37decb78838138cac06",
+      "standard_marker_count": 28,
+      "Ck1_marker_count": 0,
+      "Ck1_status": "identity frozen, raster points not published: automated trace rejected",
+      "standard_marker_count_raw_detector": 29
+    },
+    {
+      "case": "W3",
+      "image": 2,
+      "figure": "5.30",
+      "pdf_page": 209,
+      "printed_page": 184,
+      "x0": 100,
+      "x1": 647,
+      "yt": 112,
+      "yb": 542,
+      "vtop": 3.5,
+      "vbot": -1.5,
+      "source_image_sha256": "d848530c3ba37af218f0bfc7dfd8f668c03d1dc7a872400e5648f8fbf8f56bc5",
+      "standard_marker_count": 28,
+      "Ck1_marker_count": 0,
+      "Ck1_status": "identity frozen, raster points not published: automated trace rejected",
+      "standard_marker_count_raw_detector": 29
+    },
+    {
+      "case": "W4",
+      "image": 3,
+      "figure": "5.31",
+      "pdf_page": 209,
+      "printed_page": 184,
+      "x0": 94,
+      "x1": 655,
+      "yt": 99,
+      "yb": 540,
+      "vtop": 5.0,
+      "vbot": -3.0,
+      "source_image_sha256": "7623a74606b3890915d804e04a69f96fafcfc8670aab6bc89792ee793158da91",
+      "standard_marker_count": 28,
+      "Ck1_marker_count": 0,
+      "Ck1_status": "identity frozen, raster points not published: automated trace rejected",
+      "standard_marker_count_raw_detector": 29
+    }
+  ],
+  "output_sha256": {
+    "baik2012_fig528_531_theodorsen_lift_markers.csv": "01d7e411887ce221200d6780edfbed33d78da73d4077aabf1f727ee4e84a700c",
+    "baik2012_fig528_531_theodorsen_marker_overlay.png": "f58e8a71b536b9c1ec660aac81d76ab61ef2a98f7548549f3ff2b45fd558547d"
+  }
+}

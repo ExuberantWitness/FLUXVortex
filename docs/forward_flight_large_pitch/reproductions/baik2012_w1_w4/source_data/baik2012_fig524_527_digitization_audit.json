@@ -1,0 +1,225 @@
+{
+  "source_pdf": "baik_2011_dissertation.pdf",
+  "source_pdf_sha256": "2efbf3becd339df61cc9275e2e933700ef75216504580d5f4e5cca1e80eadc0a",
+  "source_pdf_bytes": 29993055,
+  "source_bitstream_uuid": "1ef3aed8-ca97-48ec-b992-85acc3be814a",
+  "source_bitstream_url": "https://backend.production.deepblue-documents.lib.umich.edu/server/api/core/bitstreams/1ef3aed8-ca97-48ec-b992-85acc3be814a/content",
+  "method": "fixed-axis raster centerline dynamic programming",
+  "phase_or_amplitude_fit": false,
+  "model_output_used": false,
+  "panels": [
+    {
+      "mean_guide_row": 775.0925,
+      "digitized_trapezoidal_mean": 0.03111822947000583,
+      "published_panel_mean": 0.0315,
+      "mean_absolute_difference": 0.0003817705299941701,
+      "x_axis_pixel_centers": [
+        116,
+        630
+      ],
+      "y_axis_pixel_centers": [
+        589,
+        993
+      ],
+      "y_axis_values": [
+        0.4,
+        -0.4
+      ],
+      "source_points": 511,
+      "case": "W1",
+      "variable": "cd",
+      "figure": "5.24",
+      "pdf_page": 204,
+      "printed_page": 179,
+      "embedded_image": "fig-000.jpg",
+      "embedded_image_sha256": "784e8a5ec85af6063b3a7a25de2efb174875b8d6e96cb8e8104c1ea7953f52b7"
+    },
+    {
+      "mean_guide_row": 782.0,
+      "digitized_trapezoidal_mean": 1.0435515873015873,
+      "published_panel_mean": 1.04,
+      "mean_absolute_difference": 0.0035515873015872224,
+      "x_axis_pixel_centers": [
+        747,
+        1255
+      ],
+      "y_axis_pixel_centers": [
+        586,
+        986
+      ],
+      "y_axis_values": [
+        3.0,
+        -1.0
+      ],
+      "source_points": 505,
+      "case": "W1",
+      "variable": "cl",
+      "figure": "5.24",
+      "pdf_page": 204,
+      "printed_page": 179,
+      "embedded_image": "fig-000.jpg",
+      "embedded_image_sha256": "784e8a5ec85af6063b3a7a25de2efb174875b8d6e96cb8e8104c1ea7953f52b7"
+    },
+    {
+      "mean_guide_row": 789.1213333333333,
+      "digitized_trapezoidal_mean": -0.12637288237595162,
+      "published_panel_mean": -0.127,
+      "mean_absolute_difference": 0.0006271176240483789,
+      "x_axis_pixel_centers": [
+        130,
+        635
+      ],
+      "y_axis_pixel_centers": [
+        601,
+        999
+      ],
+      "y_axis_values": [
+        2.0,
+        -2.5
+      ],
+      "source_points": 502,
+      "case": "W2",
+      "variable": "cd",
+      "figure": "5.25",
+      "pdf_page": 205,
+      "printed_page": 180,
+      "embedded_image": "fig-001.jpg",
+      "embedded_image_sha256": "45d5a731bf85e1819efa45c8a4c75fe858dd1fbd8975f60770303941d51fbe40"
+    },
+    {
+      "mean_guide_row": 782.52,
+      "digitized_trapezoidal_mean": 2.1357224443175333,
+      "published_panel_mean": 2.11,
+      "mean_absolute_difference": 0.025722444317533455,
+      "x_axis_pixel_centers": [
+        734,
+        1253
+      ],
+      "y_axis_pixel_centers": [
+        586,
+        994
+      ],
+      "y_axis_values": [
+        5.0,
+        -1.0
+      ],
+      "source_points": 516,
+      "case": "W2",
+      "variable": "cl",
+      "figure": "5.25",
+      "pdf_page": 205,
+      "printed_page": 180,
+      "embedded_image": "fig-001.jpg",
+      "embedded_image_sha256": "45d5a731bf85e1819efa45c8a4c75fe858dd1fbd8975f60770303941d51fbe40"
+    },
+    {
+      "mean_guide_row": 758.61,
+      "digitized_trapezoidal_mean": 0.1262983155098903,
+      "published_panel_mean": 0.127,
+      "mean_absolute_difference": 0.0007016844901097108,
+      "x_axis_pixel_centers": [
+        122,
+        628
+      ],
+      "y_axis_pixel_centers": [
+        603,
+        1002
+      ],
+      "y_axis_values": [
+        0.4,
+        -0.3
+      ],
+      "source_points": 503,
+      "case": "W3",
+      "variable": "cd",
+      "figure": "5.26",
+      "pdf_page": 206,
+      "printed_page": 181,
+      "embedded_image": "fig-002.jpg",
+      "embedded_image_sha256": "00e4d4d24b1d4f4ea92940ca7ca6a3390606c86e4bd7a87414239a6e68ce6c68"
+    },
+    {
+      "mean_guide_row": 785.9300000000001,
+      "digitized_trapezoidal_mean": 1.1433365715799702,
+      "published_panel_mean": 1.14,
+      "mean_absolute_difference": 0.003336571579970249,
+      "x_axis_pixel_centers": [
+        740,
+        1251
+      ],
+      "y_axis_pixel_centers": [
+        599,
+        1001
+      ],
+      "y_axis_values": [
+        3.0,
+        -1.0
+      ],
+      "source_points": 508,
+      "case": "W3",
+      "variable": "cl",
+      "figure": "5.26",
+      "pdf_page": 206,
+      "printed_page": 181,
+      "embedded_image": "fig-002.jpg",
+      "embedded_image_sha256": "00e4d4d24b1d4f4ea92940ca7ca6a3390606c86e4bd7a87414239a6e68ce6c68"
+    },
+    {
+      "mean_guide_row": 786.156,
+      "digitized_trapezoidal_mean": -0.3072429221781521,
+      "published_panel_mean": -0.308,
+      "mean_absolute_difference": 0.0007570778218479179,
+      "x_axis_pixel_centers": [
+        135,
+        647
+      ],
+      "y_axis_pixel_centers": [
+        604,
+        1007
+      ],
+      "y_axis_values": [
+        1.5,
+        -2.5
+      ],
+      "source_points": 509,
+      "case": "W4",
+      "variable": "cd",
+      "figure": "5.27",
+      "pdf_page": 207,
+      "printed_page": 182,
+      "embedded_image": "fig-003.jpg",
+      "embedded_image_sha256": "21818c5ede89d4d95d6f2f82f6dc55865583d8aa54fdcabbe0a78a143d6b9dce"
+    },
+    {
+      "mean_guide_row": 840.26,
+      "digitized_trapezoidal_mean": 1.385585610864807,
+      "published_panel_mean": 1.37,
+      "mean_absolute_difference": 0.01558561086480692,
+      "x_axis_pixel_centers": [
+        738,
+        1261
+      ],
+      "y_axis_pixel_centers": [
+        591,
+        1003
+      ],
+      "y_axis_values": [
+        5.0,
+        -1.0
+      ],
+      "source_points": 520,
+      "case": "W4",
+      "variable": "cl",
+      "figure": "5.27",
+      "pdf_page": 207,
+      "printed_page": 182,
+      "embedded_image": "fig-003.jpg",
+      "embedded_image_sha256": "21818c5ede89d4d95d6f2f82f6dc55865583d8aa54fdcabbe0a78a143d6b9dce"
+    }
+  ],
+  "output_sha256": {
+    "baik2012_w1_w4_corrected_total_cl_cd_source_pixels.csv": "8952aaf7ef35f692f7ab09c0b8728ff71855c25a3900ce15126ad8470f3de422",
+    "baik2012_w1_w4_corrected_total_cl_cd.csv": "4de6b01cd8072959e5b780053f311efa92ab5a94f17940dd122df340ad638f2f",
+    "baik2012_fig524_527_digitization_overlay.png": "94b6aff1938bd8a064764711980ddbdd2a45d02142b7de1810ffbf36480c66c9"
+  }
+}
