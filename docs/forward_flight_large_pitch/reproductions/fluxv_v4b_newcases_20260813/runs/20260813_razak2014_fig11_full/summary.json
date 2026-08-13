@@ -1,0 +1,122 @@
+{
+  "aggregate": {
+    "fluxv_old": {
+      "macro_case_mae_CD": 0.00880161537047064,
+      "macro_case_mae_CL": 0.0716119904329196,
+      "macro_case_rmse_CD": 0.010058845504049469,
+      "macro_case_rmse_CL": 0.0856569334613122
+    },
+    "fluxv_v4b": {
+      "macro_case_mae_CD": 0.00880161537047064,
+      "macro_case_mae_CL": 0.0716119904329196,
+      "macro_case_rmse_CD": 0.010058845504049469,
+      "macro_case_rmse_CL": 0.0856569334613122
+    }
+  },
+  "case_manifests": {
+    "11": {
+      "case": {
+        "area_m2": 0.064,
+        "aspect_ratio": 2.5000000000000004,
+        "case_id": "razak2014_fig11",
+        "chord_m": 0.16,
+        "figure": 11,
+        "flap_amplitude_deg": 30.0,
+        "freestream_m_s": 14.8,
+        "frequency_hz": 1.23,
+        "motion_family": "pitch_leading",
+        "nu_m2_s": 1.506e-05,
+        "period_s": 0.8130081300813008,
+        "pitch_amplitude_deg": 6.0,
+        "pitch_axis_fraction_chord": 0.25,
+        "pitch_center_deg": -2.0,
+        "pitch_max_deg": 4.0,
+        "pitch_min_deg": -8.0,
+        "pitch_phase_deg": 90.0,
+        "reduced_frequency": 0.0417746915017886,
+        "reynolds": 157237.71580345288,
+        "rho_kg_m3": 1.225,
+        "root_offset_m": 0.15,
+        "span_m": 0.4
+      },
+      "mean_ldvm_shedding": 0.0,
+      "mean_persistence": 0.9541195130721203,
+      "movement": {
+        "airfoil_geometry": "Ptera NACA6409 mean-camber surface; 9% thickness not resolved",
+        "area_m2": 0.064,
+        "aspect_ratio": 2.5000000000000004,
+        "case_id": "razak2014_fig11",
+        "chord_m": 0.16,
+        "cycles": 3,
+        "figure": 11,
+        "flap_amplitude_deg": 30.0,
+        "freestream_m_s": 14.8,
+        "frequency_hz": 1.23,
+        "grid_chord_span": [
+          4,
+          12
+        ],
+        "max_wake_cycles": 2,
+        "motion_adapter": "extrema-matched harmonic flap/pitch; not the unpublished measured 64-point cycle-average history used by Lambert's VLM",
+        "motion_family": "pitch_leading",
+        "nu_m2_s": 1.506e-05,
+        "period_s": 0.8130081300813008,
+        "pitch_amplitude_deg": 6.0,
+        "pitch_axis_adapter": "quarter chord; the open Lambert summary does not publish the rig pitch-axis coordinate, so this is a declared reconstruction assumption",
+        "pitch_axis_fraction_chord": 0.25,
+        "pitch_center_deg": -2.0,
+        "pitch_max_deg": 4.0,
+        "pitch_min_deg": -8.0,
+        "pitch_phase_deg": 90.0,
+        "reduced_frequency": 0.0417746915017886,
+        "reynolds": 157237.71580345288,
+        "rho_kg_m3": 1.225,
+        "root_offset_m": 0.15,
+        "span_m": 0.4,
+        "steps_per_cycle": 128,
+        "wing_count_adapter": "one of two symmetric experimental wings; coefficients use one-wing bc area and neglect opposite-wing aerodynamic interaction"
+      },
+      "old_runtime_s": 321.5444926610071,
+      "source_cycle_step_range": [
+        256,
+        383
+      ],
+      "v4b_ldvm_delta_time_convective": 0.14688135162601626,
+      "v4b_ldvm_max_wake_steps": 256,
+      "v4b_ldvm_steps_per_cycle": 512,
+      "v4b_lesp": {
+        "reynolds": 157237.71580345288,
+        "section_family": "NACA 6409",
+        "source": "Lambert et al. 2017 Figure 7b Kirchhoff alpha1=10.31 deg; mapped before scoring as Lcrit=sin(alpha1)",
+        "source_role": "published static-separation parameter mapping hypothesis",
+        "value": 0.17897393272589485
+      }
+    }
+  },
+  "limitations": [
+    "measured 64-point flap/pitch input histories are not public",
+    "quarter-chord pitch axis is a declared reconstruction assumption",
+    "v4b uses independent 2-D LDVM strip discrepancies",
+    "smoke is not a mesh/time/wake convergence demonstration"
+  ],
+  "metric_contract": "raw displayed-cycle phase; no phase/amplitude fit; per-case then equal-case macro average; visible error-bar centres only",
+  "quality": "full",
+  "result_hashes": {
+    "accuracy_metrics.csv": "ab45e8c59d4e93cfaf3892825d872f90e555866e446dd1022e07d7c5a0c9ce26",
+    "model_phase_histories.csv": "80b31b89322fcc52bbe7bb134dcfd6164c3817ef1c40bb29b539ae5b2ca4fcaf",
+    "razak2014_old_vs_v4b_phase_loads.pdf": "46f6f618a11ae1b5e9c6be2ea3d793e17e793b8a440349adaf18964a61eeebb0",
+    "razak2014_old_vs_v4b_phase_loads.png": "09f8243244ed7018946cc9b01a30d51b32f8f7ed3dc5ad5e7871f0d855273bcc",
+    "scored_phase_samples.csv": "8668c06c10b180eaf3bbade5a3a1cae4cc6e58ae88f94cafeb0a2636981e6675"
+  },
+  "run_id": "20260813_razak2014_fig11_full",
+  "source_hashes": {
+    "docs/forward_flight_large_pitch/reproductions/fluxv_v4b_newcases_20260813/source_data/razak_lambert_experiment_errorbar_centres.csv": "b3e13662196e650c03ed98cbe5ec97ef1516007e7267464862048f6d703a52c4",
+    "platform/forward_flight_benchmarks/causal_incidence_owner.py": "1fdfba4c3a270f2cddf18cd43cd7de0c7c691dddd4c7c971faf8e12072c9b901",
+    "platform/forward_flight_benchmarks/ldvm_uvlm_correction.py": "d72d794242ab702bcd95ab1f5aaf6e623a87722eb1474f073124f6f60031db13",
+    "platform/forward_flight_benchmarks/razak2014.py": "7f42a1338084a0f871c65015532053e495c404819c0dd7947efb1c1679e15325",
+    "platform/forward_flight_benchmarks/run_razak2014_benchmark.py": "08b2aa64758901e17988046cb9c17add5fd227893f25d57c8c0fe78ec55e9861",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "ab8b3cfaf708ce15e32906fcf8ddde0a5b499fe423d1298fac86ea8bd78504cf",
+    "platform/ldvm_fourier.py": "bf81c46e10f70c005cdde0a79c180592305334469d3f1c1c45282b265f81030d"
+  },
+  "status": "nominal_motion_transfer_diagnostic"
+}

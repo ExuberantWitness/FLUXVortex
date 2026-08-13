@@ -1,0 +1,4 @@
+twist_amplitude_peak_to_peak_deg,mean_net_thrust_gf,mean_lift_gf,thrust_digitization_uncertainty_gf,lift_digitization_uncertainty_gf,source,semantic_mapping
+0,-139,824,3,10,"Meng et al. 2025 Figure 16 dashed mean lines; U=8 m/s, alpha=5 deg, f=2 Hz","green thrust dash and green lift dash; lift mapping follows Section 4.2 text because panel-b solid-curve legend reverses green/black"
+22.5,-80,794,3,10,"Meng et al. 2025 Figure 16 dashed mean lines; U=8 m/s, alpha=5 deg, f=2 Hz","red dash in both panels"
+45,-230,620,3,10,"Meng et al. 2025 Figure 16 dashed mean lines; U=8 m/s, alpha=5 deg, f=2 Hz","black thrust dash and black lift dash; lift mapping follows Section 4.2 text because panel-b solid-curve legend reverses green/black"

@@ -1,0 +1,26 @@
+{
+  "conclusion": "old and frozen polar branches are reportable; the forced Yang LESP threshold is unsupported and non-convergent, so no full-v4b score is made",
+  "force_contract": "model is pure-wing aerodynamic load; experiment is balance-level net thrust with unreported support/mechanism and wind-off inertial tare",
+  "quality": "smoke",
+  "result_hashes": {
+    "mean_comparison.csv": "991b0dca22b019d461a33147c023a56959963434ffb5b5e3d6e3f30ca39693df",
+    "meng2025_fig16_mean_loads.pdf": "bbec230dd1adc27b14598dcb7b89fab3709f729a7a7e28ad77f8c0cf52471498",
+    "meng2025_fig16_mean_loads.png": "fc88149adfea1f921e1bb41da1954b0341f0ac118c87ffb760fe65ac7fbc39b9",
+    "phase_histories.csv": "bdf368bb30729fdf8d9434b927c0642a7494c51edab2334e4fa5c2baee116c3a",
+    "unsupported_ldvm_stress.csv": "4712fe8e2b32cf899862ee48e2cb98d68cbb1be9e9ce14f97aac17a0f64fb926"
+  },
+  "run_id": "20260813_fig16_threecase_smoke",
+  "source_hashes": {
+    "platform/forward_flight_benchmarks/ldvm_uvlm_correction.py": "d72d794242ab702bcd95ab1f5aaf6e623a87722eb1474f073124f6f60031db13",
+    "platform/forward_flight_benchmarks/meng2025_case.py": "58bc0d9523f13cba7990a9c462ed0eb5b5e7f7322430509ee54a6f1cba3cbd7a",
+    "platform/forward_flight_benchmarks/run_meng2025_v4b_transfer.py": "18a1cb55836309e2267e10dc5fb42edbe7571541bf6f3623969b5dd6f8416cd6",
+    "platform/forward_flight_benchmarks/source_data/meng2025_fig16_mean_lines_digitized.csv": "125ac295decbeefaf92315ae99bdcb9dcf2970673d0b6399d93563db96c1e69a",
+    "platform/forward_flight_benchmarks/uvlm_polar_correction.py": "ab8b3cfaf708ce15e32906fcf8ddde0a5b499fe423d1298fac86ea8bd78504cf"
+  },
+  "status": "definition_qualified_diagnostic_full_v4b_rejected",
+  "twists_peak_to_peak_deg": [
+    0.0,
+    22.5,
+    45.0
+  ]
+}

@@ -1,0 +1,4 @@
+status,steps_per_cycle,strip_count,error
+failed:LinAlgError,48,8,Singular matrix
+failed:LinAlgError,96,8,Singular matrix
+failed:LinAlgError,128,8,Singular matrix
