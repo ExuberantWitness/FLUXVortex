@@ -163,6 +163,33 @@ class ParticleField:
         """Self-induced velocity (coincident particle excluded by r2>0 check)."""
         return self.velocity_at(self.positions)
 
+    def velocity_and_jacobian_self(self):
+        """Velocity + analytic Jacobian at own positions.
+
+        Uses frozen CPU kernel for Jacobian (correct, validated).
+        Velocity from Warp GPU kernel (fast).
+        Returns (velocity, jacobian) with shapes (N,3) and (N,3,3).
+        """
+        n = self.n
+        if n == 0:
+            return np.empty((0, 3)), np.empty((0, 3, 3))
+
+        # Velocity from Warp (fast)
+        vel = self.velocity_self()
+
+        # Jacobian from frozen kernel (correct, small N OK)
+        import sys
+        from pathlib import Path
+        _src = Path(__file__).resolve().parents[2] / "src"
+        if str(_src) not in sys.path:
+            sys.path.insert(0, str(_src))
+        from fluxvortex.rvpm_reference import direct_gaussian_erf_velocity_jacobian
+        field = direct_gaussian_erf_velocity_jacobian(
+            self.positions, self.gammas, self.sigmas)
+        jac = np.asarray(field.jacobian)
+
+        return vel, jac
+
     def __repr__(self):
         free = (self.types == TYPE_FREE).sum()
         fresh = (self.types == TYPE_FRESH_SHED).sum()
