@@ -30,7 +30,17 @@ Conventions here: world frame x downstream, y up; plate pivot recedes at -U, plu
 (UP-positive, same as UNSflow z-up hdot). Our wake kernel is ccw-positive; UNSflow's s is
 cw-positive — wake strengths here = MINUS UNSflow's, bound segments passed as -bv to the
 kernel. Kelvin kept in total form with a trimmed-circulation sink (== UNSflow incremental).
-Zero-fit: all constants literature-anchored."""
+Zero-fit: all constants literature-anchored.
+
+``source_parity=True`` is an explicitly isolated source-oracle mode.  It keeps
+the historical/default FLUXV behaviour untouched while reproducing three
+state-update details in the author-supplied LDVM v2.5 program: the camber
+ordinate is used in the world geometry (not only its slope in downwash), the
+first solved TEV is stored with zero circulation, and a newly solved TEV is
+included when a restarted LEV's birth velocity is evaluated.  The clean-room
+linear Kelvin solve remains intentionally distinct from the source's Newton
+iteration.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -53,6 +63,9 @@ class LDVM2D:
         pivot_xc=0.0,
         core_rc=0.02,
         max_wake=100000,
+        source_parity=False,
+        camber_z=None,
+        camber_slope=None,
     ):
         self.U, self.c, self.rho, self.dt = float(U), float(c), float(rho), float(dt)
         self.ndiv, self.naterm = int(ndiv), int(naterm)
@@ -60,10 +73,21 @@ class LDVM2D:
         self.xp = float(pivot_xc) * self.c
         self.rc = float(core_rc) * self.c
         self.max_wake = int(max_wake)
+        self.source_parity = bool(source_parity)
         self.th = np.linspace(0.0, np.pi, self.ndiv)  # incl. endpoints (UNSflow)
         self.xs = 0.5 * self.c * (1.0 - np.cos(self.th))
         xc = self.xs / self.c
         m, p = camber_m, camber_p
+        self.zc = (
+            np.where(
+                xc < p,
+                m / (p * p) * (2.0 * p * xc - xc * xc),
+                m / ((1.0 - p) ** 2) * ((1.0 - 2.0 * p) + 2.0 * p * xc - xc * xc),
+            )
+            * self.c
+            if m > 0
+            else np.zeros(self.ndiv)
+        )
         self.dzc = (
             np.where(
                 xc < p,
@@ -73,6 +97,10 @@ class LDVM2D:
             if m > 0
             else np.zeros(self.ndiv)
         )
+        if camber_z is not None or camber_slope is not None:
+            if camber_z is None or camber_slope is None:
+                raise ValueError("camber_z and camber_slope must be provided together")
+            self.set_camber_line(camber_z, camber_slope)
         self.tx = []
         self.ty = []
         self.tg = []  # TEV (ccw = -UNSflow s)
@@ -87,8 +115,30 @@ class LDVM2D:
         self.sy = 0.0  # pivot world position
 
     # ---------------------------------------------------------------- helpers
+    def set_camber_line(self, camber_z, camber_slope):
+        """Set ordinate and slope at the cosine-spaced bound stations.
+
+        LDVM v2.5 obtains both arrays from the same airfoil spline.  Requiring
+        the pair prevents a source-parity replay from silently using curved
+        downwash with straight-chord vortex geometry.
+        """
+
+        zc = np.asarray(camber_z, dtype=float)
+        dzc = np.asarray(camber_slope, dtype=float)
+        expected = (self.ndiv,)
+        if zc.shape != expected or dzc.shape != expected:
+            raise ValueError(f"camber arrays must both have shape {expected}")
+        if not np.all(np.isfinite(zc)) or not np.all(np.isfinite(dzc)):
+            raise ValueError("camber arrays must be finite")
+        self.zc = zc.copy()
+        self.dzc = dzc.copy()
+
     def _world(self, x):
-        return (self.sx + (x - self.xp) * self._ca, self.sy - (x - self.xp) * self._sa)
+        z = np.interp(x, self.xs, self.zc) if self.source_parity else 0.0
+        return (
+            self.sx + (x - self.xp) * self._ca + z * self._sa,
+            self.sy - (x - self.xp) * self._sa + z * self._ca,
+        )
 
     def _a0(self, W):
         return -np.trapezoid(W, self.th) / (np.pi * self.U)
@@ -113,9 +163,12 @@ class LDVM2D:
         return -(u * self._sa + w * self._ca) + self.dzc * (u * self._ca - w * self._sa)
 
     # ---------------------------------------------------------------- step
-    def step(self, alpha, dalpha, hdot=0.0):
+    def step(self, alpha, dalpha, hdot=0.0, *, dt_i=None):
         self.it += 1
-        U, c, dt = self.U, self.c, self.dt
+        U, c = self.U, self.c
+        dt = self.dt if dt_i is None else float(dt_i)
+        if not np.isfinite(dt) or dt <= 0.0:
+            raise ValueError("dt_i must be finite and positive")
         ca, sa = np.cos(alpha), np.sin(alpha)
         self._ca, self._sa = ca, sa
         self.sx -= U * dt
@@ -160,6 +213,12 @@ class LDVM2D:
         G0 = self._gamb(W)
         GT = self._gamb(tcol)
         gT = (G0 - S_old) / (1.0 - GT)
+        # Freeze the TE-only solution before the coupled TE/LE system below
+        # overwrites ``gT``.  Source-parity LEV placement uses this provisional
+        # strength (matching the author program's ordering), whereas the
+        # newborn source and Kelvin ledger must continue to use the final
+        # coupled strength.
+        gT_te_only_provisional = float(gT)
 
         # PRE-LEV (TEV-only) coefficients -> rates (UNSflow update_a2a3adot semantics)
         W_pre = W + gT * tcol
@@ -183,9 +242,24 @@ class LDVM2D:
                 nly = ley + (self.ly[-1] - ley) / 3.0
             else:
                 # place_lev: v_le = relative fluid velocity at the LE (kinematic + induced)
+                # Source parity uses the current step's provisional TEV too: the author
+                # evaluates the LE velocity after its TE-only Kelvin solve.
+                new_tev_u = 0.0
+                new_tev_w = 0.0
+                if self.source_parity:
+                    new_u, new_w = _induced_many(
+                        np.array([self._wx[0]]),
+                        np.array([self._wy[0]]),
+                        np.array([ntx]),
+                        np.array([nty]),
+                        np.array([gT_te_only_provisional]),
+                        np.array([self.rc]),
+                    )
+                    new_tev_u = float(new_u[0])
+                    new_tev_w = float(new_w[0])
                 s0 = 0.0 - self.xp
-                le_u = U + s0 * sa * dalpha + float(ui[0])
-                le_w = -hdot + s0 * ca * dalpha + float(wi[0])
+                le_u = U + s0 * sa * dalpha + float(ui[0]) + new_tev_u
+                le_w = -hdot + s0 * ca * dalpha + float(wi[0]) + new_tev_w
                 nlx, nly = lex + 0.5 * le_u * dt, ley + 0.5 * le_w * dt
             lcol = self._wcol(nlx, nly)
             # 2x2 (KelvinKutta, linear): Kelvin + A0 pinned at sign(a0)*crit
@@ -199,9 +273,14 @@ class LDVM2D:
             self.ly.append(nly)
             self.lg.append(float(gL))
             self._lev_prev_it = self.it
+        # LDVM v2.5 removes its massive starting vortex after solving the first
+        # step.  Retain the solved value for that step's bound state, but store
+        # zero in the wake carried into all subsequent steps.
+        gT_stored = 0.0 if self.source_parity and self.it == 1 else float(gT)
+        first_tev_zeroed = bool(self.source_parity and self.it == 1)
         self.tx.append(ntx)
         self.ty.append(nty)
-        self.tg.append(float(gT))
+        self.tg.append(gT_stored)
 
         # final (POST-LEV) downwash, coefficients, and previous-value bookkeeping
         Wt = W + gT * tcol + (gL * lcol if shed_lev else 0.0)
@@ -284,8 +363,18 @@ class LDVM2D:
             gamb=float(np.sum(bv)),
             gcum01=gcum01,
             lesp=a0,
+            lesp_constraint_residual=(
+                float(AF[0] - np.sign(a0) * self.lesp_crit) if shed_lev else 0.0
+            ),
+            shed_lev=bool(shed_lev),
             n_lev=len(self.lx),
             n_tev=len(self.tx),
+            dt_i=dt,
+            source_parity=self.source_parity,
+            tev_strength_te_only_provisional=gT_te_only_provisional,
+            tev_strength_solved=float(gT),
+            tev_strength_stored=gT_stored,
+            first_tev_zeroed=first_tev_zeroed,
         )
 
 

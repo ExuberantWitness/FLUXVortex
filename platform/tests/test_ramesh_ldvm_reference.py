@@ -6,12 +6,11 @@ Fortran source and its GPL-covered output files are deliberately not vendored.
 The test reconstructs the analytic Eldredge motion and the already-vendored
 SD7003 mean camber line instead.
 
-This is a *partial-parity* guard.  ``platform/ldvm_fourier.py`` has the same
-LESP/Kelvin/load primitives and reproduces the first shedding event, but it is
-not yet an exact time-history port.  In particular it does not apply the
-Fortran source's special first-TEV zeroing operation and its public result uses
-different wake-sign and pre/post-LESP conventions.  See
-``SOURCE_AUDIT_RAMESH_LDVM.md`` for the measured limits.
+This is an event-history parity guard for the explicitly isolated
+``source_parity`` mode.  It does not claim bitwise strength parity: the Python
+oracle uses a clean linear Kelvin solve while the source uses a finite-tolerance
+Newton iteration, and their public wake-sign conventions differ.  See
+``SOURCE_AUDIT_RAMESH_LDVM.md`` for the scope of the source audit.
 """
 
 from __future__ import annotations
@@ -40,36 +39,48 @@ AUTHOR_LESP_CRIT = 0.18
 AUTHOR_FIRST_LEV_CL = 3.0860116
 AUTHOR_FIRST_LEV_CD = 0.59517464
 AUTHOR_FINAL_LEV_COUNT = 174
+AUTHOR_LAST_LEV_OUTPUT_ROW = 289
 
 
 def _eldredge_reference_motion() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Reconstruct the bundled 45-degree, K=0.2 ramp-hold-return motion."""
+    """Build a source-arithmetic clean-room approximation to the motion."""
 
-    amplitude = np.deg2rad(45.0)
+    # The author's source promotes ``acos(-1.)`` from default real precision.
+    # Retaining that arithmetic reproduces every printed time sample without
+    # copying the distributed motion file into this clean-room regression.
+    source_pi = float(np.float32(np.pi))
+    amplitude = 45.0 * source_pi / 180.0
     reduced_pitch_rate = 0.2
     smoothing = 11.0
     t1 = 1.0
     t2 = t1 + amplitude / (2.0 * reduced_pitch_rate)
     t3 = (
         t2
-        + np.pi * amplitude / (4.0 * reduced_pitch_rate)
+        + source_pi * amplitude / (4.0 * reduced_pitch_rate)
         - amplitude / (2.0 * reduced_pitch_rate)
     )
     t4 = t3 + amplitude / (2.0 * reduced_pitch_rate)
 
     def eldredge_shape(time: np.ndarray | float) -> np.ndarray:
         time = np.asarray(time)
-        return (
-            np.log(np.cosh(smoothing * (time - t1)))
-            + np.log(np.cosh(smoothing * (time - t4)))
-            - np.log(np.cosh(smoothing * (time - t2)))
-            - np.log(np.cosh(smoothing * (time - t3)))
+        return np.log(
+            (np.cosh(smoothing * (time - t1)) * np.cosh(smoothing * (time - t4)))
+            / (np.cosh(smoothing * (time - t2)) * np.cosh(smoothing * (time - t3)))
         )
 
     # The supplied motion contains 500 samples from t*=0 through t*=t4+1.
-    time = np.linspace(0.0, t4 + 1.0, 500)
-    maximum = float(eldredge_shape(0.5 * (t2 + t3)))
-    alpha = amplitude * eldredge_shape(time) / maximum
+    time_unrounded = np.linspace(0.0, t4 + 1.0, 500)
+    shape = eldredge_shape(time_unrounded)
+    maximum = float(np.max(shape))
+    alpha_deg_unrounded = 45.0 * shape / maximum
+
+    # The .7e quantization mirrors the distributed field precision.  This is
+    # not claimed to be a row-identical copy of the unvendored author file: an
+    # external audit found 500/500 time values and 493/500 alpha values equal,
+    # with the remaining alpha differences <= 1.1e-15 degree.
+    time = np.asarray([float(f"{value:.7e}") for value in time_unrounded])
+    alpha_deg = np.asarray([float(f"{value:.7e}") for value in alpha_deg_unrounded])
+    alpha = alpha_deg * np.pi / 180.0
 
     # ldvm.f95:181-187 uses first-order backward differences and copies the
     # second sample's derivative into the unused first sample.
@@ -79,8 +90,8 @@ def _eldredge_reference_motion() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return time, alpha, alpha_rate
 
 
-def _author_sd7003_camber_slope(model: LDVM2D) -> np.ndarray:
-    """Mirror ``calc_camberslope`` using the repository's SD7003 coordinates."""
+def _author_sd7003_camber_line(model: LDVM2D) -> tuple[np.ndarray, np.ndarray]:
+    """Mirror the source camber ordinate/slope construction for SD7003."""
 
     coordinates = np.loadtxt(
         ROOT / "researchpaper" / "uiuc_airfoils" / "sd7003.dat",
@@ -103,7 +114,19 @@ def _author_sd7003_camber_slope(model: LDVM2D) -> np.ndarray:
     slope = np.empty_like(camber)
     slope[0] = (camber[1] - camber[0]) / (model.xs[1] - model.xs[0])
     slope[1:] = np.diff(camber) / np.diff(model.xs)
-    return slope
+    return camber, slope
+
+
+def test_clean_room_motion_uses_source_precision_and_format_contract() -> None:
+    """Guard the reconstruction without claiming archive-row identity."""
+
+    time, alpha, alpha_rate = _eldredge_reference_motion()
+    assert time.shape == alpha.shape == alpha_rate.shape == (500,)
+    assert time[0] == 0.0
+    assert time[-1] == 7.0477470
+    assert len(np.unique(np.diff(time))) == 24
+    assert np.all(np.isfinite(alpha_rate))
+    assert abs(float(np.rad2deg(np.max(alpha))) - 45.0) <= 5.0e-7
 
 
 @lru_cache(maxsize=1)
@@ -119,8 +142,9 @@ def _reference_replay() -> dict[str, np.ndarray | int]:
         pivot_xc=0.0,
         core_rc=0.02,
         max_wake=100_000,
+        source_parity=True,
     )
-    model.dzc = _author_sd7003_camber_slope(model)
+    model.set_camber_line(*_author_sd7003_camber_line(model))
 
     rows: list[list[float]] = []
     kelvin_residuals: list[float] = []
@@ -135,6 +159,7 @@ def _reference_replay() -> dict[str, np.ndarray | int]:
             float(alpha[motion_index]),
             float(alpha_rate[motion_index]),
             0.0,
+            dt_i=float(time[motion_index] - time[motion_index - 1]),
         )
         output_row = motion_index
         rows.append(
@@ -210,16 +235,77 @@ def test_author_reference_first_lesp_cap_is_reproduced() -> None:
     assert np.isclose(first[7], AUTHOR_FIRST_LEV_CL, atol=2.0e-3)
     assert np.isclose(first[8], AUTHOR_FIRST_LEV_CD, atol=6.0e-4)
 
-    # Measured partial-parity limit: this clean-room replay currently creates
-    # 172 LEVs versus 174 in the author source.  Keep the discrepancy visible
-    # without falsely declaring exact full-history parity.
-    assert abs(int(replay["final_lev_count"]) - AUTHOR_FINAL_LEV_COUNT) <= 2
+    assert int(replay["final_lev_count"]) == AUTHOR_FINAL_LEV_COUNT
+
+
+def test_author_reference_shedding_event_mask_is_exact() -> None:
+    replay = _reference_replay()
+    rows = np.asarray(replay["rows"])
+    lev_counts = rows[:, 10].astype(int)
+    birth_mask = np.diff(np.concatenate(([0], lev_counts))) == 1
+    birth_rows = rows[birth_mask, 0].astype(int)
+
+    assert np.array_equal(
+        birth_rows,
+        np.arange(AUTHOR_FIRST_LEV_OUTPUT_ROW, AUTHOR_LAST_LEV_OUTPUT_ROW + 1),
+    )
+    assert birth_rows.size == AUTHOR_FINAL_LEV_COUNT
+    assert rows[-1, 11] == AUTHOR_OUTPUT_ROWS
+
+
+def test_source_parity_first_tev_is_zeroed_after_solve() -> None:
+    model = LDVM2D(source_parity=True, lesp_crit=99.0)
+    result = model.step(np.deg2rad(2.0), 0.0)
+
+    assert result["first_tev_zeroed"] is True
+    assert result["tev_strength_solved"] != 0.0
+    assert result["tev_strength_stored"] == 0.0
+    assert model.tg == [0.0]
+
+
+def test_te_only_provisional_is_frozen_without_changing_legacy_placement() -> None:
+    def run_and_capture(
+        source_parity: bool,
+    ) -> tuple[LDVM2D, dict, list[tuple[float, float]]]:
+        model = LDVM2D(source_parity=source_parity, lesp_crit=0.18)
+        calls: list[tuple[float, float]] = []
+        original = model._wcol
+
+        def capture(px: float, py: float) -> np.ndarray:
+            calls.append((float(px), float(py)))
+            return original(px, py)
+
+        model._wcol = capture
+        result = model.step(np.deg2rad(35.0), 0.0)
+        return model, result, calls
+
+    legacy, legacy_result, legacy_calls = run_and_capture(False)
+    parity, parity_result, parity_calls = run_and_capture(True)
+    assert legacy_result["shed_lev"] is True
+    assert parity_result["shed_lev"] is True
+    assert len(legacy_calls) == len(parity_calls) == 2
+    legacy_edge = legacy._world(0.0)
+    np.testing.assert_array_equal(
+        legacy_calls[1],
+        (legacy_edge[0] + 0.5 * legacy.U * legacy_result["dt_i"], legacy_edge[1]),
+    )
+    assert parity_calls[1] != legacy_calls[1]
+    assert (
+        parity_result["tev_strength_te_only_provisional"]
+        != parity_result["tev_strength_solved"]
+    )
+    assert (
+        legacy_result["tev_strength_te_only_provisional"]
+        == parity_result["tev_strength_te_only_provisional"]
+    )
 
 
 def test_kelvin_and_force_definition_identities_close() -> None:
     replay = _reference_replay()
 
-    assert np.max(np.abs(replay["kelvin"])) < 2.0e-12
+    # The source deliberately zeros its first solved TEV after the first
+    # Kelvin solve.  Kelvin closes again from the following output row onward.
+    assert np.max(np.abs(replay["kelvin"][1:])) < 2.0e-12
     assert np.max(np.abs(replay["cl_identity"])) < 2.0e-14
     assert np.max(np.abs(replay["cd_identity"])) < 2.0e-14
     assert np.max(np.abs(replay["cs_identity"])) < 2.0e-14

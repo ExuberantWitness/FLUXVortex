@@ -1,0 +1,9 @@
+panel,label,benchmark,quantity,error_metric,observation_scope,v4b_error,v5a_error,v5a_over_v4b,lower_is_better,passed,failed,total,force_evidence,crosspaper_performance_status
+v5a_stop,Yang lift,yang2025,lift_gf,mae,6,4.554509816656029,3.951385437999497,0.8675764455593263,True,,,,,
+v5a_stop,Yang drag,yang2025,drag_gf,mae,6,2.643997473596851,2.062566960238017,0.7800941494214572,True,,,,,
+v5a_stop,Figure 14 thrust,izraelevitz2017_fig14,CT,rmse,14,0.02594916701432961,0.09469550728255667,3.6492696366809794,True,,,,,
+v5a_stop,Baik CL,baik2012,CL,macro_rmse_filtered_1hz,4 waveforms x 400 samples,0.6575418666678028,0.8016489911517024,1.219160378660275,True,,,,,
+v5a_stop,Baik CD,baik2012,CD,macro_rmse_filtered_1hz,4 waveforms x 400 samples,0.3451524189627076,0.4044090635927589,1.1716825418988408,True,,,,,
+v5b_mechanical_gates,G0,,,,,,,,,1,0,1,False,blocked_not_scored
+v5b_mechanical_gates,G1,,,,,,,,,7,0,7,False,blocked_not_scored
+v5b_mechanical_gates,G2,,,,,,,,,10,0,10,False,blocked_not_scored

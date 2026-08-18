@@ -1,0 +1,13 @@
+run_id=20260815_fluxv_v5h_dvm_node_birth_fixed_core_gate
+run_uuid=c6a19115-6d0c-48e5-ac53-f5c672ad69f8
+tier=auxiliary/dev
+status=go_v1_only
+passed=true
+geometry_count=3
+numerical_started_utc=2026-08-15T01:16:13.945077+00:00
+numerical_completed_utc=2026-08-15T01:16:20.801830+00:00
+output_dir=/tmp/fluxv-v5-nextgen/docs/forward_flight_large_pitch/reproductions/fluxv_v5_nextgen_20260814/runs/20260815_fluxv_v5h_dvm_node_birth_fixed_core_gate
+semantic_result_sha256=c18f0f0795d11c9ba166d34900135cbb44bae67c558f261e1ce964ec8f41e3e5
+observation_access=none
+core_scan_role=diagnostic_only_no_selection
+cumulative_cloud_v2=blocked

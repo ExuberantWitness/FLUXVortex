@@ -10,9 +10,11 @@ if str(PLATFORM) not in sys.path:
 
 from claim_runtime.hirato_equations import (  # noqa: E402
     HiratoEquationError,
+    RAMESH_2014_LDVM_V25_BIRTH_SOURCE_TAG,
     cutoff_radius_family,
     embed_chord_normal_displacement,
     first_lev_displacement_ramesh_2d,
+    first_lev_displacement_ramesh_2014_ldvm_v25,
     first_vortex_displacement_ansari,
     kelvin_residual_eq9,
     lesp_eq6,
@@ -55,6 +57,21 @@ class HiratoEquationTests(unittest.TestCase):
             displacement[:, 1],
             scale * np.cos(np.deg2rad(30.0)),
         )
+
+    def test_ramesh_2014_ldvm_v25_first_or_restart_uses_local_half_step(self):
+        edge_velocity = np.array(
+            [
+                [[2.0, -1.0, 0.5], [1.0, 3.0, -2.0]],
+                [[-0.2, 0.4, 1.1], [4.0, -3.0, 2.0]],
+            ]
+        )
+        displacement = first_lev_displacement_ramesh_2014_ldvm_v25(
+            edge_velocity,
+            dt=0.04,
+        )
+        np.testing.assert_array_equal(displacement, 0.02 * edge_velocity)
+        self.assertIn("ramesh-jfm-2014", RAMESH_2014_LDVM_V25_BIRTH_SOURCE_TAG)
+        self.assertIn("ldvm-v2.5", RAMESH_2014_LDVM_V25_BIRTH_SOURCE_TAG)
 
     def test_2d_to_finite_wing_embedding_requires_explicit_orthonormal_basis(self):
         displacement = np.array([[0.1, 0.2], [-0.3, 0.4]])

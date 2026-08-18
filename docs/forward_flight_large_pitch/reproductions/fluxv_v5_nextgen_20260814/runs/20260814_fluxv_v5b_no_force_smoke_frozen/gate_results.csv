@@ -1,0 +1,19 @@
+gate_level,gate_id,measured,relation,threshold,passed,evidence_role,force_evidence,note
+G0,g0_ramesh_reference_pytest,0,==,0,True,frozen_2d_partial_parity_guard,False,existing three-test Ramesh suite; not finite-wing force evidence
+G1,g1_disabled_dispatch_identity,True,is,True,True,module_off_exact_identity,False,
+G1,g1_no_lev_active_count,0,==,0,True,synthetic_no_lev_topology,False,
+G1,g1_no_lev_birth_gamma,0.0,==,0.0,True,synthetic_no_lev_topology,False,
+G1,g1_eq9_closure,0.0,<=,1e-14,True,Hirato_Eq9_identity,False,
+G1,g1_kelvin_closure,0.0,<=,1e-12,True,shared_wake_circulation_ledger,False,
+G1,g1_convection_ledger_closure,0.0,<=,1e-14,True,material_velocity_ledger,False,
+G1,g1_no_force_output,True,==,True,True,scope_guard,False,passing this gate blocks rather than enables paper accuracy scoring
+G2,g2_live_active_strip,2,>=,1,True,live_LESP_event,False,
+G2,g2_first_step_new_sheet,2,>=,1,True,LEV_birth_topology,False,
+G2,g2_second_step_no_rebirth,0,==,0,True,material_sheet_identity,False,
+G2,g2_eq9_closure,0.0,<=,1e-14,True,Hirato_Eq9_identity,False,
+G2,g2_kelvin_closure,0.0,<=,1e-12,True,shared_wake_circulation_ledger,False,
+G2,g2_active_lesp_closure,2.7755575615628914e-17,<=,1e-12,True,LESP_constraint,False,
+G2,g2_material_gamma_invariance,0.0,<=,1e-14,True,material_vortex_identity,False,
+G2,g2_material_ids_complete,0,==,0,True,material_vortex_identity,False,
+G2,g2_birth_strength_finite,True,==,True,True,birth_finiteness,False,
+G2,g2_birth_limit,0.00016440815219373727,>,0.0,True,dt_to_zero_birth_limit,False,core-defined positive-order diagnostic only; a near-zero fitted order is weak asymptotic evidence and cannot authorize force

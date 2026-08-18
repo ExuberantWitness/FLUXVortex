@@ -1,0 +1,4 @@
+command: /home/exuber/anaconda3/envs/fluxvortex/bin/python -m pytest tests/test_ramesh_ldvm_reference.py -q
+
+...                                                                      [100%]
+3 passed in 1.83s

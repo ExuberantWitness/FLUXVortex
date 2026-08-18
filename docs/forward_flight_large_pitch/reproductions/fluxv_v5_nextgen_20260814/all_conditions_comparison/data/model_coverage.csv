@@ -1,0 +1,7 @@
+model_id,yang2025,izraelevitz2017_fig14,baik2012,status,note
+fluxv_old,6/6,12/12,4/4,scored_baseline,Current FluxV/Ptera prescribed-load channel.
+fluxv_v4b,6/6,12/12,4/4,qualified_current_candidate,Best jointly retained candidate before v5 development.
+fluxv_v5a,6/6,12/12,4/4,cache_proxy_rejected,Kinematic/integrated compatibility proxy; 0/18 promotion gates.
+fluxv_v5b,not_scored,not_scored,not_scored,blocked_before_crosspaper_scoring,No-LEV exact-reduction gate G1 failed; no paper curves exist.
+ptera_prescribed_wake_uvlm,6/6 duplicate,n/a,n/a,omitted_duplicate,Exactly duplicates the FluxV-old load channel in Yang.
+robofalcon2_coefficient_transfer,6/6 diagnostic,n/a,n/a,omitted_cross_domain,Cross-geometry/Re coefficient transfer; omitted from main axes.

@@ -1,0 +1,15 @@
+[deps]
+EllipticFunctions = "6a4e32cb-b31a-4929-85af-fb29d9a80738"
+FLOWVPM = "6e19019d-7c31-4940-9d16-c3f15dfe6020"
+FastMultipole = "ce07d0d3-2b9f-49ba-89eb-12c800257c85"
+HCubature = "19dc6840-f33b-545b-b366-655c7e3ffd49"
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
+SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+julia = "1.10"

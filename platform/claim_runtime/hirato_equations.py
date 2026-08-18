@@ -19,6 +19,11 @@ class HiratoEquationError(ValueError):
     """An equation input has an invalid shape or value."""
 
 
+RAMESH_2014_LDVM_V25_BIRTH_SOURCE_TAG = (
+    "ramesh-jfm-2014-sec2.3__ldvm-v2.5-ldvm.f95-L300-L327"
+)
+
+
 def _finite_array(name: str, value, *, ndim: int | None = None) -> np.ndarray:
     array = np.asarray(value, dtype=float)
     if ndim is not None and array.ndim != ndim:
@@ -64,6 +69,32 @@ def first_vortex_displacement_ansari(
     if not np.isfinite(dt) or dt <= 0.0:
         raise HiratoEquationError(f"dt must be positive and finite, got {dt}")
     return 0.5 * velocity * dt
+
+
+def first_lev_displacement_ramesh_2014_ldvm_v25(
+    local_edge_velocity,
+    dt: float,
+) -> np.ndarray:
+    """Ramesh mature-LDVM first/restart LEV half-step placement.
+
+    Ramesh et al. (JFM 751, 2014), section 2.3, defines a newly initiated
+    shed vortex from the velocity at its shedding edge.  The distributed
+    LDVM-v2.5 source makes the coefficient explicit in ``ldvm.f95`` lines
+    300--327: a first LEV, including one after ``levflag`` is reset, is placed
+    at
+
+    ``delta_r = 0.5 * q_LE * dt``.
+
+    The mathematical half-step construction is inherited from Ansari,
+    Zbikowski & Knowles (2006).  This source-tagged wrapper distinguishes the
+    mature Ramesh first/restart law from the earlier Ramesh et al. (2012)
+    ``U*A0*dt/sqrt(2)`` law implemented by
+    :func:`first_lev_displacement_ramesh_2d`.  Which velocity components make
+    up ``q_LE`` and how the 2-D law is mapped to a finite wing remain explicit
+    solver-adapter responsibilities.
+    """
+
+    return first_vortex_displacement_ansari(local_edge_velocity, dt)
 
 
 def first_lev_displacement_ramesh_2d(
@@ -130,13 +161,8 @@ def embed_chord_normal_displacement(
             "chord_tangent and suction_normal must both have shape "
             f"{expected_basis_shape}, got {tangent.shape} and {normal.shape}"
         )
-    if (
-        not np.isfinite(orthogonality_tolerance)
-        or orthogonality_tolerance <= 0.0
-    ):
-        raise HiratoEquationError(
-            "orthogonality_tolerance must be positive and finite"
-        )
+    if not np.isfinite(orthogonality_tolerance) or orthogonality_tolerance <= 0.0:
+        raise HiratoEquationError("orthogonality_tolerance must be positive and finite")
     tangent_norm = np.linalg.norm(tangent, axis=-1)
     normal_norm = np.linalg.norm(normal, axis=-1)
     dot = np.einsum("...i,...i->...", tangent, normal)
@@ -148,10 +174,7 @@ def embed_chord_normal_displacement(
         raise HiratoEquationError(
             "finite-wing chord_tangent and suction_normal must be orthonormal"
         )
-    return (
-        displacement[..., 0, None] * tangent
-        + displacement[..., 1, None] * normal
-    )
+    return displacement[..., 0, None] * tangent + displacement[..., 1, None] * normal
 
 
 def tev_first_displacement_hirato(
@@ -255,9 +278,7 @@ def lesp_eq6(
         raise HiratoEquationError("chord must be positive")
     fraction = delta_x / local_chord
     if np.any((fraction <= 0.0) | (fraction > 1.0)):
-        raise HiratoEquationError(
-            "delta_x_front/chord must lie in (0, 1]"
-        )
+        raise HiratoEquationError("delta_x_front/chord must lie in (0, 1]")
     theta = np.arccos(np.clip(1.0 - 2.0 * fraction, -1.0, 1.0))
     denominator = u_infinity * local_chord * (theta + np.sin(theta))
     return 1.13 * gamma / denominator
@@ -353,7 +374,9 @@ def solve_lesp_constraint(
     )
 
 
-def rearmost_bound_aft_edge(bound_rings, nc: int, ns: int) -> tuple[np.ndarray, np.ndarray]:
+def rearmost_bound_aft_edge(
+    bound_rings, nc: int, ns: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Return the aft-right/aft-left edge used by the Fig.5 pseudovortex.
 
     FLUXV rings are flattened chord-major and store corners as
@@ -368,7 +391,7 @@ def rearmost_bound_aft_edge(bound_rings, nc: int, ns: int) -> tuple[np.ndarray, 
         raise HiratoEquationError(
             f"bound_rings must have shape {(nc * ns, 4, 3)}, got {rings.shape}"
         )
-    rear = rings[(nc - 1) * ns:nc * ns]
+    rear = rings[(nc - 1) * ns : nc * ns]
     return rear[:, 2].copy(), rear[:, 3].copy()
 
 

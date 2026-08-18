@@ -1,0 +1,6 @@
+gate_level,case_id,step,status,force_coupling,active_strip_count,new_sheet_count,eq9_max_abs_residual,kelvin_max_abs_residual,lesp_max_abs_residual,convection_ledger_max_abs_residual,material_gamma_max_abs_change,material_gamma_missing_ids,new_tev_gamma_max_abs,new_lev_gamma_max_abs,birth_gamma_max_abs,has_force_attribute,has_pressure_attribute
+G1,flat_no_lev,0,no_force_diagnostic_only,not_implemented,0,0,0.0,0.0,0.0,0.0,0.0,0,0.0,0.0,0.0,False,False
+G1,flat_no_lev,1,no_force_diagnostic_only,not_implemented,0,0,0.0,0.0,0.0,0.0,0.0,0,0.0,0.0,0.0,False,False
+G1,flat_no_lev,2,no_force_diagnostic_only,not_implemented,0,0,0.0,0.0,0.0,0.0,0.0,0,0.0,0.0,0.0,False,False
+G2,pitched15_live,0,no_force_diagnostic_only,not_implemented,2,2,0.0,0.0,2.0816681711721685e-17,1.5786661257746748e-16,0.0,0,0.0,0.20224940689800205,0.20224940689800205,False,False
+G2,pitched15_live,1,no_force_diagnostic_only,not_implemented,2,0,0.0,0.0,2.7755575615628914e-17,3.069918451392706e-16,0.0,0,0.41340070869699186,0.21553827337440828,0.41340070869699186,False,False
