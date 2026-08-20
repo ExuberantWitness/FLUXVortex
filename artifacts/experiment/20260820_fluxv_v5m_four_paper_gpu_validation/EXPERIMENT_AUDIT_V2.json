@@ -1,0 +1,32 @@
+{
+  "acceptance_status": "provisional",
+  "blockers": [],
+  "dimensions": {
+    "A_ground_truth_provenance": "PASS",
+    "B_score_normalization": "PASS",
+    "C_result_integrity": "PASS",
+    "D_executed_path": "PASS",
+    "E_scope": "PASS_LIMITED_TO_24_FROZEN_CASES",
+    "F_evaluation_type": "real_gt"
+  },
+  "evidence_sha256": {
+    "baik_summary": "f2fba13edd70f089f8e3d7da027e7d98c3ba178f228db06720919b9a94104592",
+    "cuda_corrections": "177cf0f9e4cb6c9c666ee01f6cc9767f86e873c873c618af97c52bdce16d87e3",
+    "ldvm_cuda": "31f19712679efa5af92d9bf1b9b9d3c998d6a11a421cf67c4f975ced5bb7b6d1",
+    "metrics": "5479580ebf8fd0b86c357e3c006db75056aaef262f407ed92e0ff5a25d75bbf8",
+    "nsight_report": "6001d5900a0ff943cccacc1e54dd8dfe183baba2d303a9223b6629f01f636fa9",
+    "ptera_cuda_backend": "9199e87a7d3023f330ba4e62376fe51f0220a09f1e290a7ca4abe7b1838f3a62",
+    "three_paper_canonical_result": "c4cc9bcc635717351982f611747dcd069293463902e0721167fff049fd5ac437",
+    "three_paper_summary": "6ecd1a046f4d31391485c38ff92e585e7803cd03a815e975f55f90b19cd9abcb"
+  },
+  "overall_verdict": "PASS_WITH_WARNINGS",
+  "reviewer_independence": "same-family",
+  "run_id": "20260820_fluxv_v5m_four_paper_gpu_validation",
+  "warnings": [
+    "mixed CPU/CUDA finite-wing projection inputs are uploaded to CUDA rather than API-level rejected",
+    "legacy G0/G0b/G0c/P0 values are commit-level diagnostics, not fresh four-paper GPU metrics",
+    "one deterministic run per case; no uncertainty or convergence study",
+    "Nsight evidence is an eight-step mechanism smoke",
+    "scope excludes 3D active-LEV, multi-wing, image-surface, free-wake, and generic Ptera paths"
+  ]
+}

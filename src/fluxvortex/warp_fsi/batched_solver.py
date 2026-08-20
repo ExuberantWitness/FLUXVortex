@@ -18,9 +18,11 @@ DTYPE = config.DTYPE
 
 
 @wp.kernel
-def _lu_solve_kernel(A: wp.array(dtype=DTYPE, ndim=3),   # (B,N,N) work copy (destroyed)
-                     b: wp.array(dtype=DTYPE, ndim=2),   # (B,N) rhs -> solution
-                     N: int):
+def _lu_solve_kernel(
+    A: wp.array(dtype=DTYPE, ndim=3),  # (B,N,N) work copy (destroyed)
+    b: wp.array(dtype=DTYPE, ndim=2),  # (B,N) rhs -> solution
+    N: int,
+):
     e = wp.tid()
     # LU factorization with partial pivoting, in place on A[e], applied to b[e].
     for k in range(N):
@@ -33,8 +35,12 @@ def _lu_solve_kernel(A: wp.array(dtype=DTYPE, ndim=3),   # (B,N,N) work copy (de
                 piv = r
         if piv != k:
             for c in range(N):
-                t = A[e, k, c]; A[e, k, c] = A[e, piv, c]; A[e, piv, c] = t
-            tb = b[e, k]; b[e, k] = b[e, piv]; b[e, piv] = tb
+                t = A[e, k, c]
+                A[e, k, c] = A[e, piv, c]
+                A[e, piv, c] = t
+            tb = b[e, k]
+            b[e, k] = b[e, piv]
+            b[e, piv] = tb
         akk = A[e, k, k]
         for r in range(k + 1, N):
             f = A[e, r, k] / akk
@@ -57,7 +63,11 @@ def batched_dense_solve(A_wp, b_wp, device=None, in_place_b=False):
     """
     device = device or config.DEVICE
     B, N, _ = A_wp.shape
-    if B <= 4:
+    # A CUDA request must stay on CUDA.  The previous B<=4 optimization copied
+    # the system to host LAPACK, which is fast but violates the GPU-only paper
+    # execution contract and makes device monitoring misleading.
+    device_info = wp.get_device(device)
+    if B <= 4 and not device_info.is_cuda:
         # (2026-07-09 perf) few-env case: one GPU thread doing the whole O(N³) LU is
         # ~150 ms at N=192 (measured; 1/3 of the UVLM step cost). Host LAPACK dgesv is
         # the SAME partial-pivoting algorithm at <1 ms incl. transfers. The GPU kernel
@@ -79,15 +89,19 @@ def batched_dense_solve(A_wp, b_wp, device=None, in_place_b=False):
 # S·v computed from per-element blocks (M_e shared, K_e per-env), with a free-DOF
 # mask (Dirichlet BC). All batched over environments; no global matrix stored.
 
+
 @wp.kernel
-def smatvec_kernel(v: wp.array(dtype=DTYPE, ndim=2),       # (B, ndof) input
-                   Me: wp.array(dtype=DTYPE, ndim=3),      # (ne, nblk, nblk) shared mass
-                   Kblk: wp.array(dtype=DTYPE, ndim=4),    # (B, ne, nblk, nblk) per-env tangent
-                   edofs: wp.array(dtype=wp.int32, ndim=2),# (ne, nblk)
-                   free: wp.array(dtype=DTYPE, ndim=1),    # (ndof,) 1 free / 0 BC
-                   cM: DTYPE, cK: DTYPE,
-                   nblk: int,
-                   w: wp.array(dtype=DTYPE, ndim=2)):      # (B, ndof) out (accumulate)
+def smatvec_kernel(
+    v: wp.array(dtype=DTYPE, ndim=2),  # (B, ndof) input
+    Me: wp.array(dtype=DTYPE, ndim=3),  # (ne, nblk, nblk) shared mass
+    Kblk: wp.array(dtype=DTYPE, ndim=4),  # (B, ne, nblk, nblk) per-env tangent
+    edofs: wp.array(dtype=wp.int32, ndim=2),  # (ne, nblk)
+    free: wp.array(dtype=DTYPE, ndim=1),  # (ndof,) 1 free / 0 BC
+    cM: DTYPE,
+    cK: DTYPE,
+    nblk: int,
+    w: wp.array(dtype=DTYPE, ndim=2),
+):  # (B, ndof) out (accumulate)
     """w += free⊙((cM·M + cK·K)·(free⊙v)).  cM=1,cK=coef -> S; cM=0,cK=.. -> K; cM=1,cK=0 -> M."""
     e, el, a = wp.tid()
     da = edofs[el, a]
@@ -100,13 +114,19 @@ def smatvec_kernel(v: wp.array(dtype=DTYPE, ndim=2),       # (B, ndof) input
 
 
 @wp.kernel
-def _masked_axpy_kernel(y: wp.array(dtype=DTYPE, ndim=2), c: DTYPE,
-                        x: wp.array(dtype=DTYPE, ndim=2), free: wp.array(dtype=DTYPE, ndim=1)):
+def _masked_axpy_kernel(
+    y: wp.array(dtype=DTYPE, ndim=2),
+    c: DTYPE,
+    x: wp.array(dtype=DTYPE, ndim=2),
+    free: wp.array(dtype=DTYPE, ndim=1),
+):
     e, d = wp.tid()
     y[e, d] = y[e, d] + c * free[d] * x[e, d]
 
 
-def apply_MK(vin, wout, Me, Kblk, edofs, free, cM, cK, device, madd=None, madd_tmp=None):
+def apply_MK(
+    vin, wout, Me, Kblk, edofs, free, cM, cK, device, madd=None, madd_tmp=None
+):
     """wout = free⊙((cM·M + cK·K)·(free⊙vin)) − cM·free⊙(M_added·vin).
 
     Adds the −M_added term (M_eff = M − M_added) when `madd` (a CSR) is given and
@@ -114,22 +134,32 @@ def apply_MK(vin, wout, Me, Kblk, edofs, free, cM, cK, device, madd=None, madd_t
     NP = config.NP_DTYPE
     nblk = edofs.shape[1]
     wout.zero_()
-    wp.launch(smatvec_kernel, dim=(vin.shape[0], edofs.shape[0], nblk),
-              inputs=[vin, Me, Kblk, edofs, free, DTYPE(NP(cM)), DTYPE(NP(cK)), nblk],
-              outputs=[wout], device=device)
+    wp.launch(
+        smatvec_kernel,
+        dim=(vin.shape[0], edofs.shape[0], nblk),
+        inputs=[vin, Me, Kblk, edofs, free, DTYPE(NP(cM)), DTYPE(NP(cK)), nblk],
+        outputs=[wout],
+        device=device,
+    )
     if madd is not None and cM != 0.0:
         mv = madd.matvec(vin, out=madd_tmp)
-        wp.launch(_masked_axpy_kernel, dim=wout.shape,
-                  inputs=[wout, DTYPE(NP(-cM)), mv, free], device=device)
+        wp.launch(
+            _masked_axpy_kernel,
+            dim=wout.shape,
+            inputs=[wout, DTYPE(NP(-cM)), mv, free],
+            device=device,
+        )
 
 
 @wp.kernel
-def sdiag_kernel(Me: wp.array(dtype=DTYPE, ndim=3),
-                 Kblk: wp.array(dtype=DTYPE, ndim=4),
-                 edofs: wp.array(dtype=wp.int32, ndim=2),
-                 free: wp.array(dtype=DTYPE, ndim=1),
-                 coef: DTYPE,
-                 diag: wp.array(dtype=DTYPE, ndim=2)):   # (B, ndof) out
+def sdiag_kernel(
+    Me: wp.array(dtype=DTYPE, ndim=3),
+    Kblk: wp.array(dtype=DTYPE, ndim=4),
+    edofs: wp.array(dtype=wp.int32, ndim=2),
+    free: wp.array(dtype=DTYPE, ndim=1),
+    coef: DTYPE,
+    diag: wp.array(dtype=DTYPE, ndim=2),
+):  # (B, ndof) out
     """diag(S)[e,da] = Σ_el (Me[el,a,a] + coef·Kblk[e,el,a,a]) for da=edofs[el,a]."""
     e, el, a = wp.tid()
     da = edofs[el, a]
@@ -137,16 +167,23 @@ def sdiag_kernel(Me: wp.array(dtype=DTYPE, ndim=3),
 
 
 @wp.kernel
-def _sub_bcast_kernel(diag: wp.array(dtype=DTYPE, ndim=2), md: wp.array(dtype=DTYPE, ndim=1),
-                      free: wp.array(dtype=DTYPE, ndim=1)):
+def _sub_bcast_kernel(
+    diag: wp.array(dtype=DTYPE, ndim=2),
+    md: wp.array(dtype=DTYPE, ndim=1),
+    free: wp.array(dtype=DTYPE, ndim=1),
+):
     """diag[e,d] -= free[d]·md[d]  (subtract shared M_added diagonal)."""
     e, d = wp.tid()
     diag[e, d] = diag[e, d] - free[d] * md[d]
 
 
 @wp.kernel
-def _minv_apply(diag: wp.array(dtype=DTYPE, ndim=2), free: wp.array(dtype=DTYPE, ndim=1),
-                r: wp.array(dtype=DTYPE, ndim=2), z: wp.array(dtype=DTYPE, ndim=2)):
+def _minv_apply(
+    diag: wp.array(dtype=DTYPE, ndim=2),
+    free: wp.array(dtype=DTYPE, ndim=1),
+    r: wp.array(dtype=DTYPE, ndim=2),
+    z: wp.array(dtype=DTYPE, ndim=2),
+):
     e, d = wp.tid()
     dd = diag[e, d]
     if free[d] > DTYPE(0.5) and dd != DTYPE(0.0):
@@ -156,10 +193,12 @@ def _minv_apply(diag: wp.array(dtype=DTYPE, ndim=2), free: wp.array(dtype=DTYPE,
 
 
 @wp.kernel
-def _dot_kernel(a: wp.array(dtype=DTYPE, ndim=2),
-                b: wp.array(dtype=DTYPE, ndim=2),
-                ndof: int,
-                out: wp.array(dtype=DTYPE, ndim=1)):
+def _dot_kernel(
+    a: wp.array(dtype=DTYPE, ndim=2),
+    b: wp.array(dtype=DTYPE, ndim=2),
+    ndof: int,
+    out: wp.array(dtype=DTYPE, ndim=1),
+):
     e = wp.tid()
     s = DTYPE(0.0)
     for d in range(ndof):
@@ -168,33 +207,57 @@ def _dot_kernel(a: wp.array(dtype=DTYPE, ndim=2),
 
 
 @wp.kernel
-def _axpy_kernel(y: wp.array(dtype=DTYPE, ndim=2), coef: wp.array(dtype=DTYPE, ndim=1),
-                 x: wp.array(dtype=DTYPE, ndim=2), sign: DTYPE):
+def _axpy_kernel(
+    y: wp.array(dtype=DTYPE, ndim=2),
+    coef: wp.array(dtype=DTYPE, ndim=1),
+    x: wp.array(dtype=DTYPE, ndim=2),
+    sign: DTYPE,
+):
     e, d = wp.tid()
     y[e, d] = y[e, d] + sign * coef[e] * x[e, d]
 
 
 @wp.kernel
-def _xpby_kernel(p: wp.array(dtype=DTYPE, ndim=2), r: wp.array(dtype=DTYPE, ndim=2),
-                 beta: wp.array(dtype=DTYPE, ndim=1)):
+def _xpby_kernel(
+    p: wp.array(dtype=DTYPE, ndim=2),
+    r: wp.array(dtype=DTYPE, ndim=2),
+    beta: wp.array(dtype=DTYPE, ndim=1),
+):
     e, d = wp.tid()
     p[e, d] = r[e, d] + beta[e] * p[e, d]
 
 
 @wp.kernel
-def _div_kernel(num: wp.array(dtype=DTYPE, ndim=1), den: wp.array(dtype=DTYPE, ndim=1),
-                out: wp.array(dtype=DTYPE, ndim=1)):
+def _div_kernel(
+    num: wp.array(dtype=DTYPE, ndim=1),
+    den: wp.array(dtype=DTYPE, ndim=1),
+    out: wp.array(dtype=DTYPE, ndim=1),
+):
     e = wp.tid()
     out[e] = num[e] / den[e]
 
 
 def _dot(a, b, ndof, out, device):
-    wp.launch(_dot_kernel, dim=a.shape[0], inputs=[a, b, ndof], outputs=[out], device=device)
+    wp.launch(
+        _dot_kernel, dim=a.shape[0], inputs=[a, b, ndof], outputs=[out], device=device
+    )
 
 
-def structural_cg(b_wp, Me, Kblk, edofs, free, coef, ndof,
-                  max_iter=2000, tol=None, device=None, check_every=1,
-                  madd=None, madd_diag=None):
+def structural_cg(
+    b_wp,
+    Me,
+    Kblk,
+    edofs,
+    free,
+    coef,
+    ndof,
+    max_iter=2000,
+    tol=None,
+    device=None,
+    check_every=1,
+    madd=None,
+    madd_diag=None,
+):
     """Solve (M − M_added + coef·K)·x = b per env via matrix-free batched Jacobi-PCG.
     b_wp (B, ndof) must satisfy b[bc]=0. Returns (x (B,ndof), n_iters).
 
@@ -207,17 +270,41 @@ def structural_cg(b_wp, Me, Kblk, edofs, free, coef, ndof,
     ne = edofs.shape[0]
     NP = config.NP_DTYPE
     coefD = DTYPE(NP(coef))
-    madd_tmp = wp.zeros((B, ndof), dtype=DTYPE, device=device) if madd is not None else None
+    madd_tmp = (
+        wp.zeros((B, ndof), dtype=DTYPE, device=device) if madd is not None else None
+    )
 
     def mv(vin, wout):  # S·v = (M − M_added + coef·K)·v
-        apply_MK(vin, wout, Me, Kblk, edofs, free, 1.0, coef, device, madd=madd, madd_tmp=madd_tmp)
+        apply_MK(
+            vin,
+            wout,
+            Me,
+            Kblk,
+            edofs,
+            free,
+            1.0,
+            coef,
+            device,
+            madd=madd,
+            madd_tmp=madd_tmp,
+        )
 
     # Jacobi preconditioner: diag(S)
     diag = wp.zeros((B, ndof), dtype=DTYPE, device=device)
-    wp.launch(sdiag_kernel, dim=(B, ne, edofs.shape[1]),
-              inputs=[Me, Kblk, edofs, free, coefD], outputs=[diag], device=device)
+    wp.launch(
+        sdiag_kernel,
+        dim=(B, ne, edofs.shape[1]),
+        inputs=[Me, Kblk, edofs, free, coefD],
+        outputs=[diag],
+        device=device,
+    )
     if madd_diag is not None:
-        wp.launch(_sub_bcast_kernel, dim=(B, ndof), inputs=[diag, madd_diag, free], device=device)
+        wp.launch(
+            _sub_bcast_kernel,
+            dim=(B, ndof),
+            inputs=[diag, madd_diag, free],
+            device=device,
+        )
 
     x = wp.zeros((B, ndof), dtype=DTYPE, device=device)
     r = wp.clone(b_wp)
@@ -231,7 +318,9 @@ def structural_cg(b_wp, Me, Kblk, edofs, free, coef, ndof,
     alpha = wp.zeros(B, dtype=DTYPE, device=device)
     beta = wp.zeros(B, dtype=DTYPE, device=device)
 
-    wp.launch(_minv_apply, dim=(B, ndof), inputs=[diag, free, r], outputs=[z], device=device)
+    wp.launch(
+        _minv_apply, dim=(B, ndof), inputs=[diag, free, r], outputs=[z], device=device
+    )
     wp.copy(p, z)
     _dot(r, z, ndof, rz, device)
     _dot(b_wp, b_wp, ndof, rr, device)  # |b|² for relative residual
@@ -243,17 +332,32 @@ def structural_cg(b_wp, Me, Kblk, edofs, free, coef, ndof,
         mv(p, Sp)
         _dot(p, Sp, ndof, pSp, device)
         wp.launch(_div_kernel, dim=B, inputs=[rz, pSp], outputs=[alpha], device=device)
-        wp.launch(_axpy_kernel, dim=(B, ndof), inputs=[x, alpha, p, DTYPE(1.0)], device=device)
-        wp.launch(_axpy_kernel, dim=(B, ndof), inputs=[r, alpha, Sp, DTYPE(-1.0)], device=device)
+        wp.launch(
+            _axpy_kernel, dim=(B, ndof), inputs=[x, alpha, p, DTYPE(1.0)], device=device
+        )
+        wp.launch(
+            _axpy_kernel,
+            dim=(B, ndof),
+            inputs=[r, alpha, Sp, DTYPE(-1.0)],
+            device=device,
+        )
         iters = it + 1
         if it % check_every == 0:
             _dot(r, r, ndof, rr, device)
             wp.synchronize()
             if math.sqrt(float(np.max(rr.numpy())) / bnorm2) < tol:
                 break
-        wp.launch(_minv_apply, dim=(B, ndof), inputs=[diag, free, r], outputs=[z], device=device)
+        wp.launch(
+            _minv_apply,
+            dim=(B, ndof),
+            inputs=[diag, free, r],
+            outputs=[z],
+            device=device,
+        )
         _dot(r, z, ndof, rz_new, device)
-        wp.launch(_div_kernel, dim=B, inputs=[rz_new, rz], outputs=[beta], device=device)
+        wp.launch(
+            _div_kernel, dim=B, inputs=[rz_new, rz], outputs=[beta], device=device
+        )
         wp.launch(_xpby_kernel, dim=(B, ndof), inputs=[p, z, beta], device=device)
         wp.copy(rz, rz_new)
     return x, iters
@@ -261,22 +365,35 @@ def structural_cg(b_wp, Me, Kblk, edofs, free, coef, ndof,
 
 # ─── GPU Newmark step (block-reduced, matches modules/numerical_solver.step) ──
 
+
 @wp.kernel
-def _saxpy_kernel(y: wp.array(dtype=DTYPE, ndim=2), c: DTYPE, x: wp.array(dtype=DTYPE, ndim=2)):
+def _saxpy_kernel(
+    y: wp.array(dtype=DTYPE, ndim=2), c: DTYPE, x: wp.array(dtype=DTYPE, ndim=2)
+):
     e, d = wp.tid()
     y[e, d] = y[e, d] + c * x[e, d]
 
 
 @wp.kernel
-def _lincomb_mask(out: wp.array(dtype=DTYPE, ndim=2), c1: DTYPE, a: wp.array(dtype=DTYPE, ndim=2),
-                  c2: DTYPE, b: wp.array(dtype=DTYPE, ndim=2), free: wp.array(dtype=DTYPE, ndim=1)):
+def _lincomb_mask(
+    out: wp.array(dtype=DTYPE, ndim=2),
+    c1: DTYPE,
+    a: wp.array(dtype=DTYPE, ndim=2),
+    c2: DTYPE,
+    b: wp.array(dtype=DTYPE, ndim=2),
+    free: wp.array(dtype=DTYPE, ndim=1),
+):
     e, d = wp.tid()
     out[e, d] = free[d] * (c1 * a[e, d] + c2 * b[e, d])
 
 
 @wp.kernel
-def _copy_free_else(dst: wp.array(dtype=DTYPE, ndim=2), xfree: wp.array(dtype=DTYPE, ndim=2),
-                    base: wp.array(dtype=DTYPE, ndim=2), free: wp.array(dtype=DTYPE, ndim=1)):
+def _copy_free_else(
+    dst: wp.array(dtype=DTYPE, ndim=2),
+    xfree: wp.array(dtype=DTYPE, ndim=2),
+    base: wp.array(dtype=DTYPE, ndim=2),
+    free: wp.array(dtype=DTYPE, ndim=1),
+):
     """dst = free⊙xfree + (1-free)⊙base  (free DOFs from solve, BC DOFs held)."""
     e, d = wp.tid()
     if free[d] > DTYPE(0.5):
@@ -285,11 +402,28 @@ def _copy_free_else(dst: wp.array(dtype=DTYPE, ndim=2), xfree: wp.array(dtype=DT
         dst[e, d] = base[e, d]
 
 
-def gpu_newmark_step(q_n, dq_n, Kblk, Me, edofs, free, ndof,
-                     F_const, Qmem_n, Qbend_n, F_vel_n,
-                     recompute_bend, recompute_fvel,
-                     alpha_v, c_damp, dt, cg_tol=None, device=None,
-                     madd=None, madd_diag=None):
+def gpu_newmark_step(
+    q_n,
+    dq_n,
+    Kblk,
+    Me,
+    edofs,
+    free,
+    ndof,
+    F_const,
+    Qmem_n,
+    Qbend_n,
+    F_vel_n,
+    recompute_bend,
+    recompute_fvel,
+    alpha_v,
+    c_damp,
+    dt,
+    cg_tol=None,
+    device=None,
+    madd=None,
+    madd_diag=None,
+):
     """One block-reduced Newmark step on GPU (matches numerical_solver.step).
 
     q_n, dq_n, F_const, Qmem_n, Qbend_n, F_vel_n: (B, ndof).
@@ -299,72 +433,155 @@ def gpu_newmark_step(q_n, dq_n, Kblk, Me, edofs, free, ndof,
     device = device or config.DEVICE
     NP = config.NP_DTYPE
     B = q_n.shape[0]
-    coef = alpha_v * c_damp * dt * dt / 2.0   # S = M + coef·K
-    Dbl = c_damp * dt / 2.0                    # D_bl = Dbl·K
-    dtN = DTYPE(NP(dt)); adt = DTYPE(NP(alpha_v * dt))
+    coef = alpha_v * c_damp * dt * dt / 2.0  # S = M + coef·K
+    Dbl = c_damp * dt / 2.0  # D_bl = Dbl·K
+    dtN = DTYPE(NP(dt))
+    adt = DTYPE(NP(alpha_v * dt))
 
     tmp = wp.zeros((B, ndof), dtype=DTYPE, device=device)
     tmp2 = wp.zeros((B, ndof), dtype=DTYPE, device=device)
 
     def solveA1(b1, b2):
         # rhs = b2 - D_bl·b1 ; x2 = S^{-1} rhs (PCG) ; x1 = b1 + alpha·dt·x2
-        apply_MK(b1, tmp, Me, Kblk, edofs, free, 0.0, Dbl, device)   # tmp = D_bl·b1 (K only)
+        apply_MK(
+            b1, tmp, Me, Kblk, edofs, free, 0.0, Dbl, device
+        )  # tmp = D_bl·b1 (K only)
         rhs = wp.clone(b2)
-        wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[rhs, DTYPE(-1.0), tmp], device=device)
-        x2, _ = structural_cg(rhs, Me, Kblk, edofs, free, coef, ndof, tol=cg_tol,
-                              device=device, madd=madd, madd_diag=madd_diag)
+        wp.launch(
+            _saxpy_kernel, dim=(B, ndof), inputs=[rhs, DTYPE(-1.0), tmp], device=device
+        )
+        x2, _ = structural_cg(
+            rhs,
+            Me,
+            Kblk,
+            edofs,
+            free,
+            coef,
+            ndof,
+            tol=cg_tol,
+            device=device,
+            madd=madd,
+            madd_diag=madd_diag,
+        )
         x1 = wp.clone(b1)
         wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[x1, adt, x2], device=device)
         return x1, x2
 
     # homogeneous A2·X_n: b1 = free⊙(q + (1-α)dt·dq); b2 = D_bl·(free⊙q) + M·(free⊙dq)
     b1 = wp.zeros((B, ndof), dtype=DTYPE, device=device)
-    wp.launch(_lincomb_mask, dim=(B, ndof),
-              inputs=[b1, DTYPE(1.0), q_n, DTYPE(NP((1.0 - alpha_v) * dt)), dq_n, free], device=device)
+    wp.launch(
+        _lincomb_mask,
+        dim=(B, ndof),
+        inputs=[b1, DTYPE(1.0), q_n, DTYPE(NP((1.0 - alpha_v) * dt)), dq_n, free],
+        device=device,
+    )
     qf = wp.zeros((B, ndof), dtype=DTYPE, device=device)
     dqf = wp.zeros((B, ndof), dtype=DTYPE, device=device)
-    wp.launch(_lincomb_mask, dim=(B, ndof), inputs=[qf, DTYPE(1.0), q_n, DTYPE(0.0), q_n, free], device=device)
-    wp.launch(_lincomb_mask, dim=(B, ndof), inputs=[dqf, DTYPE(1.0), dq_n, DTYPE(0.0), dq_n, free], device=device)
-    apply_MK(qf, tmp, Me, Kblk, edofs, free, 0.0, Dbl, device)       # D_bl·qf (K only)
-    apply_MK(dqf, tmp2, Me, Kblk, edofs, free, 1.0, 0.0, device,     # M_eff·dqf = (M−M_added)·dqf
-             madd=madd, madd_tmp=wp.zeros((B, ndof), dtype=DTYPE, device=device) if madd is not None else None)
+    wp.launch(
+        _lincomb_mask,
+        dim=(B, ndof),
+        inputs=[qf, DTYPE(1.0), q_n, DTYPE(0.0), q_n, free],
+        device=device,
+    )
+    wp.launch(
+        _lincomb_mask,
+        dim=(B, ndof),
+        inputs=[dqf, DTYPE(1.0), dq_n, DTYPE(0.0), dq_n, free],
+        device=device,
+    )
+    apply_MK(qf, tmp, Me, Kblk, edofs, free, 0.0, Dbl, device)  # D_bl·qf (K only)
+    apply_MK(
+        dqf,
+        tmp2,
+        Me,
+        Kblk,
+        edofs,
+        free,
+        1.0,
+        0.0,
+        device,  # M_eff·dqf = (M−M_added)·dqf
+        madd=madd,
+        madd_tmp=wp.zeros((B, ndof), dtype=DTYPE, device=device)
+        if madd is not None
+        else None,
+    )
     b2 = wp.clone(tmp)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[b2, DTYPE(1.0), tmp2], device=device)
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[b2, DTYPE(1.0), tmp2], device=device
+    )
     a1, a2 = solveA1(b1, b2)
 
     zero = wp.zeros((B, ndof), dtype=DTYPE, device=device)
 
     # stage 0: Q_global = F_const + F_vel_n - (Qmem_n + Qbend_n)
     Qg = wp.clone(F_const)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg, DTYPE(1.0), F_vel_n], device=device)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg, DTYPE(-1.0), Qmem_n], device=device)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg, DTYPE(-1.0), Qbend_n], device=device)
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg, DTYPE(1.0), F_vel_n], device=device
+    )
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg, DTYPE(-1.0), Qmem_n], device=device
+    )
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg, DTYPE(-1.0), Qbend_n], device=device
+    )
     # mask BC in rhs
-    wp.launch(_lincomb_mask, dim=(B, ndof), inputs=[Qg, DTYPE(1.0), Qg, DTYPE(0.0), Qg, free], device=device)
+    wp.launch(
+        _lincomb_mask,
+        dim=(B, ndof),
+        inputs=[Qg, DTYPE(1.0), Qg, DTYPE(0.0), Qg, free],
+        device=device,
+    )
     s01, s02 = solveA1(zero, Qg)
-    qp1f = wp.clone(a1); wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[qp1f, dtN, s01], device=device)
-    dqp1f = wp.clone(a2); wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[dqp1f, dtN, s02], device=device)
+    qp1f = wp.clone(a1)
+    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[qp1f, dtN, s01], device=device)
+    dqp1f = wp.clone(a2)
+    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[dqp1f, dtN, s02], device=device)
     # full q_p1, dq_p1 (free from solve, BC held)
     q_p1 = wp.zeros((B, ndof), dtype=DTYPE, device=device)
     dq_p1 = wp.zeros((B, ndof), dtype=DTYPE, device=device)
-    wp.launch(_copy_free_else, dim=(B, ndof), inputs=[q_p1, qp1f, q_n, free], device=device)
-    wp.launch(_copy_free_else, dim=(B, ndof), inputs=[dq_p1, dqp1f, dq_n, free], device=device)
+    wp.launch(
+        _copy_free_else, dim=(B, ndof), inputs=[q_p1, qp1f, q_n, free], device=device
+    )
+    wp.launch(
+        _copy_free_else, dim=(B, ndof), inputs=[dq_p1, dqp1f, dq_n, free], device=device
+    )
 
     # stage 1: averaged bending + velocity
     Qbend_p1 = recompute_bend(q_p1)
     F_vel_p1 = recompute_fvel(q_p1, dq_p1) if recompute_fvel is not None else zero
     Qg2 = wp.clone(F_const)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(0.5), F_vel_n], device=device)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(0.5), F_vel_p1], device=device)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(-1.0), Qmem_n], device=device)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(-0.5), Qbend_n], device=device)
-    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(-0.5), Qbend_p1], device=device)
-    wp.launch(_lincomb_mask, dim=(B, ndof), inputs=[Qg2, DTYPE(1.0), Qg2, DTYPE(0.0), Qg2, free], device=device)
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(0.5), F_vel_n], device=device
+    )
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(0.5), F_vel_p1], device=device
+    )
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(-1.0), Qmem_n], device=device
+    )
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(-0.5), Qbend_n], device=device
+    )
+    wp.launch(
+        _saxpy_kernel, dim=(B, ndof), inputs=[Qg2, DTYPE(-0.5), Qbend_p1], device=device
+    )
+    wp.launch(
+        _lincomb_mask,
+        dim=(B, ndof),
+        inputs=[Qg2, DTYPE(1.0), Qg2, DTYPE(0.0), Qg2, free],
+        device=device,
+    )
     s11, s12 = solveA1(zero, Qg2)
-    qnf = wp.clone(a1); wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[qnf, dtN, s11], device=device)
-    dqnf = wp.clone(a2); wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[dqnf, dtN, s12], device=device)
+    qnf = wp.clone(a1)
+    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[qnf, dtN, s11], device=device)
+    dqnf = wp.clone(a2)
+    wp.launch(_saxpy_kernel, dim=(B, ndof), inputs=[dqnf, dtN, s12], device=device)
     q_new = wp.zeros((B, ndof), dtype=DTYPE, device=device)
     dq_new = wp.zeros((B, ndof), dtype=DTYPE, device=device)
-    wp.launch(_copy_free_else, dim=(B, ndof), inputs=[q_new, qnf, q_n, free], device=device)
-    wp.launch(_copy_free_else, dim=(B, ndof), inputs=[dq_new, dqnf, dq_n, free], device=device)
+    wp.launch(
+        _copy_free_else, dim=(B, ndof), inputs=[q_new, qnf, q_n, free], device=device
+    )
+    wp.launch(
+        _copy_free_else, dim=(B, ndof), inputs=[dq_new, dqnf, dq_n, free], device=device
+    )
     return q_new, dq_new

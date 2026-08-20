@@ -1,0 +1,58 @@
+{
+  "acceptance_status": "provisional",
+  "agent_id": "/root/gpu_experiment_audit",
+  "audit_skill": "experiment-audit",
+  "auditor": "gpt-5.6-sol-ultra",
+  "checks": {
+    "dead_code_cuda_coverage": {
+      "details": "CUDA hot kernels are real, but host wake advancement and other material host arithmetic remain.",
+      "status": "fail"
+    },
+    "eval_type": "real_gt",
+    "gt_provenance": {
+      "details": "Published digitized experimental GT; Baik uses duplicated experiment rows from a scored artifact and summaries omit GT hashes.",
+      "status": "warn"
+    },
+    "result_existence": {
+      "details": "Reported arithmetic and hashes reconcile, but preregistered metric keys/raw curves/dependency hashes are incomplete.",
+      "status": "fail"
+    },
+    "scope": {
+      "details": "24 deterministic configurations, one run each, no uncertainty study.",
+      "status": "warn"
+    },
+    "score_normalization": {
+      "details": "Raw RMSE/MAE and physical qS denominators; no prediction self-normalization.",
+      "status": "pass"
+    }
+  },
+  "claims": [
+    {
+      "id": "accuracy_vs_v4b",
+      "impact": "needs_qualifier"
+    },
+    {
+      "id": "all_numerics_gpu_only",
+      "impact": "unsupported"
+    },
+    {
+      "id": "cuda_hot_kernels_executed",
+      "impact": "supported"
+    }
+  ],
+  "date": "2026-08-20",
+  "executor_family": "openai",
+  "executor_model": "codex-gpt-5.6-sol",
+  "generated_at": "2026-08-20T21:15:00+08:00",
+  "integrity_status": "fail",
+  "overall_verdict": "fail",
+  "reason_code": "material_cpu_arithmetic_and_incomplete_artifact_contract",
+  "review_independence": "same-family",
+  "reviewer_family": "openai",
+  "reviewer_model": "gpt-5.6-sol",
+  "reviewer_reasoning": "ultra",
+  "summary": "Scientific scores reconcile, but the broad GPU-only claim and declared artifact contract do not.",
+  "trace_path": ".aris/traces/experiment-audit/2026-08-20_run01/",
+  "verdict": "FAIL",
+  "verdict_id": "/root/gpu_experiment_audit"
+}

@@ -25,14 +25,34 @@ import warp as wp
 # ── Active selection (mutable until kernel modules import) ──────────────────
 _DTYPE_NAME = os.environ.get("FLUXV_DTYPE", "float64").lower()
 _DEVICE = os.environ.get("FLUXV_DEVICE", "")  # "" -> auto (cuda if available)
+GPU_ONLY = os.environ.get("FLUXV_GPU_ONLY", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 _TABLE = {
-    "float64": dict(DTYPE=wp.float64, VEC3=wp.vec3d, MAT33=wp.mat33d,
-                    NP_DTYPE=np.float64, CR_TOL=1e-10, NEWTON_TOL=1e-8,
-                    GEOM_ATOL=1e-12, PORT_ATOL=1e-11),
-    "float32": dict(DTYPE=wp.float32, VEC3=wp.vec3f, MAT33=wp.mat33f,
-                    NP_DTYPE=np.float32, CR_TOL=1e-5, NEWTON_TOL=1e-5,
-                    GEOM_ATOL=1e-4, PORT_ATOL=1e-4),
+    "float64": dict(
+        DTYPE=wp.float64,
+        VEC3=wp.vec3d,
+        MAT33=wp.mat33d,
+        NP_DTYPE=np.float64,
+        CR_TOL=1e-10,
+        NEWTON_TOL=1e-8,
+        GEOM_ATOL=1e-12,
+        PORT_ATOL=1e-11,
+    ),
+    "float32": dict(
+        DTYPE=wp.float32,
+        VEC3=wp.vec3f,
+        MAT33=wp.mat33f,
+        NP_DTYPE=np.float32,
+        CR_TOL=1e-5,
+        NEWTON_TOL=1e-5,
+        GEOM_ATOL=1e-4,
+        PORT_ATOL=1e-4,
+    ),
 }
 
 # Module-level aliases — referenced everywhere. Re-pointed by set_dtype().
@@ -43,14 +63,25 @@ NP_DTYPE = None
 CR_TOL = None
 NEWTON_TOL = None
 GEOM_ATOL = None
-PORT_ATOL = None   # GPU-vs-CPU(fp64) porting tolerance (dtype-aware)
+PORT_ATOL = None  # GPU-vs-CPU(fp64) porting tolerance (dtype-aware)
 DEVICE = None
 
 
 def _resolve_device(spec: str) -> str:
-    if spec:
-        return spec
-    return "cuda:0" if wp.is_cuda_available() else "cpu"
+    resolved = spec or ("cuda:0" if wp.is_cuda_available() else "cpu")
+    if GPU_ONLY:
+        if not wp.is_cuda_available():
+            raise RuntimeError("FLUXV_GPU_ONLY=1 but no CUDA device is available")
+        try:
+            device = wp.get_device(resolved)
+        except Exception as exc:
+            raise ValueError(f"invalid CUDA device {resolved!r}") from exc
+        if not device.is_cuda:
+            raise RuntimeError(
+                f"FLUXV_GPU_ONLY=1 forbids numerical device {resolved!r}"
+            )
+        return device.alias
+    return resolved
 
 
 def set_dtype(name: str) -> None:
@@ -66,9 +97,13 @@ def set_dtype(name: str) -> None:
         raise ValueError(f"dtype must be one of {list(_TABLE)}, got {name!r}")
     _DTYPE_NAME = name
     cfg = _TABLE[name]
-    DTYPE = cfg["DTYPE"]; VEC3 = cfg["VEC3"]; MAT33 = cfg["MAT33"]
-    NP_DTYPE = cfg["NP_DTYPE"]; CR_TOL = cfg["CR_TOL"]
-    NEWTON_TOL = cfg["NEWTON_TOL"]; GEOM_ATOL = cfg["GEOM_ATOL"]
+    DTYPE = cfg["DTYPE"]
+    VEC3 = cfg["VEC3"]
+    MAT33 = cfg["MAT33"]
+    NP_DTYPE = cfg["NP_DTYPE"]
+    CR_TOL = cfg["CR_TOL"]
+    NEWTON_TOL = cfg["NEWTON_TOL"]
+    GEOM_ATOL = cfg["GEOM_ATOL"]
     PORT_ATOL = cfg["PORT_ATOL"]
 
 
@@ -83,8 +118,10 @@ def dtype_name() -> str:
 
 
 def summary() -> str:
-    return (f"warp_fsi config: dtype={_DTYPE_NAME} device={DEVICE} "
-            f"CR_TOL={CR_TOL} NEWTON_TOL={NEWTON_TOL}")
+    return (
+        f"warp_fsi config: dtype={_DTYPE_NAME} device={DEVICE} "
+        f"gpu_only={GPU_ONLY} CR_TOL={CR_TOL} NEWTON_TOL={NEWTON_TOL}"
+    )
 
 
 # Initialize on import from env (default float64 + auto device).
