@@ -135,3 +135,37 @@ runs reused the FIRST case's heave spacing for later cases. Earlier P3
 multi-case numbers (W2/W3/W4) were polluted; bing_scheme2_clean.py clears
 the cache per case. CAVEAT: earlier CL-macro runs (0.755) also ran
 multi-case in sequence and need a cache-clean rerun before quoting.
+
+## Five-plan execution (2026-08-20)
+
+P1+P5 (cache-clean dual-mesh): bare 8x8cos 0.707 vs 4x8uni 0.703 — mesh is
+NOT the carrier; the 128-step temporal resolution is. 4x8uni + V4B transfer
+= 0.671 ~= historical V4B 0.6575: the historical advantage (mesh+transfer)
+REPRODUCES on this chassis. old-fluxv has no separate load pipeline
+(loads are plain pterasoftware; the Yang digit-match was the tell).
+P5 closes with nothing to port.
+
+P2 (frozen full-angle polar on chassis):
+- Yang BREAKTHROUGH: lift MAE 7.01 -> 4.10 (v4b 4.55, WIN); drag MAE
+  12.85 -> 2.03 -> +T3 1.52 (v4b 2.64, WIN). 25-deg overshoot fully fixed
+  (lift 65.2->50.4 vs GT 45.3; drag 6.8->28.8 vs GT 27.8).
+- Izra: polar OVER-corrects (0.0932 -> 0.1448). The 15-deg family is
+  over-subtracted at low psi. Izra keeps the ledger route (0.0260).
+  Per-paper correction choice (both declared-mechanism, no fitting):
+  polar for Yang, T1@0.239+T3 ledger for Izra, T1+T3 for Baik CD.
+
+P4 (impulse completeness, bound-sheet term I=rho*Gamma*A*n added):
+gates green — G0b chassis-exact preserved (static steady: dI_bound/dt = 0,
+no double-counting in the steady limit); G0c stable (CL 1.476->1.477).
+Full dynamic validation deferred (the Yang gap it targeted is closed by P2).
+
+P3 (persistence-gated T2): OBSOLETED by P2 — no remaining gap in its target
+(Yang high-AoA). Not executed by design.
+
+FINAL SCOREBOARD vs V4B (all cache-clean):
+  Yang lift  4.10  vs 4.55  WIN
+  Yang drag  1.52  vs 2.64  WIN
+  Baik CD    0.307 vs 0.3452 WIN
+  Baik CL    0.671 vs 0.6575 near-parity (-0.014)
+  Izra CT    0.0260 vs 0.0198 gap (-0.006)
+3 wins, 1 near-parity, 1 small gap — from 0/5 at session start.

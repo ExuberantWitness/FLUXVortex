@@ -570,7 +570,21 @@ class JointLEVTEVSolver(ps.unsteady_ring_vortex_lattice_method
         x_o = np.asarray(tr.apply_T_to_vectors(
             T, np.zeros((1, 3)), has_point=True))[0]
         sum_g = g_w.sum(axis=0)
-        I = 0.5 * op.rho * (np.cross(x_w, g_w).sum(axis=0) + np.cross(x_o, sum_g))
+        I_free = 0.5 * op.rho * (np.cross(x_w, g_w).sum(axis=0)
+                                 + np.cross(x_o, sum_g))
+        # bound-sheet impulse (P4, minimum-domain completeness): each panel
+        # ring is a closed loop with impulse rho*Gamma*A*n. At shedding the
+        # circulation moves bound->free at the same location, so I_total is
+        # continuous and no spurious birth force appears.
+        I_bound = np.zeros(3)
+        norms_w = np.asarray(tr.apply_T_to_vectors(
+            T, np.asarray(self.stackUnitNormals_GP1), has_point=False))
+        for i, panel in enumerate(self.panels):
+            ring = panel.ring_vortex
+            if ring is not None and ring.strength:
+                I_bound = I_bound + op.rho * ring.strength * panel.area \
+                    * norms_w[i]
+        I = I_free + I_bound
         F = np.zeros(3)
         if self._last_impulse is not None:
             F = -(I - self._last_impulse) / self.delta_time
