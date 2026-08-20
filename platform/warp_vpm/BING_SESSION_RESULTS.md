@@ -323,3 +323,19 @@ on Baik/Izra/Yang do not transfer here because:
 - Rounded-family crit 0.239 is counterproductive at this Re/motion
 - Fast-pitch transient (45 deg in 1 chord, added-mass dominated) remains
   unsolved by the entire UVLM+LDVM delta family — V4B included.
+
+## Audit fixes (2026-08-20, post-audit)
+
+All four P0/P1 issues from the independent audit fixed and verified:
+
+1. P0-1: ledger_step() total recomputed AFTER G6b clipping.
+   Regression test test_ledger_contract.py: closure = 0.00e+00.
+2. P0-2: pfield.py device auto-detect (cuda > cpu > fail).
+   PFIELD_DEVICE env var overrides. No more hardcoded cuda.
+3. P1-1: G0 steady uses production chassis (bing_joint_ptera) not the
+   from-scratch prototype. CL bounds documented with explicit 1.5%
+   unsteady tolerance. Non-zero exit on FAIL.
+4. P1-2: G0b adds parity check + non-zero exit. G0c non-zero exit.
+
+All gates now exit non-zero on failure. Baik W1 @0.19 regression: 0.356423
+(bit-exact match with pre-fix value — the fix is non-breaking).

@@ -7,8 +7,22 @@ GPU buffers with partial updates, at the cost of one H2D copy per eval
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import warp as wp
+
+# Device selection: explicit env var > auto-detect > fail-fast.
+# Valid values: "cuda", "cpu". Set PFIELD_DEVICE=cuda to force GPU.
+_DEVICE_ENV = os.environ.get("PFIELD_DEVICE", "").lower()
+if _DEVICE_ENV in ("cuda", "cpu"):
+    _DEVICE = _DEVICE_ENV
+else:
+    # Auto-detect: use cuda if a capable device is present
+    try:
+        _DEVICE = "cuda" if wp.get_cuda_device_count() > 0 else "cpu"
+    except Exception:
+        _DEVICE = "cpu"
 
 # Float64 constants for kernels
 _C0 = wp.constant(wp.float64(0.0))
@@ -150,13 +164,13 @@ class ParticleField:
     def velocity_at(self, targets: np.ndarray) -> np.ndarray:
         """Evaluate velocity at arbitrary target points (blob kernel)."""
         nt = len(targets)
-        sp = wp.array(self.pos[:self.n], dtype=wp.vec3d, device="cuda")
-        sg = wp.array(self.gamma[:self.n], dtype=wp.vec3d, device="cuda")
-        ss = wp.array(self.sigma[:self.n], dtype=wp.float64, device="cuda")
-        tp = wp.array(targets.astype(np.float64), dtype=wp.vec3d, device="cuda")
-        vo = wp.zeros(nt, dtype=wp.vec3d, device="cuda")
+        sp = wp.array(self.pos[:self.n], dtype=wp.vec3d, device=_DEVICE)
+        sg = wp.array(self.gamma[:self.n], dtype=wp.vec3d, device=_DEVICE)
+        ss = wp.array(self.sigma[:self.n], dtype=wp.float64, device=_DEVICE)
+        tp = wp.array(targets.astype(np.float64), dtype=wp.vec3d, device=_DEVICE)
+        vo = wp.zeros(nt, dtype=wp.vec3d, device=_DEVICE)
         wp.launch(blob_velocity_kernel, dim=[nt],
-                  inputs=[sp, sg, ss, tp, vo, self.n], device="cuda")
+                  inputs=[sp, sg, ss, tp, vo, self.n], device=_DEVICE)
         return vo.numpy()
 
     def velocity_self(self) -> np.ndarray:

@@ -87,4 +87,7 @@ for x in mid:
 finite = np.all(np.isfinite(cl_lev))
 reduced = abs(cl_lev[-1]) < abs(cl_attached[-1])
 print("finite:", finite, " CL reduced vs attached:", reduced)
-print("G0c GATE:", "PASS" if (finite and reduced and d['lev_strips'] > 0) else "FAIL")
+ok = finite and reduced and d["lev_strips"] > 0
+print("G0c GATE:", "PASS" if ok else "FAIL")
+if not ok:
+    sys.exit(1)

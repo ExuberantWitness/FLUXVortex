@@ -94,4 +94,8 @@ print("\nfinal diffs: off-vs-plain", f"{abs(c2[-1]-c1[-1]):.2e}",
 print("LEV particles (on):", mix_on.lev_pf.n,
       "max |LESP|:", f"{mix_on.diag[-1]['lesp_max']:.4f}")
 ok = cl2 * 0.98 <= c1[-1] <= cl1 * 1.02
+parity_ok = abs(c2[-1] - c1[-1]) < 1e-14
 print("G0b GATE:", "PASS" if ok else "FAIL")
+print("G0b PARITY:", "PASS" if parity_ok else "FAIL")
+if not ok or not parity_ok:
+    sys.exit(1)

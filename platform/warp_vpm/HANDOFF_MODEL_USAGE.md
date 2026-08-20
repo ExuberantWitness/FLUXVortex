@@ -119,18 +119,21 @@ for k in range(3 * SPC):
 
 ## 3. 验证门体系
 
-| 门 | 测试文件 | 验证内容 | 通过标准 |
-|----|---------|---------|---------|
-| G0 | `test_g0_steady.py` | 定常 α=5° AR=15 升力线 | CL ∈ [0.470, 0.481] |
-| G0b | `test_g0b_ptera.py` | LEV 关 == 裸 pterasoftware | 差 = 0.00e+00 |
-| G0c | `test_g0c_lev_active.py` | α=20° LEV 激活稳定性 | LESP 钉帽在 crit、有限、稳定 |
-| G1 | solver 内部 | 联立解 Neumann 代回残差 | ≤ rtol·scale |
-| G2 | solver 内部 | Kelvin 行残差 | ≤ rtol·scale |
-| G3 | solver 内部 | LESP pin 残差 | ≤ rtol·crit |
-| G4 | solver 内部 | 新生粒子几何守卫 | 无过近配置点 |
-| G5 | solver 内部 | 载荷有限性 | 全部 finite |
-| G6a | ledger 内部 | 附着极限 T1=0 | excess ≤ 0 |
-| G6b | ledger 内部 | 分离阻力 ≤ Rayleigh 上限 | clip 后满足 |
+| 门 | 测试文件 | 验证内容 | 通过标准 | 失败退出 |
+|----|---------|---------|---------|---------|
+| G0 | `test_g0_steady.py` | 定常 α=5° AR=15 升力线 | CL ∈ [0.470, 0.4882]（1.5% 非定常容差） | exit 1 |
+| G0b | `test_g0b_ptera.py` | LEV 关 == 裸 pterasoftware | 差 = 0.00e+00 + parity check | exit 1 |
+| G0c | `test_g0c_lev_active.py` | α=20° LEV 激活稳定性 | LESP 钉帽、有限、稳定 | exit 1 |
+| Ledger | `test_ledger_contract.py` | total == t1+t2+t3 after G6b clip | closure = 0.00e+00 | assert |
+| G1 | solver 内部 | 联立解 Neumann 代回残差 | ≤ rtol·scale | GateError |
+| G2 | solver 内部 | Kelvin 行残差 | ≤ rtol·scale | GateError |
+| G3 | solver 内部 | LESP pin 残差 | ≤ rtol·crit | GateError |
+| G4 | solver 内部 | 新生粒子几何守卫 | 无过近配置点 | GateError |
+| G5 | solver 内部 | 载荷有限性 | 全部 finite | GateError |
+| G6a | ledger 内部 | 附着极限 T1=0 | excess ≤ 0 | assert |
+| G6b | ledger 内部 | 分离阻力 ≤ Rayleigh 上限 | clip 后满足 | ValueError |
+
+**设备要求**：粒子场自动检测 CUDA/CPU（`PFIELD_DEVICE` 环境变量可强制指定）。无 GPU 时自动回退 CPU，无需修改代码。
 
 ## 4. 各论文的最优配置（终值）
 

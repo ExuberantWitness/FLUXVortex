@@ -104,7 +104,6 @@ def ledger_step(rec: dict, cfg: LedgerConfig) -> dict:
         d_t2 = -d_f[:, 0]      # drag delta: force in -x is drag-positive
         d_l2 = d_f[:, 2]       # lift delta
 
-    total = d_t1 + d_t3 + d_t2
     # G6b bound applies to the SEPARATION drag (T1+T2): it cannot exceed the
     # Rayleigh normal-force ceiling. The viscous term T3 has its own small
     # scale and stays positive-definite through stroke reversals where the
@@ -120,6 +119,9 @@ def ledger_step(rec: dict, cfg: LedgerConfig) -> dict:
         d_t1 = d_t1 * scale
         d_t2 = d_t2 * scale
         sep = sep * scale
+    # P0-1: recompute total AFTER clipping so the public contract
+    # total == t1 + t2 + t3 always holds
+    total = d_t1 + d_t3 + d_t2
     return dict(t1=d_t1, t3=d_t3, t2=d_t2, lift2=d_l2, total=total,
                 alpha_eff=alpha_eff, q=q)
 
