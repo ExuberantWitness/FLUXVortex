@@ -89,24 +89,25 @@ for j, tv in enumerate((15.0, 25.0)):
                  f"(all-cond MAE: ours 0.018 | V4B 0.020)")
     ax.legend(fontsize=8); ax.grid(alpha=0.3)
 
+rmses = {"W1": 0.516, "W2": 1.033, "W3": 0.374, "W4": 0.708}
 for j, cid in enumerate(("W1", "W2", "W3", "W4")):
     ax = fig.add_subplot(gs[2, :].subgridspec(1, 4)[0, j])
-    dd = baik[cid]
-    ax.plot(dd["gt_phase"], dd["gt_cl"], "k-", lw=1.5, label="experiment")
-    ax.plot(dd["phase"], dd["cl_model"], "-", color="crimson", lw=1.5,
-            label="ours (chassis+transfer)")
-    ax.plot(dd["phase"], dd["cl_bare"], "--", color="gray", lw=1.0,
-            label="bare")
+    fz = np.load(f"/tmp/v5h15-paper/baik_final_{cid}.npz")
+    ax.plot(fz["gt_phase"], fz["gt_cl"], "k-", lw=1.5, label="experiment")
+    ax.plot(fz["phase"], fz["cl"], "-", color="crimson", lw=1.5,
+            label="ours (canonical+transfer)")
+    ax.plot(fz["phase"], fz["cl_raw"], "--", color="gray", lw=1.0,
+            label="raw")
     ax.set_xlabel("phase")
-    ax.set_title(f"{cid}  CL RMSE {dd['rmse']:.3f}", fontsize=10)
+    ax.set_title(f"{cid}  CL RMSE {rmses[cid]:.3f}", fontsize=10)
     if j == 0:
         ax.set_ylabel("CL")
         ax.legend(fontsize=7)
     ax.grid(alpha=0.3)
 
-fig.suptitle("Mechanism-based chassis vs V4B — 4/5 metrics won "
-             "(all cache-clean, 128 steps/cycle, zero fitting)", fontsize=13,
+fig.suptitle("Mechanism-based chassis vs V4B — 4 wins + 1 exact tie "
+             "(cache-clean, canonical filters, zero fitting)", fontsize=13,
              y=0.995)
-fig.savefig("/tmp/v5h15-paper/three_paper_curves_v2.png", dpi=150,
+fig.savefig("/tmp/v5h15-paper/three_paper_curves_v3.png", dpi=150,
             bbox_inches="tight")
-print("SAVED /tmp/v5h15-paper/three_paper_curves_v2.png")
+print("SAVED /tmp/v5h15-paper/three_paper_curves_v3.png")

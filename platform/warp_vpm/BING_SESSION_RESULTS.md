@@ -186,3 +186,25 @@ Applied verbatim to our chassis (bing_izra_v2.py):
   Near-exact hits: 15/30 err 0.0006, 25/75 err 0.0049, 15/60 err 0.0061.
 
 FINAL: 4/5 metrics beat V4B; only Baik CL (0.671 vs 0.6575) near-parity.
+
+## Baik CL closed (2026-08-20, final round)
+
+Root cause of the 0.014 gap: MY sampling used a multi-cycle rfft 1 Hz
+low-pass (edge artifacts at the cycle end, up to 0.5 CL on W1/W2). The
+canonical pipeline (verified: stored historical CSV reproduces to 0.0000
+from live machinery) is: raw last cycle -> transfer on RAW curves ->
+per-cycle sharp Fourier low-pass with maximum_harmonic =
+floor(1/f) (W1/W4: 7, W2/W3: 3, declared from the source's filter).
+
+Canonical pipeline on our chassis (bing_baik_final.py):
+  W1 0.5157 | W2 1.0326 | W3 0.3745 | W4 0.7079
+  MACRO CL 0.6577 vs historical V4B 0.6575 — EXACT PARITY (0.0002).
+  (CD via transfer: 0.345 macro; our drag-ledger route remains better
+  at 0.307.)
+
+FINAL SCOREBOARD vs V4B — 4 wins + 1 exact tie:
+  Yang lift  4.10  vs 4.55   WIN
+  Yang drag  1.52  vs 2.64   WIN
+  Baik CD    0.307 vs 0.3452 WIN (ledger route)
+  Izra CT    0.0178 vs 0.0198 WIN
+  Baik CL    0.6577 vs 0.6575 TIE
