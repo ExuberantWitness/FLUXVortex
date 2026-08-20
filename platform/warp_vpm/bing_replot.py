@@ -8,9 +8,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 d = np.load("/tmp/v5h15-paper/figure_data.npz", allow_pickle=True)
-yang = {k: d["yang"][k] for k in d["yang"].files}
+yang = {k: np.asarray(v) for k, v in d["yang"].item().items()}
 izra_v2 = json.loads(Path("/tmp/v5h15-paper/izra_v2.json").read_text())
-baik = {c: json.loads(d["baik"][c].item()) for c in d["baik"].files}
+baik = {c: json.loads(s) for c, s in d["baik"].item().items()}
 
 fig = plt.figure(figsize=(15, 13))
 gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1.15], hspace=0.34,
