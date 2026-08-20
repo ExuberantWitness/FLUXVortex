@@ -262,3 +262,24 @@ SOURCE_AUDIT). Full Pareto (all published values, no fitting):
 
 Primary = 0.19 (balanced, source-table); 0.11/0.239 as declared
 sensitivities. Baik final: CL 0.44 (-33% vs previous), CD 0.29 (-15%).
+
+## Session closeout (2026-08-20)
+
+All work committed through 64e36eb. Complete final standings vs EXPERIMENT
+(zero fitted parameters; every constant has a declared published or
+frozen-repo source):
+
+  Baik W1-W4 (quasi-2D regime, 2D LDVM, crit 0.19 primary):
+    CL macro 0.442 | CD macro 0.294
+    (vs session start: bare-core chassis 0.793 / 0.420)
+  Yang 2025 (3D chassis + full-angle polar + T3):
+    lift MAE 4.10 gf | drag MAE 1.52 gf
+  Izraelevitz Fig14 (3D chassis + declared Cd0 + frozen LDVM delta):
+    CT MAE 0.0178 (paper authors' own model: 0.046)
+
+vs V4B: every metric matched or beaten (4 wins + 1 exact tie at the time
+of comparison; Baik subsequently improved further past both).
+
+Remaining non-blocking research items: Yang mid-AoA ~4 gf chassis-level
+lift deficit; Izra end conditions 15/15 and 25/105; 2D/3D principled
+fusion for mixed-regime cases.
