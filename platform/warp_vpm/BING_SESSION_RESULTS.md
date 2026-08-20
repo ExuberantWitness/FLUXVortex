@@ -221,3 +221,23 @@ Campaign summary vs V4B: Yang lift 4.10/4.55 WIN, Yang drag 1.52/2.64 WIN,
 Baik CD 0.307/0.3452 WIN, Izra CT 0.0178/0.0198 WIN, Baik CL 0.6577/0.6575
 TIE. Zero fitted parameters across all corrections; every constant has a
 declared source (frozen repo implementations or published values).
+
+## Baik instantaneous loads: 2D LDVM breakthrough (2026-08-20)
+
+Research-pipeline finding: SOURCE_AUDIT documents the Baik experiment as
+wall-to-wall end-plated QUASI-2D (channel 0.61 m, span 0.60 m, ~1 mm gap,
+free-surface endplate); our UVLM used a free-tip AR=7.9 adapter — 3D losses
+the experiment does not have. Literature (Jones 1950 ARC R&M 2786) confirms
+oscillating-airfoil wall interference = image vortices -> 2D limit; UVLM KJ
+loads also miss the added-mass term growing as (kc)^2 (worst at W2 k=1.0).
+
+The validated in-repo 2D LDVM (Ramesh parity; LEV + CNnc added mass +
+unsteady wake) driven by the frozen baik2012 kinematics IS that regime.
+Direct scoring (bing_baik_2d.py, canonical filter, lesp_crit 0.11 declared):
+
+  W1 0.410 | W2 0.891 | W3 0.570 | W4 0.459  -> CL macro 0.5828
+  CD macro 0.2307
+  vs chassis+transfer 0.6577/0.345 and V4B 0.6575/0.3452:
+  CL -11.4%, CD -33% — beats ALL prior models on Baik instantaneous loads.
+  W3 (smallest heave, most pitch-dominated) is the one case where the 3D
+  chassis remains better (0.374 vs 0.570): residual blockage/3D effects.

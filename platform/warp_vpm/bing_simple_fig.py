@@ -121,7 +121,7 @@ for j, cid in enumerate(("W1", "W2", "W3", "W4")):
     ax.plot(vx, vy, ":", color="tab:blue", lw=1.6, label="V4B")
     ax.plot(fz["gt_phase"], fz["gt_cl"], "k-", lw=1.6, label="experiment")
     ax.set_xlabel("phase")
-    ax.set_title(f"Baik 2012 {cid} — CL", fontsize=10)
+    ax.set_title(f"Baik 2012 {cid} — CL (2D LDVM)", fontsize=9)
     if j == 0:
         ax.set_ylabel("CL")
         ax.legend(fontsize=8)
@@ -129,6 +129,6 @@ for j, cid in enumerate(("W1", "W2", "W3", "W4")):
 
 fig.suptitle("ours (mechanism-based) vs V4B vs experiment — three papers",
              fontsize=13, y=0.99)
-fig.savefig("/tmp/v5h15-paper/three_curves_simple.png", dpi=150,
+fig.savefig("/tmp/v5h15-paper/three_curves_simple_v2.png", dpi=150,
             bbox_inches="tight")
-print("SAVED /tmp/v5h15-paper/three_curves_simple.png")
+print("SAVED /tmp/v5h15-paper/three_curves_simple_v2.png")
