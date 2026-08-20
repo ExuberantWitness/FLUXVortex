@@ -304,3 +304,22 @@ Hypothesis chain tested with full experiments:
 
 Status: informative negative. Yang stays at lift 4.10 / drag 1.52 gf
 (polar+T3); the deficit is bounded and its origin is now characterized.
+
+## Mancini 2017 (2026-08-20)
+
+First external-paper cross-validation with our algorithm. AR=4 finite wing,
+pitch 0-45 deg about LE, fast (k=0.39) and slow (k=0.065), Re=20000.
+
+| case | bare 8x12cos | +LDVM@0.11 | V4B frozen | UVLM frozen |
+|---|---|---|---|---|
+| fast_pitch | 1.4449 | 1.2553 | 1.2184 | 1.4004 |
+| slow_pitch | 0.3892 | 0.2951 | 0.2908 | 0.3778 |
+
+Verdict: near-parity with V4B (gap <=3%). The improvements that beat V4B
+on Baik/Izra/Yang do not transfer here because:
+- Mancini is truly 3D free-tip AR=4 (not quasi-2D like Baik)
+- Higher-resolution chassis baseline is slightly WORSE (cosine LE
+  clustering + prescribed wake interaction)
+- Rounded-family crit 0.239 is counterproductive at this Re/motion
+- Fast-pitch transient (45 deg in 1 chord, added-mass dominated) remains
+  unsolved by the entire UVLM+LDVM delta family — V4B included.
