@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams["font.sans-serif"] = ["WenQuanYi Micro Hei", "Noto Sans CJK SC", "SimHei", "AR PL UMing CN", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 
@@ -48,9 +50,9 @@ fig, axes = plt.subplots(3, 2, figsize=(13, 12),
                          gridspec_kw={"hspace": 0.32, "wspace": 0.22})
 levels = None
 for row, (label, step) in enumerate(
-        [("max CL (suction peak)", peak),
-         ("zero-crossing (wake memory)", mid),
-         ("min CL (reversed load)", trough)]):
+        [("最大CL相位（前缘吸力峰）", peak),
+         ("过零相位（尾迹记忆）", mid),
+         ("最小CL相位（反向载荷）", trough)]):
     sp_ = solver.steady_problems[step]
     panels = sp_.airplanes[0].wings[0].panels
     C, S = panels.shape
@@ -82,9 +84,9 @@ for row, (label, step) in enumerate(
                     linewidths=0.4, alpha=0.5)
     ax.clabel(cs, fontsize=6, fmt="%.1f")
     ax.plot(pts[:, 0], pts[:, 1], "k.", ms=2, alpha=0.35)
-    ax.set_ylabel("y/c (span)")
+    ax.set_ylabel("展向 y/c")
     ax.set_title(f"{label}  (phase {step / SPC % 1:.2f})", fontsize=10)
-    plt.colorbar(cf, ax=ax, label="panel $C_n$")
+    plt.colorbar(cf, ax=ax, label="面板法向力系数 $C_n$")
     ax.grid(alpha=0.15)
 
     ax2 = axes[row, 1]
@@ -97,17 +99,16 @@ for row, (label, step) in enumerate(
     ys = sorted(strips)
     ax2.errorbar(ys, [np.mean(strips[y]) for y in ys],
                  yerr=[np.std(strips[y]) for y in ys], fmt="o-",
-                 color="crimson", lw=1.6, capsize=3, label="mean ± std")
+                 color="crimson", lw=1.6, capsize=3, label="均值 ± 标准差")
     ax2.axhline(0, color="gray", lw=0.8)
-    ax2.set_xlabel("y/c")
+    ax2.set_xlabel("展向 y/c")
     if row == 0:
-        ax2.set_ylabel("panel $C_n$")
+        ax2.set_ylabel("面板法向力系数 $C_n$")
         ax2.legend(fontsize=8)
-    ax2.set_title(f"{label} — spanwise", fontsize=10)
+    ax2.set_title(f"{label} — 展向分布", fontsize=10)
     ax2.grid(alpha=0.3)
 
-fig.suptitle("Baik W2 — per-panel load contours (chassis 8x8 cosine, "
-             "instantaneous)", fontsize=13)
+fig.suptitle("Baik W2 — 翼面逐单元载荷等高线图（8×8余弦网格机架，瞬时未滤波）", fontsize=14)
 fig.savefig("/tmp/v5h15-paper/panel_contours.png", dpi=150,
             bbox_inches="tight")
 print("SAVED /tmp/v5h15-paper/panel_contours.png")
