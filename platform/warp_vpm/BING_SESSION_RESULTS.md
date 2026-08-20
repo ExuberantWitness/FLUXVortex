@@ -283,3 +283,24 @@ of comparison; Baik subsequently improved further past both).
 Remaining non-blocking research items: Yang mid-AoA ~4 gf chassis-level
 lift deficit; Izra end conditions 15/15 and 25/105; 2D/3D principled
 fusion for mixed-regime cases.
+
+## Yang mid-AoA deficit investigation (2026-08-20, research round)
+
+Hypothesis chain tested with full experiments:
+1. Two-wing symmetric ornithopter (type-5 mirror + phase-180 flap):
+   two-wing lift = EXACTLY 2x single (28.2/55.7/82.7/108.7 vs
+   2x13.7/2x27.1/...) — wings do not interact in this model.
+   GT (17.4/31.5/38.7/42.9) lies BETWEEN single and 2x, with ratio
+   GT/single = 1.27/1.16/0.96/0.81 DECLINING with AoA -> NOT a constant
+   geometric factor (wall/root-sealing alone cannot explain it).
+2. Half-model wall image: pterasoftware's surfaceReflect exists but is
+   implemented ONLY in the steady solver's AIC; the unsteady path ignores
+   it (verified: injection changed nothing). Porting image rings to the
+   unsteady AIC is a bounded next-session task.
+3. Interpretation: the low-AoA deficit (~4 gf at 5-10 deg) is mixed-origin
+   (fuselage/root sealing at low AoA; separation overshoot at high AoA
+   already handled by the polar). The nominal four-bar kinematics (not the
+   laser-measured history) remain a declared uncertainty.
+
+Status: informative negative. Yang stays at lift 4.10 / drag 1.52 gf
+(polar+T3); the deficit is bounded and its origin is now characterized.
