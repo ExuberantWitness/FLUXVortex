@@ -1,0 +1,67 @@
+{
+  "baik_cd_macro_rmse": 0.2897097942292014,
+  "baik_cl_macro_rmse": 0.42156276782081215,
+  "base_commit": "fa8eaca9bcaa4b963ecf41683bf77d3c9e3df169",
+  "cases": [
+    {
+      "case_id": "W1",
+      "cd_rmse": 0.1762887277913943,
+      "cl_rmse": 0.3814217554486511,
+      "elapsed_s": 3.681052826002997,
+      "gpu_name": "NVIDIA GeForce RTX 4090 D",
+      "numerical_device": "cuda:0",
+      "result_sha256": "b6d0287c28b1821bdb646c65d406c760761cac6f3b6e2dde4bb22daadf12f3f6",
+      "torch_cuda": "13.0"
+    },
+    {
+      "case_id": "W2",
+      "cd_rmse": 0.35308251981416855,
+      "cl_rmse": 0.4224478189509334,
+      "elapsed_s": 3.5635314760002075,
+      "gpu_name": "NVIDIA GeForce RTX 4090 D",
+      "numerical_device": "cuda:0",
+      "result_sha256": "dcbda5fd91807bdb7ef68922e8015060428b3376ffb09f3b830f7e4e49cc50c7",
+      "torch_cuda": "13.0"
+    },
+    {
+      "case_id": "W3",
+      "cd_rmse": 0.21722954018967988,
+      "cl_rmse": 0.38539542058664394,
+      "elapsed_s": 3.564822586999071,
+      "gpu_name": "NVIDIA GeForce RTX 4090 D",
+      "numerical_device": "cuda:0",
+      "result_sha256": "e73d9b04e2d5c0bc506b41496cde1f9edd33f7a14c9a063e5c3114ed06e02b47",
+      "torch_cuda": "13.0"
+    },
+    {
+      "case_id": "W4",
+      "cd_rmse": 0.41223838912156285,
+      "cl_rmse": 0.49698607629702013,
+      "elapsed_s": 3.5661559130021487,
+      "gpu_name": "NVIDIA GeForce RTX 4090 D",
+      "numerical_device": "cuda:0",
+      "result_sha256": "950b5970b1342ea26a0385e60ff188f73ccb45656491fc02df5d58962b739f3f",
+      "torch_cuda": "13.0"
+    }
+  ],
+  "cuda_kernel_path": "torch-cuda-ldvm-fixed-buffer-branchless-lev-v2",
+  "execution_class": "cuda-only-numerical-python-orchestration",
+  "gpu_device": "NVIDIA GeForce RTX 4090 D",
+  "gpu_memory_peak_mib": 1181.0,
+  "gpu_runtime_evidence": {
+    "gpu_device": "NVIDIA GeForce RTX 4090 D",
+    "gpu_memory_peak_mib": 1181.0,
+    "gpu_utilization_observed": true,
+    "gpu_utilization_peak_percent": 55,
+    "gpu_uuid": "GPU-3023ccab-f90d-7404-2ad0-c8b0cf28babf",
+    "sample_count": 56
+  },
+  "gpu_utilization_observed": true,
+  "schema": "fluxv-v5m-baik-019-gpu-only-v2",
+  "source_sha256": {
+    "gpu_runtime_monitor": "8ebd06525ae68f3a4a3bb3ebce6537acd5c508c1d52d25577369606330e4d83d",
+    "ground_truth": "66fbff1b6fb922440096dacd60e207f5b6220ef3cebb710dc360d57a60740ff2",
+    "ldvm_torch_gpu": "31f19712679efa5af92d9bf1b9b9d3c998d6a11a421cf67c4f975ced5bb7b6d1",
+    "runner": "2e7d43d63e248bb293ce5ff23801cc0128c81e66c5b183e238fc30e5e1d80b13"
+  }
+}

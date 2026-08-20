@@ -2,15 +2,23 @@
 
 ## 0. 一句话定义
 
-一套零拟合的机理性气动载荷预测系统：**机器精度验证的 UVLM 底盘**（载荷级修正、不动环流求解）+ **声明常数的分离/粘性修正层**，在 Baik 2012、Izraelevitz 2017、Yang 2025、Mancini 2017 四篇论文上达到或超越 V4B，全部常数可溯源到冻结实现或发表值。
+一套零拟合的机理性气动载荷预测系统：**机器精度验证的 UVLM 底盘**（载荷级修正、不动环流求解）+ **声明常数的分离/粘性修正层**。生产入口强制 CUDA float64，禁止 CPU fallback；legacy CPU 模块仅保留为离线参考，不能用于发布 V5M 结果。
+
+当前能力必须以 `flux_v5m_gpu.capability_matrix()` 为准。只有标记为 `production_cuda` 的模式可运行。attached、active-LEV、joint-TEV、prescribed/free wake 与标准 Warp-FSI 数据面已走统一 CUDA 数值底盘；通用 Ptera 的多翼/多机/image 不属于 V5M 生产工况并在首步前明确拒绝。`warp_fsi.ml_fluid/ml_chain` 是 MATLAB 对照模块，也禁止从 V5M 生产入口加载。
+
+性能合同同样属于生产合同：论文网格默认启用形状动态的融合环涡核，四条环边和四组载荷目标点批量执行；Warp-FSI 的 PCG 归约与向量更新使用融合 Warp kernel，并把收敛检查降为每 8 次迭代一次。不要用“多 Python 线程 + 多 CUDA stream”替换此路径——RTX 4090 D 实测反而慢 6–11%。
 
 ## 1. 核心组件地图
 
 ```
 platform/warp_vpm/
-├── bing_joint_ptera.py     ← 主求解器（机架 mixin）
-├── bing_drag_ledger.py     ← 载荷级阻力/分离修正
-├── bing_baik_2d.py         ← Baik: 2D LDVM 直接评分
+├── flux_v5m_gpu.py         ← 唯一生产入口与能力矩阵
+├── bing_joint_ptera_gpu.py ← CUDA UVLM 底盘
+├── bing_gpu_corrections.py ← CUDA 载荷/分离修正
+├── ldvm_torch_gpu.py       ← CUDA LDVM
+├── bing_joint_ptera.py     ← CPU 参考实现（禁止生产调用）
+├── bing_drag_ledger.py     ← CPU 参考账本（禁止生产调用）
+├── bing_baik_2d.py         ← 历史 CPU 参考脚本
 ├── bing_izra_v2.py         ← Izra: 机架 + 冻结 LDVM delta
 ├── bing_baik_final.py      ← Baik: 规范采样管道 + transfer
 ├── bing_mancini.py         ← Mancini: 机架 + LDVM delta 交叉验证
@@ -36,21 +44,22 @@ sys.path.insert(0, "platform")
 sys.path.insert(0, "platform/warp_vpm")
 
 import pterasoftware
-from bing_joint_ptera import JointLEVTEVSolver, JointConfig
+from bing_joint_ptera import JointConfig
+from flux_v5m_gpu import run_flux_v5m_ptera
 
 # 构建运动（用你自己的 movement builder）
 movement = your_build_movement(...)
 problem = pterasoftware.problems.UnsteadyProblem(
     movement=movement, only_final_results=False)
 
-# 跑底盘（LEV 关 = 机器精度裸核；LEV 开 = 联立 LEV 求解）
-solver = JointLEVTEVSolver(problem, JointConfig(
-    enable_lev=False,       # True 开启 LEV 联立
+# 跑已授权的严格 GPU 底盘；未迁移模式会 fail-close
+solver = run_flux_v5m_ptera(problem, JointConfig(
+    enable_lev=True,        # active-LEV 已授权 CUDA
+    joint_tev=False,        # True 使用 CUDA 增广 LEV+TEV 系统
     load_mode="bing",       # "bing" 钉帽 / "v4b3d" 完整 bound
     lesp_crit=0.11,         # 声明 LESP 临界值
-))
-solver.run(prescribed_wake=True, calculate_streamlines=False,
-           show_progress=False)
+), device="cuda:0", prescribed_wake=True,  # False 为 CUDA free wake
+   calculate_streamlines=False, show_progress=False)
 
 # 收割载荷
 FZ = [float(sp_.airplanes[0].forces_W[2]) for sp in solver.steady_problems]
@@ -61,7 +70,8 @@ FX = [float(sp_.airplanes[0].forces_W[0]) for sp in solver.steady_problems]
 ### 2.2 加阻力修正（载荷级，零环流改动）
 
 ```python
-from bing_drag_ledger import LedgerConfig, run_ledger
+from bing_drag_ledger import LedgerConfig  # 配置 dataclass
+from bing_gpu_corrections import run_ledger_cuda
 
 cfg = LedgerConfig(
     lesp_crit=0.239,             # 圆前缘族声明值（或 0.11 薄板）
@@ -72,7 +82,8 @@ cfg = LedgerConfig(
     enable_t3=True,              # T3: 动态粘性
     enable_t2=False,             # T2: Rayleigh 深分离（需记忆，默认关）
 )
-result = run_ledger(solver.ledger, cfg, last_n=steps_per_cycle)
+result = run_ledger_cuda(solver.ledger, cfg, last_n=steps_per_cycle,
+                         device="cuda:0")
 # result["mean_t1_N"], result["mean_t3_N"], result["mean_total_N"]
 ```
 
@@ -80,12 +91,14 @@ result = run_ledger(solver.ledger, cfg, last_n=steps_per_cycle)
 
 ```python
 from forward_flight_benchmarks.ldvm_uvlm_correction import (
-    LESPThreshold, LDVMSectionSettings,
-    run_ldvm_separation_pair, project_ldvm_delta_to_finite_wing)
+    LESPThreshold, LDVMSectionSettings)
+from bing_gpu_corrections import (
+    run_ldvm_separation_pair_cuda,
+    project_ldvm_delta_to_finite_wing_cuda)
 
 # 构造截面运动学（alpha, alpha_dot, heave_rate 均为无量纲时间序列）
 threshold = LESPThreshold(value=0.239, ...)
-pair = run_ldvm_separation_pair(
+pair = run_ldvm_separation_pair_cuda(
     alpha_rad=alpha,                     # 弧度
     alpha_rate_per_convective_time=arate,
     heave_rate_over_u=heave,
@@ -93,7 +106,7 @@ pair = run_ldvm_separation_pair(
     pivot_fraction_chord=0.75,
     threshold=threshold,
     settings=LDVMSectionSettings(ndiv=50, naterm=24, max_wake_steps=512))
-proj = project_ldvm_delta_to_finite_wing(
+proj = project_ldvm_delta_to_finite_wing_cuda(
     pair["delta"]["CNc"][-N:], pair["delta"]["CNnc"][-N:],
     pair["delta"]["CNnonl"][-N:], pair["delta"]["CSf"][-N:],
     alpha[-N:], aspect_ratio=AR)
@@ -104,13 +117,13 @@ CD_corrected = CD_bare + proj["delta_CD"]
 ### 2.4 Baik 类准二维实验 → 2D LDVM 直接评分
 
 ```python
-from ldvm_fourier import LDVM2D
+from ldvm_torch_gpu import LDVM2DCuda
 
-ldvm = LDVM2D(U=1.0, c=1.0, ndiv=32, naterm=14,
+ldvm = LDVM2DCuda(U=1.0, c=1.0, ndiv=32, naterm=14,
               dt=float(dt_star), rho=1.0, camber_m=0.0,
               pivot_xc=0.25, core_rc=0.02,
               lesp_crit=0.19,   # Ramesh Table 4.1 声明值
-              max_wake=256)
+              max_wake=256, device="cuda:0")
 for k in range(3 * SPC):
     out = ldvm.step(alpha[k % SPC], arate[k % SPC], heave[k % SPC])
     cl_hist.append(out["CLf"])   # 剖面 CL（含 LEV + 附加质量）
@@ -133,15 +146,15 @@ for k in range(3 * SPC):
 | G6a | ledger 内部 | 附着极限 T1=0 | excess ≤ 0 | assert |
 | G6b | ledger 内部 | 分离阻力 ≤ Rayleigh 上限 | clip 后满足 | ValueError |
 
-**设备要求**：粒子场自动检测 CUDA/CPU（`PFIELD_DEVICE` 环境变量可强制指定）。无 GPU 时自动回退 CPU，无需修改代码。
+**设备要求**：必须存在 CUDA GPU。生产入口、LDVM、修正和粒子场全部强制 CUDA；`PFIELD_DEVICE=cpu`、`FLUXV_DEVICE=cpu` 或 CUDA 不可用都会非零退出，绝不自动回退 CPU。
 
 ## 4. 各论文的最优配置（终值）
 
 | 论文 | 最优模型 | 关键参数 | 终值 | 对比 |
 |------|---------|---------|------|------|
-| **Baik W1-W4** | 2D LDVM 直接 | ndiv=32, crit=0.19 | CL **0.442** CD **0.294** | V4B 0.658/0.345 |
+| **Baik W1-W4** | 2D LDVM 直接 | ndiv=32, crit=0.19 | CL **0.4216** CD **0.2897** | V4B 0.658/0.345 |
 | **Yang 2025** | 机架 + 全角 polar + T3 | CD90=1.20, Blasius Cd0 | lift **4.10** drag **1.52** gf | V4B 4.55/2.64 |
-| **Izra Fig14** | 机架 + Cd0 + LDVM delta | crit=sin(0.90/0.065)=0.239 | CT MAE **0.0178** | V4B 0.0198 |
+| **Izra Fig14** | 机架 + Cd0 + LDVM delta | crit=sin(0.90/0.065)=0.239 | CT MAE **0.01745** | V4B 0.0198 |
 | **Mancini 2017** | 机架 + LDVM delta | crit=0.11 | fast 1.255 slow 0.295 | V4B 1.218/0.291 |
 
 ### Baik 选型规则（物理驱动，非逐工况挑）
@@ -176,12 +189,26 @@ for k in range(3 * SPC):
 export PYTHONPATH=src:platform:platform/warp_vpm
 export MPLCONFIGDIR=/tmp/mpl
 export NUMBA_CACHE_DIR=/tmp/numba
+export PFIELD_DEVICE=cuda:0
+export FLUXV_GPU_ONLY=1
+export FLUXV_DEVICE=cuda:0
+export FLUXV_DTYPE=float64
+export FLUXV_V5M_FUSE=1
+# 动态增长的 wake 张量必须使用可扩展 allocator，后端在 CUDA 初始化前也会 setdefault。
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# 典型运行时间
-# 3D 机架 8×12cos / 128 步/周期 / 4 周期:  ~25 s/条件
-# 2D LDVM 512 步/周期 / 3 周期:            ~30 s/条件
+# RTX 4090 D 上的典型运行时间（2026-08-21 fresh）
+# 3D 三论文完整 20 工况矩阵:                448.4 s fresh verified
+# 2D LDVM 512 步/周期 / 3 周期:             ~3.6 s/条件
 # LDVM 分离对 (ndiv=50, 96 步/弦):         ~15 s/条件
 ```
+
+### 6.1 迭代性能注意事项
+
+- 首次 `torch.compile` 会支付约 2–3.4 s 冷启动；同一 Python 进程中的后续网格/工况复用融合核，active-LEV 20 步 warm 约 0.128 s。
+- 正式参数扫描应在同一进程串行复用编译缓存。仅对非常短的一次性诊断，可设置 `FLUXV_V5M_FUSE=0` 避免冷启动。
+- 四篇论文最终严格门复跑中，三篇 3D 矩阵由 582.98 s 降至 448.38 s（1.300×）；峰值显存由 11,104 MiB 降至 6,556 MiB。前一优化复跑为 443.01 s / 6,494 MiB，两次处于约 1.2% 的运行波动内；精度指标保持在浮点舍入差范围内。
+- 下一阶段若继续提速，应增加真正的 case 维批量张量；不要再尝试线程级多 stream 并发。
 
 ## 7. 接手 agent 的工作流
 
@@ -215,11 +242,11 @@ export NUMBA_CACHE_DIR=/tmp/numba
 
 | 指标 | 我们 | V4B | 判定 |
 |------|------|-----|------|
-| Baik CL 宏 | **0.442** | 0.658 | 胜 −33% |
-| Baik CD 宏 | **0.294** | 0.345 | 胜 −15% |
+| Baik CL 宏 | **0.4216** | 0.658 | 胜 −36% |
+| Baik CD 宏 | **0.2897** | 0.345 | 胜 −16% |
 | Yang 升力 | **4.10** | 4.55 | 胜 |
 | Yang 阻力 | **1.52** | 2.64 | 胜 |
-| Izra CT | **0.0178** | 0.0198 | 胜 |
+| Izra CT | **0.01745** | 0.0198 | 胜 |
 | Baik CL（规范管道） | 0.6577 | 0.6575 | 精确持平 |
 | Mancini 快俯仰 | 1.2553 | 1.2184 | 近持平 +3% |
 | Mancini 慢俯仰 | 0.2951 | 0.2908 | 近持平 +1.5% |

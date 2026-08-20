@@ -10,11 +10,41 @@
 """
 from __future__ import annotations
 import math
-import numpy as np
 import warp as wp
 from . import config
 
 DTYPE = config.DTYPE
+
+
+@wp.kernel
+def _nonfinite_2d_kernel(
+    values: wp.array(dtype=DTYPE, ndim=2),
+    flag: wp.array(dtype=wp.int32, ndim=1),
+):
+    i, j = wp.tid()
+    if not wp.isfinite(values[i, j]):
+        wp.atomic_max(flag, 0, 1)
+
+
+@wp.kernel
+def _nonfinite_3d_kernel(
+    values: wp.array(dtype=DTYPE, ndim=3),
+    flag: wp.array(dtype=wp.int32, ndim=1),
+):
+    i, j, k = wp.tid()
+    if not wp.isfinite(values[i, j, k]):
+        wp.atomic_max(flag, 0, 1)
+
+
+def _require_finite_gpu_array(value, device, name):
+    if not value.device.is_cuda or value.device.alias != wp.get_device(device).alias:
+        raise ValueError(f"{name} must reside on the selected CUDA device")
+    flag = wp.zeros(1, dtype=wp.int32, device=device)
+    kernel = _nonfinite_2d_kernel if value.ndim == 2 else _nonfinite_3d_kernel
+    wp.launch(kernel, dim=value.shape, inputs=[value], outputs=[flag], device=device)
+    wp.synchronize()
+    if bool(flag.numpy()[0]):
+        raise FloatingPointError(f"{name} contains non-finite values")
 
 
 @wp.kernel
@@ -63,25 +93,16 @@ def batched_dense_solve(A_wp, b_wp, device=None, in_place_b=False):
     """
     device = device or config.DEVICE
     B, N, _ = A_wp.shape
-    # A CUDA request must stay on CUDA.  The previous B<=4 optimization copied
-    # the system to host LAPACK, which is fast but violates the GPU-only paper
-    # execution contract and makes device monitoring misleading.
-    device_info = wp.get_device(device)
-    if B <= 4 and not device_info.is_cuda:
-        # (2026-07-09 perf) few-env case: one GPU thread doing the whole O(N³) LU is
-        # ~150 ms at N=192 (measured; 1/3 of the UVLM step cost). Host LAPACK dgesv is
-        # the SAME partial-pivoting algorithm at <1 ms incl. transfers. The GPU kernel
-        # stays for the many-env co-design workload it was written for.
-        A_h = A_wp.numpy()
-        b_h = b_wp.numpy()
-        x_h = np.linalg.solve(A_h, b_h[..., None])[..., 0].astype(b_h.dtype, copy=False)
-        if in_place_b:
-            wp.copy(b_wp, wp.array(x_h, dtype=b_wp.dtype, device=b_wp.device))
-            return b_wp
-        return wp.array(x_h, dtype=b_wp.dtype, device=device)
+    if B < 1 or N < 1 or A_wp.shape != (B, N, N) or b_wp.shape != (B, N):
+        raise ValueError("CUDA dense solve requires non-empty aligned batched systems")
+    if not wp.get_device(device).is_cuda:
+        raise RuntimeError("FLUX-V5M dense solve has no host implementation")
+    _require_finite_gpu_array(A_wp, device, "dense matrix")
+    _require_finite_gpu_array(b_wp, device, "dense right-hand side")
     A_work = wp.clone(A_wp)
     x = b_wp if in_place_b else wp.clone(b_wp)
     wp.launch(_lu_solve_kernel, dim=B, inputs=[A_work, x, N], device=device)
+    _require_finite_gpu_array(x, device, "dense solution")
     return x
 
 
@@ -207,6 +228,17 @@ def _dot_kernel(
 
 
 @wp.kernel
+def _dot_parallel_kernel(
+    a: wp.array(dtype=DTYPE, ndim=2),
+    b: wp.array(dtype=DTYPE, ndim=2),
+    out: wp.array(dtype=DTYPE, ndim=1),
+):
+    """Parallel batch dot product used by the structural PCG solver."""
+    e, d = wp.tid()
+    wp.atomic_add(out, e, a[e, d] * b[e, d])
+
+
+@wp.kernel
 def _axpy_kernel(
     y: wp.array(dtype=DTYPE, ndim=2),
     coef: wp.array(dtype=DTYPE, ndim=1),
@@ -237,10 +269,86 @@ def _div_kernel(
     out[e] = num[e] / den[e]
 
 
+@wp.kernel
+def _pcg_update_solution_residual(
+    x: wp.array(dtype=DTYPE, ndim=2),
+    r: wp.array(dtype=DTYPE, ndim=2),
+    p: wp.array(dtype=DTYPE, ndim=2),
+    sp: wp.array(dtype=DTYPE, ndim=2),
+    rz: wp.array(dtype=DTYPE, ndim=1),
+    psp: wp.array(dtype=DTYPE, ndim=1),
+):
+    """Fuse alpha, x and residual updates into one DOF-parallel launch."""
+    e, d = wp.tid()
+    alpha = rz[e] / psp[e]
+    x[e, d] = x[e, d] + alpha * p[e, d]
+    r[e, d] = r[e, d] - alpha * sp[e, d]
+
+
+@wp.kernel
+def _pcg_precondition_dot(
+    diag: wp.array(dtype=DTYPE, ndim=2),
+    free: wp.array(dtype=DTYPE, ndim=1),
+    r: wp.array(dtype=DTYPE, ndim=2),
+    z: wp.array(dtype=DTYPE, ndim=2),
+    rz_new: wp.array(dtype=DTYPE, ndim=1),
+):
+    """Fuse Jacobi preconditioning with the r·z reduction."""
+    e, d = wp.tid()
+    dd = diag[e, d]
+    value = DTYPE(0.0)
+    if free[d] > DTYPE(0.5) and dd != DTYPE(0.0):
+        value = r[e, d] / dd
+    z[e, d] = value
+    wp.atomic_add(rz_new, e, r[e, d] * value)
+
+
+@wp.kernel
+def _pcg_update_direction(
+    p: wp.array(dtype=DTYPE, ndim=2),
+    z: wp.array(dtype=DTYPE, ndim=2),
+    rz_new: wp.array(dtype=DTYPE, ndim=1),
+    rz: wp.array(dtype=DTYPE, ndim=1),
+):
+    """Fuse beta evaluation and search-direction update."""
+    e, d = wp.tid()
+    beta = rz_new[e] / rz[e]
+    p[e, d] = z[e, d] + beta * p[e, d]
+
+
 def _dot(a, b, ndof, out, device):
+    if a.shape[1] != ndof or b.shape != a.shape:
+        raise ValueError("CUDA dot operands must be aligned (B, ndof) arrays")
+    out.zero_()
     wp.launch(
-        _dot_kernel, dim=a.shape[0], inputs=[a, b, ndof], outputs=[out], device=device
+        _dot_parallel_kernel,
+        dim=(a.shape[0], ndof),
+        inputs=[a, b],
+        outputs=[out],
+        device=device,
     )
+
+
+@wp.kernel
+def _max_scalar_kernel(
+    values: wp.array(dtype=DTYPE, ndim=1), out: wp.array(dtype=DTYPE, ndim=1)
+):
+    """GPU reduction used by the host convergence-control decision."""
+    index = wp.tid()
+    wp.atomic_max(out, 0, values[index])
+
+
+def _gpu_max_scalar(values, device):
+    out = wp.zeros(1, dtype=DTYPE, device=device)
+    wp.launch(
+        _max_scalar_kernel,
+        dim=values.shape[0],
+        inputs=[values],
+        outputs=[out],
+        device=device,
+    )
+    wp.synchronize()
+    return float(out.numpy()[0])
 
 
 def structural_cg(
@@ -254,7 +362,7 @@ def structural_cg(
     max_iter=2000,
     tol=None,
     device=None,
-    check_every=1,
+    check_every=8,
     madd=None,
     madd_diag=None,
 ):
@@ -267,6 +375,13 @@ def structural_cg(
     device = device or config.DEVICE
     tol = tol if tol is not None else config.CR_TOL
     B = b_wp.shape[0]
+    if B < 1 or ndof < 1 or b_wp.shape != (B, ndof):
+        raise ValueError("CUDA structural solve requires a non-empty aligned batch")
+    if max_iter < 1 or check_every < 1:
+        raise ValueError("CUDA structural solve iteration controls must be positive")
+    if not math.isfinite(tol) or tol <= 0.0:
+        raise ValueError("CUDA structural tolerance must be finite and positive")
+    _require_finite_gpu_array(b_wp, device, "structural right-hand side")
     ne = edofs.shape[0]
     NP = config.NP_DTYPE
     coefD = DTYPE(NP(coef))
@@ -315,51 +430,57 @@ def structural_cg(
     rz_new = wp.zeros(B, dtype=DTYPE, device=device)
     pSp = wp.zeros(B, dtype=DTYPE, device=device)
     rr = wp.zeros(B, dtype=DTYPE, device=device)
-    alpha = wp.zeros(B, dtype=DTYPE, device=device)
-    beta = wp.zeros(B, dtype=DTYPE, device=device)
-
     wp.launch(
         _minv_apply, dim=(B, ndof), inputs=[diag, free, r], outputs=[z], device=device
     )
     wp.copy(p, z)
     _dot(r, z, ndof, rz, device)
     _dot(b_wp, b_wp, ndof, rr, device)  # |b|² for relative residual
-    wp.synchronize()
-    bnorm2 = float(np.max(rr.numpy())) + 1e-300
+    bnorm2 = _gpu_max_scalar(rr, device) + 1e-300
 
     iters = 0
+    converged = False
     for it in range(max_iter):
         mv(p, Sp)
         _dot(p, Sp, ndof, pSp, device)
-        wp.launch(_div_kernel, dim=B, inputs=[rz, pSp], outputs=[alpha], device=device)
         wp.launch(
-            _axpy_kernel, dim=(B, ndof), inputs=[x, alpha, p, DTYPE(1.0)], device=device
-        )
-        wp.launch(
-            _axpy_kernel,
+            _pcg_update_solution_residual,
             dim=(B, ndof),
-            inputs=[r, alpha, Sp, DTYPE(-1.0)],
+            inputs=[x, r, p, Sp, rz, pSp],
             device=device,
         )
         iters = it + 1
         if it % check_every == 0:
             _dot(r, r, ndof, rr, device)
-            wp.synchronize()
-            if math.sqrt(float(np.max(rr.numpy())) / bnorm2) < tol:
+            if math.sqrt(_gpu_max_scalar(rr, device) / bnorm2) < tol:
+                converged = True
                 break
+        rz_new.zero_()
         wp.launch(
-            _minv_apply,
+            _pcg_precondition_dot,
             dim=(B, ndof),
-            inputs=[diag, free, r],
-            outputs=[z],
+            inputs=[diag, free, r, z],
+            outputs=[rz_new],
             device=device,
         )
-        _dot(r, z, ndof, rz_new, device)
         wp.launch(
-            _div_kernel, dim=B, inputs=[rz_new, rz], outputs=[beta], device=device
+            _pcg_update_direction,
+            dim=(B, ndof),
+            inputs=[p, z, rz_new, rz],
+            device=device,
         )
-        wp.launch(_xpby_kernel, dim=(B, ndof), inputs=[p, z, beta], device=device)
         wp.copy(rz, rz_new)
+    _require_finite_gpu_array(x, device, "structural solution")
+    if not converged:
+        _require_finite_gpu_array(r, device, "structural residual")
+        _dot(r, r, ndof, rr, device)
+        relative_residual = math.sqrt(_gpu_max_scalar(rr, device) / bnorm2)
+        if not math.isfinite(relative_residual) or relative_residual >= tol:
+            raise RuntimeError(
+                "CUDA structural PCG did not converge after "
+                f"{iters} iterations: relative residual={relative_residual:.17g}, "
+                f"tolerance={tol:.17g}"
+            )
     return x, iters
 
 

@@ -24,8 +24,8 @@ import warp as wp
 
 # ── Active selection (mutable until kernel modules import) ──────────────────
 _DTYPE_NAME = os.environ.get("FLUXV_DTYPE", "float64").lower()
-_DEVICE = os.environ.get("FLUXV_DEVICE", "")  # "" -> auto (cuda if available)
-GPU_ONLY = os.environ.get("FLUXV_GPU_ONLY", "0").strip().lower() in {
+_DEVICE = os.environ.get("FLUXV_DEVICE", "cuda:0")
+GPU_ONLY = os.environ.get("FLUXV_GPU_ONLY", "1").strip().lower() in {
     "1",
     "true",
     "yes",
@@ -124,7 +124,7 @@ def summary() -> str:
     )
 
 
-# Initialize on import from env (default float64 + auto device).
+# Initialize on import from env (V5M default: float64 + mandatory CUDA).
 wp.init()
 set_dtype(_DTYPE_NAME)
 set_device(_DEVICE)

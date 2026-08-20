@@ -41,6 +41,22 @@ def _cuda(value: Any, device: torch.device) -> torch.Tensor:
     return torch.from_numpy(host).to(device=device)
 
 
+def _require_cuda_float64_tensor(
+    name: str, value: Any, device: torch.device
+) -> torch.Tensor:
+    """Validate a production input without silently transferring or casting it."""
+
+    if type(value) is not torch.Tensor:
+        raise TypeError(f"{name} must be an exact torch.Tensor")
+    if value.device.type != "cuda":
+        raise ValueError(f"{name} must be CUDA; implicit host upload is forbidden")
+    if value.device != device:
+        raise ValueError(f"{name} must be on {device}, got {value.device}")
+    if value.dtype is not torch.float64:
+        raise TypeError(f"{name} must use torch.float64")
+    return value
+
+
 def _unit(value: torch.Tensor, floor: float = 1.0e-12) -> torch.Tensor:
     norm = torch.linalg.vector_norm(value, dim=-1, keepdim=True)
     return value / torch.clamp(norm, min=floor)
@@ -59,9 +75,13 @@ def run_ldvm_separation_pair_cuda(
 ) -> dict[str, Any]:
     """CUDA equivalent of ``run_ldvm_separation_pair``."""
     d = _device(device)
-    alpha = _cuda(alpha_rad, d).reshape(-1)
-    alpha_rate = _cuda(alpha_rate_per_convective_time, d).reshape(-1)
-    heave_rate = _cuda(heave_rate_over_u, d).reshape(-1)
+    alpha = _require_cuda_float64_tensor("alpha_rad", alpha_rad, d).reshape(-1)
+    alpha_rate = _require_cuda_float64_tensor(
+        "alpha_rate_per_convective_time", alpha_rate_per_convective_time, d
+    ).reshape(-1)
+    heave_rate = _require_cuda_float64_tensor(
+        "heave_rate_over_u", heave_rate_over_u, d
+    ).reshape(-1)
     if (
         alpha.numel() < 4
         or alpha.shape != alpha_rate.shape
@@ -140,11 +160,26 @@ def project_ldvm_delta_to_finite_wing_cuda(
     *,
     aspect_ratio: float,
 ) -> dict[str, torch.Tensor | float]:
-    d = _device(str(alpha_rad.device))
-    values = tuple(
-        _cuda(value, d).reshape(-1)
-        for value in (delta_cnc, delta_cnnc, delta_cn_nonl, delta_cs, alpha_rad)
+    named = (
+        ("delta_cnc", delta_cnc),
+        ("delta_cnnc", delta_cnnc),
+        ("delta_cn_nonl", delta_cn_nonl),
+        ("delta_cs", delta_cs),
+        ("alpha_rad", alpha_rad),
     )
+    if any(type(value) is not torch.Tensor for _, value in named):
+        raise TypeError(
+            "CUDA finite-wing projection requires exact torch.Tensor inputs"
+        )
+    d = _device(str(alpha_rad.device))
+    for name, value in named:
+        if value.device.type != "cuda":
+            raise ValueError(f"{name} must be CUDA; implicit host upload is forbidden")
+        if value.device != d:
+            raise ValueError(f"{name} must be on {d}, got {value.device}")
+        if value.dtype is not torch.float64:
+            raise TypeError(f"{name} must use torch.float64")
+    values = tuple(value.reshape(-1) for _, value in named)
     cnc, cnnc, cn_nonl, cs, alpha = values
     if not (cnc.shape == cnnc.shape == cn_nonl.shape == cs.shape == alpha.shape):
         raise ValueError("CUDA LDVM projection histories must align")

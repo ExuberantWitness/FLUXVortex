@@ -2,17 +2,17 @@
   "base_commit": "fa8eaca9bcaa4b963ecf41683bf77d3c9e3df169",
   "cuda_kernel_path": "torch-cuda-aic-wake-convection-solve-loads-ldvm-polar-ledger-v2",
   "cuda_version": "13.0",
-  "elapsed_seconds": 448.3847194379996,
+  "elapsed_seconds": 443.0057870569981,
   "execution_class": "cuda-only-numerical-python-orchestration",
   "gpu_device": "NVIDIA GeForce RTX 4090 D",
-  "gpu_memory_peak_mib": 6556.0,
+  "gpu_memory_peak_mib": 6494.0,
   "gpu_runtime_evidence": {
     "gpu_device": "NVIDIA GeForce RTX 4090 D",
-    "gpu_memory_peak_mib": 6556.0,
+    "gpu_memory_peak_mib": 6494.0,
     "gpu_utilization_observed": true,
-    "gpu_utilization_peak_percent": 60,
+    "gpu_utilization_peak_percent": 61,
     "gpu_uuid": "GPU-3023ccab-f90d-7404-2ad0-c8b0cf28babf",
-    "sample_count": 1516
+    "sample_count": 1493
   },
   "gpu_utilization_observed": true,
   "ground_truth_sha256": {
@@ -4381,10 +4381,10 @@
     "yang_drag_mae_gf": 1.51862558965769,
     "yang_lift_mae_gf": 4.104826595775628
   },
-  "result_sha256": "b49b1d23d338aeec40af76f998455eadbc969e553252b25468a1c6a022dc43f2",
+  "result_sha256": "8a1b680d77691767c10f5a8d5d0b9189d6b1a4bfa51d8a297a04be5e23257ba9",
   "schema": "fluxv-v5m-four-paper-gpu-only-v2",
   "source_sha256": {
-    "cuda_corrections": "62fdb2e331446ea710cb47f441b052284c92d36925771eaa95589e44240bf954",
+    "cuda_corrections": "fa16a4f1f9fea6603badea8630ad990b53f85523fede3885deae2cadf92bace8",
     "gpu_runtime_monitor": "8ebd06525ae68f3a4a3bb3ebce6537acd5c508c1d52d25577369606330e4d83d",
     "ldvm_torch_gpu": "31f19712679efa5af92d9bf1b9b9d3c998d6a11a421cf67c4f975ced5bb7b6d1",
     "ptera_cuda_backend": "9c0eb2f57fcd8d7e8b0c4186286106149e0195b40bc2ed0c0a9a16916480fb3a",

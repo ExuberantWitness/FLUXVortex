@@ -1,27 +1,27 @@
 {
   "artifact_sha256": {
     "baik_gt": "66fbff1b6fb922440096dacd60e207f5b6220ef3cebb710dc360d57a60740ff2",
-    "baik_summary": "f2fba13edd70f089f8e3d7da027e7d98c3ba178f228db06720919b9a94104592",
-    "three_paper_summary": "0cf3c056c3a591e1ec8570a24a21f3d9ec832e66d5b838537ed1a34442a2a797",
+    "baik_summary": "49e9c810f2782f9bdbc0c4182555787c72307acac64eb6d0dd5fb0066b5389ca",
+    "three_paper_summary": "d7b3e693bec233b6317b92a53756964dee4dd234e19d7525ff146c7238ca7c3d",
     "validator": "21455b7c30fe6eaf45e270fdff8dfb8b76eb3e0add6d2f6f51c25b6c6fc75a56"
   },
   "execution_class": "cuda-only-science-python-orchestration",
   "gpu_runtime_evidence": {
     "baik": {
       "gpu_device": "NVIDIA GeForce RTX 4090 D",
-      "gpu_memory_peak_mib": 1181.0,
+      "gpu_memory_peak_mib": 1179.0,
       "gpu_utilization_observed": true,
       "gpu_utilization_peak_percent": 56,
       "gpu_uuid": "GPU-3023ccab-f90d-7404-2ad0-c8b0cf28babf",
-      "sample_count": 57
+      "sample_count": 56
     },
     "three_papers": {
       "gpu_device": "NVIDIA GeForce RTX 4090 D",
-      "gpu_memory_peak_mib": 6556.0,
+      "gpu_memory_peak_mib": 6494.0,
       "gpu_utilization_observed": true,
-      "gpu_utilization_peak_percent": 60,
+      "gpu_utilization_peak_percent": 61,
       "gpu_uuid": "GPU-3023ccab-f90d-7404-2ad0-c8b0cf28babf",
-      "sample_count": 1516
+      "sample_count": 1493
     }
   },
   "legacy_fix_gate_scope": "fa8eaca commit-level diagnostics executed before GPU-only freeze; excluded from four-paper GPU scientific claim",

@@ -146,3 +146,64 @@ def test_finite_wing_projection_rejects_cpu_tensor() -> None:
             values,
             aspect_ratio=3.0,
         )
+
+
+def test_finite_wing_projection_rejects_one_mixed_cpu_tensor() -> None:
+    cuda = torch.ones(4, device="cuda:0", dtype=torch.float64)
+    host = torch.ones(4, dtype=torch.float64)
+    with pytest.raises(ValueError, match="delta_cnnc must be CUDA"):
+        project_ldvm_delta_to_finite_wing_cuda(
+            cuda,
+            host,
+            cuda,
+            cuda,
+            cuda,
+            aspect_ratio=3.0,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "error", "message"),
+    (
+        (
+            "alpha_rad",
+            lambda: torch.ones(8, dtype=torch.float64),
+            ValueError,
+            "alpha_rad must be CUDA",
+        ),
+        (
+            "alpha_rate_per_convective_time",
+            lambda: torch.ones(8, device="cuda:0", dtype=torch.float32),
+            TypeError,
+            "alpha_rate_per_convective_time must use torch.float64",
+        ),
+        (
+            "heave_rate_over_u",
+            lambda: np.ones(8),
+            TypeError,
+            "heave_rate_over_u must be an exact torch.Tensor",
+        ),
+    ),
+)
+def test_cuda_ldvm_pair_rejects_implicit_upload_or_cast(
+    field: str,
+    replacement: object,
+    error: type[Exception],
+    message: str,
+) -> None:
+    values = {
+        "alpha_rad": torch.ones(8, device="cuda:0", dtype=torch.float64),
+        "alpha_rate_per_convective_time": torch.ones(
+            8, device="cuda:0", dtype=torch.float64
+        ),
+        "heave_rate_over_u": torch.ones(8, device="cuda:0", dtype=torch.float64),
+    }
+    values[field] = replacement()
+    with pytest.raises(error, match=message):
+        run_ldvm_separation_pair_cuda(
+            **values,
+            delta_time_convective=0.04,
+            pivot_fraction_chord=0.25,
+            threshold=LESPThreshold(0.11, "flat", 1.0e4, "negative gate"),
+            settings=LDVMSectionSettings(ndiv=12, naterm=4, max_wake_steps=8),
+        )

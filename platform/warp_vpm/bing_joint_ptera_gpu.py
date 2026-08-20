@@ -1,9 +1,9 @@
-"""Strict CUDA numerical backend for the attached V5M Ptera chassis.
+"""Strict CUDA numerical backend for the V5M Ptera chassis.
 
-This module intentionally implements only the production configuration used by
-the Yang, Izraelevitz--Scherer and Mancini validation cases: one airplane, one
-wing, no image surface, and ``JointConfig(enable_lev=False, joint_tev=False)``.
-Unsupported configurations fail closed instead of falling back to NumPy/Numba.
+The attached and active-LEV post-hoc modes use one airplane, one wing, no image
+surface and a prescribed wake.  Unsupported configurations fail closed instead
+of falling back to NumPy/Numba.  Joint LEV/TEV is enabled only after its
+augmented CUDA system passes the dedicated production gates.
 
 Python and Ptera still own geometry construction, object lifecycle and result
 serialization.  The aerodynamic numerics -- Biot--Savart evaluation, AIC/RHS,
@@ -13,13 +13,23 @@ as float64 Torch CUDA operations.
 from __future__ import annotations
 
 import math
+import os
 from typing import Any
 
 import numpy as np
+
+# Time-marching wake tensors grow every step.  Expandable CUDA allocator
+# segments reuse that growth in-place instead of retaining one cached block per
+# historical shape (which otherwise reserved almost the full 24 GiB device for
+# <1 GiB of live tensors).  Respect an explicit operator override.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import torch
 from pterasoftware import _vortices
 
 from bing_joint_ptera import JointConfig, JointLEVTEVSolver, LESP_FACTOR
+from bing_joint_solver import GateError, LESP_SANITY_MAX
+from pfield_torch_gpu import CudaParticleField
 
 _EPS = float(np.finfo(float).eps)
 _TOL = 1.0e-10
@@ -30,6 +40,12 @@ _FOUR_PI = 4.0 * math.pi
 
 def _cuda_tensor(value: Any, device: torch.device) -> torch.Tensor:
     """Copy an orchestration-owned array to CUDA float64."""
+    if type(value) is torch.Tensor:
+        if value.device != device or value.device.type != "cuda":
+            raise ValueError("internal science tensor crossed CUDA device boundary")
+        if value.dtype is not torch.float64:
+            raise TypeError("internal science tensor must use torch.float64")
+        return value
     host = np.array(value, dtype=np.float64, order="C", copy=True)
     return torch.from_numpy(host).to(device=device)
 
@@ -94,20 +110,158 @@ def _ring_velocity_expanded(
     ages: torch.Tensor,
     nu: float,
 ) -> torch.Tensor:
-    out = torch.zeros(
-        (points.shape[0], strengths.shape[0], 3),
-        dtype=torch.float64,
-        device=points.device,
+    # Evaluate all four ring legs as one larger CUDA batch.  The previous
+    # implementation launched the complete line-vortex tensor program four
+    # times in Python, which left small/medium panel grids launch-bound.  The
+    # flattened layout preserves the exact leg order in the final reduction.
+    starts = torch.stack((br, fr, fl, bl), dim=0).reshape(-1, 3)
+    ends = torch.stack((fr, fl, bl, br), dim=0).reshape(-1, 3)
+    expanded = _line_velocity_expanded(
+        points,
+        starts,
+        ends,
+        strengths.repeat(4),
+        core_radii.repeat(4),
+        ages.repeat(4),
+        nu,
     )
-    for start, end in ((br, fr), (fr, fl), (fl, bl), (bl, br)):
-        out = out + _line_velocity_expanded(
-            points, start, end, strengths, core_radii, ages, nu
+    return expanded.reshape(points.shape[0], 4, strengths.shape[0], 3).sum(dim=1)
+
+
+_COMPILED_BOUND_RING_VELOCITY: Any = None
+_COMPILED_COLLAPSED_RING_VELOCITY: Any = None
+
+
+def _fused_ring_velocity_expanded(
+    points: torch.Tensor,
+    br: torch.Tensor,
+    fr: torch.Tensor,
+    fl: torch.Tensor,
+    bl: torch.Tensor,
+    strengths: torch.Tensor,
+    core_radii: torch.Tensor,
+    ages: torch.Tensor,
+    nu: float,
+) -> torch.Tensor:
+    """Fused production path shared by bound and changing wake topologies.
+
+    Small grids stay eager because compiler cold-start dominates them.  Paper
+    meshes lazily prime one shape-polymorphic CUDA program.  Once primed, the
+    same graph accepts changing wake-row counts, which keeps the time-marching
+    loop from relaunching dozens of PyTorch microkernels per ring evaluation.
+    """
+    global _COMPILED_BOUND_RING_VELOCITY
+    interactions = points.shape[0] * strengths.shape[0]
+    enabled = os.environ.get("FLUXV_V5M_FUSE", "1") != "0"
+    if not enabled or (_COMPILED_BOUND_RING_VELOCITY is None and interactions < 4096):
+        return _ring_velocity_expanded(
+            points, br, fr, fl, bl, strengths, core_radii, ages, nu
         )
-    return out
+    if _COMPILED_BOUND_RING_VELOCITY is None:
+        _COMPILED_BOUND_RING_VELOCITY = torch.compile(
+            _ring_velocity_expanded,
+            fullgraph=True,
+            dynamic=True,
+        )
+    return _COMPILED_BOUND_RING_VELOCITY(
+        points, br, fr, fl, bl, strengths, core_radii, ages, nu
+    )
 
 
-class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
-    """Attached-flow V5M chassis with all aerodynamic numerics on CUDA."""
+def _bound_ring_velocity_expanded(
+    points: torch.Tensor,
+    br: torch.Tensor,
+    fr: torch.Tensor,
+    fl: torch.Tensor,
+    bl: torch.Tensor,
+    strengths: torch.Tensor,
+    core_radii: torch.Tensor,
+    ages: torch.Tensor,
+    nu: float,
+) -> torch.Tensor:
+    """Compatibility name for the fused bound-ring call sites."""
+    return _fused_ring_velocity_expanded(
+        points, br, fr, fl, bl, strengths, core_radii, ages, nu
+    )
+
+
+def _ring_velocity_collapsed(
+    points: torch.Tensor,
+    br: torch.Tensor,
+    fr: torch.Tensor,
+    fl: torch.Tensor,
+    bl: torch.Tensor,
+    strengths: torch.Tensor,
+    core_radii: torch.Tensor,
+    ages: torch.Tensor,
+    nu: float,
+) -> torch.Tensor:
+    """Return total ring-induced velocity without retaining ring columns."""
+    return _ring_velocity_expanded(
+        points, br, fr, fl, bl, strengths, core_radii, ages, nu
+    ).sum(dim=1)
+
+
+def _fused_ring_velocity_collapsed(
+    points: torch.Tensor,
+    br: torch.Tensor,
+    fr: torch.Tensor,
+    fl: torch.Tensor,
+    bl: torch.Tensor,
+    strengths: torch.Tensor,
+    core_radii: torch.Tensor,
+    ages: torch.Tensor,
+    nu: float,
+) -> torch.Tensor:
+    """Shape-polymorphic fused reduction for bound/wake velocity queries."""
+    global _COMPILED_COLLAPSED_RING_VELOCITY
+    interactions = points.shape[0] * strengths.shape[0]
+    enabled = os.environ.get("FLUXV_V5M_FUSE", "1") != "0"
+    if not enabled or (
+        _COMPILED_COLLAPSED_RING_VELOCITY is None and interactions < 4096
+    ):
+        return _ring_velocity_collapsed(
+            points, br, fr, fl, bl, strengths, core_radii, ages, nu
+        )
+    if _COMPILED_COLLAPSED_RING_VELOCITY is None:
+        _COMPILED_COLLAPSED_RING_VELOCITY = torch.compile(
+            _ring_velocity_collapsed,
+            fullgraph=True,
+            dynamic=True,
+        )
+    return _COMPILED_COLLAPSED_RING_VELOCITY(
+        points, br, fr, fl, bl, strengths, core_radii, ages, nu
+    )
+
+
+def _unregularized_ring_velocity_expanded(
+    points: torch.Tensor, rings: torch.Tensor
+) -> torch.Tensor:
+    """CUDA port of the frozen joint-system finite-ring column oracle."""
+
+    epsilon = 10000.0 * 2.2204e-16
+    origins = rings.transpose(0, 1).reshape(-1, 3)
+    destinations = torch.roll(rings, shifts=-1, dims=1).transpose(0, 1).reshape(-1, 3)
+    r1 = points[:, None] - origins[None]
+    r2 = points[:, None] - destinations[None]
+    cross = torch.linalg.cross(r1, r2, dim=2)
+    n1 = torch.linalg.vector_norm(r1, dim=2)
+    n2 = torch.linalg.vector_norm(r2, dim=2)
+    n3 = torch.linalg.vector_norm(cross, dim=2)
+    valid = (n1 > epsilon) & (n2 > epsilon) & (n3 > epsilon)
+    n1_safe = torch.clamp(n1, min=epsilon)
+    n2_safe = torch.clamp(n2, min=epsilon)
+    n3_safe = torch.clamp(n3, min=epsilon)
+    part1 = cross / (n3_safe * n3_safe).unsqueeze(2)
+    part2 = (n1_safe + n2_safe).unsqueeze(2)
+    dot = torch.sum(r1 * r2, dim=2)
+    part3 = (1.0 - dot / (n1_safe * n2_safe)).unsqueeze(2)
+    velocity = torch.where(valid.unsqueeze(2), part1 * part2 * part3 / _FOUR_PI, 0.0)
+    return velocity.reshape(points.shape[0], 4, rings.shape[0], 3).sum(dim=1)
+
+
+class CudaJointLEVTEVSolver(JointLEVTEVSolver):
+    """V5M chassis whose authorised aerodynamic modes execute on CUDA."""
 
     def __init__(
         self,
@@ -117,10 +271,6 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         device: str = "cuda:0",
     ) -> None:
         selected = cfg or JointConfig(enable_lev=False)
-        if selected.enable_lev or selected.joint_tev:
-            raise ValueError(
-                "CUDA attached chassis requires LEV and joint_tev disabled"
-            )
         if unsteady_problem.only_final_results:
             raise ValueError(
                 "CUDA attached chassis requires only_final_results=False; "
@@ -132,11 +282,20 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             )
         self.cuda_device = torch.device(device)
         if self.cuda_device.type != "cuda":
-            raise ValueError("CudaAttachedJointLEVTEVSolver requires a CUDA device")
+            raise ValueError("CudaJointLEVTEVSolver requires a CUDA device")
         torch.empty(1, dtype=torch.float64, device=self.cuda_device)
         super().__init__(unsteady_problem, selected)
-        if not self._prescribed_wake:
-            raise ValueError("CUDA attached chassis requires a prescribed wake")
+        self.lev_pf = CudaParticleField(
+            capacity=selected.particle_capacity,
+            device=self.cuda_device,
+        )
+        self._last_impulse_cuda: torch.Tensor | None = None
+        self._cuda_lev_history_total = torch.zeros(
+            (), device=self.cuda_device, dtype=torch.float64
+        )
+        self._cuda_tev_history_total = torch.zeros(
+            (), device=self.cuda_device, dtype=torch.float64
+        )
         if len(self.steady_problems[0].airplanes) != 1:
             raise ValueError("CUDA attached chassis currently supports one airplane")
         if len(self.steady_problems[0].airplanes[0].wings) != 1:
@@ -150,6 +309,10 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             "loads": 0,
             "ledger": 0,
             "wake_convection": 0,
+            "particle_velocity": 0,
+            "particle_advance": 0,
+            "particle_shed": 0,
+            "impulse": 0,
         }
 
     def _assert_supported_step(self) -> None:
@@ -177,17 +340,23 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
     def _bound_velocity(self, points: torch.Tensor) -> torch.Tensor:
         br, fr, fl, bl = self._bound_rings()
         n = br.shape[0]
-        return _ring_velocity_expanded(
+        return _fused_ring_velocity_collapsed(
             points,
             br,
             fr,
             fl,
             bl,
-            _cuda_tensor(self._current_bound_vortex_strengths, self.cuda_device),
+            (
+                self._cuda_bound_strengths
+                if hasattr(self, "_cuda_bound_strengths")
+                else _cuda_tensor(
+                    self._current_bound_vortex_strengths, self.cuda_device
+                )
+            ),
             _cuda_tensor(self._currentStackBoundRc0s, self.cuda_device),
             torch.zeros(n, dtype=torch.float64, device=self.cuda_device),
             float(self.current_operating_point.nu),
-        ).sum(dim=1)
+        )
 
     def _wake_velocity(self, points: torch.Tensor) -> torch.Tensor:
         if self._current_step == 0 or len(self._current_wake_vortex_strengths) == 0:
@@ -204,7 +373,7 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             ),
             span_count,
         )
-        return _ring_velocity_expanded(
+        return _fused_ring_velocity_collapsed(
             points,
             br,
             fr,
@@ -214,7 +383,7 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             _cuda_tensor(self._currentStackWakeRc0s, self.cuda_device),
             ages,
             float(self.current_operating_point.nu),
-        ).sum(dim=1)
+        )
 
     def _populate_next_airplanes_wake_vortices(self) -> None:
         """Copy wake objects without executing the parent's host age arithmetic.
@@ -264,7 +433,10 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
                             ].ring_vortex
                             if ring is None:
                                 raise RuntimeError("missing bound ring vortex")
-                            strength = ring.strength
+                            if self.jcfg.joint_tev and self._tev_solved is not None:
+                                strength = float(self._tev_solved[spanwise_id].item())
+                            else:
+                                strength = ring.strength
                         else:
                             old_ring = next_wing.wake_ring_vortices[
                                 chordwise_id, spanwise_id
@@ -300,7 +472,7 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         points = _cuda_tensor(self.stackCpp_GP1_CgP1, d)
         br, fr, fl, bl = self._bound_rings()
         n = br.shape[0]
-        expanded = _ring_velocity_expanded(
+        expanded = _bound_ring_velocity_expanded(
             points,
             br,
             fr,
@@ -343,11 +515,178 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         d = self.cuda_device
         points = _cuda_tensor(self.stackCpp_GP1_CgP1, d)
         velocity = self._wake_velocity(points)
+        if self.lev_pf.n:
+            self.lev_pf.advance_wrk3(
+                float(self.delta_time),
+                self._particle_external_velocity_cuda,
+            )
+            velocity = velocity + self.lev_pf.velocity_at_cuda(points)
+            self.cuda_counters["particle_advance"] += 1
+            self.cuda_counters["particle_velocity"] += 1
         normals = _cuda_tensor(self.stackUnitNormals_GP1, d)
         influence = torch.sum(velocity * normals, dim=1)
         self._cuda_wake = influence
         self._currentStackWakeWingInfluences__E = influence.detach().cpu().numpy()
         self.cuda_counters["wake"] += 1
+
+    def _joint_vortex_solve_cuda(
+        self,
+        gamma_pre: torch.Tensor,
+        rhs: torch.Tensor,
+        lesp: torch.Tensor,
+        active: torch.Tensor,
+        allowed: torch.Tensor,
+        panels: Any,
+        leading_edge: torch.Tensor,
+        relative_le_velocity: torch.Tensor,
+        chords: torch.Tensor,
+        reference_velocity: torch.Tensor,
+        theta_first: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,]:
+        """Assemble, solve and replay the joint bound/TEV/LEV system on CUDA."""
+
+        device = self.cuda_device
+        _, span_count, chord_count = self._panel_grid()
+        panel_count = self.num_panels
+        v_inf = _cuda_tensor(self.current_operating_point.vInf_GP1__E, device)
+        trailing_edge = _cuda_tensor(self._te_points_now, device)
+        if not hasattr(self, "_te_points_prev"):
+            relative_te_velocity = v_inf.unsqueeze(0).expand(span_count + 1, 3).clone()
+        else:
+            relative_te_velocity = v_inf.unsqueeze(0) - (
+                trailing_edge - _cuda_tensor(self._te_points_prev, device)
+            ) / float(self.delta_time)
+
+        te_front_right = _cuda_tensor(
+            [
+                panels[chord_count - 1, span].ring_vortex.Brrvp_GP1_CgP1
+                for span in range(span_count)
+            ],
+            device,
+        )
+        te_front_left = _cuda_tensor(
+            [
+                panels[chord_count - 1, span].ring_vortex.Blrvp_GP1_CgP1
+                for span in range(span_count)
+            ],
+            device,
+        )
+        tev_rings = torch.empty((span_count, 4, 3), device=device, dtype=torch.float64)
+        tev_rings[:, 0] = te_front_right
+        tev_rings[:, 1] = te_front_left
+        tev_rings[:, 2] = te_front_left + relative_te_velocity[:-1] * float(
+            self.delta_time
+        )
+        tev_rings[:, 3] = te_front_right + relative_te_velocity[1:] * float(
+            self.delta_time
+        )
+
+        leading_normals = _cuda_tensor(
+            [panels[0, span].unitNormal_GP1 for span in range(span_count)],
+            device,
+        )
+        leg_right = (
+            torch.sum(
+                relative_le_velocity[1:] * float(self.delta_time) * leading_normals,
+                dim=1,
+                keepdim=True,
+            )
+            * leading_normals
+        )
+        leg_left = (
+            torch.sum(
+                relative_le_velocity[:-1] * float(self.delta_time) * leading_normals,
+                dim=1,
+                keepdim=True,
+            )
+            * leading_normals
+        )
+        lev_rings = torch.empty((span_count, 4, 3), device=device, dtype=torch.float64)
+        lev_rings[:, 0] = leading_edge[1:]
+        lev_rings[:, 1] = leading_edge[:-1]
+        lev_rings[:, 2] = leading_edge[:-1] + leg_left
+        lev_rings[:, 3] = leading_edge[1:] + leg_right
+
+        collocation = _cuda_tensor(self.stackCpp_GP1_CgP1, device)
+        normals = _cuda_tensor(self.stackUnitNormals_GP1, device)
+        tev_velocity = _unregularized_ring_velocity_expanded(collocation, tev_rings)
+        lev_velocity = _unregularized_ring_velocity_expanded(collocation, lev_rings)
+        a_tev = torch.sum(normals.unsqueeze(1) * tev_velocity, dim=2)
+        a_lev = torch.sum(normals.unsqueeze(1) * lev_velocity, dim=2)
+
+        augmented_count = panel_count + 2 * span_count
+        matrix = torch.zeros(
+            (augmented_count, augmented_count),
+            device=device,
+            dtype=torch.float64,
+        )
+        target = torch.zeros(augmented_count, device=device, dtype=torch.float64)
+        matrix[:panel_count, :panel_count] = self._cuda_aic
+        matrix[:panel_count, panel_count : panel_count + span_count] = -a_tev
+        matrix[:panel_count, panel_count + span_count :] = -a_lev
+        target[:panel_count] = rhs
+        safe_lesp = torch.where(lesp != 0.0, lesp, torch.ones_like(lesp))
+        caps = gamma_pre[:span_count] * torch.abs(
+            float(self.jcfg.lesp_crit) / safe_lesp
+        )
+        for span in range(span_count):
+            te_index = (chord_count - 1) * span_count + span
+            matrix[panel_count + span, te_index] = 1.0
+            matrix[panel_count + span, panel_count + span] = -1.0
+            matrix[panel_count + span, panel_count + span_count + span] = -1.0
+            if bool(active[span].item()):
+                matrix[panel_count + span_count + span, span] = 1.0
+                target[panel_count + span_count + span] = caps[span]
+            else:
+                matrix[
+                    panel_count + span_count + span,
+                    panel_count + span_count + span,
+                ] = 1.0
+
+        solution = torch.linalg.solve(matrix, target)
+        if not bool(torch.isfinite(solution).all().item()):
+            raise GateError(
+                f"G5 non-finite CUDA joint solution step {self._current_step}"
+            )
+        gamma_bound = solution[:panel_count]
+        gamma_tev = solution[panel_count : panel_count + span_count]
+        gamma_lev = solution[panel_count + span_count :]
+        residual = matrix @ solution - target
+        scale = torch.clamp(torch.max(torch.abs(gamma_pre)), min=1.0)
+        neumann_max = torch.max(torch.abs(residual[:panel_count]))
+        kelvin_max = torch.max(
+            torch.abs(residual[panel_count : panel_count + span_count])
+        )
+        if bool((neumann_max > float(self.jcfg.gate_rtol) * scale).item()):
+            raise GateError(
+                f"G1 CUDA Neumann residual {float(neumann_max.item()):.3e} "
+                f"step {self._current_step}"
+            )
+        if bool((kelvin_max > float(self.jcfg.gate_rtol) * scale).item()):
+            raise GateError(f"G2 CUDA Kelvin residual step {self._current_step}")
+        solved_lesp = (
+            -LESP_FACTOR
+            * gamma_bound.reshape(chord_count, span_count)[0]
+            / (chords * reference_velocity * (theta_first + torch.sin(theta_first)))
+        )
+        if bool(allowed.item()):
+            signed_target = torch.sign(lesp) * float(self.jcfg.lesp_crit)
+            pin_error = torch.abs(solved_lesp - signed_target)
+            pin_limit = float(self.jcfg.lesp_rtol) * torch.clamp(
+                torch.abs(signed_target), min=1.0
+            )
+            if bool(torch.any(active & (pin_error > pin_limit)).item()):
+                raise GateError(f"G3 CUDA LESP pin residual step {self._current_step}")
+            inactive_limit = float(self.jcfg.lesp_inactive_margin) * float(
+                self.jcfg.lesp_crit
+            )
+            if bool(
+                torch.any((~active) & (torch.abs(solved_lesp) > inactive_limit)).item()
+            ):
+                raise GateError(
+                    f"G3 CUDA inactive LESP residual step {self._current_step}"
+                )
+        return gamma_bound, gamma_tev, gamma_lev, solved_lesp, lev_rings
 
     def _calculate_vortex_strengths(self) -> None:
         d = self.cuda_device
@@ -355,12 +694,6 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         gamma = torch.linalg.solve(self._cuda_aic, rhs)
         if not bool(torch.isfinite(gamma).all().item()):
             raise RuntimeError("non-finite CUDA bound-vortex solution")
-        gamma_cpu = gamma.detach().cpu().numpy()
-        self._current_bound_vortex_strengths = gamma_cpu
-        self._last_bound = gamma_cpu.copy()
-        for index, panel in enumerate(self.panels):
-            panel.ring_vortex.strength = float(gamma_cpu[index])
-
         panels, span_count, chord_count = self._panel_grid()
         gp = gamma.reshape(chord_count, span_count)
         le = _cuda_tensor(self._le_points_now, d)
@@ -405,6 +738,118 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         )
         theta1 = torch.acos(torch.clamp(1.0 - 2.0 * dx_first / chords, -1.0, 1.0))
         lesp = -LESP_FACTOR * gp[0] / (chords * v_ref * (theta1 + torch.sin(theta1)))
+        if not bool(torch.isfinite(lesp).all().item()):
+            raise GateError(f"non-finite CUDA LESP at step {self._current_step}")
+
+        allowed = torch.as_tensor(
+            self.jcfg.enable_lev and self._current_step >= self.jcfg.lev_start_step,
+            device=d,
+            dtype=torch.bool,
+        )
+        allowed = allowed & (torch.max(torch.abs(lesp)) < LESP_SANITY_MAX)
+        allowed = allowed & (torch.max(lesp) * torch.min(lesp) >= 0.0)
+        active = allowed & (torch.abs(lesp) > float(self.jcfg.lesp_crit))
+        if self.jcfg.joint_tev:
+            (
+                gamma_bound,
+                gamma_tev,
+                gamma_lev,
+                solved_lesp,
+                lev_rings,
+            ) = self._joint_vortex_solve_cuda(
+                gamma,
+                rhs,
+                lesp,
+                active,
+                allowed,
+                panels,
+                le,
+                v_rel_st,
+                chords,
+                v_ref,
+                theta1,
+            )
+        else:
+            ratio = torch.abs(
+                float(self.jcfg.lesp_crit)
+                / torch.where(lesp != 0.0, lesp, torch.ones_like(lesp))
+            )
+            capped = gp[0] * ratio
+            if self.jcfg.load_mode == "bing":
+                gamma_bound = gamma.clone()
+                gamma_bound[:span_count] = torch.where(active, capped, gp[0])
+                gamma_lev = torch.where(active, capped - gp[0], 0.0)
+            elif self.jcfg.load_mode == "v4b3d":
+                gamma_bound = gamma
+                excess = gp[0] * (1.0 - ratio)
+                gamma_lev = torch.where(active, -excess, 0.0)
+            else:
+                raise ValueError(f"unsupported CUDA load_mode {self.jcfg.load_mode!r}")
+            gamma_tev = torch.zeros_like(gamma_lev)
+            solved_lesp = (
+                -LESP_FACTOR
+                * gamma_bound.reshape(chord_count, span_count)[0]
+                / (chords * v_ref * (theta1 + torch.sin(theta1)))
+            )
+            leading_normals = _cuda_tensor(
+                [panels[0, s].unitNormal_GP1 for s in range(span_count)], d
+            )
+            leg_right = (
+                torch.sum(
+                    v_rel_st[1:] * float(self.delta_time) * leading_normals,
+                    dim=1,
+                    keepdim=True,
+                )
+                * leading_normals
+            )
+            leg_left = (
+                torch.sum(
+                    v_rel_st[:-1] * float(self.delta_time) * leading_normals,
+                    dim=1,
+                    keepdim=True,
+                )
+                * leading_normals
+            )
+            lev_rings = torch.empty((span_count, 4, 3), device=d, dtype=torch.float64)
+            lev_rings[:, 0] = le[1:]
+            lev_rings[:, 1] = le[:-1]
+            lev_rings[:, 2] = le[:-1] + leg_left
+            lev_rings[:, 3] = le[1:] + leg_right
+        if not bool(torch.isfinite(gamma_bound).all().item()):
+            raise GateError(
+                f"non-finite CUDA active-LEV strengths at step {self._current_step}"
+            )
+        if bool(torch.any(active).item()):
+            relaxed = torch.abs(solved_lesp[active]) <= (
+                torch.abs(lesp[active]) + self.jcfg.lesp_rtol
+            )
+            if not bool(torch.all(relaxed).item()):
+                raise GateError(
+                    f"CUDA active-LEV failed to relax LESP at step {self._current_step}"
+                )
+
+            shed_count = self.lev_pf.add_ring_particles(
+                lev_rings,
+                gamma_lev,
+                sigma_factor=float(self.jcfg.sigma_factor),
+                birth_step=self._current_step,
+                reverse=self.jcfg.joint_tev,
+            )
+            self.cuda_counters["particle_shed"] += shed_count
+
+        self._cuda_last_bound_strengths_for_loads = (
+            self._cuda_bound_strengths.clone()
+            if hasattr(self, "_cuda_bound_strengths")
+            else torch.zeros_like(gamma_bound)
+        )
+        self._cuda_bound_strengths = gamma_bound
+        self._cuda_particle_bound_strengths = gamma
+        gamma_cpu = gamma_bound.detach().cpu().numpy()
+        self._current_bound_vortex_strengths = gamma_cpu
+        self._last_bound = gamma.detach().cpu().numpy().copy()
+        for index, panel in enumerate(self.panels):
+            panel.ring_vortex.strength = float(gamma_cpu[index])
+
         panel_area_grid = _cuda_tensor(
             [
                 [panels[j, s].area for s in range(span_count)]
@@ -416,45 +861,107 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         self.ledger.append(
             {
                 "step": self._current_step,
-                "lesp": lesp.detach().cpu().numpy(),
-                "chords": chords.detach().cpu().numpy(),
-                "areas": areas.detach().cpu().numpy(),
-                "v_rel_st": v_rel_st.detach().cpu().numpy(),
-                "v_inf": v_inf.detach().cpu().numpy(),
-                "le_now": le.detach().cpu().numpy(),
-                "te_now": te.detach().cpu().numpy(),
+                "lesp": lesp.clone(),
+                "chords": chords.clone(),
+                "areas": areas.clone(),
+                "v_rel_st": v_rel_st.clone(),
+                "v_inf": v_inf.clone(),
+                "le_now": le.clone(),
+                "te_now": te.clone(),
                 "le_prev": (
                     None
                     if not hasattr(self, "_le_points_prev")
-                    else _cuda_tensor(self._le_points_prev, d).detach().cpu().numpy()
+                    else _cuda_tensor(self._le_points_prev, d)
                 ),
                 "dt": float(self.delta_time),
             }
         )
-        self._tev_solved = None
-        self._lev_hist.append(np.zeros(span_count))
+        self._tev_solved = gamma_tev.clone() if self.jcfg.joint_tev else None
+        self._lev_hist.append(gamma_lev.detach().cpu().numpy())
+        self._tev_hist.append(gamma_tev.detach().cpu().numpy())
+        self._cuda_lev_history_total = self._cuda_lev_history_total + torch.sum(
+            gamma_lev
+        )
+        self._cuda_tev_history_total = self._cuda_tev_history_total + torch.sum(
+            gamma_tev
+        )
         self._steps_done += 1
-        circulation = torch.sum(gamma)
+        if self.jcfg.joint_tev:
+            circulation = (
+                torch.sum(gamma_bound)
+                + torch.sum(gamma_tev)
+                + self._cuda_tev_history_total
+                + self._cuda_lev_history_total
+            )
+        else:
+            circulation = torch.sum(gamma_bound) - self._cuda_lev_history_total
         circulation_value = float(circulation.item())
         if self._circ0 is None:
             self._circ0 = circulation_value
         self.diag.append(
             {
                 "step": self._current_step,
-                "n_particles": 0,
-                "lev_strips": 0,
-                "lesp_max": float(torch.max(torch.abs(lesp)).item()),
-                "g_tev": 0.0,
-                "g_lev": 0.0,
+                "n_particles": self.lev_pf.n,
+                "lev_strips": int(torch.count_nonzero(active).item()),
+                "lesp_max": float(torch.max(torch.abs(solved_lesp)).item()),
+                "g_tev": float(torch.sum(gamma_tev).item()),
+                "g_lev": float(torch.sum(gamma_lev).item()),
                 "circ_drift": abs(circulation_value - self._circ0),
             }
         )
         self.cuda_counters["solve"] += 1
         self.cuda_counters["ledger"] += 1
 
-    def _solution_velocity_cuda(self, points: torch.Tensor) -> torch.Tensor:
+    def _external_velocity_cuda(self, points: torch.Tensor) -> torch.Tensor:
         v_inf = _cuda_tensor(self._currentVInf_GP1__E, self.cuda_device)
         return self._bound_velocity(points) + self._wake_velocity(points) + v_inf
+
+    def _particle_external_velocity_cuda(self, points: torch.Tensor) -> torch.Tensor:
+        """Mirror the frozen reference's pre-cap bound field for LEV convection."""
+
+        br, fr, fl, bl = self._bound_rings()
+        strengths = self._cuda_particle_bound_strengths
+        bound = _fused_ring_velocity_collapsed(
+            points,
+            br,
+            fr,
+            fl,
+            bl,
+            strengths,
+            torch.zeros(
+                strengths.shape[0], device=self.cuda_device, dtype=torch.float64
+            ),
+            torch.zeros(
+                strengths.shape[0], device=self.cuda_device, dtype=torch.float64
+            ),
+            float(self.current_operating_point.nu),
+        )
+        wake = torch.zeros_like(points)
+        if self._current_step and len(self._current_wake_vortex_strengths):
+            wake_br, wake_fr, wake_fl, wake_bl = self._wake_rings()
+            wake_strengths = _cuda_tensor(
+                self._current_wake_vortex_strengths, self.cuda_device
+            )
+            wake = _fused_ring_velocity_collapsed(
+                points,
+                wake_br,
+                wake_fr,
+                wake_fl,
+                wake_bl,
+                wake_strengths,
+                _cuda_tensor(self._currentStackWakeRc0s, self.cuda_device),
+                torch.zeros_like(wake_strengths),
+                float(self.current_operating_point.nu),
+            )
+        v_inf = _cuda_tensor(self._currentVInf_GP1__E, self.cuda_device)
+        return bound + wake + v_inf
+
+    def _solution_velocity_cuda(self, points: torch.Tensor) -> torch.Tensor:
+        velocity = self._external_velocity_cuda(points)
+        if self.lev_pf.n:
+            velocity = velocity + self.lev_pf.velocity_at_cuda(points)
+            self.cuda_counters["particle_velocity"] += 1
+        return velocity
 
     def calculate_solution_velocity(
         self, stackP_GP1_CgP1: Any = None, **_: Any
@@ -486,13 +993,13 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         back = grid.clone()
         back[:-1, :] = 0.5 * (grid[:-1, :] - grid[1:, :])
         if self._current_step > 0:
-            last = _cuda_tensor(self._last_bound_vortex_strengths, self.cuda_device)
+            last = self._cuda_last_bound_strengths_for_loads
             back[-1, :] = grid[-1, :] - last.reshape(chord_count, span_count)[-1, :]
         return tuple(x.reshape(-1) for x in (right, front, left, back))
 
     def _calculate_loads(self) -> None:
         d = self.cuda_device
-        gamma = _cuda_tensor(self._current_bound_vortex_strengths, d)
+        gamma = self._cuda_bound_strengths
         right_s, front_s, left_s, back_s = self._effective_strengths(gamma)
         locations = (
             self.stackCblvpr_GP1_CgP1,
@@ -513,21 +1020,29 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             self.stackBbrv_GP1,
         )
         strengths = (right_s, front_s, left_s, back_s)
-        forces: list[torch.Tensor] = []
-        for points_cpu, previous_cpu, vector_cpu, strength in zip(
-            locations, previous, vectors, strengths, strict=True
-        ):
-            points = _cuda_tensor(points_cpu, d)
-            velocity = self._solution_velocity_cuda(points)
-            velocity = velocity + self._movement_velocity(points_cpu, previous_cpu)
-            vector = _cuda_tensor(vector_cpu, d)
-            force = (
-                float(self.current_operating_point.rho)
-                * strength.unsqueeze(1)
-                * torch.linalg.cross(velocity, vector, dim=1)
-            )
-            forces.append(force)
-        last_gamma = _cuda_tensor(self._last_bound_vortex_strengths, d)
+        # All four effective-vortex locations share the same bound, wake and
+        # particle sources.  Evaluate them as one 4N target batch so the GPU
+        # sees a materially larger parallel problem and source tensors are not
+        # traversed four times per load evaluation.
+        points = _cuda_tensor(np.stack(locations, axis=0), d)
+        panel_count = points.shape[1]
+        velocity = self._solution_velocity_cuda(points.reshape(-1, 3)).reshape(
+            4, panel_count, 3
+        )
+        if self._current_step < 1 or any(item is None for item in previous):
+            movement = torch.zeros_like(points)
+        else:
+            previous_points = _cuda_tensor(np.stack(previous, axis=0), d)
+            movement = -(points - previous_points) / float(self.delta_time)
+        vectors_cuda = _cuda_tensor(np.stack(vectors, axis=0), d)
+        strengths_cuda = torch.stack(strengths, dim=0)
+        forces_cuda = (
+            float(self.current_operating_point.rho)
+            * strengths_cuda.unsqueeze(2)
+            * torch.linalg.cross(velocity + movement, vectors_cuda, dim=2)
+        )
+        forces = tuple(forces_cuda[index] for index in range(4))
+        last_gamma = self._cuda_last_bound_strengths_for_loads
         unsteady = -(
             float(self.current_operating_point.rho)
             * (gamma - last_gamma).unsqueeze(1)
@@ -536,7 +1051,7 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             / float(self.delta_time)
         )
         panel_forces = sum(forces, start=torch.zeros_like(unsteady)) + unsteady
-        moment_points = tuple(_cuda_tensor(x, d) for x in locations)
+        moment_points = tuple(points[index] for index in range(4))
         panel_moments = sum(
             (
                 torch.linalg.cross(point, force, dim=1)
@@ -559,6 +1074,44 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         )
         total_force_w = torch.sum(panel_forces_w, dim=0)
         total_moment_w = torch.sum(panel_moments_w, dim=0)
+        if self.lev_pf.n or self._last_impulse_cuda is not None:
+            particle_positions = self.lev_pf.positions_cuda
+            particle_gamma = self.lev_pf.gammas_cuda
+            position_w = (
+                torch.einsum("ij,nj->ni", rotation, particle_positions) + translation
+            )
+            gamma_w = torch.einsum("ij,nj->ni", rotation, particle_gamma)
+            gamma_sum = torch.sum(gamma_w, dim=0)
+            free_impulse = (
+                0.5
+                * float(self.current_operating_point.rho)
+                * (
+                    torch.sum(torch.linalg.cross(position_w, gamma_w, dim=1), dim=0)
+                    + torch.linalg.cross(translation, gamma_sum, dim=0)
+                )
+            )
+            normal_w = torch.einsum(
+                "ij,nj->ni",
+                rotation,
+                _cuda_tensor(self.stackUnitNormals_GP1, d),
+            )
+            bound_impulse = torch.sum(
+                float(self.current_operating_point.rho)
+                * gamma.unsqueeze(1)
+                * _cuda_tensor(self.panel_areas, d).unsqueeze(1)
+                * normal_w,
+                dim=0,
+            )
+            impulse = free_impulse + bound_impulse
+            impulse_force = torch.zeros(3, device=d, dtype=torch.float64)
+            if self._last_impulse_cuda is not None:
+                impulse_force = -(impulse - self._last_impulse_cuda) / float(
+                    self.delta_time
+                )
+            self._last_impulse_cuda = impulse.clone()
+            total_force_w = total_force_w + impulse_force
+            self.impulse_force.append(impulse_force.detach().cpu().numpy().copy())
+            self.cuda_counters["impulse"] += 1
         q_inf = float(self.current_operating_point.qInf__E)
         airplane = self.current_airplanes[0]
         force_coeff = total_force_w / (q_inf * float(airplane.s_ref))
@@ -602,7 +1155,7 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
             cn = torch.sum(strip_force * strip_normal, dim=1) / torch.clamp(
                 strip_q * strip_area, min=1.0e-30
             )
-            record["cn_strip"] = cn.detach().cpu().numpy()
+            record["cn_strip"] = cn.clone()
         self.cuda_counters["loads"] += 1
 
     def _populate_next_airplanes_wake_vortex_points(self) -> None:
@@ -641,7 +1194,13 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
                         new_row_host[0, span_index + 1] = ring.Brrvp_GP1_CgP1
                 new_row = _cuda_tensor(new_row_host, d)
                 if self._current_step == 0:
-                    convected = new_row + v_inf * delta_time
+                    if self._prescribed_wake:
+                        wake_velocity = v_inf.expand_as(new_row)
+                    else:
+                        wake_velocity = self._solution_velocity_cuda(
+                            new_row.reshape(-1, 3)
+                        ).reshape_as(new_row)
+                    convected = new_row + wake_velocity * delta_time
                     grid = torch.cat((new_row, convected), dim=0)
                 else:
                     current_grid_host = this_wing.gridWrvp_GP1_CgP1
@@ -650,7 +1209,13 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
                             "current prescribed wake grid is unavailable"
                         )
                     current_grid = _cuda_tensor(current_grid_host, d)
-                    convected = current_grid + v_inf * delta_time
+                    if self._prescribed_wake:
+                        wake_velocity = v_inf.expand_as(current_grid)
+                    else:
+                        wake_velocity = self._solution_velocity_cuda(
+                            current_grid.reshape(-1, 3)
+                        ).reshape_as(current_grid)
+                    convected = current_grid + wake_velocity * delta_time
                     grid = torch.cat((new_row, convected), dim=0)
                 if self._max_wake_rows is not None:
                     grid = grid[: self._max_wake_rows + 1]
@@ -658,4 +1223,7 @@ class CudaAttachedJointLEVTEVSolver(JointLEVTEVSolver):
         self.cuda_counters["wake_convection"] += 1
 
 
-__all__ = ["CudaAttachedJointLEVTEVSolver"]
+# Backwards-compatible import for the already audited attached-only runners.
+CudaAttachedJointLEVTEVSolver = CudaJointLEVTEVSolver
+
+__all__ = ["CudaAttachedJointLEVTEVSolver", "CudaJointLEVTEVSolver"]
