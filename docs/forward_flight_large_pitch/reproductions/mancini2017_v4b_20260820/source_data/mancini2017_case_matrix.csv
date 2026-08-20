@@ -1,0 +1,3 @@
+case_id,wing_type,chord_m,span_m,aspect_ratio,thickness_fraction,freestream_m_s,reynolds,pivot_fraction_chord,pitch_initial_deg,pitch_final_deg,acceleration_distance_chords,reduced_pitch_rate,eldredge_smoothing,score_t_star_min,score_t_star_max,observable,spanwise_load_distribution_available
+fast_pitch,rectangular_finite_flat_plate,0.0762,0.3048,4.0,0.05,0.26,20000,0.0,0.0,45.0,1.0,0.39,15.0,0.0,5.0,whole_wing_CL,false
+slow_pitch,rectangular_finite_flat_plate,0.0762,0.3048,4.0,0.05,0.26,20000,0.0,0.0,45.0,6.0,0.065,4.0,0.0,5.0,whole_wing_CL,false

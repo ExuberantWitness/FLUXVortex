@@ -1,0 +1,3 @@
+case_id,case_label_zh,model,window,observation_count,rmse,mae,bias,correlation,experiment_peak_CL,experiment_peak_t_star,prediction_peak_CL,prediction_peak_t_star,v4b_rmse_change_vs_uvlm_percent,v4b_improves_uvlm
+fast_pitch,快速俯仰,fluxv_uvlm,0<=t_star<=5,501,1.4804654209360029,1.2262136485620478,1.0883795481535532,0.603871225033831,4.828863532,0.96,7.394054536460658,0.05,-16.4521692843319,True
+fast_pitch,快速俯仰,fluxv_v4b,0<=t_star<=5,501,1.2368967436876148,0.6278783370216362,0.424923046292277,0.6605348665326325,4.828863532,0.96,7.3672678921791315,0.05,-16.4521692843319,True

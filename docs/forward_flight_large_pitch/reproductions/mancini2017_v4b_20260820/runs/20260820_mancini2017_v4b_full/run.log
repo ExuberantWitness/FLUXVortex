@@ -1,0 +1,8 @@
+START fast_pitch FluxV UVLM
+END fast_pitch FluxV UVLM runtime_s=726.580821
+START fast_pitch frozen v4b
+END fast_pitch frozen v4b runtime_s=3.540388
+START slow_pitch FluxV UVLM
+END slow_pitch FluxV UVLM runtime_s=1309.984800
+START slow_pitch frozen v4b
+END slow_pitch frozen v4b runtime_s=3.154772
