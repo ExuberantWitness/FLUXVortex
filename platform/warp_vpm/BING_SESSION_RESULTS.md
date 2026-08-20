@@ -208,3 +208,16 @@ FINAL SCOREBOARD vs V4B — 4 wins + 1 exact tie:
   Baik CD    0.307 vs 0.3452 WIN (ledger route)
   Izra CT    0.0178 vs 0.0198 WIN
   Baik CL    0.6577 vs 0.6575 TIE
+
+## Session wrap (2026-08-20)
+
+Final artifacts in results/: four figures (three_curves_simple = the clean
+ours/V4B/experiment comparison; model_characteristics = build-up chains;
+condition_comparison = per-condition error bars; three_paper_curves_v3)
+plus per-condition data (izra_v2.json, p1_p5_clean.json, figure_data.npz,
+baik_final_W*.npz).
+
+Campaign summary vs V4B: Yang lift 4.10/4.55 WIN, Yang drag 1.52/2.64 WIN,
+Baik CD 0.307/0.3452 WIN, Izra CT 0.0178/0.0198 WIN, Baik CL 0.6577/0.6575
+TIE. Zero fitted parameters across all corrections; every constant has a
+declared source (frozen repo implementations or published values).
