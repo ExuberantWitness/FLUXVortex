@@ -93,10 +93,10 @@ for j, tv in enumerate((15.0, 25.0)):
 
 for j, cid in enumerate(("W1", "W2", "W3", "W4")):
     ax = fig.add_subplot(gs[2, :].subgridspec(1, 4)[0, j])
-    new = np.load(f"/tmp/v5h15-paper/baik_2dldvm_{cid}.npz")
+    new = np.load(f"/tmp/v5h15-paper/baik_2dldvm019_{cid}.npz")
     old = np.load(f"/tmp/v5h15-paper/baik_final_{cid}.npz")
     ax.plot(new["phase"], new["cl"], NEW, color=NEW_C, lw=1.6, ms=3,
-            label="latest (2D LDVM)")
+            label="latest (2D LDVM, crit 0.19)")
     ax.plot(old["phase"], old["cl"], OLD, color=OLD_C, lw=1.4, ms=3,
             label="previous (3D+transfer)")
     ax.plot(old["gt_phase"], old["gt_cl"], "k-", lw=1.6, label="experiment")
@@ -109,6 +109,6 @@ for j, cid in enumerate(("W1", "W2", "W3", "W4")):
 
 fig.suptitle("Latest vs previous model vs experiment — characteristics "
              "across operating conditions", fontsize=13, y=0.99)
-fig.savefig("/tmp/v5h15-paper/version_comparison.png", dpi=150,
+fig.savefig("/tmp/v5h15-paper/version_comparison_v2.png", dpi=150,
             bbox_inches="tight")
-print("SAVED /tmp/v5h15-paper/version_comparison.png")
+print("SAVED /tmp/v5h15-paper/version_comparison_v2.png")

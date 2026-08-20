@@ -241,3 +241,24 @@ Direct scoring (bing_baik_2d.py, canonical filter, lesp_crit 0.11 declared):
   CL -11.4%, CD -33% — beats ALL prior models on Baik instantaneous loads.
   W3 (smallest heave, most pitch-dominated) is the one case where the 3D
   chassis remains better (0.374 vs 0.570): residual blockage/3D effects.
+
+## Baik W3 root cause + crit resolution (2026-08-20, final)
+
+W3 diagnosis (from saved curves): GT amplitude 3.08, 2D LDVM @0.11 gives
+1.77 (-43%) with the second load peak suppressed at phase [0.75,0.88) —
+static LESP over-triggers at k=1.0 rapid pitch (classic dynamic-stall
+delay; Leishman-Beddoes lag mechanism).
+
+Fix: LESP crit from the DECLARED source-conflict pair (Ramesh 2013:
+0.11 body text / 0.19 Table 4.1) + the rounded-family rule 0.239
+(= sin(CLmax/CLa), same rule as Izra; Baik's plate IS rounded per
+SOURCE_AUDIT). Full Pareto (all published values, no fitting):
+
+  crit   CL macro   CD macro   notes
+  0.11   0.5828     0.2307     body-text value; W3 CL misses
+  0.19   0.4424     0.2935     Table 4.1 value; BOTH macros beat previous
+  0.239  0.3944     0.3579     rounded-family rule; ALL four CL cases beat
+         (previous: 3D chassis+transfer CL 0.6577 / CD 0.345)
+
+Primary = 0.19 (balanced, source-table); 0.11/0.239 as declared
+sensitivities. Baik final: CL 0.44 (-33% vs previous), CD 0.29 (-15%).
