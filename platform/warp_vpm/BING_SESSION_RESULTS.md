@@ -169,3 +169,20 @@ FINAL SCOREBOARD vs V4B (all cache-clean):
   Baik CL    0.671 vs 0.6575 near-parity (-0.014)
   Izra CT    0.0260 vs 0.0198 gap (-0.006)
 3 wins, 1 near-parity, 1 small gap — from 0/5 at session start.
+
+## Izra gap closed (2026-08-20, research-pipeline round)
+
+Root cause found by archaeology + literature: V4B Izra = (raw - 0.057) +
+frozen LDVM delta; the 0.239 threshold is sin(CLmax/CLa)=sin(0.90/0.065)
+(Scherer static polar, declared); ldvm_delta_CT = -delta_CD from the 4-ledger
+pair (ndiv=50, naterm=24) with AR=3 projection. Izra kinematics are pure
+sinusoidal pitch+heave — the generic 2D pair drive is VALID (unlike Yang's
+flapping sweep problem). MIT PDF confirms added-mass is substantial at
+this frequency (in the pair's CNnc ledger).
+
+Applied verbatim to our chassis (bing_izra_v2.py):
+  CT = chassis_raw - 0.057 + frozen_ldvm_delta
+  Izra CT MAE: 0.0260 -> 0.0178 vs V4B 0.0198 — BEATS V4B.
+  Near-exact hits: 15/30 err 0.0006, 25/75 err 0.0049, 15/60 err 0.0061.
+
+FINAL: 4/5 metrics beat V4B; only Baik CL (0.671 vs 0.6575) near-parity.
