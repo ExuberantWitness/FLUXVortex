@@ -1,0 +1,9 @@
+{
+  "case_id": "single_sheet_u25_m1_ar1",
+  "completed_outer_steps": 8,
+  "elapsed_seconds": 2834.9366856220004,
+  "final_output": "artifacts/experiment/20260823_q16_fluxv5m_native_fsi/YAMANO_Q16_5X3_MF1_RHO_HALF_STEP8.json",
+  "requested_outer_steps": 8,
+  "schema": "yamano2020-q16-native-flux-v5m-fsi-checkpoint-v1",
+  "status": "completed"
+}
