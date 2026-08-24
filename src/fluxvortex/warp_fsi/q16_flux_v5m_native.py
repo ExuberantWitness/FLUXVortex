@@ -140,6 +140,10 @@ class NativeV5MConfig:
     spanwise_panels: int = 10
     density: float = 1.225
     freestream: float = 10.0
+    # Geometric angle of attack of the freestream in the scientific frame
+    # (+x chordwise, +z displacement direction): v_inf = U(cos a, 0, sin a).
+    # The historical Yamano path leaves this at 0.0.
+    freestream_angle_deg: float = 0.0
     aerodynamic_dt: float = 0.0068
     lesp_crit: float = 0.11
     lesp_thickness_ratio: float | None = None
@@ -165,6 +169,9 @@ class NativeV5MConfig:
         for name in ("density", "freestream", "aerodynamic_dt", "gate_rtol"):
             if not math.isfinite(float(getattr(self, name))) or float(getattr(self, name)) <= 0.0:
                 raise ValueError(f"{name} must be finite and positive")
+        angle_deg = float(self.freestream_angle_deg)
+        if not math.isfinite(angle_deg) or abs(angle_deg) >= 90.0:
+            raise ValueError("freestream_angle_deg must be finite with |angle| < 90")
         if torch.device(self.device).type != "cuda" or not torch.cuda.is_available():
             raise RuntimeError("native FLUX-V5M requires CUDA")
 
@@ -490,6 +497,19 @@ class Q16NativePanelLoadTransfer:
         return q_generalized
 
 
+def freestream_vector(
+    freestream: float, angle_deg: float, device: str | torch.device
+) -> torch.Tensor:
+    """v_inf = U (cos a, 0, sin a) in the scientific frame (+x chord, +z up)."""
+
+    angle_rad = math.radians(angle_deg)
+    return float(freestream) * torch.tensor(
+        [math.cos(angle_rad), 0.0, math.sin(angle_rad)],
+        device=torch.device(device),
+        dtype=torch.float64,
+    )
+
+
 class Q16NativeV5MSolver:
     """State-complete native V5M stepper with transactional trial ownership."""
 
@@ -506,8 +526,8 @@ class Q16NativeV5MSolver:
         self.author_load_assembler = Q16NativeAuthorLoadAssembler(
             surface, density=settings.density
         )
-        self.v_inf = torch.tensor(
-            [settings.freestream, 0.0, 0.0], device=self.device, dtype=torch.float64
+        self.v_inf = freestream_vector(
+            settings.freestream, settings.freestream_angle_deg, self.device
         )
 
     def initialize(self, state: wp.array, velocity: wp.array) -> NativeV5MState:
