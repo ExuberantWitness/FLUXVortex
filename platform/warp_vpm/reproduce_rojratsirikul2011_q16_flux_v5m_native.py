@@ -29,7 +29,6 @@ from fluxvortex.warp_fsi.q16_flux_v5m_native import (
     NativeV5MConfig,
     Q16NativeV5MSolver,
     Q16NativeV5MSurface,
-    freestream_vector,
 )
 from fluxvortex.warp_fsi.q16_flux_v5m_native_fsi import (
     Q16NativeV5MFSIOwner,
@@ -44,8 +43,8 @@ from forward_flight_benchmarks.rojratsirikul2011_q16 import (
     make_rojratsirikul2011_q16_model,
     membrane_statistics,
     normal_force_coefficient,
+    plate_normal,
     static_motion_contract,
-    validate_perimeter,
     validate_rojratsirikul2011_sources,
 )
 
@@ -56,6 +55,9 @@ PARTIAL_EVERY = 10
 # ~3 chords of free wake retained at dt*=0.01 (300 rows x 30 spanwise lanes).
 WAKE_MAX_ROWS = 300
 PARTICLE_CAPACITY = 32768
+# LEV particle lifetime: one chord of convection (LE -> TE) at dt*=0.01.
+# Beyond the trailing edge the free-wake ring system carries the vorticity.
+PARTICLE_MAX_AGE_STEPS = 100
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -95,14 +97,19 @@ def _git_output(*arguments: str) -> str:
 def _apply_freestream(
     solver: Q16NativeV5MSolver, case: Any, factor: float
 ) -> None:
-    """Set the ramped freestream on the live solver (frozen startup protocol).
+    """Set the ramped freestream magnitude on the live solver.
 
-    The LDVM source bank is initialized once at full U0 so its convective
-    timescales are material parameters; only the actual flow ramps.
+    The flow always points along +x: the geometric angle of attack is baked
+    into the rotated reference mesh (the oracle-verified native-path
+    incidence mechanism), so the ramp scales the magnitude only.  The LDVM
+    source bank is initialized once at full U0 so its convective timescales
+    are material parameters; only the actual flow ramps.
     """
 
     speed = case.freestream_m_s * factor
-    solver.v_inf = freestream_vector(speed, case.angle_deg, solver.device)
+    solver.v_inf = torch.tensor(
+        [speed, 0.0, 0.0], device=solver.device, dtype=torch.float64
+    )
     object.__setattr__(solver.settings, "freestream", speed)
 
 
@@ -111,6 +118,7 @@ def run_case(
     case_id: str,
     max_aero_steps: int | None = None,
     execution_gate_only: bool = False,
+    structural_substeps: int | None = None,
     output: Path | None = None,
 ) -> dict[str, Any]:
     case = ROJRATSIRIKUL2011_CASES.get(case_id)
@@ -134,14 +142,16 @@ def run_case(
         )
     if type(max_aero_steps) is not int or max_aero_steps < 1:
         raise ValueError("max_aero_steps must be a positive exact int")
+    if structural_substeps is not None and (
+        type(structural_substeps) is not int or structural_substeps < 1
+    ):
+        raise ValueError("structural_substeps override must be a positive exact int")
+    substep_count = structural_substeps or case.structural_substeps_per_aerodynamic_step
 
-    mesh, model, boundary = make_rojratsirikul2011_q16_model(
+    mesh, model, boundary, perimeter_audit = make_rojratsirikul2011_q16_model(
         chordwise_element_count=FORMAL_Q16_GRID[0],
         spanwise_element_count=FORMAL_Q16_GRID[1],
         case=case,
-    )
-    perimeter_audit = validate_perimeter(
-        mesh, case, FORMAL_Q16_GRID[0], FORMAL_Q16_GRID[1]
     )
     structural = Q16CudaNewmarkStepper(
         model,
@@ -171,18 +181,33 @@ def run_case(
             spanwise_panels=FORMAL_AERO_GRID[1],
             density=case.fluid_density_kg_m3,
             freestream=case.freestream_m_s,
-            freestream_angle_deg=case.angle_deg,
             aerodynamic_dt=case.aerodynamic_dt_s,
             lesp_crit=case.lesp_crit,
             wake_max_rows=WAKE_MAX_ROWS,
             particle_capacity=PARTICLE_CAPACITY,
+            # Sustained LEV release (~270 particles/step at all 30 lanes at
+            # alpha=16 deg) grows the particle field without bound; particles
+            # are tracked for exactly one chord of convection (LE -> TE),
+            # after which the free-wake ring system carries the vorticity.
+            particle_max_age_steps=PARTICLE_MAX_AGE_STEPS,
+            # Every wake row carries the persistent LEV release (Gamma_row ~
+            # Gamma_total), and the strong-scheme Mf2_vec1 wake-memory term
+            # diverges in that regime (evidence: force decomposition
+            # artifacts 20260824).  The author's weak-scheme dp_add =
+            # (Gamma - Gamma_old)/dt stays bounded and reproduces the
+            # Wagner response onto the paper's Cn band; all other
+            # strong-scheme blocks (dp_lift1, lift2, Mf2_1, Mf1) remain.
+            wake_history_mode="bound_rate",
             # The 0.04/2.125 default sits exactly on the frozen minimum
-            # particle overlap; at this small chord (cell ~4.6 mm) float64
-            # rounding lands just below it.  0.018 keeps the same resolution
-            # class with overlap ratio 2.222, strictly inside the bound.
+            # particle overlap and float64 rounding lands just below it at
+            # this chord; 0.018 is the coarsest spacing strictly inside the
+            # bound (overlap 2.222).
             dvm_target_spacing_chord=0.018,
             device=config.DEVICE,
         ),
+    )
+    normal_t = torch.tensor(
+        plate_normal(case), device=config.DEVICE, dtype=torch.float64
     )
     state = wp.array(
         np.ascontiguousarray(mesh.reference_state[None, :]),
@@ -194,6 +219,11 @@ def run_case(
     owner = Q16NativeV5MFSIOwner.initialize(
         aerodynamic, state, velocity, acceleration
     )
+    reference_quarter = (
+        wp.to_torch(surface.quarter_transfer.interpolate(state))[0]
+        .reshape(surface.nc, surface.ns + 1, 3)
+        .clone()
+    )
     coupling = Q16NativeV5MFSIStepper(
         structural,
         aerodynamic,
@@ -202,7 +232,7 @@ def run_case(
         relaxation=0.7,
     )
 
-    substeps = case.structural_substeps_per_aerodynamic_step
+    substeps = substep_count
     prescribed = (None,) * substeps
     load_betas = tuple((index + 1) / substeps for index in range(substeps))
     z_history = torch.zeros(
@@ -291,15 +321,18 @@ def run_case(
         quarter = wp.to_torch(
             surface.quarter_transfer.interpolate(result.structural.state)
         )[0].reshape(surface.nc, surface.ns + 1, 3)
-        if not bool(torch.isfinite(quarter).all()):
+        displacement = torch.sum((quarter - reference_quarter) * normal_t, dim=2)
+        if not bool(torch.isfinite(displacement).all()):
             write_partial("failed", {"failed_aero_step": step, "error": "non-finite membrane state"})
             raise RuntimeError(f"non-finite membrane state at aero step {step}")
-        z_history[step - 1] = quarter[:, :, 2]
+        z_history[step - 1] = displacement
         total_force = result.aerodynamic.load.total_force
         if not bool(torch.isfinite(total_force).all()):
             write_partial("failed", {"failed_aero_step": step, "error": "non-finite aerodynamic force"})
             raise RuntimeError(f"non-finite aerodynamic force at aero step {step}")
-        cn = normal_force_coefficient(total_force.cpu().tolist(), case)
+        cn = normal_force_coefficient(
+            total_force.cpu().tolist(), case, normal=plate_normal(case)
+        )
         diagnostics = result.aerodynamic.trial_state.diagnostics[-1]
         step_wall_times.append(time.perf_counter() - step_started)
         records.append(
@@ -309,7 +342,7 @@ def run_case(
                 "freestream_factor": factor,
                 "cn": cn,
                 "instantaneous_zmax_over_c": float(
-                    (quarter[:, :, 2].max() / case.chord_m).item()
+                    (displacement.max() / case.chord_m).item()
                 ),
                 "total_aerodynamic_force_n": total_force.cpu().tolist(),
                 "coupling_iterations": result.coupling_iterations,
@@ -413,6 +446,10 @@ def run_case(
         "U_inf": case.freestream_m_s,
         "Re": case.reynolds,
         "alpha_deg": case.angle_deg,
+        "incidence_mechanism": (
+            "reference mesh rigidly pitched nose-up about the leading-edge "
+            "line; freestream stays +x (oracle-verified native-path route)"
+        ),
         "c": case.chord_m,
         "b": case.span_m,
         "S": case.reference_area_m2,
@@ -423,7 +460,8 @@ def run_case(
         "prestress": case.prestress_n_m_assumed,
         "damping": case.structural_damping_assumed,
         "dt_star": case.aerodynamic_dt_star,
-        "structural_substeps": case.structural_substeps_per_aerodynamic_step,
+        "structural_substeps": substeps,
+        "structural_substeps_protocol_frozen": case.structural_substeps_per_aerodynamic_step,
         "startup_window_time_star": case.startup_time_star,
         "statistics_window_time_star": case.statistics_min_time_star,
         "statistics_start_time_star": case.statistics_start_time_star,
@@ -436,6 +474,9 @@ def run_case(
         "free_wake": True,
         "wake_max_rows": WAKE_MAX_ROWS,
         "particle_capacity": PARTICLE_CAPACITY,
+        "particle_max_age_steps": PARTICLE_MAX_AGE_STEPS,
+        "wake_history_mode": "bound_rate",
+        "dvm_target_spacing_chord": 0.018,
         "commit_count": len(records),
         "trial_count": sum(
             record["aerodynamic_evaluations"] for record in records
@@ -536,6 +577,14 @@ def main() -> int:
         "same formal grid; makes no accuracy claims",
     )
     parser.add_argument(
+        "--structural-substeps",
+        type=int,
+        default=None,
+        help="DIAGNOSTIC ONLY: override the frozen structural substep count "
+        "for time-convergence probes; the frozen protocol value is always "
+        "recorded alongside",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -549,6 +598,7 @@ def main() -> int:
         case_id=arguments.case,
         max_aero_steps=arguments.max_aero_steps,
         execution_gate_only=arguments.execution_gate_only,
+        structural_substeps=arguments.structural_substeps,
         output=output,
     )
     printable = dict(result)

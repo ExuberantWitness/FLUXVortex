@@ -9,6 +9,7 @@ import unittest
 import numpy as np
 import torch
 
+from fluxvortex.q16_ancf_mesh import make_rectangular_q16_mesh
 from fluxvortex.warp_fsi.q16_flux_v5m_native import (
     NativeV5MConfig,
     compute_lesp_crit,
@@ -29,6 +30,8 @@ from forward_flight_benchmarks.rojratsirikul2011_q16 import (
     membrane_statistics,
     normal_force_coefficient,
     perimeter_node_ids,
+    plate_normal,
+    rotate_q16_mesh_about_leading_edge,
     static_motion_contract,
     validate_perimeter,
     validate_rojratsirikul2011_sources,
@@ -142,7 +145,10 @@ class StaticMotionContractTest(unittest.TestCase):
             )
             self.assertEqual(contract["frame_velocity_m_s"], 0.0)
             self.assertIsNone(contract["prescribed_structural_forces"])
-            self.assertEqual(contract["boundary"], "four-edge six-DOF clamped at reference values")
+            self.assertEqual(
+                contract["boundary"],
+                "four-edge six-DOF clamped at rotated reference values",
+            )
             self.assertIn("forbidden", contract["flapping_heave_pitch_laws"])
 
     def test_half_cosine_ramp_is_frozen_and_monotone(self) -> None:
@@ -161,10 +167,19 @@ class FourEdgeClampingTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.case = ROJ11_A16
-        cls.mesh, cls.model, cls.constraints = make_rojratsirikul2011_q16_model(
+        cls.flat = make_rectangular_q16_mesh(
             chordwise_element_count=FORMAL_Q16_GRID[0],
             spanwise_element_count=FORMAL_Q16_GRID[1],
-            case=cls.case,
+            chord=cls.case.chord_m,
+            span=cls.case.span_m,
+            thickness=cls.case.thickness_m,
+        )
+        cls.mesh, cls.model, cls.constraints, cls.audit = (
+            make_rojratsirikul2011_q16_model(
+                chordwise_element_count=FORMAL_Q16_GRID[0],
+                spanwise_element_count=FORMAL_Q16_GRID[1],
+                case=cls.case,
+            )
         )
 
     def test_formal_grids_are_the_frozen_protocol(self) -> None:
@@ -172,8 +187,10 @@ class FourEdgeClampingTest(unittest.TestCase):
         self.assertEqual(FORMAL_AERO_GRID, (15, 30))
 
     def test_perimeter_covers_four_edges_without_interior_nodes(self) -> None:
+        # The audit runs on the unrotated lattice; node ids are
+        # rotation-invariant so the same set clamps the tilted mesh.
         audit = validate_perimeter(
-            self.mesh, self.case, FORMAL_Q16_GRID[0], FORMAL_Q16_GRID[1]
+            self.flat, self.case, FORMAL_Q16_GRID[0], FORMAL_Q16_GRID[1]
         )
         self.assertEqual(audit["perimeter_node_count"], 90)
         self.assertEqual(audit["interior_node_count"], 406)
@@ -185,6 +202,7 @@ class FourEdgeClampingTest(unittest.TestCase):
         )
         self.assertEqual(audit["clamped_dof_count"], 540)
         self.assertEqual(audit["free_dof_count"], 2436)
+        self.assertEqual(self.audit["perimeter_node_count"], 90)
 
     def test_perimeter_ids_are_sorted_unique_global_ids(self) -> None:
         nodes = perimeter_node_ids(self.mesh, self.case)
@@ -209,6 +227,44 @@ class FourEdgeClampingTest(unittest.TestCase):
             places=15,
         )
 
+    def test_mesh_is_pitched_nose_up_about_the_leading_edge(self) -> None:
+        alpha = math.radians(self.case.angle_deg)
+        # Leading edge stays on z=0; trailing edge goes DOWN by c sin(alpha).
+        leading = self.mesh.reference_rows[self.mesh.reference_rows[:, 0] <= 1e-12]
+        self.assertTrue(np.allclose(leading[:, 2], 0.0, atol=1e-12))
+        trailing = self.mesh.reference_rows[
+            np.abs(self.mesh.reference_rows[:, 0] - self.case.chord_m * math.cos(alpha))
+            <= 1e-9
+        ]
+        self.assertTrue(
+            np.allclose(trailing[:, 2], -self.case.chord_m * math.sin(alpha), atol=1e-12)
+        )
+        # Rigid rotation preserves lengths: the mean in-plane chord of the
+        # tilted leading-edge line still spans the full chord.
+        normal = plate_normal(self.case)
+        self.assertAlmostEqual(float(normal @ np.array([0.0, 0.0, 1.0])), math.cos(alpha), places=15)
+        self.assertAlmostEqual(float(normal[0]), math.sin(alpha), places=15)
+        self.assertAlmostEqual(float(np.linalg.norm(normal)), 1.0, places=15)
+
+    def test_rotation_preserves_the_node_lattice_and_perimeter_ids(self) -> None:
+        flat_ids = perimeter_node_ids(self.flat, self.case)
+        rotated = rotate_q16_mesh_about_leading_edge(self.flat, self.case)
+        self.assertEqual(rotated.node_count, self.flat.node_count)
+        np.testing.assert_array_equal(rotated.connectivity, self.flat.connectivity)
+        # Directors rotate with the plate: still half-thickness, tilted.
+        alpha = math.radians(self.case.angle_deg)
+        rows = rotated.reference_rows
+        gx, gz = rows[:, 3], rows[:, 5]
+        self.assertTrue(
+            np.allclose(
+                gx**2 + gz**2,
+                (0.5 * self.case.thickness_m) ** 2,
+                atol=1e-15,
+            )
+        )
+        self.assertTrue(np.allclose(gz / (0.5 * self.case.thickness_m), math.cos(alpha), atol=1e-12))
+        self.assertEqual(flat_ids.size, 90)
+
 
 class ScoringFunctionTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -216,7 +272,19 @@ class ScoringFunctionTest(unittest.TestCase):
 
     def test_normal_force_coefficient_uses_dynamic_pressure_and_area(self) -> None:
         force = [0.0, 0.0, self.case.dynamic_pressure_pa * self.case.reference_area_m2]
-        self.assertAlmostEqual(normal_force_coefficient(force, self.case), 1.0, places=12)
+        self.assertAlmostEqual(
+            normal_force_coefficient(force, self.case, normal=[0.0, 0.0, 1.0]),
+            1.0,
+            places=12,
+        )
+
+    def test_normal_force_coefficient_projects_on_plate_normal(self) -> None:
+        magnitude = self.case.dynamic_pressure_pa * self.case.reference_area_m2
+        normal = plate_normal(self.case)
+        force = (magnitude * normal).tolist()
+        self.assertAlmostEqual(
+            normal_force_coefficient(force, self.case), 1.0, places=12
+        )
 
     def test_peak_counting_detects_synthetic_modes(self) -> None:
         chord = np.abs(np.sin(np.linspace(0.0, 3.0 * math.pi, 60)))

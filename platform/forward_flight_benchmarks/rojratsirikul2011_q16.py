@@ -212,14 +212,19 @@ def static_motion_contract(case: Rojratsirikul2011MembraneCase) -> dict[str, Any
     if type(case) is not Rojratsirikul2011MembraneCase:
         raise TypeError("case must be an exact Rojratsirikul2011MembraneCase")
     return {
-        "U_inf_history": f"U0={case.freestream_m_s:g} m/s constant (frozen "
+        "U_inf_history": f"U0={case.freestream_m_s:g} m/s constant along +x (frozen "
         "half-cosine ramp only over t*<="
         f"{case.startup_time_star:g})",
-        "alpha_history": f"alpha0={case.angle_deg:g} deg constant geometric angle",
+        "alpha_history": (
+            f"alpha0={case.angle_deg:g} deg constant geometric angle, realized "
+            "by rigidly pitching the reference membrane nose-up about its "
+            "leading-edge line (the oracle-verified native-path incidence "
+            "mechanism); the freestream vector is never tilted"
+        ),
         "frame_pose": "frame_pose(0) rigid and fixed for all t",
         "frame_velocity_m_s": 0.0,
         "prescribed_structural_forces": None,
-        "boundary": "four-edge six-DOF clamped at reference values",
+        "boundary": "four-edge six-DOF clamped at rotated reference values",
         "flapping_heave_pitch_laws": "forbidden for this case",
     }
 
@@ -308,13 +313,57 @@ def validate_perimeter(
     }
 
 
+def plate_normal(case: Rojratsirikul2011MembraneCase) -> np.ndarray:
+    """Unit normal of the tilted reference membrane (+z rotated nose-up)."""
+
+    if type(case) is not Rojratsirikul2011MembraneCase:
+        raise TypeError("case must be an exact Rojratsirikul2011MembraneCase")
+    alpha = math.radians(case.angle_deg)
+    return np.array([math.sin(alpha), 0.0, math.cos(alpha)], dtype=np.float64)
+
+
+def rotate_q16_mesh_about_leading_edge(
+    mesh: Q16Mesh, case: Rojratsirikul2011MembraneCase
+) -> Q16Mesh:
+    """Rigidly pitch the planar membrane nose-up about its leading-edge line.
+
+    This is the incidence mechanism of every oracle-verified native-path case
+    (Goland: ``z = -x sin(alpha)``, flow stays +x).  The freestream vector is
+    never tilted; positive alpha means the trailing edge goes DOWN and the
+    flow approaches the pressure side from below.
+    """
+
+    if type(mesh) is not Q16Mesh:
+        raise TypeError("mesh must be an exact Q16Mesh")
+    if type(case) is not Rojratsirikul2011MembraneCase:
+        raise TypeError("case must be an exact Rojratsirikul2011MembraneCase")
+    alpha = math.radians(case.angle_deg)
+    cos_a, sin_a = math.cos(alpha), math.sin(alpha)
+    rows = np.array(mesh.reference_rows, dtype=np.float64, copy=True)
+    x, z = rows[:, 0].copy(), rows[:, 2].copy()
+    gx, gz = rows[:, 3].copy(), rows[:, 5].copy()
+    rows[:, 0] = x * cos_a + z * sin_a
+    rows[:, 2] = -x * sin_a + z * cos_a
+    rows[:, 3] = gx * cos_a + gz * sin_a
+    rows[:, 5] = -gx * sin_a + gz * cos_a
+    return Q16Mesh(
+        reference_rows=np.ascontiguousarray(rows, dtype=np.float64),
+        connectivity=mesh.connectivity,
+    )
+
+
 def make_rojratsirikul2011_q16_model(
     *,
     chordwise_element_count: int = FORMAL_Q16_GRID[0],
     spanwise_element_count: int = FORMAL_Q16_GRID[1],
     case: Rojratsirikul2011MembraneCase,
-) -> tuple[Q16Mesh, Q16MITC16EASMesh, Q16BoundaryConstraints]:
-    """Build the four-edge clamped membrane: planar mesh, full perimeter clamp."""
+) -> tuple[Q16Mesh, Q16MITC16EASMesh, Q16BoundaryConstraints, dict[str, Any]]:
+    """Build the four-edge clamped membrane pitched nose-up by the case angle.
+
+    Returns (rotated mesh, model, constraints, perimeter audit).  The
+    perimeter set is selected on the unrotated lattice (rotation-invariant
+    node ids) and clamps all six DOFs at the rotated reference values.
+    """
 
     if type(case) is not Rojratsirikul2011MembraneCase:
         raise TypeError("case must be an exact Rojratsirikul2011MembraneCase")
@@ -325,25 +374,41 @@ def make_rojratsirikul2011_q16_model(
         span=case.span_m,
         thickness=case.thickness_m,
     )
+    audit = validate_perimeter(
+        mesh, case, chordwise_element_count, spanwise_element_count
+    )
+    perimeter = perimeter_node_ids(mesh, case)
+    mesh = rotate_q16_mesh_about_leading_edge(mesh, case)
     model = Q16MITC16EASMesh(
         mesh,
         young_modulus=case.young_modulus_pa,
         poisson_ratio=case.poisson_ratio_assumed,
         density=case.membrane_density_kg_m3,
     )
-    constraints = make_clamped_q16_nodes(mesh, perimeter_node_ids(mesh, case))
-    return mesh, model, constraints
+    constraints = make_clamped_q16_nodes(mesh, perimeter)
+    return mesh, model, constraints, audit
 
 
 def normal_force_coefficient(
-    total_force_n: np.ndarray | list[float], case: Rojratsirikul2011MembraneCase
+    total_force_n: np.ndarray | list[float],
+    case: Rojratsirikul2011MembraneCase,
+    normal: np.ndarray | None = None,
 ) -> float:
-    """Cn = Fz / (q_inf S) with Fz the chord-plane-normal (+z) component."""
+    """Cn = F . n_hat / (q_inf S) with n_hat the chord-plane normal (+z side).
+
+    For a pitched membrane pass ``normal=plate_normal(case)``; the default
+    keeps the historical flat-membrane +z convention.
+    """
 
     values = np.asarray(total_force_n, dtype=np.float64)
     if values.shape != (3,) or not bool(np.isfinite(values).all()):
         raise ValueError("total_force_n must be a finite 3-vector")
-    return float(values[2] / (case.dynamic_pressure_pa * case.reference_area_m2))
+    direction = plate_normal(case) if normal is None else np.asarray(normal, dtype=np.float64)
+    if direction.shape != (3,) or not math.isfinite(float(np.linalg.norm(direction))):
+        raise ValueError("normal must be a finite 3-vector")
+    return float(
+        values @ direction / (case.dynamic_pressure_pa * case.reference_area_m2)
+    )
 
 
 def count_interior_peaks(profile: np.ndarray, relative_threshold: float = 0.15) -> int:
@@ -508,6 +573,8 @@ __all__ = [
     "membrane_statistics",
     "normal_force_coefficient",
     "perimeter_node_ids",
+    "plate_normal",
+    "rotate_q16_mesh_about_leading_edge",
     "static_motion_contract",
     "validate_perimeter",
     "validate_rojratsirikul2011_sources",

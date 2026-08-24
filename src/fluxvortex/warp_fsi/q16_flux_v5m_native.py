@@ -153,6 +153,17 @@ class NativeV5MConfig:
     dvm_max_wake: int = 64
     wake_max_rows: int = 96
     particle_capacity: int = 8192
+    # Age cap (aerodynamic steps) for LEV particles, mirroring the ring-wake
+    # truncation: 0 disables culling (the historical Yamano behavior, which
+    # never sheds particles).  Sustained-release cases must set a positive
+    # cap or the particle field grows without bound and exceeds capacity.
+    particle_max_age_steps: int = 0
+    # Wake-history pressure term: "material" is the author's strong-scheme
+    # Mf2_vec1 (A^-1 applied to the wake-motion material derivative) kept by
+    # the oracle-verified Yamano path; "bound_rate" is the author's
+    # weak-scheme dp_add = (Gamma - Gamma_old)/dt, which stays bounded in
+    # sustained-LEV-release regimes where Mf2_vec1 diverges.
+    wake_history_mode: str = "material"
     dvm_core_radius_chord: float = 0.02
     dvm_smoothing_radius_chord: float = 0.04
     dvm_target_spacing_chord: float = 0.04 / 2.125
@@ -164,6 +175,10 @@ class NativeV5MConfig:
             raise ValueError("chordwise_panels must be an exact int >= 2")
         if type(self.spanwise_panels) is not int or self.spanwise_panels < 1:
             raise ValueError("spanwise_panels must be a positive exact int")
+        if type(self.particle_max_age_steps) is not int or self.particle_max_age_steps < 0:
+            raise ValueError("particle_max_age_steps must be a non-negative exact int")
+        if self.wake_history_mode not in {"material", "bound_rate"}:
+            raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if self.lesp_crit != 0.11:
             raise ValueError("the Yamano native V5M path freezes Lcrit=0.11")
         for name in ("density", "freestream", "aerodynamic_dt", "gate_rtol"):
@@ -635,6 +650,13 @@ class Q16NativeV5MSolver:
 
         if trial.particle_field.n:
             trial.particle_field.advance_wrk3(dt, particle_external)
+            if self.settings.particle_max_age_steps > 0:
+                horizon = trial.step - self.settings.particle_max_age_steps
+                if horizon > 0:
+                    trial.particle_field.remove_mask(
+                        trial.particle_field.birth_step[: trial.particle_field.n]
+                        < horizon
+                    )
 
     def _dvm_kinematics(
         self, geometry: NativeV5MGeometry, trial: NativeV5MState
@@ -837,7 +859,16 @@ class Q16NativeV5MSolver:
         tau_x = tau_x / torch.linalg.vector_norm(tau_x, dim=1, keepdim=True)
         tau_y = tau_y / torch.linalg.vector_norm(tau_y, dim=1, keepdim=True)
         gradient = tau_x * dx_gamma.reshape(-1, 1) + tau_y * dy_gamma.reshape(-1, 1)
-        if trial.wake_rings.shape[0]:
+        if self.settings.wake_history_mode == "bound_rate":
+            # Author's weak-scheme dp_add (calc_fluid_force.m): the bound
+            # circulation time derivative, bounded by construction.  The
+            # strong-scheme Mf2_vec1 diverges when every wake row carries a
+            # large persistent LEV release.
+            mf2_history = (
+                gamma - trial.gamma_previous
+            ) / self.settings.aerodynamic_dt
+            wake_vertex_velocity = None
+        elif trial.wake_rings.shape[0]:
             from .q16_flux_v5m_author_loads import (
                 material_ring_velocity_derivative_expanded,
             )
@@ -849,6 +880,17 @@ class Q16NativeV5MSolver:
                 wake_vertex_velocity = wake_vertex_velocity + trial.particle_field.velocity_at_cuda(
                     trial.wake_rings.reshape(-1, 3)
                 ).reshape_as(trial.wake_rings)
+            # The author's wake is a connected chain (generate_wake.m):
+            # each row's trailing-edge-side corners ARE the previous row's
+            # downstream corners, and the newest row is anchored to the
+            # moving trailing edge with the sheet's structural velocity.
+            # Free convection of detached front corners slides them under
+            # the collocation points and poisons the wake-history term.
+            chain_velocity = wake_vertex_velocity.reshape(-1, ns, 4, 3)
+            chain_velocity[1:, :, 0] = chain_velocity[:-1, :, 3]
+            chain_velocity[1:, :, 1] = chain_velocity[:-1, :, 2]
+            chain_velocity[0, :, 0] = geometry.trailing_velocity[:-1]
+            chain_velocity[0, :, 1] = geometry.trailing_velocity[1:]
             influence_rate = material_ring_velocity_derivative_expanded(
                 geometry.collocation,
                 geometry.collocation_velocity,
@@ -863,6 +905,7 @@ class Q16NativeV5MSolver:
             )
             mf2_history = torch.linalg.solve(aic, -wake_normal_rate)
         else:
+            wake_vertex_velocity = None
             mf2_history = torch.zeros_like(gamma)
         author_load = self.author_load_assembler.assemble(
             structural_state=structural_state,
@@ -887,6 +930,14 @@ class Q16NativeV5MSolver:
         )
 
         rear = geometry.rings.reshape(nc, ns, 4, 3)[-1, :, 2:4]
+        if trial.wake_rings.shape[0]:
+            # Re-anchor the convected chain to the current trailing edge,
+            # newest row first (generate_wake.m r_wake_1 update).
+            chain = trial.wake_rings.reshape(-1, ns, 4, 3)
+            chain[1:, :, 0] = chain[:-1, :, 3]
+            chain[1:, :, 1] = chain[:-1, :, 2]
+            chain[0, :, 0] = rear[:, 1]
+            chain[0, :, 1] = rear[:, 0]
         new_wake = torch.stack(
             (
                 rear[:, 1],
