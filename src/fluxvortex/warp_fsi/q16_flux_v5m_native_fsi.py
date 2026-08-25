@@ -176,6 +176,7 @@ class Q16NativeV5MFSIStepper:
         coupling_tolerance: float = 5.0e-7,
         max_coupling_iterations: int = 20,
         relaxation: float = 0.7,
+        persistent_relaxation: bool = False,
     ) -> None:
         if type(structural_solver) is not Q16CudaNewmarkStepper:
             raise TypeError("structural_solver must be the production Q16 CUDA stepper")
@@ -194,6 +195,12 @@ class Q16NativeV5MFSIStepper:
         self.coupling_tolerance = float(coupling_tolerance)
         self.max_coupling_iterations = max_coupling_iterations
         self.relaxation = float(relaxation)
+        # Carry the learned Aitken factor across outer steps: without it the
+        # relaxer relearns the factor from the fixed seed every step and the
+        # fixed point pays one extra iteration before the residual collapses.
+        # The convergence criterion is unchanged; only the trial path differs.
+        self.persistent_relaxation = bool(persistent_relaxation)
+        self._learned_relaxation: float | None = None
 
     def _integrate_structure(
         self,
@@ -431,7 +438,11 @@ class Q16NativeV5MFSIStepper:
             committed_q, committed_v, committed_a, delta_time=delta_time
         )
         residual_history: list[float] = []
-        relaxer = _Aitken(self.relaxation)
+        relaxer = _Aitken(
+            self._learned_relaxation
+            if self.persistent_relaxation and self._learned_relaxation is not None
+            else self.relaxation
+        )
         evaluations = 0
         for iteration in range(1, self.max_coupling_iterations + 1):
             proposal_started = time.perf_counter()
@@ -540,6 +551,8 @@ class Q16NativeV5MFSIStepper:
                     owner.previous_aerodynamic_load = owner.aerodynamic_load
                     owner.aerodynamic_load = formal_proposal.author_load
                     owner.generation += 1
+                    if self.persistent_relaxation:
+                        self._learned_relaxation = relaxer.factor
                     return Q16NativeV5MFSIStepResult(
                         structural=formal_structural,
                         aerodynamic=formal_proposal,

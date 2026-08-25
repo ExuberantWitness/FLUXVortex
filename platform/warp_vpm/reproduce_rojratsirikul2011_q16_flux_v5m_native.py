@@ -234,6 +234,9 @@ def run_case(
         coupling_tolerance=5.0e-7,
         max_coupling_iterations=20,
         relaxation=0.7,
+        # Carry the learned Aitken factor across outer steps; the
+        # convergence criterion is unchanged, only the trial path.
+        persistent_relaxation=True,
     )
 
     substeps = substep_count
