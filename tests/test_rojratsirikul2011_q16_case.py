@@ -364,7 +364,15 @@ class LedgerAndDigestTest(unittest.TestCase):
             self.assertIn("frozen_value", ledger[key])
         self.assertEqual(ledger["poisson_ratio"]["frozen_value"], 0.49)
         self.assertEqual(ledger["initial_prestress_n_m"]["frozen_value"], 0.0)
-        self.assertEqual(ledger["structural_damping"]["frozen_value"], 0.0)
+        # Literature latex loss factor (CLAIM_TREE.md N4): the frozen-zero
+        # assumption was rewritten with independent-source evidence.
+        self.assertEqual(
+            ledger["structural_damping"]["frozen_value"],
+            ROJ11_A16.structural_damping_loss_factor,
+        )
+        self.assertAlmostEqual(
+            ROJ11_A16.structural_damping_loss_factor, 0.1, places=12
+        )
 
     def test_config_digest_is_stable_and_case_dependent(self) -> None:
         self.assertEqual(ROJ11_A16.config_digest(), ROJ11_A16.config_digest())

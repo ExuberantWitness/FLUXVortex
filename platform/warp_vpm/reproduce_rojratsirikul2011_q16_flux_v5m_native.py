@@ -164,7 +164,14 @@ def run_case(
         cg_check_every=16,
         nonsymmetric_solver="reference_dense",
         reference_dense_refresh_after=48,
-        mass_damping_coefficient=case.structural_damping_assumed,
+        mass_damping_coefficient=0.0,
+        # Kelvin-Voigt stiffness damping from the literature latex loss
+        # factor: theta = eta / omega_lockin with omega at the physical
+        # St~1 vibration frequency (research/CLAIM_TREE.md N4).
+        stiffness_damping_coefficient=(
+            case.structural_damping_loss_factor
+            / (2.0 * math.pi * case.freestream_m_s / case.chord_m)
+        ),
     )
     surface = Q16NativeV5MSurface(
         mesh,
@@ -470,7 +477,7 @@ def run_case(
         "rho_m": case.membrane_density_kg_m3,
         "thickness": case.thickness_m,
         "prestress": case.prestress_n_m_assumed,
-        "damping": case.structural_damping_assumed,
+        "damping_loss_factor": case.structural_damping_loss_factor,
         "dt_star": case.aerodynamic_dt_star,
         "structural_substeps": substeps,
         "structural_substeps_protocol_frozen": case.structural_substeps_per_aerodynamic_step,

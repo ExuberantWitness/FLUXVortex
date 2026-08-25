@@ -72,6 +72,7 @@ def _q16_residual_kernel(
     mass_action: wp.array(dtype=DTYPE, ndim=2),
     mass_velocity: wp.array(dtype=DTYPE, ndim=2),
     mass_damping_coefficient: DTYPE,
+    stiffness_damping_force: wp.array(dtype=DTYPE, ndim=2),
     internal_force: wp.array(dtype=DTYPE, ndim=2),
     reference_internal_force: wp.array(dtype=DTYPE, ndim=2),
     external_force: wp.array(dtype=DTYPE, ndim=2),
@@ -81,6 +82,7 @@ def _q16_residual_kernel(
     residual[batch, dof] = (
         mass_action[batch, dof]
         + mass_damping_coefficient * mass_velocity[batch, dof]
+        + stiffness_damping_force[batch, dof]
         + internal_force[batch, dof]
         - reference_internal_force[0, dof]
         - external_force[batch, dof]
@@ -420,6 +422,7 @@ class Q16CudaNewmarkStepper:
         "preconditioner",
         "reference_dense_refresh_after",
         "reference_tangent_cache_refresh_count",
+        "stiffness_damping_coefficient",
     )
 
     def __init__(
@@ -437,6 +440,7 @@ class Q16CudaNewmarkStepper:
         nonsymmetric_solver: str = "direct",
         reference_dense_refresh_after: int = 32,
         mass_damping_coefficient: float = 0.0,
+        stiffness_damping_coefficient: float = 0.0,
     ) -> None:
         if type(model) is not Q16MITC16EASMesh:
             raise TypeError("model must be an exact Q16MITC16EASMesh")
@@ -479,6 +483,19 @@ class Q16CudaNewmarkStepper:
         self.mass_damping_coefficient = _nonnegative_float(
             "mass_damping_coefficient", mass_damping_coefficient
         )
+        # Kelvin-Voigt stiffness-proportional damping theta*K_ref (the
+        # author's MATLAB theta_a*(Qd_eps + Qd_k) form).  The damping force
+        # and the Newmark-effective contribution reuse the cached reference
+        # tangent, so this requires the reference-dense linear path.
+        self.stiffness_damping_coefficient = _nonnegative_float(
+            "stiffness_damping_coefficient", stiffness_damping_coefficient
+        )
+        if self.stiffness_damping_coefficient > 0.0 and (
+            self.nonsymmetric_solver != "reference_dense"
+        ):
+            raise ValueError(
+                "stiffness_damping_coefficient requires the reference-dense solver"
+            )
         self._operator = Q16CudaMITC16EASMeshOperator(model, device=device)
         self.device = self._operator.device
         self.dof_count = model.mesh.dof_count
@@ -692,6 +709,25 @@ class Q16CudaNewmarkStepper:
                 external_t, dtype=DTYPE, requires_grad=False
             )
         total = wp.zeros_like(acceleration)
+        if self.stiffness_damping_coefficient > 0.0:
+            tangent = self._reference_tangent_matrix_torch
+            if tangent is None:
+                raise Q16StructuralStepStopped(
+                    "Q16 stiffness damping needs the reference tangent cache",
+                    phase="residual",
+                    newton_iteration_count=0,
+                    cg_iteration_count=0,
+                    gmres_iteration_count=0,
+                    relative_residual_max=math.inf,
+                )
+            damping_force = self.stiffness_damping_coefficient * (
+                wp.to_torch(velocity) @ tangent.transpose(0, 1)
+            )
+            stiffness_damping_force = wp.from_torch(
+                damping_force, dtype=DTYPE, requires_grad=False
+            )
+        else:
+            stiffness_damping_force = wp.zeros_like(acceleration)
         wp.launch(
             _q16_residual_kernel,
             dim=acceleration.shape,
@@ -699,6 +735,7 @@ class Q16CudaNewmarkStepper:
                 inertia,
                 mass_velocity,
                 DTYPE(self.mass_damping_coefficient),
+                stiffness_damping_force,
                 internal,
                 self._reference_internal_force,
                 effective_external,
@@ -716,6 +753,13 @@ class Q16CudaNewmarkStepper:
         if not math.isfinite(result) or result <= 0.0:
             raise FloatingPointError("Q16 damped effective mass coefficient is invalid")
         return result
+
+    def _effective_stiffness_damping_factor(self, inverse_beta_dt2: float) -> float:
+        """Newmark factor on K_ref from Kelvin-Voigt damping: theta*gamma/(beta*dt)."""
+
+        return self.stiffness_damping_coefficient * self.gamma * math.sqrt(
+            inverse_beta_dt2 / self.beta
+        )
 
     def _effective_action(
         self,
@@ -752,6 +796,21 @@ class Q16CudaNewmarkStepper:
             total_t = wp.to_torch(total) - inverse_beta_dt2 * wp.to_torch(
                 acceleration_load
             )
+            total = wp.from_torch(total_t, dtype=DTYPE, requires_grad=False)
+        if self.stiffness_damping_coefficient > 0.0:
+            tangent = self._reference_tangent_matrix_torch
+            if tangent is None:
+                raise Q16StructuralStepStopped(
+                    "Q16 stiffness damping needs the reference tangent cache",
+                    phase="linear_solve",
+                    newton_iteration_count=0,
+                    cg_iteration_count=0,
+                    gmres_iteration_count=0,
+                    relative_residual_max=math.inf,
+                )
+            total_t = wp.to_torch(total) + self._effective_stiffness_damping_factor(
+                inverse_beta_dt2
+            ) * (wp.to_torch(admissible) @ tangent.transpose(0, 1))
             total = wp.from_torch(total_t, dtype=DTYPE, requires_grad=False)
         return self._boundary_operator._project_free_prechecked(total)
 
@@ -1354,7 +1413,9 @@ class Q16CudaNewmarkStepper:
                 relative_residual_max=math.inf,
             )
         effective = (
-            tangent
+            tangent * (
+                1.0 + self._effective_stiffness_damping_factor(inverse_beta_dt2)
+            )
             + self._effective_mass_coefficient(inverse_beta_dt2)
             * self._mass_matrix_torch
             - inverse_beta_dt2 * added_mass

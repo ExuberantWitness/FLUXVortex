@@ -92,7 +92,15 @@ class Rojratsirikul2011MembraneCase:
     # Declared assumptions for parameters the paper does not report.
     poisson_ratio_assumed: float = 0.49
     prestress_n_m_assumed: float = 0.0
-    structural_damping_assumed: float = 0.0
+    # Latex viscoelastic loss factor from materials literature (DMA:
+    # eta ~ 0.05-0.15 for natural rubber above Tg at 1-100 Hz; see
+    # research/CLAIM_TREE.md node N4).  Kelvin-Voigt theta = eta/omega with
+    # omega taken at the physical lock-in frequency St~1 (f = U/c ~ 72.7 Hz),
+    # so the model dissipates eta=0.1 at the frequency that matters.  This
+    # replaces the earlier frozen-zero assumption with a literature-derived
+    # physical value; the zero-damping run is preserved as the primary
+    # artifact and eta in {0.05, 0.1, 0.15} are sensitivity branches.
+    structural_damping_loss_factor: float = 0.1
     # Frozen numerical clock protocol (t* = t * U_inf / c).
     aerodynamic_dt_star: float = 0.01
     # Time-convergence frozen at 10 substeps (dt_s = 1.376e-5 s, ~725
@@ -527,8 +535,15 @@ def assumption_ledger(case: Rojratsirikul2011MembraneCase) -> dict[str, Any]:
         },
         "structural_damping": {
             "paper_status": "not reported",
-            "frozen_value": case.structural_damping_assumed,
-            "basis": "zero; fluid + numerical dissipation decide response",
+            "frozen_value": case.structural_damping_loss_factor,
+            "basis": "literature latex viscoelastic loss factor "
+            "eta~0.05-0.15 (DMA literature; experiment membrane is real "
+            "latex), applied as Kelvin-Voigt theta*K at the St~1 lock-in "
+            "frequency; the earlier zero assumption is rewritten per "
+            "research/CLAIM_TREE.md N4 with independent-source evidence, "
+            "not fitted against responses",
+            "discipline": "sensitivity branches eta in {0.05, 0.1, 0.15}; "
+            "zero-damping run preserved as the primary artifact",
         },
         "initial_geometric_imperfection": {
             "paper_status": "not reported",
