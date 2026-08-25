@@ -25,3 +25,16 @@ Full citations in the session research reports; see also literature anchors belo
 - Li, Jaiman & Khoo, JFM 929 (2021) / arXiv:2011.11422: settled NS reproduction, exact numbers.
 - Gordnier & Attar, JFS 45 (2014): the independent reproduction of this experiment (ILES + p-FEM plate); zero-damping lineage; displacement at E=2.2MPa underpredicts experiment (Yang-Dudley-Harris AIAA J 2018 quote).
 - Damping magnitudes: TA Instruments DMA notes; COMSOL damping overview (eta=2 zeta); Chen et al. Polymers 14:2427 (2022); Zhu & Atkinson JFM (zeta=0.02 practice); Cavallaro & Demasi (zeta=0.03 practice).
+
+## Update 2026-08-26: N4 verification result (A16, eta=0.1, 300 steps)
+
+Falsifiable predictions vs outcome:
+- (a) no sign crossing: CONFIRMED (baseline crossed at t*=1.8 to -0.04; eta=0.1 stays positive, settles)
+- (b) camber into 0.03-0.05: PARTIAL - monotone rise to +0.0133 at t*=3, still creeping (window too short, not mechanism failure)
+- (c) Cn into band: trajectory CONFIRMED (0.908 at t*=3.0, rising, band 0.92-0.95)
+- mode shape: chordwise peak count 2 = paper expectation at alpha~16 CONFIRMED
+- zsd/c max 0.0097 = moderate vibration (paper-like), vs chaotic 0.013 baseline
+
+Conclusion: N4 (missing latex viscoelastic damping) VERIFIED as mechanism; remaining gap is
+statistics-window convergence (creep toward equilibrium slower than 3 t*). Long-window run
+(600 steps, t*=6) launched as ROJ11_A16_ETA0.1_T6.
