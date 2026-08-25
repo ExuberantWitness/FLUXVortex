@@ -105,12 +105,13 @@ class ParameterContractTest(unittest.TestCase):
         self.assertAlmostEqual(
             self.case.aerodynamic_dt_s, 0.01 * 0.0688 / 5.0, places=18
         )
+        # Time-convergence-frozen substep count (see adapter comment).
         self.assertEqual(
-            self.case.structural_substeps_per_aerodynamic_step, 50
+            self.case.structural_substeps_per_aerodynamic_step, 10
         )
         self.assertAlmostEqual(
             self.case.structural_dt_s,
-            self.case.aerodynamic_dt_s / 50.0,
+            self.case.aerodynamic_dt_s / 10.0,
             places=20,
         )
         self.assertAlmostEqual(

@@ -198,6 +198,10 @@ def run_case(
             # Wagner response onto the paper's Cn band; all other
             # strong-scheme blocks (dp_lift1, lift2, Mf2_1, Mf1) remain.
             wake_history_mode="bound_rate",
+            # Author's far-wake freeze: rows past one chord of convection
+            # (100 shed events at dt*=0.01) convect with the freestream
+            # alone, matching the LEV particle lifetime.
+            wake_free_rows=100,
             # The 0.04/2.125 default sits exactly on the frozen minimum
             # particle overlap and float64 rounding lands just below it at
             # this chord; 0.018 is the coarsest spacing strictly inside the
@@ -330,6 +334,11 @@ def run_case(
         if not bool(torch.isfinite(total_force).all()):
             write_partial("failed", {"failed_aero_step": step, "error": "non-finite aerodynamic force"})
             raise RuntimeError(f"non-finite aerodynamic force at aero step {step}")
+        # The wake and particle fields grow every step, so the allocator's
+        # cached high-water would otherwise climb without bound; release the
+        # dead blocks between steps (a few ms, no effect on numerics).
+        if step % 5 == 0:
+            torch.cuda.empty_cache()
         cn = normal_force_coefficient(
             total_force.cpu().tolist(), case, normal=plate_normal(case)
         )
@@ -473,6 +482,7 @@ def run_case(
         "joint_tev": True,
         "free_wake": True,
         "wake_max_rows": WAKE_MAX_ROWS,
+        "wake_free_rows": 100,
         "particle_capacity": PARTICLE_CAPACITY,
         "particle_max_age_steps": PARTICLE_MAX_AGE_STEPS,
         "wake_history_mode": "bound_rate",

@@ -164,6 +164,11 @@ class NativeV5MConfig:
     # weak-scheme dp_add = (Gamma - Gamma_old)/dt, which stays bounded in
     # sustained-LEV-release regimes where Mf2_vec1 diverges.
     wake_history_mode: str = "material"
+    # Number of newest wake rows (shed events) that keep full induced
+    # convection; older rows convect with the freestream alone (the author's
+    # far-wake freeze in generate_wake.m).  0 disables the freeze (the
+    # historical fully-free wake, which is O(rows^2) per step).
+    wake_free_rows: int = 0
     dvm_core_radius_chord: float = 0.02
     dvm_smoothing_radius_chord: float = 0.04
     dvm_target_spacing_chord: float = 0.04 / 2.125
@@ -179,6 +184,8 @@ class NativeV5MConfig:
             raise ValueError("particle_max_age_steps must be a non-negative exact int")
         if self.wake_history_mode not in {"material", "bound_rate"}:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
+        if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
+            raise ValueError("wake_free_rows must be a non-negative exact int")
         if self.lesp_crit != 0.11:
             raise ValueError("the Yamano native V5M path freezes Lcrit=0.11")
         for name in ("density", "freestream", "aerodynamic_dt", "gate_rtol"):
@@ -605,16 +612,41 @@ class Q16NativeV5MSolver:
             mf2_history=zero,
         )
 
+    # Tile budget for the ring-influence sum: (points x rings x 3) float64.
+    # Evaluations below the budget take the historical single-shot path
+    # (bit-identical for the oracle-verified small cases); larger ones tile
+    # over the points so long free wakes cannot materialize multi-GB
+    # intermediate tensors.
+    _RING_TILE_BYTES = 64 * 1024 * 1024
+
     def _ring_velocity(self, points: torch.Tensor, rings: torch.Tensor, gamma: torch.Tensor, *, rough: bool) -> torch.Tensor:
         if rings.shape[0] == 0:
             return torch.zeros_like(points)
-        expanded = native_ring_velocity_expanded(
-            points,
-            rings,
-            core_fraction=0.1 if rough else 1.0e-6,
-            reference_length=1.0 / self.settings.chordwise_panels,
-        )
-        return torch.sum(expanded * gamma[None, :, None], dim=1)
+        core_fraction = 0.1 if rough else 1.0e-6
+        reference_length = 1.0 / self.settings.chordwise_panels
+        full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
+        if full_bytes <= self._RING_TILE_BYTES:
+            expanded = native_ring_velocity_expanded(
+                points,
+                rings,
+                core_fraction=core_fraction,
+                reference_length=reference_length,
+            )
+            return torch.sum(expanded * gamma[None, :, None], dim=1)
+        total = torch.zeros_like(points)
+        target_cap = max(1, self._RING_TILE_BYTES // (rings.shape[0] * 3 * 8))
+        for start in range(0, points.shape[0], target_cap):
+            stop = min(start + target_cap, points.shape[0])
+            expanded = native_ring_velocity_expanded(
+                points[start:stop],
+                rings,
+                core_fraction=core_fraction,
+                reference_length=reference_length,
+            )
+            total[start:stop] = torch.sum(
+                expanded * gamma[None, :, None], dim=1
+            )
+        return total
 
     def _external_velocity(
         self,
@@ -631,19 +663,53 @@ class Q16NativeV5MSolver:
     def _advance_material_state(self, geometry: NativeV5MGeometry, trial: NativeV5MState) -> None:
         dt = self.settings.aerodynamic_dt
         if trial.wake_rings.shape[0]:
-            original = trial.wake_rings.clone()
+            ns = self.settings.spanwise_panels
+            total_rows = trial.wake_rings.shape[0] // ns
+            freeze_rows = self.settings.wake_free_rows
+            if freeze_rows and total_rows > freeze_rows:
+                # The author's far-wake freeze (generate_wake.m): rows older
+                # than `wake_free_rows` shed events convect with the
+                # freestream alone and stop deforming, bounding the O(N^2)
+                # self-convection cost of long free wakes.  Rows stay full
+                # vortex sources for everything they influence.
+                original = trial.wake_rings.clone()
+                active = original[: freeze_rows * ns]
 
-            def wake_velocity(at: torch.Tensor) -> torch.Tensor:
-                flat = at.reshape(-1, 3)
-                velocity = self._external_velocity(flat, geometry, trial)
+                def active_velocity(at: torch.Tensor) -> torch.Tensor:
+                    return self._external_velocity(at.reshape(-1, 3), geometry, trial).reshape_as(at)
+
+                u1 = active_velocity(active)
                 if trial.particle_field.n:
-                    velocity = velocity + trial.particle_field.velocity_at_cuda(flat)
-                return velocity.reshape_as(at)
+                    u1 = u1 + trial.particle_field.velocity_at_cuda(
+                        active.reshape(-1, 3)
+                    ).reshape_as(active)
+                u2 = active_velocity(active + 0.5 * dt * u1)
+                if trial.particle_field.n:
+                    u2 = u2 + trial.particle_field.velocity_at_cuda(
+                        (active + 0.5 * dt * u1).reshape(-1, 3)
+                    ).reshape_as(active)
+                u3 = active_velocity(active + dt * (-u1 + 2.0 * u2))
+                if trial.particle_field.n:
+                    u3 = u3 + trial.particle_field.velocity_at_cuda(
+                        (active + dt * (-u1 + 2.0 * u2)).reshape(-1, 3)
+                    ).reshape_as(active)
+                updated_active = active + (dt / 6.0) * (u1 + 4.0 * u2 + u3)
+                frozen_tail = original[freeze_rows * ns :] + self.v_inf * dt
+                trial.wake_rings = torch.cat((updated_active, frozen_tail), dim=0)
+            else:
+                original = trial.wake_rings.clone()
 
-            u1 = wake_velocity(original)
-            u2 = wake_velocity(original + 0.5 * dt * u1)
-            u3 = wake_velocity(original + dt * (-u1 + 2.0 * u2))
-            trial.wake_rings.copy_(original + (dt / 6.0) * (u1 + 4.0 * u2 + u3))
+                def wake_velocity(at: torch.Tensor) -> torch.Tensor:
+                    flat = at.reshape(-1, 3)
+                    velocity = self._external_velocity(flat, geometry, trial)
+                    if trial.particle_field.n:
+                        velocity = velocity + trial.particle_field.velocity_at_cuda(flat)
+                    return velocity.reshape_as(at)
+
+                u1 = wake_velocity(original)
+                u2 = wake_velocity(original + 0.5 * dt * u1)
+                u3 = wake_velocity(original + dt * (-u1 + 2.0 * u2))
+                trial.wake_rings.copy_(original + (dt / 6.0) * (u1 + 4.0 * u2 + u3))
 
         def particle_external(points: torch.Tensor) -> torch.Tensor:
             return self._external_velocity(points, geometry, trial)
