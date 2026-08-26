@@ -1,0 +1,9 @@
+"""Aerodynamic stepper protocol (refactor plan §6.2)."""
+from __future__ import annotations
+from typing import Protocol, runtime_checkable, Any
+
+@runtime_checkable
+class AerodynamicStepper(Protocol):
+    def initialize(self, surfaces: tuple[Any, ...]) -> Any: ...
+    def propose(self, committed: Any, surfaces: tuple[Any, ...], dt: float) -> Any: ...
+    def commit(self, owner: Any, proposal: Any) -> None: ...
