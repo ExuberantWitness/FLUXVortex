@@ -233,9 +233,13 @@ class Q16NativeV5MSurface:
         aerodynamic_chordwise_panels: int,
         aerodynamic_spanwise_panels: int,
         device: str,
+        dense_transfers: bool = False,
     ) -> None:
         if mesh.element_count != q16_chordwise_elements * q16_spanwise_elements:
             raise ValueError("Q16 element topology mismatch")
+        # Dense-GEMV fast path for the fixed transfer maps (bit-consistent
+        # with the kernel scatter to fp64 round-off; unblocks CUDA graphs).
+        self.dense_transfers = bool(dense_transfers)
         self.mesh = mesh
         self.q16_chordwise_elements = q16_chordwise_elements
         self.q16_spanwise_elements = q16_spanwise_elements
@@ -263,16 +267,30 @@ class Q16NativeV5MSurface:
         )
 
     def evaluate(self, state: wp.array, velocity: wp.array) -> NativeV5MGeometry:
-        quarter = wp.to_torch(self.quarter_transfer.interpolate(state))[0].reshape(
-            self.nc, self.ns + 1, 3
-        )
-        quarter_velocity = wp.to_torch(
-            self.quarter_transfer.interpolate(velocity)
-        )[0].reshape(self.nc, self.ns + 1, 3)
-        leading = wp.to_torch(self.leading_transfer.interpolate(state))[0]
-        trailing = wp.to_torch(self.trailing_transfer.interpolate(state))[0]
-        leading_velocity = wp.to_torch(self.leading_transfer.interpolate(velocity))[0]
-        trailing_velocity = wp.to_torch(self.trailing_transfer.interpolate(velocity))[0]
+        if self.dense_transfers:
+            q_flat = wp.to_torch(state)[0]
+            v_flat = wp.to_torch(velocity)[0]
+            quarter = self.quarter_transfer.interpolate_dense(q_flat).reshape(
+                self.nc, self.ns + 1, 3
+            )
+            quarter_velocity = self.quarter_transfer.interpolate_dense(
+                v_flat
+            ).reshape(self.nc, self.ns + 1, 3)
+            leading = self.leading_transfer.interpolate_dense(q_flat)
+            trailing = self.trailing_transfer.interpolate_dense(q_flat)
+            leading_velocity = self.leading_transfer.interpolate_dense(v_flat)
+            trailing_velocity = self.trailing_transfer.interpolate_dense(v_flat)
+        else:
+            quarter = wp.to_torch(self.quarter_transfer.interpolate(state))[0].reshape(
+                self.nc, self.ns + 1, 3
+            )
+            quarter_velocity = wp.to_torch(
+                self.quarter_transfer.interpolate(velocity)
+            )[0].reshape(self.nc, self.ns + 1, 3)
+            leading = wp.to_torch(self.leading_transfer.interpolate(state))[0]
+            trailing = wp.to_torch(self.trailing_transfer.interpolate(state))[0]
+            leading_velocity = wp.to_torch(self.leading_transfer.interpolate(velocity))[0]
+            trailing_velocity = wp.to_torch(self.trailing_transfer.interpolate(velocity))[0]
         rear = quarter[-1] + (4.0 / 3.0) * (trailing - quarter[-1])
         rear_velocity = quarter_velocity[-1] + (4.0 / 3.0) * (
             trailing_velocity - quarter_velocity[-1]

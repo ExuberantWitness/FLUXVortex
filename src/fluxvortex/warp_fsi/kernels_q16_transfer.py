@@ -116,6 +116,12 @@ def _require_cuda_array(
         raise ValueError(f"{name} must have {ndim} dimensions")
 
 
+@wp.kernel
+def _q16_copy_eye_kernel(eye: wp.array2d(dtype=DTYPE)):
+    d = wp.tid()
+    eye[d, d] = DTYPE(1.0)
+
+
 # Set True only around an active wp.ScopedCapture region; host-side
 # validation is illegal inside CUDA-graph capture, so capture-mode callers
 # must validate the replayed static outputs once the capture ends.
@@ -140,6 +146,7 @@ class Q16CudaSurfaceTransfer:
 
     __slots__ = (
         "_connectivity",
+        "_dense_map_torch",
         "_element_indices",
         "_global_node_local_nodes",
         "_global_node_point_indices",
@@ -203,6 +210,47 @@ class Q16CudaSurfaceTransfer:
         )
         self._zeta = wp.array(zeta, dtype=DTYPE, device=self.device)
         self._shape_values = wp.array(shapes, dtype=DTYPE, device=self.device)
+        self._dense_map_torch = None
+
+    def dense_map(self):
+        """One-time extraction of the fixed linear map as a dense torch matrix.
+
+        interpolate(state) is exactly ``dense_map() @ state[0]`` (same
+        weights; fp64 summation-order differences only).  Replaces the
+        kernel scatter with one cuBLAS GEMV on hot paths.
+        """
+        cached = self._dense_map_torch
+        if cached is not None:
+            return cached
+        import torch
+        dof = self.structural_dof_count
+        eye = wp.zeros((dof, dof), dtype=DTYPE, device=self.device)
+        wp.launch(
+            _q16_copy_eye_kernel,
+            dim=dof,
+            inputs=[],
+            outputs=[eye],
+            device=self.device,
+        )
+        columns = self.interpolate(eye)
+        wp.synchronize_device(self.device)
+        # columns[d, p, c] = map(e_d)[p, c] -> matrix[p*3+c, d]
+        matrix = (
+            wp.to_torch(columns)
+            .permute(1, 2, 0)
+            .reshape(self.point_count * 3, dof)
+            .contiguous()
+        )
+        self._dense_map_torch = matrix
+        return matrix
+
+    def interpolate_dense(self, flat_state) -> "torch.Tensor":
+        """Dense-GEMV equivalent of interpolate for one (dof,) sample."""
+        import torch
+        q = flat_state if torch.is_tensor(flat_state) else wp.to_torch(flat_state)
+        if q.ndim == 2:
+            q = q[0]
+        return (self.dense_map() @ q).reshape(self.point_count, 3)
 
     def interpolate(self, state: Any) -> wp.array:
         """Interpolate batched Q16 states or velocities at all mapped points."""

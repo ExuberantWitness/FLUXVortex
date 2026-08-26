@@ -188,6 +188,7 @@ def run_case(
         aerodynamic_chordwise_panels=FORMAL_AERO_GRID[0],
         aerodynamic_spanwise_panels=FORMAL_AERO_GRID[1],
         device=config.DEVICE,
+        dense_transfers=True,
     )
     aerodynamic = Q16NativeV5MSolver(
         surface,
