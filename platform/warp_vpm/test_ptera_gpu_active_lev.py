@@ -12,7 +12,13 @@ from bing_joint_ptera_gpu import CudaJointLEVTEVSolver
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
 
-def _problem(num_steps: int = 10) -> ps.problems.UnsteadyProblem:
+def _problem(
+    num_steps: int = 10,
+    *,
+    delta_time: float = 0.04,
+    velocity_amplitude: float = 0.0,
+    velocity_period: float = 0.0,
+) -> ps.problems.UnsteadyProblem:
     chord = 1.0
     span = 4.0
     outline = np.asarray(
@@ -62,13 +68,15 @@ def _problem(num_steps: int = 10) -> ps.problems.UnsteadyProblem:
     )
     operating_point_movement = (
         ps.movements.operating_point_movement.OperatingPointMovement(
-            base_operating_point=operating_point
+            base_operating_point=operating_point,
+            ampVCg__E=velocity_amplitude,
+            periodVCg__E=velocity_period,
         )
     )
     movement = ps.movements.movement.Movement(
         airplane_movements=[airplane_movement],
         operating_point_movement=operating_point_movement,
-        delta_time=0.04,
+        delta_time=delta_time,
         num_steps=num_steps,
     )
     return ps.problems.UnsteadyProblem(movement=movement, only_final_results=False)
@@ -85,7 +93,7 @@ def _forces(solver: object) -> np.ndarray:
     "joint_tev, num_steps, tolerance",
     ((False, 10, 2.0e-10), (True, 6, 2.0e-9)),
 )
-def test_active_and_joint_lev_cuda_match_reference_and_avoid_host_hot_paths(
+def test_active_lev_cuda_contract_and_legacy_reference_avoid_host_hot_paths(
     monkeypatch: pytest.MonkeyPatch,
     joint_tev: bool,
     num_steps: int,
@@ -98,12 +106,14 @@ def test_active_and_joint_lev_cuda_match_reference_and_avoid_host_hot_paths(
         particle_capacity=512,
         load_mode="bing",
     )
-    reference = JointLEVTEVSolver(_problem(num_steps), config)
-    reference.run(
-        prescribed_wake=True, calculate_streamlines=False, show_progress=False
-    )
-    expected = _forces(reference)
-    assert reference.lev_pf.n > 0
+    expected = None
+    if not joint_tev:
+        reference = JointLEVTEVSolver(_problem(num_steps), config)
+        reference.run(
+            prescribed_wake=True, calculate_streamlines=False, show_progress=False
+        )
+        expected = _forces(reference)
+        assert reference.lev_pf.n > 0
 
     solver = CudaJointLEVTEVSolver(_problem(num_steps), config, device="cuda:0")
 
@@ -135,7 +145,11 @@ def test_active_and_joint_lev_cuda_match_reference_and_avoid_host_hot_paths(
         UnsteadyRingVortexLatticeMethodSolver, "_finalize_loads", forbidden
     )
 
-    solver.run(prescribed_wake=True, calculate_streamlines=False, show_progress=False)
+    solver.run(
+        prescribed_wake=not joint_tev,
+        calculate_streamlines=False,
+        show_progress=False,
+    )
     actual = _forces(solver)
     assert solver.lev_pf.n > 0
     assert solver.lev_pf.positions_cuda.is_cuda
@@ -146,4 +160,11 @@ def test_active_and_joint_lev_cuda_match_reference_and_avoid_host_hot_paths(
     if joint_tev:
         assert solver._tev_solved is not None
         assert solver._tev_solved.is_cuda
-    np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)
+        assert solver._prescribed_wake is False
+        assert solver.cuda_counters["wake_convection"] == num_steps - 1
+        assert max(row["kelvin_eq9_max_abs"] for row in solver.diag) <= 1.0e-12
+        assert all(np.isfinite(row["lesp_max"]) for row in solver.diag)
+        assert np.all(np.isfinite(actual))
+    else:
+        assert expected is not None
+        np.testing.assert_allclose(actual, expected, rtol=tolerance, atol=tolerance)

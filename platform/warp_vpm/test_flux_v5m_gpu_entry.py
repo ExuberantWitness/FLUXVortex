@@ -6,6 +6,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 import torch
 
+from bing_joint_ptera import JointConfig
 from flux_v5m_gpu import (
     FAIL_CLOSED_STATUS,
     OUT_OF_SCOPE_STATUS,
@@ -15,6 +16,7 @@ from flux_v5m_gpu import (
     make_flux_v5m_ptera_solver,
     require_cuda_device,
     require_cuda_float64_tensors,
+    run_flux_v5m_ptera,
 )
 
 
@@ -23,7 +25,10 @@ def test_capability_matrix_is_exact_immutable_and_honest() -> None:
     assert type(matrix) is tuple
     assert len(matrix) == 7
     status = capability_status()
-    assert status["ptera_attached_single_wing_prescribed_wake"] == PRODUCTION_STATUS
+    assert (
+        status["ptera_attached_single_wing_prescribed_wake"]
+        == FAIL_CLOSED_STATUS
+    )
     assert status["ldvm_and_finite_wing_corrections"] == PRODUCTION_STATUS
     assert status["ptera_active_lev"] == PRODUCTION_STATUS
     assert status["ptera_joint_lev_tev"] == PRODUCTION_STATUS
@@ -64,3 +69,20 @@ def test_factory_does_not_expose_a_cpu_solver_fallback() -> None:
     source = make_flux_v5m_ptera_solver.__code__.co_names
     assert "JointLEVTEVSolver" not in source
     assert "CudaAttachedJointLEVTEVSolver" in source
+
+
+def test_production_entry_rejects_reduced_aerodynamic_modes_before_run() -> None:
+    with pytest.raises(ValueError, match="separated LEV"):
+        make_flux_v5m_ptera_solver(
+            object(), JointConfig(enable_lev=False, joint_tev=True)
+        )
+    with pytest.raises(ValueError, match="joint TEV"):
+        make_flux_v5m_ptera_solver(
+            object(), JointConfig(enable_lev=True, joint_tev=False)
+        )
+    with pytest.raises(ValueError, match="free wake"):
+        run_flux_v5m_ptera(
+            object(),
+            JointConfig(enable_lev=True, joint_tev=True),
+            prescribed_wake=True,
+        )

@@ -28,6 +28,7 @@ class LDVM2DCuda:
         pivot_xc: float = 0.0,
         core_rc: float = 0.02,
         max_wake: int = 100000,
+        source_parity: bool = False,
         device: str = "cuda:0",
     ) -> None:
         if not torch.cuda.is_available():
@@ -46,6 +47,9 @@ class LDVM2DCuda:
         self.xp = float(pivot_xc) * self.c
         self.rc = float(core_rc) * self.c
         self.max_wake = int(max_wake)
+        if type(source_parity) is not bool:
+            raise TypeError("source_parity must be an exact bool")
+        self.source_parity = source_parity
         if self.ndiv < 4 or self.naterm < 3 or self.max_wake < 2:
             raise ValueError("invalid LDVM discretization")
 
@@ -93,6 +97,26 @@ class LDVM2DCuda:
         self.sy = torch.zeros((), **kw)
         self._ca = torch.ones((), **kw)
         self._sa = torch.zeros((), **kw)
+        self.wake_convection_count = 0
+        self.cuda_stream = torch.cuda.current_stream(self.device)
+
+    def __getstate__(self) -> dict[str, object]:
+        """Serialize scientific CUDA state without the process-local stream.
+
+        Q16 predictor/corrector trials fork the complete aerodynamic owner via
+        pickle.  ``torch.cuda.Stream`` is a process-local execution handle and
+        cannot be pickled; it is not scientific state.  Every tensor containing
+        the LDVM trajectory remains in the serialized dictionary.
+        """
+        state = self.__dict__.copy()
+        state.pop("cuda_stream", None)
+        return state
+
+    def __setstate__(self, state: dict[str, object]) -> None:
+        """Restore a branch and bind it to the current CUDA stream."""
+        self.__dict__.update(state)
+        if self.device.type != "cuda" or not torch.cuda.is_available():
+            raise RuntimeError("LDVM2DCuda branch restore requires CUDA")
         self.cuda_stream = torch.cuda.current_stream(self.device)
 
     @property
@@ -251,6 +275,7 @@ class LDVM2DCuda:
         S_old = torch.sum(tvg) + torch.sum(lvg) + self.gam_lost
         G0, GT = self._gamb(W), self._gamb(tcol)
         gT = (G0 - S_old) / (1.0 - GT)
+        gT_te_only_provisional = gT.clone()
         W_pre = W + gT * tcol
         AF_pre = torch.stack(
             (
@@ -271,8 +296,21 @@ class LDVM2DCuda:
         lex, ley = self._world(zero)
         consecutive = self._lev_prev_it == self.it - 1
         s0 = -self.xp
-        le_u = self.U + s0 * sa * dalpha_t + ui[0]
-        le_w = -hdot_t + s0 * ca * dalpha_t + wi[0]
+        new_tev_u = zero
+        new_tev_w = zero
+        if self.source_parity:
+            provisional_u, provisional_w = self._induced_many(
+                lex.reshape(1),
+                ley.reshape(1),
+                ntx.reshape(1),
+                nty.reshape(1),
+                gT_te_only_provisional.reshape(1),
+                torch.full((1,), self.rc, device=self.device, dtype=self.dtype),
+            )
+            new_tev_u = provisional_u[0]
+            new_tev_w = provisional_w[0]
+        le_u = self.U + s0 * sa * dalpha_t + ui[0] + new_tev_u
+        le_w = -hdot_t + s0 * ca * dalpha_t + wi[0] + new_tev_w
         first_nlx = lex + 0.5 * le_u * self.dt
         first_nly = ley + 0.5 * le_w * self.dt
         previous_slot = torch.clamp(
@@ -306,7 +344,9 @@ class LDVM2DCuda:
         gT = torch.where(shed_lev, coupled_gT, gT)
         gL = torch.where(shed_lev, coupled_gL, zero)
         self._append_le_masked(nlx, nly, gL, shed_lev)
-        self._append_te(ntx, nty, gT)
+        first_tev_zeroed = self.source_parity and self.it == 1
+        gT_stored = zero if first_tev_zeroed else gT
+        self._append_te(ntx, nty, gT_stored)
 
         Wt = W + gT * tcol + gL * lcol
         AF = torch.stack(
@@ -370,6 +410,7 @@ class LDVM2DCuda:
         self.ty[: self.nt].add_(wc[: self.nt] * self.dt)
         self.lx.add_(uc[self.nt :] * self.dt)
         self.ly.add_(wc[self.nt :] * self.dt)
+        self.wake_convection_count += 1
         self.nt = self._trim(self.tx, self.ty, self.tg, self.nt)
         self._trim_le_masked()
 
@@ -383,13 +424,34 @@ class LDVM2DCuda:
             "CNnonl": nonl,
             "CSf": cs,
             "A0": AF[0],
-            "lesp": AF[0],
+            "lesp": a0,
+            "lesp_pre": a0,
+            "lesp_constraint_residual": torch.where(
+                shed_lev,
+                AF[0] - torch.sign(a0) * self.lesp_crit,
+                zero,
+            ),
             "gcum01": gcum01,
             "n_lev": torch.minimum(
                 self._nl_total,
                 torch.as_tensor(self.max_wake, device=self.device),
             ),
+            "n_tev": torch.as_tensor(
+                self.nt, device=self.device, dtype=torch.int64
+            ),
             "shed_lev": shed_lev,
+            "gamma_lev_new": gL,
+            "gamma_tev_new_solved": gT,
+            "gamma_tev_new_persisted": gT_stored,
+            "lev_birth_position": torch.stack((nlx, nly)),
+            "tev_birth_position": torch.stack((ntx, nty)),
+            "lev_edge_position": torch.stack((lex, ley)),
+            "tev_edge_position": torch.stack((tex, tey)),
+            "tev_strength_te_only_provisional": gT_te_only_provisional,
+            "first_tev_zeroed": torch.as_tensor(
+                first_tev_zeroed, device=self.device, dtype=torch.bool
+            ),
+            "source_parity": self.source_parity,
         }
 
 

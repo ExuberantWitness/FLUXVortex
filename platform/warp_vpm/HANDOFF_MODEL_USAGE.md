@@ -4,7 +4,7 @@
 
 一套零拟合的机理性气动载荷预测系统：**机器精度验证的 UVLM 底盘**（载荷级修正、不动环流求解）+ **声明常数的分离/粘性修正层**。生产入口强制 CUDA float64，禁止 CPU fallback；legacy CPU 模块仅保留为离线参考，不能用于发布 V5M 结果。
 
-当前能力必须以 `flux_v5m_gpu.capability_matrix()` 为准。只有标记为 `production_cuda` 的模式可运行。attached、active-LEV、joint-TEV、prescribed/free wake 与标准 Warp-FSI 数据面已走统一 CUDA 数值底盘；通用 Ptera 的多翼/多机/image 不属于 V5M 生产工况并在首步前明确拒绝。`warp_fsi.ml_fluid/ml_chain` 是 MATLAB 对照模块，也禁止从 V5M 生产入口加载。
+当前能力必须以 `flux_v5m_gpu.capability_matrix()` 为准。只有标记为 `production_cuda` 的模式可运行。生产 Ptera 入口强制 separated LEV、joint TEV 与 free wake 同时开启；attached-only 和 prescribed-wake 只保留为历史诊断后端，不能发布 V5M CASE 结果。通用 Ptera 的多翼/多机/image 不属于 V5M 生产工况并在首步前明确拒绝。`warp_fsi.ml_fluid/ml_chain` 是 MATLAB 对照模块，也禁止从 V5M 生产入口加载。
 
 性能合同同样属于生产合同：论文网格默认启用形状动态的融合环涡核，四条环边和四组载荷目标点批量执行；Warp-FSI 的 PCG 归约与向量更新使用融合 Warp kernel，并把收敛检查降为每 8 次迭代一次。不要用“多 Python 线程 + 多 CUDA stream”替换此路径——RTX 4090 D 实测反而慢 6–11%。
 
@@ -55,10 +55,10 @@ problem = pterasoftware.problems.UnsteadyProblem(
 # 跑已授权的严格 GPU 底盘；未迁移模式会 fail-close
 solver = run_flux_v5m_ptera(problem, JointConfig(
     enable_lev=True,        # active-LEV 已授权 CUDA
-    joint_tev=False,        # True 使用 CUDA 增广 LEV+TEV 系统
+    joint_tev=True,         # 生产 CASE 强制 CUDA 增广 LEV+TEV 系统
     load_mode="bing",       # "bing" 钉帽 / "v4b3d" 完整 bound
     lesp_crit=0.11,         # 声明 LESP 临界值
-), device="cuda:0", prescribed_wake=True,  # False 为 CUDA free wake
+), device="cuda:0", prescribed_wake=False,  # 生产 CASE 强制 free wake
    calculate_streamlines=False, show_progress=False)
 
 # 收割载荷
@@ -132,6 +132,10 @@ for k in range(3 * SPC):
 
 ## 3. 验证门体系
 
+G0/G0b 是保留的 attached 历史诊断，不属于当前生产 CASE 门，不能作为
+运行生产任务的前置入口。生产 CASE 首门必须直接验证 separated LEV、joint
+TEV、free wake 和 CUDA float64 全部处于活动状态。
+
 | 门 | 测试文件 | 验证内容 | 通过标准 | 失败退出 |
 |----|---------|---------|---------|---------|
 | G0 | `test_g0_steady.py` | 定常 α=5° AR=15 升力线 | CL ∈ [0.470, 0.4882]（1.5% 非定常容差） | exit 1 |
@@ -148,7 +152,10 @@ for k in range(3 * SPC):
 
 **设备要求**：必须存在 CUDA GPU。生产入口、LDVM、修正和粒子场全部强制 CUDA；`PFIELD_DEVICE=cpu`、`FLUXV_DEVICE=cpu` 或 CUDA 不可用都会非零退出，绝不自动回退 CPU。
 
-## 4. 各论文的最优配置（终值）
+## 4. 历史论文配置与迁移前终值
+
+本节数值来自旧的 attached/prescribed-wake 三维 runner，只能作为迁移前
+reference。按当前强制模式重新跑完之前，不得称为当前 V5M CASE 终值。
 
 | 论文 | 最优模型 | 关键参数 | 终值 | 对比 |
 |------|---------|---------|------|------|
@@ -213,7 +220,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ## 7. 接手 agent 的工作流
 
 1. **读本文档** + `BING_SESSION_RESULTS.md`（完整正/负结果档案）
-2. **跑三门**（G0/G0b/G0c）确认底盘健康
+2. **跑 mandatory-mode 门**，确认 separated LEV、joint TEV、free wake、CUDA float64 同时有效
 3. **选模型**：按第 4 节的选型规则匹配你的工况
 4. **跑一个工况**确认数值合理（量级、符号、收敛）
 5. **加修正层**（账本/LDVM delta/polar）按需
@@ -238,7 +245,9 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 | T2 Rayleigh 分支未启用 | 需分离状态记忆（LDVM 原生携带） | 持续 onset 权重设计 |
 | Izra 端部条件 15/15、25/105 | 极端相位偏移 | 未调查 |
 
-## 10. 成绩单（vs V4B，全部零拟合）
+## 10. 历史成绩单（vs V4B，全部零拟合）
+
+该表是 CASE 迁移前 reference，不是当前 mandatory-mode 复现结论。
 
 | 指标 | 我们 | V4B | 判定 |
 |------|------|-----|------|

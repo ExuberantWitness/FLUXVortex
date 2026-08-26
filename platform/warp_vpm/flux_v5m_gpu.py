@@ -38,12 +38,12 @@ class FluxV5MCapability:
 _CAPABILITIES = (
     FluxV5MCapability(
         name="ptera_attached_single_wing_prescribed_wake",
-        status=PRODUCTION_STATUS,
-        evidence=(
-            "test_ptera_gpu_only_backend.py",
-            "ptera_cuda_backend_v3.nsys-rep",
+        status=FAIL_CLOSED_STATUS,
+        evidence=("test_flux_v5m_gpu_entry.py",),
+        restriction=(
+            "legacy diagnostic backend only; V5M production requires separated "
+            "LEV, joint TEV and free wake"
         ),
-        restriction="one airplane, one wing, no image surface",
     ),
     FluxV5MCapability(
         name="ldvm_and_finite_wing_corrections",
@@ -55,19 +55,22 @@ _CAPABILITIES = (
         name="ptera_active_lev",
         status=PRODUCTION_STATUS,
         evidence=("test_ptera_gpu_active_lev.py",),
-        restriction="one airplane, one wing, prescribed wake, post-hoc TEV",
+        restriction="one airplane, one wing, joint TEV and free wake mandatory",
     ),
     FluxV5MCapability(
         name="ptera_joint_lev_tev",
         status=PRODUCTION_STATUS,
         evidence=("test_ptera_gpu_active_lev.py",),
-        restriction="one airplane, one wing, prescribed wake",
+        restriction="one airplane, one wing, separated LEV and free wake mandatory",
     ),
     FluxV5MCapability(
         name="ptera_free_wake",
         status=PRODUCTION_STATUS,
         evidence=("test_ptera_gpu_only_backend.py",),
-        restriction="one airplane, one wing, no image surface",
+        restriction=(
+            "one airplane, one wing, no image surface; separated LEV and joint "
+            "TEV mandatory"
+        ),
     ),
     FluxV5MCapability(
         name="ptera_multi_airplane_multi_wing_or_image",
@@ -155,8 +158,12 @@ def make_flux_v5m_ptera_solver(
     Calling the CPU reference is never an alternative.
     """
 
+    selected = config or JointConfig(enable_lev=True, joint_tev=True)
+    if type(selected.enable_lev) is not bool or not selected.enable_lev:
+        raise ValueError("FLUX-V5M production requires separated LEV")
+    if type(selected.joint_tev) is not bool or not selected.joint_tev:
+        raise ValueError("FLUX-V5M production requires joint TEV")
     require_cuda_device(device)
-    selected = config or JointConfig(enable_lev=False, joint_tev=False)
     return CudaAttachedJointLEVTEVSolver(
         unsteady_problem,
         selected,
@@ -169,11 +176,16 @@ def run_flux_v5m_ptera(
     config: JointConfig | None = None,
     *,
     device: str = "cuda:0",
-    prescribed_wake: bool = True,
+    prescribed_wake: bool = False,
     calculate_streamlines: bool = False,
     show_progress: bool = False,
 ) -> CudaAttachedJointLEVTEVSolver:
-    """Run an authorised prescribed- or free-wake Ptera configuration."""
+    """Run the mandatory separated-LEV, joint-TEV and free-wake mode."""
+
+    if type(prescribed_wake) is not bool:
+        raise TypeError("prescribed_wake must be an exact bool")
+    if prescribed_wake:
+        raise ValueError("FLUX-V5M production requires a free wake")
 
     solver = make_flux_v5m_ptera_solver(
         unsteady_problem,
