@@ -66,3 +66,16 @@ recipe) validated on APIs but blocked in our pipeline at TWO depth levels:
    glue layer — a dedicated engineering session with its own bit-level
    regression protocol (spike archived: diagnostics/roj_warp_graph_spike.py).
 Immediate safe speedup remains IQN-ILS coupling (~1.3-1.5x, same fixed point).
+
+### Graph spike addendum (3 stream-discipline variants, all blocked at same boundary)
+Tried: (A) wp.stream_to_torch + capture on warp stream; (B) torch Stream ->
+wp.stream_from_torch + ScopedStream; (C) record_stream tagging of every
+wp.to_torch wrapped tensor. All fail identically at the first torch op
+consuming a transfer-kernel output: "operation would make the legacy stream
+depend on a capturing blocking stream". Root-cause hypothesis: wp.launch in
+kernels_q16_transfer resolves a device-default stream rather than the
+ScopedStream current stream, so kernel output memory is owned by a non-capture
+stream. Fix requires plumbing launch(stream=...) through the production
+transfer kernels or verifying warp's current-stream resolution — dedicated
+session. Validation-gate defer flags (_CAPTURING/CAPTURING, default-off) are
+in place as groundwork.

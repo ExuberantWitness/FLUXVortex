@@ -519,6 +519,12 @@ class Q16NativePanelLoadTransfer:
         return q_generalized
 
 
+# Set True only around an active wp.ScopedCapture region: host-side
+# validation gates must defer during CUDA-graph capture; the capture-mode
+# caller validates the replayed static outputs after the capture ends.
+CAPTURING = False
+
+
 def freestream_vector(
     freestream: float, angle_deg: float, device: str | torch.device
 ) -> torch.Tensor:
