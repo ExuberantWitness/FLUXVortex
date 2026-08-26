@@ -79,3 +79,10 @@ stream. Fix requires plumbing launch(stream=...) through the production
 transfer kernels or verifying warp's current-stream resolution — dedicated
 session. Validation-gate defer flags (_CAPTURING/CAPTURING, default-off) are
 in place as groundwork.
+
+## Update 2026-08-26 (3): E=1.4 branch verdict — material-uncertainty hypothesis CONFIRMED
+Full-cycle mean camber (t*2-6) = 0.0423 vs paper 0.043 (-1.6%); the cubic-scaling
+prediction 0.037*(2.2/1.4)^(1/3)=0.0426 was hit to 0.7%.  End-state Cn 0.905-0.917
+(paper band 0.92-0.95, at low edge, no overshoot => double-sided check passed).
+E=2.2 remains the primary result; E=1.4 is the labeled literature-quantified
+material-uncertainty branch (all independent reproductions found 2.2 MPa stiff).
