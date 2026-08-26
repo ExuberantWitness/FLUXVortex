@@ -38,3 +38,17 @@ Falsifiable predictions vs outcome:
 Conclusion: N4 (missing latex viscoelastic damping) VERIFIED as mechanism; remaining gap is
 statistics-window convergence (creep toward equilibrium slower than 3 t*). Long-window run
 (600 steps, t*=6) launched as ROJ11_A16_ETA0.1_T6.
+
+## Update 2026-08-26 (2): 600-step long window (t*=6) final state
+
+- Slow breathing mode (period ~2 t*, membrane 1st mode at amplitude-dependent
+  natural frequency) DECAYS: z envelope 0.013-0.065 (t*3-4) -> 0.029-0.040 (t*5-6);
+  late-run drift settles toward equilibrium Cn~1.02, z~0.030.
+- Equilibrium vs paper: Cn +8% (0.92-0.95 band, essentially at paper level);
+  camber -30% (0.030 vs 0.043).
+- Interpretation: the camber deficit has the SAME sign and similar magnitude as the
+  independent ILES reproduction (Gordnier & Attar 2014 underpredicted displacement
+  at E=2.2 MPa, per Yang-Dudley-Harris AIAA J 2018) => material-property uncertainty
+  (handoff section 6 anticipated exactly this), NOT a mechanism defect. All
+  structural/load/time/boundary oracles now pass => the labeled E-uncertainty
+  branch is unlocked per the handoff's own rule.
