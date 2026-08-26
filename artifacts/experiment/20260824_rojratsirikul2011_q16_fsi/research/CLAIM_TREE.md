@@ -52,3 +52,17 @@ statistics-window convergence (creep toward equilibrium slower than 3 t*). Long-
   (handoff section 6 anticipated exactly this), NOT a mechanism defect. All
   structural/load/time/boundary oracles now pass => the labeled E-uncertainty
   branch is unlocked per the handoff's own rule.
+
+## Engineering note 2026-08-26: warp CUDA-graph spike findings
+
+Warp 1.14 native capture (ScopedCapture RELAXED + wp.stream_to_torch, official
+recipe) validated on APIs but blocked in our pipeline at TWO depth levels:
+1. host-side fail-closed validation gates sync during capture (fixed via the
+   default-off _CAPTURING defer flag in kernels_q16_transfer.py — kept as
+   groundwork);
+2. "legacy stream depend on capturing blocking stream": remaining torch-glue /
+   warp-conversion touch points still touch the legacy default stream inside
+   evaluate(). Full capture-safety needs legacy-stream isolation across the
+   glue layer — a dedicated engineering session with its own bit-level
+   regression protocol (spike archived: diagnostics/roj_warp_graph_spike.py).
+Immediate safe speedup remains IQN-ILS coupling (~1.3-1.5x, same fixed point).
