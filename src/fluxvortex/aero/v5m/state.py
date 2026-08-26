@@ -30,6 +30,15 @@ class V5MSurfaceState:
     # Wake rings owned by this surface (newest rows first, as in NativeV5MState)
     wake_rings: torch.Tensor             # (n_rings, 4, 3)
     wake_gamma: torch.Tensor             # (n_rings,)
+    # Single-owner contract (plan §8.3 / U2-F): ``surface_separated`` IS the
+    # separation truth for this surface.  The source bank's ``shed_lev`` only
+    # supplies release strength/position for strips this mask flags and may
+    # never be unioned in to declare separation (see separation.py).
+    separation_owner_note: str = (
+        "surface_separated (from 3D lesp_pre_3d vs frozen lesp_crit) is the "
+        "single separation truth; source-bank shed_lev is release "
+        "strength/position only"
+    )
 
 
 @dataclass
@@ -101,6 +110,11 @@ class V5MWorldState:
             particle_field=native_state.particle_field,
             wake_rings=native_state.wake_rings,
             wake_gamma=native_state.wake_gamma,
+            separation_owner_note=(
+                f"surface_separated (from 3D lesp_pre_3d vs lesp_crit="
+                f"{lesp_crit:g}) is the single separation truth; "
+                "source-bank shed_lev is release strength/position only"
+            ),
         )
         return cls(
             step_index=native_state.step,

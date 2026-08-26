@@ -15,6 +15,8 @@ import numpy as np
 import torch
 import warp as wp
 
+from fluxvortex.aero.v5m.loads import LOAD_HISTORY_MODELS
+from fluxvortex.aero.v5m.separation import reconcile_release_mask, unified_separation_mask
 from fluxvortex.q16_ancf_mesh import Q16Mesh
 from fluxvortex.q16_work_conjugate_transfer import Q16SurfaceTransferMap
 
@@ -162,7 +164,9 @@ class NativeV5MConfig:
     # Mf2_vec1 (A^-1 applied to the wake-motion material derivative) kept by
     # the oracle-verified Yamano path; "bound_rate" is the author's
     # weak-scheme dp_add = (Gamma - Gamma_old)/dt, which stays bounded in
-    # sustained-LEV-release regimes where Mf2_vec1 diverges.
+    # sustained-LEV-release regimes where Mf2_vec1 diverges.  These are
+    # distinct PHYSICS models with registered identities (aero/v5m/loads.py,
+    # plan §8.7) — not interchangeable runtime stability switches.
     wake_history_mode: str = "material"
     # Number of newest wake rows (shed events) that keep full induced
     # convection; older rows convect with the freestream alone (the author's
@@ -182,7 +186,7 @@ class NativeV5MConfig:
             raise ValueError("spanwise_panels must be a positive exact int")
         if type(self.particle_max_age_steps) is not int or self.particle_max_age_steps < 0:
             raise ValueError("particle_max_age_steps must be a non-negative exact int")
-        if self.wake_history_mode not in {"material", "bound_rate"}:
+        if self.wake_history_mode not in LOAD_HISTORY_MODELS:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
             raise ValueError("wake_free_rows must be a non-negative exact int")
@@ -874,7 +878,11 @@ class Q16NativeV5MSolver:
         theta = torch.acos(torch.clamp(1.0 - 2.0 * first_dx / chord, -1.0, 1.0))
         scale = chord * self.settings.freestream * (theta + torch.sin(theta)) / LESP_FACTOR
         lesp_pre_3d = -gamma_pre[:ns] / scale
-        surface_separated = torch.abs(lesp_pre_3d) > self.settings.effective_lesp_crit
+        # Single separation owner (plan §8.3): the 3D actual-surface LESP is
+        # the ONLY truth for whether a strip is separated.
+        surface_separated = unified_separation_mask(
+            lesp_pre_3d, self.settings.effective_lesp_crit
+        )
         alpha, alpha_rate, heave, _, _ = self._dvm_kinematics(geometry, trial)
         source_result = trial.source_bank.step(
             alpha, alpha_rate, heave, node_topology_from_cell_count=ns
@@ -891,7 +899,17 @@ class Q16NativeV5MSolver:
                 source_stop=trial.particle_field.n,
             )
             rhs = rhs - torch.sum(newborn_velocity * geometry.normals, dim=1)
-        pin_active = released | surface_separated
+        # Reconcile the source bank's release mask with the 3D truth (plan
+        # §8.3): pin_active IS the 3D mask — never the union of two owners.
+        # The source bank's shed_lev only supplies release strength/position;
+        # strips it sheds without 3D separation no longer pin the bound solve,
+        # and strips 3D separates but the bank hasn't caught up with remain
+        # pinned (continuing release of existing LEV circulation).  The
+        # disagreement count is recorded so a dual-owner conflict cannot hide
+        # inside a silent union.
+        pin_active, release_owner_conflicts = reconcile_release_mask(
+            surface_separated, released
+        )
         separated_aic = aic.clone()
         separated_rhs = rhs.clone()
         le_indices = torch.arange(ns, device=self.device, dtype=torch.int64)
@@ -950,10 +968,11 @@ class Q16NativeV5MSolver:
         tau_y = tau_y / torch.linalg.vector_norm(tau_y, dim=1, keepdim=True)
         gradient = tau_x * dx_gamma.reshape(-1, 1) + tau_y * dy_gamma.reshape(-1, 1)
         if self.settings.wake_history_mode == "bound_rate":
-            # Author's weak-scheme dp_add (calc_fluid_force.m): the bound
+            # BOUND_RATE_MODEL identity (aero/v5m/loads.py, plan §8.7):
+            # the author's weak-scheme dp_add (calc_fluid_force.m), the bound
             # circulation time derivative, bounded by construction.  The
-            # strong-scheme Mf2_vec1 diverges when every wake row carries a
-            # large persistent LEV release.
+            # strong-scheme Mf2_vec1 (MATERIAL_MODEL) diverges when every
+            # wake row carries a large persistent LEV release.
             mf2_history = (
                 gamma - trial.gamma_previous
             ) / self.settings.aerodynamic_dt
@@ -1047,6 +1066,7 @@ class Q16NativeV5MSolver:
                 "step": trial.step,
                 "lev_release_count": int(torch.count_nonzero(released).item()),
                 "separated_strip_count": int(torch.count_nonzero(pin_active).item()),
+                "release_owner_conflicts": int(release_owner_conflicts),
                 "lesp_pre_max_abs": float(torch.max(torch.abs(lesp_pre_3d)).item()),
                 "lesp_pin_max_abs": float(pin_error.item()),
                 "kelvin_max_abs": float(kelvin.item()),
