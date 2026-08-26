@@ -65,6 +65,85 @@ def _relative_error(
     return float(value.item())
 
 
+class _IQNILS:
+    """Interface quasi-Newton with inverse least squares (Degroote 2009).
+
+    Fixed point r(d) = d - S(d) = 0; secant pairs (W=d-diff, V=r-diff)
+    across the current step plus a reuse window; update
+    d <- d - W (V^T V)^+ V^T r_k.  Falls back to relaxed-Aitken steps when
+    the pair history is rank-deficient (QR2-style epsilon filter).
+    """
+
+    def __init__(self, dt: float, initial: float, *, max_columns: int = 12, epsilon: float = 1e-2) -> None:
+        self.dt = float(dt)
+        self.initial = float(initial)
+        self.max_columns = max_columns
+        self.epsilon = float(epsilon)
+        self._w: list[torch.Tensor] = []
+        self._v: list[torch.Tensor] = []
+        self._prev_d: torch.Tensor | None = None
+        self._prev_r: torch.Tensor | None = None
+        self.history: list[float] = []
+
+    def _residual(self, d: torch.Tensor, target_q: torch.Tensor, tv_scaled: torch.Tensor) -> torch.Tensor:
+        # target concatenation in the same metric as _Aitken (v scaled by dt)
+        return d - torch.cat((target_q, tv_scaled))
+
+    def advance(self, current_q, current_v, target_q, target_v, dt: float):
+        del dt
+        q = wp.to_torch(current_q)
+        v = wp.to_torch(current_v)
+        tq = wp.to_torch(target_q)
+        tv_scaled = self.dt * wp.to_torch(target_v)
+        d = torch.cat((q, v * self.dt))
+        r = self._residual(d, tq, tv_scaled)
+        if self._prev_d is not None:
+            dw = d - self._prev_d
+            dr = r - self._prev_r
+            if float(torch.linalg.vector_norm(dr).item()) > 0.0:
+                self._w.append(dw)
+                self._v.append(dr)
+                if len(self._w) > self.max_columns:
+                    self._w.pop(0)
+                    self._v.pop(0)
+        self._prev_d = d.detach().clone()
+        self._prev_r = r.detach().clone()
+        updated = None
+        if len(self._v) >= 2:
+            v_mat = torch.stack(self._v, dim=1)
+            w_mat = torch.stack(self._w, dim=1)
+            # QR2-style filter: drop columns whose residual-difference norm
+            # falls below epsilon * the largest.
+            norms = torch.linalg.vector_norm(v_mat, dim=0)
+            keep = norms > self.epsilon * float(norms.max().item())
+            if bool(keep.any().item()) and int(keep.sum().item()) == keep.numel():
+                gram = v_mat.T @ v_mat
+                rhs = v_mat.T @ r
+                ridge = 1.0e-8 * float(torch.diagonal(gram).abs().max().item())
+                gram = gram + ridge * torch.eye(
+                    gram.shape[0], device=gram.device, dtype=torch.float64
+                )
+                try:
+                    alpha = torch.linalg.solve(gram, rhs)
+                    delta = -(w_mat @ alpha)
+                    nd = float(torch.linalg.vector_norm(delta).item())
+                    nr = float(torch.linalg.vector_norm(r).item())
+                    if math.isfinite(nd) and nd <= 1.2 * max(nr, 1.0e-300):
+                        updated = d + delta
+                        self.history.append(1.0)
+                except Exception:
+                    updated = None
+        if updated is None:
+            updated = d + r
+            self.history.append(1.0)
+        out_q = updated[: q.shape[0]]
+        out_v = updated[q.shape[0] :] / self.dt
+        return (
+            wp.clone(wp.from_torch(out_q, dtype=config.DTYPE, requires_grad=False)),
+            wp.clone(wp.from_torch(out_v, dtype=config.DTYPE, requires_grad=False)),
+        )
+
+
 class _Aitken:
     def __init__(self, initial: float) -> None:
         if not 0.0 < initial <= 1.0:
@@ -177,6 +256,7 @@ class Q16NativeV5MFSIStepper:
         max_coupling_iterations: int = 20,
         relaxation: float = 0.7,
         persistent_relaxation: bool = False,
+        coupling_accelerator: str = "aitken",
     ) -> None:
         if type(structural_solver) is not Q16CudaNewmarkStepper:
             raise TypeError("structural_solver must be the production Q16 CUDA stepper")
@@ -201,6 +281,9 @@ class Q16NativeV5MFSIStepper:
         # The convergence criterion is unchanged; only the trial path differs.
         self.persistent_relaxation = bool(persistent_relaxation)
         self._learned_relaxation: float | None = None
+        if coupling_accelerator not in {"aitken", "iqn_ils"}:
+            raise ValueError("coupling_accelerator must be 'aitken' or 'iqn_ils'")
+        self.coupling_accelerator = coupling_accelerator
 
     def _integrate_structure(
         self,
@@ -438,10 +521,14 @@ class Q16NativeV5MFSIStepper:
             committed_q, committed_v, committed_a, delta_time=delta_time
         )
         residual_history: list[float] = []
-        relaxer = _Aitken(
-            self._learned_relaxation
-            if self.persistent_relaxation and self._learned_relaxation is not None
-            else self.relaxation
+        relaxer = (
+            _IQNILS(delta_time, self.relaxation)
+            if self.coupling_accelerator == "iqn_ils"
+            else _Aitken(
+                self._learned_relaxation
+                if self.persistent_relaxation and self._learned_relaxation is not None
+                else self.relaxation
+            )
         )
         evaluations = 0
         for iteration in range(1, self.max_coupling_iterations + 1):
@@ -551,7 +638,7 @@ class Q16NativeV5MFSIStepper:
                     owner.previous_aerodynamic_load = owner.aerodynamic_load
                     owner.aerodynamic_load = formal_proposal.author_load
                     owner.generation += 1
-                    if self.persistent_relaxation:
+                    if self.persistent_relaxation and hasattr(relaxer, "factor"):
                         self._learned_relaxation = relaxer.factor
                     return Q16NativeV5MFSIStepResult(
                         structural=formal_structural,

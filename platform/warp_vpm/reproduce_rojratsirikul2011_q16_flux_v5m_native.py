@@ -253,6 +253,11 @@ def run_case(
         # Carry the learned Aitken factor across outer steps; the
         # convergence criterion is unchanged, only the trial path.
         persistent_relaxation=True,
+        # IQN-ILS parked: the naive implementation diverges on this
+        # added-mass-heavy interface exactly as Davis 2022 warns without
+        # force/displacement pre-scaling; Aitken (persistent) stays the
+        # production accelerator.  See SPEED_ENGINEERING_PLAN.md.
+        coupling_accelerator="aitken",
     )
 
     substeps = substep_count

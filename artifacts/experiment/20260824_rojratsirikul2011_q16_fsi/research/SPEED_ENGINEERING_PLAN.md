@@ -44,3 +44,13 @@ within tolerance + iterations drop 3->2 on the A16 probe.
 E=1.4 branch running (do not touch; verdict on completion: asymptote camber
 ->0.043 AND Cn slightly up = double-sided check), then A10/A23 generality
 runs at the new speed, same parameters, no per-case tuning.
+
+## Execution record 2026-08-26
+- Item 1 DONE (dc04e10): fused B-S kernel, 8.5e-14 vs chunked, 3.2x op.
+- Item 2 PARTIAL (944080d): aic LU caching landed (solves 80x/step -> 1
+  factorization); gates capture-deferred; graph capture still blocked by an
+  unidentified illegal call on the torch path (lu_solve? cusolver internals).
+- Item 3 PARKED: naive IQN-ILS DIVERGES on this interface - residual doubles
+  per iteration (spectral radius > 1 under added mass); Davis 2022 requires
+  force/displacement block PRE-SCALING which we did not implement. Aitken
+  (persistent) remains production. Revive only with pre-scaling + QR3.
