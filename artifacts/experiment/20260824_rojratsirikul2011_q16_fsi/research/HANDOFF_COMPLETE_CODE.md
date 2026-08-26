@@ -202,3 +202,56 @@ python platform/warp_vpm/reproduce_rojratsirikul2011_q16_flux_v5m_native.py \
 5. **物理项改动舍入级验证**——新增物理项先用 oracle 验证到机器舍入量级再进生产。
 6. **主结果不可被分支覆盖**——E=2.2 MPa、零假设（zero-damping 对照）是主结果；
    E=1.4 等材料分支只作材料不确定性解释性分支，不得反向覆盖主结论。
+
+---
+
+## Refactor Execution Record (2026-08-26, U0→U6 complete)
+
+Seven vertical slices landed on the unified framework (all commits pushed):
+
+| Slice | Commit | Content | Tests |
+|---|---|---|---|
+| U0-P | de1536c | SurfaceFrame/WorldOwner/Protocols/ResultStatus — bit-identical parity | 4+39 |
+| U0-F | b12724b | Corrected observers: max(mean z), sign-crossing, stationarity, E1.4 label | 24 |
+| U1-P/F | a47e36b | PartitionedStrongFSI + true transaction counters + GlobalTransaction | 7 |
+| U2-P | 4367962 | V5MWorldState + CirculationImpulseLedger + RetentionPolicy | 9 |
+| U2-F | ae60caf | Unified 3D separation owner + load-history model identity | 13+44+9 |
+| U3 | 5c5eaa0 | PrescribedRigid kinematics + OneWay coupling + Baik/Yang/Izra configs | 16 |
+| U4 | 09c416a | MultiSurfaceTopology + frame concatenation + Meng config | 17 |
+| U5 | b5eca85 | SE(3) body + joints + moving-root skeleton + composite dynamics | 34 |
+| U6 | fae510e | GeneralizedLoadPacket + J^T f + full velocity chain + free-flight FSI | 58 |
+
+**Total: 182 tests green across 9 test files. Zero production-numerics regressions.**
+
+New package structure:
+```
+src/fluxvortex/
+  state/      → WorldDynamicState, WorldOwner, GlobalTransaction
+  kinematics/  → SurfaceFrame, Q16/PrescribedRigid/BodyJointQ16/MultiSurface adapters
+  aero/        → protocols + v5m/{state, separation, retention, topology, loads}
+  dynamics/    → protocols + Q16Adapter, RigidBodySE3, Joints, Composite, LoadPacket
+  coupling/    → OneWay, PartitionedStrongFSI, PartitionedFreeFlightFSI
+  cases/       → Baik/Yang/Izraelevitz/Rojratsirikul/Meng configs
+  runtime/     → ResultStatus (5-dim, accuracy-fail → exit 2)
+  validation/  → corrected observers, gates, block stationarity
+```
+
+Physics verifications embedded in tests:
+- SurfaceFrame bit-identical to production evaluate() (torch.equal, all 10 tensors)
+- SE(3): angular momentum conservation, Hamilton product convention, semi-implicit
+  translation x_k = a·dt²·k(k+1)/2, dt-halving convergence 2.00×
+- Work conjugacy: surface power = F·v + M·ω + Q·q̇ to < 1e-12 (rigid + elastic + combined)
+- Separation: unified 3D LESP owner (verified no-op in saturated regime, conflict counter)
+- Free-flight: spring-loaded fixed-point converges to analytic solution within 1e-8
+- Transaction: double-commit rejected, failed trial zero-pollutes owner
+
+Key physics bug fixed during development:
+- PrescribedRigidSurfaceKinematics: velocity = ω×(R·x_ref) not ω×x_ref (U3)
+- BodyJointQ16: full velocity chain v_body + ω×(r) + joint_rate + elastic_vel (U6)
+
+Next (U7, not yet started):
+- Wire the multi-surface V5M solver adapter to run Meng production
+- Long-time Roj A16 stationarity with corrected statistics
+- A10/A23 generality (same parameters, no per-case tuning)
+- Resolution convergence (5×10→7×14 Q16, 15×30→21×42 V5M)
+- Performance: CUDA graph capture (warp stream issue documented), kernel fusion
