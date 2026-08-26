@@ -6,6 +6,11 @@ operator, action and solve is assembled and evaluated on CUDA float64.
 """
 from __future__ import annotations
 
+# Set True only around an active CUDA-graph capture region: host-side
+# validation gates must defer (they sync); the capture wrapper validates
+# the replayed static outputs after the capture ends.
+CAPTURING = False
+
 from dataclasses import dataclass
 import math
 from typing import Any
@@ -245,7 +250,7 @@ def material_ring_velocity_derivative_expanded(
         a_norm = torch.linalg.vector_norm(a, dim=2)
         b_norm = torch.linalg.vector_norm(b, dim=2)
         singular = (cross_norm_sq <= 0.0) | (a_norm <= 0.0) | (b_norm <= 0.0)
-        if bool(torch.any(singular).item()):
+        if not CAPTURING and bool(torch.any(singular).item()):
             raise FloatingPointError("material ring derivative is singular")
         unit_difference = a / a_norm[:, :, None] - b / b_norm[:, :, None]
         unit_difference_rate = (
@@ -287,7 +292,7 @@ def material_ring_velocity_derivative_expanded(
         )
     # Native ring orientation is the direct [1->2->3->4->1] circulation.
     derivative /= _FOUR_PI
-    if not bool(torch.isfinite(derivative).all().item()):
+    if not CAPTURING and not bool(torch.isfinite(derivative).all().item()):
         raise FloatingPointError("material ring derivative is non-finite")
     return derivative
 
@@ -333,6 +338,8 @@ class Q16NativeAuthorEndpointLoad:
     constant_pressure: torch.Tensor
     constant_generalized_force: wp.array
     added_mass: Q16NativeAddedMassAction
+    # Lazy LU of the fixed aic; the same aic is solved ~80x per outer step.
+    _aic_lu: Any = None
 
     def velocity_force(self, structural_velocity: wp.array) -> wp.array:
         live = self.surface.evaluate(self.structural_state, structural_velocity)
@@ -367,10 +374,14 @@ class Q16NativeAuthorEndpointLoad:
         mf21_rhs = torch.sum(slip * normal_rate, dim=1) - torch.sum(
             bound_rate * self.geometry.normals, dim=1
         )
-        mf21_pressure = torch.linalg.solve(self.aic, mf21_rhs)
+        lu = self._aic_lu
+        if lu is None:
+            lu = torch.linalg.lu_factor(self.aic)
+            object.__setattr__(self, "_aic_lu", lu)
+        mf21_pressure = torch.linalg.lu_solve(lu[0], lu[1], mf21_rhs.unsqueeze(1)).squeeze(1)
         pressure = lift2_pressure + mf21_pressure
         generalized = pressure @ self.pressure_to_generalized.T
-        if not bool(torch.isfinite(generalized).all().item()):
+        if not CAPTURING and not bool(torch.isfinite(generalized).all().item()):
             raise FloatingPointError("native lift2/Mf2_1 force is non-finite")
         return wp.from_torch(
             generalized.unsqueeze(0), dtype=config.DTYPE, requires_grad=False
