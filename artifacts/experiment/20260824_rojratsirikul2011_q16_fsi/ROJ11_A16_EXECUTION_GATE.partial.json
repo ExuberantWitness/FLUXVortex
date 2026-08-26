@@ -1,0 +1,8 @@
+{
+  "case_id": "ROJ11-A16",
+  "completed_aero_steps": 110,
+  "elapsed_seconds": 12425.660668402998,
+  "final_output": "artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/ROJ11_A16_EXECUTION_GATE.json",
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-v1-checkpoint",
+  "status": "execution_gate_passed"
+}

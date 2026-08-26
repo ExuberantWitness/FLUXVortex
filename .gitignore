@@ -29,3 +29,8 @@ platform/docs/mesh_cosine_nc24.png
 platform/docs/repro_fig*.png
 platform/docs/*.npz.ckpt
 researchpaper/
+
+# Evidence set for the Rojratsirikul 2011 reproduction — keep all
+# analysis data git-visible so independent agents can re-derive results.
+!artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/**
+!artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/**

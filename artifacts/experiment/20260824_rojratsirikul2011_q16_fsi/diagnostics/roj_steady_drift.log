@@ -1,0 +1,29 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_transfer 3e0cfbd load on device 'cuda:0' took 1.39 ms  (cached)
+rigid plate, full speed; paper steady Cn ~ 0.92-0.95
+step  10: Cn= +1.1425 parts=  2420 wake=  300 lmax=0.420
+step  20: Cn= +1.2255 parts=  4840 wake=  600 lmax=0.446
+step  30: Cn= +1.1736 parts=  7260 wake=  900 lmax=0.454
+step  40: Cn= +1.1463 parts=  9680 wake= 1200 lmax=0.462
+step  50: Cn= +1.1427 parts= 12100 wake= 1500 lmax=0.470
+step  60: Cn= +1.1389 parts= 14520 wake= 1800 lmax=0.478
+step  70: Cn= +1.1463 parts= 16698 wake= 2100 lmax=0.494
+step  80: Cn= +1.0733 parts= 19118 wake= 2400 lmax=0.499
+step  90: Cn= +1.1728 parts= 21538 wake= 2700 lmax=0.503
+step 100: Cn= +1.0967 parts= 23958 wake= 3000 lmax=0.516
+step 110: Cn= +1.1288 parts= 23716 wake= 3300 lmax=0.518
+step 120: Cn= +1.1412 parts= 22990 wake= 3600 lmax=0.522
+step 130: Cn= +1.1268 parts= 22022 wake= 3900 lmax=0.525
+step 140: Cn= +1.1406 parts= 21062 wake= 4200 lmax=0.527
+step 150: Cn= +1.1131 parts= 20336 wake= 4500 lmax=0.530
+step 160: Cn= +1.1548 parts= 20336 wake= 4800 lmax=0.533
+step 170: Cn= +1.1336 parts= 20578 wake= 5100 lmax=0.529
+step 180: Cn= +1.1093 parts= 20578 wake= 5400 lmax=0.526
+step 190: Cn= +1.1089 parts= 20578 wake= 5700 lmax=0.523
+step 200: Cn= +1.0950 parts= 20578 wake= 6000 lmax=0.524

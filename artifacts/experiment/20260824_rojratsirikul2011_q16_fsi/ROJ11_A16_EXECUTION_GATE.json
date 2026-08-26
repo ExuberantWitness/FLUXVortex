@@ -1,0 +1,3340 @@
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {},
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 110,
+  "alpha_deg": 16.0,
+  "assumption_ledger": {
+    "boundary_director_condition": {
+      "discipline": "translation-only relaxation requires independent oracle evidence first",
+      "frozen_value": "four-edge six-DOF clamped (positions + directors)",
+      "paper_status": "not reported"
+    },
+    "frame_aerodynamic_thickness": {
+      "discipline": "explicit frame is a separate later branch",
+      "frozen_value": "fixed boundary, full c x b outer mould line",
+      "paper_status": "only figure-2 cross-section given"
+    },
+    "initial_geometric_imperfection": {
+      "basis": "symmetric bifurcation issues get machine-scale reproducible perturbation, reported separately",
+      "frozen_value": "perfectly flat",
+      "paper_status": "not reported"
+    },
+    "initial_prestress_n_m": {
+      "basis": "zero",
+      "discipline": "no adding prestress after seeing under-deformation",
+      "frozen_value": 0.0,
+      "paper_status": "not reported"
+    },
+    "initial_slack_or_excess": {
+      "basis": "perfectly taut planar membrane",
+      "frozen_value": 0.0,
+      "paper_status": "not reported"
+    },
+    "inlet_turbulence_transition": {
+      "frozen_value": "none; no empirical turbulence tuning",
+      "paper_status": "not reported"
+    },
+    "latex_constitutive_curve": {
+      "discipline": "no hiding hyperelasticity inside a fitted E",
+      "frozen_value": "isotropic geometrically nonlinear Q16 baseline",
+      "paper_status": "only E = 2.2 MPa reported"
+    },
+    "poisson_ratio": {
+      "basis": "declared near-incompressible latex assumption",
+      "discipline": "must not be tuned against responses",
+      "frozen_value": 0.49,
+      "paper_status": "not reported"
+    },
+    "structural_damping": {
+      "basis": "zero; fluid + numerical dissipation decide response",
+      "frozen_value": 0.0,
+      "paper_status": "not reported"
+    }
+  },
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_config_digest": "a662ddfde6259d4fdf59036fc66100cd2ae67f230b78d804a96964dc5afd9f45",
+  "case_id": "ROJ11-A16",
+  "chordwise_peak_count": null,
+  "commit_count": 110,
+  "coupling_iteration_mean": 2.9,
+  "cpu_fallback_count": 0,
+  "damping": 0.0,
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "dirty_state_digest": "da474e9e60070ab3e21a735c404334fb2dd679ba3d0395ffb446f663592864e6",
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 12425.660668402998,
+  "execution_gate_only": true,
+  "free_wake": true,
+  "git_head": "ba388c3182cbd1f64b8349fe74697ba5616e3b1e",
+  "incidence_mechanism": "reference mesh rigidly pitched nose-up about the leading-edge line; freestream stays +x (oracle-verified native-path route)",
+  "joint_tev": true,
+  "lesp_release_condition": "abs(LESP)>0.11",
+  "lev_release_count_total": 3200,
+  "max_abs_lesp_pre": 0.42027125912219104,
+  "mean_Cn": null,
+  "mean_map": null,
+  "mean_zmax_over_c": null,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "prestress": 0.0,
+  "ptera_loaded": false,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "records": [
+    {
+      "aero_step": 1,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.6940658945086007e-21,
+        "lesp_pin_max_abs": 1.4238610290817633e-14,
+        "lesp_pre_max_abs": 0.42027125912219104,
+        "lev_release_count": 30,
+        "particle_count": 252,
+        "retained_neumann_max_abs": 1.6263032587282567e-18,
+        "separated_strip_count": 30,
+        "step": 1,
+        "wake_ring_count": 30
+      },
+      "aerodynamic_evaluations": 2,
+      "cn": 0.011129951274471538,
+      "coupling_iterations": 1,
+      "coupling_residual": 1.4588103286700853e-08,
+      "freestream_factor": 0.0002467198171342,
+      "instantaneous_zmax_over_c": 4.684809828507617e-08,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.01,
+      "total_aerodynamic_force_n": [
+        0.00043822734640223547,
+        1.5725455662002597e-19,
+        0.0015282801748488844
+      ]
+    },
+    {
+      "aero_step": 2,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.776263578034403e-21,
+        "lesp_pin_max_abs": 9.894862706971708e-15,
+        "lesp_pre_max_abs": 0.42010313602779853,
+        "lev_release_count": 30,
+        "particle_count": 522,
+        "retained_neumann_max_abs": 6.938893903907228e-18,
+        "separated_strip_count": 30,
+        "step": 2,
+        "wake_ring_count": 60
+      },
+      "aerodynamic_evaluations": 2,
+      "cn": 0.04617488149382814,
+      "coupling_iterations": 1,
+      "coupling_residual": 2.2768626564977506e-15,
+      "freestream_factor": 0.0009866357858642205,
+      "instantaneous_zmax_over_c": 3.550965319727098e-07,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.02,
+      "total_aerodynamic_force_n": [
+        0.0018180770413799884,
+        1.5274537900006438e-17,
+        0.006340382852310058
+      ]
+    },
+    {
+      "aero_step": 3,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 2.371692252312041e-20,
+        "lesp_pin_max_abs": 1.5140666498325572e-14,
+        "lesp_pre_max_abs": 0.4024914935967803,
+        "lev_release_count": 30,
+        "particle_count": 792,
+        "retained_neumann_max_abs": 1.6479873021779667e-17,
+        "separated_strip_count": 30,
+        "step": 3,
+        "wake_ring_count": 90
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.08099661139556139,
+      "coupling_iterations": 2,
+      "coupling_residual": 1.1478696017758523e-14,
+      "freestream_factor": 0.002219017698460002,
+      "instantaneous_zmax_over_c": 1.5058177281906089e-06,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.03,
+      "total_aerodynamic_force_n": [
+        0.0031891483390339443,
+        2.97836421522354e-17,
+        0.01112183454422892
+      ]
+    },
+    {
+      "aero_step": 4,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 2.371692252312041e-20,
+        "lesp_pin_max_abs": 1.0963452368173421e-14,
+        "lesp_pre_max_abs": 0.3893131827786454,
+        "lev_release_count": 30,
+        "particle_count": 1062,
+        "retained_neumann_max_abs": 2.0816681711721685e-17,
+        "separated_strip_count": 30,
+        "step": 4,
+        "wake_ring_count": 120
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.10790625796456724,
+      "coupling_iterations": 2,
+      "coupling_residual": 8.51883221098663e-15,
+      "freestream_factor": 0.003942649342761062,
+      "instantaneous_zmax_over_c": 4.352823290863971e-06,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.04,
+      "total_aerodynamic_force_n": [
+        0.004248723792736839,
+        3.572896475465211e-17,
+        0.014816849972864974
+      ]
+    },
+    {
+      "aero_step": 5,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 5.421010862427522e-20,
+        "lesp_pin_max_abs": 6.966649479522857e-15,
+        "lesp_pre_max_abs": 0.3816528941809191,
+        "lev_release_count": 30,
+        "particle_count": 1332,
+        "retained_neumann_max_abs": 3.642919299551295e-17,
+        "separated_strip_count": 30,
+        "step": 5,
+        "wake_ring_count": 150
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.14414813172418448,
+      "coupling_iterations": 2,
+      "coupling_residual": 1.2423454160362553e-14,
+      "freestream_factor": 0.006155829702431115,
+      "instantaneous_zmax_over_c": 9.233375887709355e-06,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.05,
+      "total_aerodynamic_force_n": [
+        0.005675810707385407,
+        2.106524617707142e-17,
+        0.019793276533503112
+      ]
+    },
+    {
+      "aero_step": 6,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.0164395367051604e-19,
+        "lesp_pin_max_abs": 1.8166024240429124e-14,
+        "lesp_pre_max_abs": 0.37482762489775284,
+        "lev_release_count": 30,
+        "particle_count": 1602,
+        "retained_neumann_max_abs": 6.591949208711867e-17,
+        "separated_strip_count": 30,
+        "step": 6,
+        "wake_ring_count": 180
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.17842121038467035,
+      "coupling_iterations": 2,
+      "coupling_residual": 2.171176960495077e-14,
+      "freestream_factor": 0.00885637463565564,
+      "instantaneous_zmax_over_c": 1.672515884169986e-05,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.06,
+      "total_aerodynamic_force_n": [
+        0.007025488441622488,
+        1.1802660319181868e-16,
+        0.024499331722823647
+      ]
+    },
+    {
+      "aero_step": 7,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.0842021724855044e-19,
+        "lesp_pin_max_abs": 8.770761894538737e-15,
+        "lesp_pre_max_abs": 0.3699822160771727,
+        "lev_release_count": 30,
+        "particle_count": 1872,
+        "retained_neumann_max_abs": 1.0408340855860843e-16,
+        "separated_strip_count": 30,
+        "step": 7,
+        "wake_ring_count": 210
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.2090264827978902,
+      "coupling_iterations": 2,
+      "coupling_residual": 1.486611475564604e-14,
+      "freestream_factor": 0.012041619030626283,
+      "instantaneous_zmax_over_c": 2.802287944034361e-05,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.07,
+      "total_aerodynamic_force_n": [
+        0.008230910689433083,
+        3.786916488771302e-16,
+        0.02870170591413701
+      ]
+    },
+    {
+      "aero_step": 8,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.0842021724855044e-19,
+        "lesp_pin_max_abs": 8.81239525796218e-15,
+        "lesp_pre_max_abs": 0.36668690125514675,
+        "lev_release_count": 30,
+        "particle_count": 2142,
+        "retained_neumann_max_abs": 9.71445146547012e-17,
+        "separated_strip_count": 30,
+        "step": 8,
+        "wake_ring_count": 240
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.2435410511910984,
+      "coupling_iterations": 2,
+      "coupling_residual": 1.982338431218638e-14,
+      "freestream_factor": 0.015708419435684462,
+      "instantaneous_zmax_over_c": 4.350227718176266e-05,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.08,
+      "total_aerodynamic_force_n": [
+        0.009590479303443988,
+        2.1950625894034698e-16,
+        0.033440810944668456
+      ]
+    },
+    {
+      "aero_step": 9,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 2.168404344971009e-19,
+        "lesp_pin_max_abs": 6.813993813636898e-15,
+        "lesp_pre_max_abs": 0.364315229858704,
+        "lev_release_count": 30,
+        "particle_count": 2412,
+        "retained_neumann_max_abs": 1.214306433183765e-16,
+        "separated_strip_count": 30,
+        "step": 9,
+        "wake_ring_count": 270
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.27673594897724096,
+      "coupling_iterations": 2,
+      "coupling_residual": 2.2194714339618732e-14,
+      "freestream_factor": 0.019853157161528467,
+      "instantaneous_zmax_over_c": 6.385699938644456e-05,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.09,
+      "total_aerodynamic_force_n": [
+        0.010898378103896461,
+        1.626716187290043e-17,
+        0.0379986255550277
+      ]
+    },
+    {
+      "aero_step": 10,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 2.0328790734103208e-19,
+        "lesp_pin_max_abs": 8.243405957841787e-15,
+        "lesp_pre_max_abs": 0.3623283214846693,
+        "lev_release_count": 30,
+        "particle_count": 2682,
+        "retained_neumann_max_abs": 2.0816681711721685e-16,
+        "separated_strip_count": 30,
+        "step": 10,
+        "wake_ring_count": 300
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.30883483615190555,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.8124368952051705e-20,
+      "freestream_factor": 0.024471741852423234,
+      "instantaneous_zmax_over_c": 8.957815833014327e-05,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.1,
+      "total_aerodynamic_force_n": [
+        0.012163472577770881,
+        2.8879365990486716e-16,
+        0.04240584406754662
+      ]
+    },
+    {
+      "aero_step": 11,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 2.168404344971009e-19,
+        "lesp_pin_max_abs": 7.646661082105766e-15,
+        "lesp_pre_max_abs": 0.3602772462254446,
+        "lev_release_count": 30,
+        "particle_count": 2952,
+        "retained_neumann_max_abs": 1.3183898417423734e-16,
+        "separated_strip_count": 30,
+        "step": 11,
+        "wake_ring_count": 330
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.34280344755928066,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.4389637229623162e-20,
+      "freestream_factor": 0.029559615522887273,
+      "instantaneous_zmax_over_c": 0.00012113928154693272,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.11,
+      "total_aerodynamic_force_n": [
+        0.01350260008523893,
+        3.501282685276167e-16,
+        0.047069679856261204
+      ]
+    },
+    {
+      "aero_step": 12,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 2.168404344971009e-19,
+        "lesp_pin_max_abs": 7.993605777301127e-15,
+        "lesp_pre_max_abs": 0.357824014987882,
+        "lev_release_count": 30,
+        "particle_count": 3222,
+        "retained_neumann_max_abs": 1.457167719820518e-16,
+        "separated_strip_count": 30,
+        "step": 12,
+        "wake_ring_count": 360
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.37572730342827404,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.9149406225040223e-15,
+      "freestream_factor": 0.03511175705587427,
+      "instantaneous_zmax_over_c": 0.00015890444317585644,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.12,
+      "total_aerodynamic_force_n": [
+        0.014801072386264859,
+        -5.371942243793081e-16,
+        0.05158991993465567
+      ]
+    },
+    {
+      "aero_step": 13,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 4.336808689942018e-19,
+        "lesp_pin_max_abs": 1.0949574580365606e-14,
+        "lesp_pre_max_abs": 0.3554377826976545,
+        "lev_release_count": 30,
+        "particle_count": 3492,
+        "retained_neumann_max_abs": 3.2612801348363973e-16,
+        "separated_strip_count": 30,
+        "step": 13,
+        "wake_ring_count": 390
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.4077537484666327,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.8031950532662874e-20,
+      "freestream_factor": 0.04112268715800943,
+      "instantaneous_zmax_over_c": 0.0002036532991843643,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.13,
+      "total_aerodynamic_force_n": [
+        0.01606476280565828,
+        -4.344800445799362e-16,
+        0.05598677596255643
+      ]
+    },
+    {
+      "aero_step": 14,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 4.0657581468206416e-19,
+        "lesp_pin_max_abs": 1.5126788710517758e-14,
+        "lesp_pre_max_abs": 0.3535794178182876,
+        "lev_release_count": 30,
+        "particle_count": 3762,
+        "retained_neumann_max_abs": 3.608224830031759e-16,
+        "separated_strip_count": 30,
+        "step": 14,
+        "wake_ring_count": 420
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.43995144270095654,
+      "coupling_iterations": 3,
+      "coupling_residual": 4.287081763520804e-20,
+      "freestream_factor": 0.04758647376699027,
+      "instantaneous_zmax_over_c": 0.000256218821655322,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.14,
+      "total_aerodynamic_force_n": [
+        0.0173358236303778,
+        2.8532728344734734e-16,
+        0.06040696663877017
+      ]
+    },
+    {
+      "aero_step": 15,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 4.336808689942018e-19,
+        "lesp_pin_max_abs": 8.756884106730922e-15,
+        "lesp_pre_max_abs": 0.35243756532640064,
+        "lev_release_count": 30,
+        "particle_count": 4032,
+        "retained_neumann_max_abs": 5.412337245047638e-16,
+        "separated_strip_count": 30,
+        "step": 15,
+        "wake_ring_count": 450
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.4715516367924108,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.863021779817458e-20,
+      "freestream_factor": 0.05449673790581605,
+      "instantaneous_zmax_over_c": 0.000318260534473103,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.15,
+      "total_aerodynamic_force_n": [
+        0.018584035912504272,
+        -3.853195228707175e-16,
+        0.06474491894651696
+      ]
+    },
+    {
+      "aero_step": 16,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 4.0657581468206416e-19,
+        "lesp_pin_max_abs": 8.81239525796218e-15,
+        "lesp_pre_max_abs": 0.35173712068920715,
+        "lev_release_count": 30,
+        "particle_count": 4302,
+        "retained_neumann_max_abs": 3.3306690738754696e-16,
+        "separated_strip_count": 30,
+        "step": 16,
+        "wake_ring_count": 480
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.5032026646529851,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.189007345993698e-20,
+      "freestream_factor": 0.06184665997806821,
+      "instantaneous_zmax_over_c": 0.0003908971643775701,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.16,
+      "total_aerodynamic_force_n": [
+        0.019834927540173207,
+        -1.3907518664263083e-15,
+        0.06908965699522342
+      ]
+    },
+    {
+      "aero_step": 17,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 4.336808689942018e-19,
+        "lesp_pin_max_abs": 1.0408340855860843e-14,
+        "lesp_pre_max_abs": 0.3509955875573214,
+        "lev_release_count": 30,
+        "particle_count": 4572,
+        "retained_neumann_max_abs": 5.828670879282072e-16,
+        "separated_strip_count": 30,
+        "step": 17,
+        "wake_ring_count": 510
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.5350655788522468,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.185710615288616e-20,
+      "freestream_factor": 0.06962898649802818,
+      "instantaneous_zmax_over_c": 0.00047590124479948275,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.17,
+      "total_aerodynamic_force_n": [
+        0.02109487180468245,
+        -2.5832827766020597e-15,
+        0.07346328610572049
+      ]
+    },
+    {
+      "aero_step": 18,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 8.131516293641283e-19,
+        "lesp_pin_max_abs": 7.258083023486961e-15,
+        "lesp_pre_max_abs": 0.3498919690295527,
+        "lev_release_count": 30,
+        "particle_count": 4842,
+        "retained_neumann_max_abs": 5.412337245047638e-16,
+        "separated_strip_count": 30,
+        "step": 18,
+        "wake_ring_count": 540
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.5665987720871185,
+      "coupling_iterations": 3,
+      "coupling_residual": 8.89151538574548e-20,
+      "freestream_factor": 0.07783603724899246,
+      "instantaneous_zmax_over_c": 0.000572002608327504,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.18,
+      "total_aerodynamic_force_n": [
+        0.022342653899436665,
+        -4.077599667423257e-15,
+        0.07779140526533548
+      ]
+    },
+    {
+      "aero_step": 19,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 8.673617379884035e-19,
+        "lesp_pin_max_abs": 1.27675647831893e-14,
+        "lesp_pre_max_abs": 0.3484682894128482,
+        "lev_release_count": 30,
+        "particle_count": 5113,
+        "retained_neumann_max_abs": 5.551115123125783e-16,
+        "separated_strip_count": 30,
+        "step": 19,
+        "wake_ring_count": 570
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.5976914316590013,
+      "coupling_iterations": 3,
+      "coupling_residual": 4.6877970836091585e-15,
+      "freestream_factor": 0.08645971286271908,
+      "instantaneous_zmax_over_c": 0.0006805393874829409,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.19,
+      "total_aerodynamic_force_n": [
+        0.02357401928250477,
+        -4.68256245681354e-15,
+        0.08205876738774642
+      ]
+    },
+    {
+      "aero_step": 20,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 7.589415207398531e-19,
+        "lesp_pin_max_abs": 8.409939411535561e-15,
+        "lesp_pre_max_abs": 0.3468215182156698,
+        "lev_release_count": 30,
+        "particle_count": 5383,
+        "retained_neumann_max_abs": 6.245004513516506e-16,
+        "separated_strip_count": 30,
+        "step": 20,
+        "wake_ring_count": 600
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.6283591695105403,
+      "coupling_iterations": 3,
+      "coupling_residual": 8.659611056638505e-18,
+      "freestream_factor": 0.09549150281252627,
+      "instantaneous_zmax_over_c": 0.0008010979999688716,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.2,
+      "total_aerodynamic_force_n": [
+        0.02478966816922124,
+        -8.151286042630199e-16,
+        0.08626749166491157
+      ]
+    },
+    {
+      "aero_step": 21,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 8.673617379884035e-19,
+        "lesp_pin_max_abs": 9.173217740965356e-15,
+        "lesp_pre_max_abs": 0.34498167351409653,
+        "lev_release_count": 30,
+        "particle_count": 5653,
+        "retained_neumann_max_abs": 5.273559366969494e-16,
+        "separated_strip_count": 30,
+        "step": 21,
+        "wake_ring_count": 630
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.6587666740204803,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.309972807199994e-16,
+      "freestream_factor": 0.1049224938121548,
+      "instantaneous_zmax_over_c": 0.000934238823781342,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 100,
+      "time_star": 0.21,
+      "total_aerodynamic_force_n": [
+        0.025996185601865986,
+        2.6642980898751445e-15,
+        0.09044016298978974
+      ]
+    },
+    {
+      "aero_step": 22,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 8.673617379884035e-19,
+        "lesp_pin_max_abs": 9.06219543850284e-15,
+        "lesp_pre_max_abs": 0.3430291034853885,
+        "lev_release_count": 30,
+        "particle_count": 5923,
+        "retained_neumann_max_abs": 5.551115123125783e-16,
+        "separated_strip_count": 30,
+        "step": 22,
+        "wake_ring_count": 660
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.6884450380855713,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.744940601383701e-15,
+      "freestream_factor": 0.11474337861210537,
+      "instantaneous_zmax_over_c": 0.001080301139718347,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 108,
+      "time_star": 0.22,
+      "total_aerodynamic_force_n": [
+        0.02717528145613229,
+        2.7958965166923616e-15,
+        0.09451234515023278
+      ]
+    },
+    {
+      "aero_step": 23,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 8.673617379884035e-19,
+        "lesp_pin_max_abs": 8.090750291955828e-15,
+        "lesp_pre_max_abs": 0.3410896061111336,
+        "lev_release_count": 30,
+        "particle_count": 6193,
+        "retained_neumann_max_abs": 8.326672684688674e-16,
+        "separated_strip_count": 30,
+        "step": 23,
+        "wake_ring_count": 690
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.7174112268719058,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.577035386286628e-18,
+      "freestream_factor": 0.1249444651847702,
+      "instantaneous_zmax_over_c": 0.0012395413993721044,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 118,
+      "time_star": 0.23,
+      "total_aerodynamic_force_n": [
+        0.028327799190704585,
+        -3.034719150236606e-15,
+        0.09848631735636981
+      ]
+    },
+    {
+      "aero_step": 24,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 7.589415207398531e-19,
+        "lesp_pin_max_abs": 1.3433698597964394e-14,
+        "lesp_pre_max_abs": 0.3392440373621053,
+        "lev_release_count": 30,
+        "particle_count": 6464,
+        "retained_neumann_max_abs": 9.853229343548264e-16,
+        "separated_strip_count": 30,
+        "step": 24,
+        "wake_ring_count": 720
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.746313530403224,
+      "coupling_iterations": 3,
+      "coupling_residual": 4.9405256678140465e-15,
+      "freestream_factor": 0.13551568628929422,
+      "instantaneous_zmax_over_c": 0.0014126542872373558,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 124,
+      "time_star": 0.24,
+      "total_aerodynamic_force_n": [
+        0.029479220492682565,
+        -4.572283849278713e-17,
+        0.10245111044365274
+      ]
+    },
+    {
+      "aero_step": 25,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 7.589415207398531e-19,
+        "lesp_pin_max_abs": 8.965050923848139e-15,
+        "lesp_pre_max_abs": 0.337423010757396,
+        "lev_release_count": 30,
+        "particle_count": 6735,
+        "retained_neumann_max_abs": 8.881784197001252e-16,
+        "separated_strip_count": 30,
+        "step": 25,
+        "wake_ring_count": 750
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.7750316297096882,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.438843067939917e-15,
+      "freestream_factor": 0.1464466094067262,
+      "instantaneous_zmax_over_c": 0.0016000461364286585,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 132,
+      "time_star": 0.25,
+      "total_aerodynamic_force_n": [
+        0.030624704981431557,
+        1.714790419035661e-14,
+        0.10639023265555661
+      ]
+    },
+    {
+      "aero_step": 26,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.6263032587282567e-18,
+        "lesp_pin_max_abs": 1.830480211850727e-14,
+        "lesp_pre_max_abs": 0.3353589043814535,
+        "lev_release_count": 30,
+        "particle_count": 7005,
+        "retained_neumann_max_abs": 1.27675647831893e-15,
+        "separated_strip_count": 30,
+        "step": 26,
+        "wake_ring_count": 780
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.80391209641036,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5044797912965982e-15,
+      "freestream_factor": 0.1577264470356557,
+      "instantaneous_zmax_over_c": 0.0018021481187461665,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 136,
+      "time_star": 0.26,
+      "total_aerodynamic_force_n": [
+        0.031777965822182744,
+        8.66598391896338e-15,
+        0.11035125325348599
+      ]
+    },
+    {
+      "aero_step": 27,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 8.701372955499664e-15,
+        "lesp_pre_max_abs": 0.33284219191472275,
+        "lev_release_count": 30,
+        "particle_count": 7276,
+        "retained_neumann_max_abs": 7.771561172376096e-16,
+        "separated_strip_count": 30,
+        "step": 27,
+        "wake_ring_count": 810
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.8327336105082884,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.2854393218705882e-15,
+      "freestream_factor": 0.1693440673381741,
+      "instantaneous_zmax_over_c": 0.002020316116954501,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 142,
+      "time_star": 0.27,
+      "total_aerodynamic_force_n": [
+        0.032930670028050904,
+        5.302277172013203e-15,
+        0.11430367295307614
+      ]
+    },
+    {
+      "aero_step": 28,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.1268763699945339e-14,
+        "lesp_pre_max_abs": 0.32993366068812285,
+        "lev_release_count": 30,
+        "particle_count": 7547,
+        "retained_neumann_max_abs": 1.2490009027033011e-15,
+        "separated_strip_count": 30,
+        "step": 28,
+        "wake_ring_count": 840
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.8603264270697553,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.022084136878437e-15,
+      "freestream_factor": 0.18128800512565518,
+      "instantaneous_zmax_over_c": 0.0022548553741067075,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 146,
+      "time_star": 0.28,
+      "total_aerodynamic_force_n": [
+        0.03403742517591688,
+        1.1279022963002483e-14,
+        0.11808668066825927
+      ]
+    },
+    {
+      "aero_step": 29,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.9442780718748054e-14,
+        "lesp_pre_max_abs": 0.3268476554812821,
+        "lev_release_count": 30,
+        "particle_count": 7817,
+        "retained_neumann_max_abs": 1.609823385706477e-15,
+        "separated_strip_count": 30,
+        "step": 29,
+        "wake_ring_count": 870
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.8874844992923439,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5361903272643807e-14,
+      "freestream_factor": 0.1935464731735117,
+      "instantaneous_zmax_over_c": 0.0025056330330841697,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 152,
+      "time_star": 0.29,
+      "total_aerodynamic_force_n": [
+        0.03512945084275759,
+        9.370285038341752e-15,
+        0.12180930784932321
+      ]
+    },
+    {
+      "aero_step": 30,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.3405943022348765e-14,
+        "lesp_pre_max_abs": 0.323672056983235,
+        "lev_release_count": 30,
+        "particle_count": 8088,
+        "retained_neumann_max_abs": 1.1657341758564144e-15,
+        "separated_strip_count": 30,
+        "step": 30,
+        "wake_ring_count": 900
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.9143427967118485,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.4051175601256981e-14,
+      "freestream_factor": 0.20610737385376343,
+      "instantaneous_zmax_over_c": 0.0027729410289894485,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 154,
+      "time_star": 0.3,
+      "total_aerodynamic_force_n": [
+        0.03621182871495663,
+        2.2383116681738008e-14,
+        0.12549015417186912
+      ]
+    },
+    {
+      "aero_step": 31,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 7.591149930874508e-15,
+        "lesp_pre_max_abs": 0.320445121136858,
+        "lev_release_count": 30,
+        "particle_count": 8359,
+        "retained_neumann_max_abs": 1.2212453270876722e-15,
+        "separated_strip_count": 30,
+        "step": 31,
+        "wake_ring_count": 930
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.9397705165598821,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.768036601034514e-15,
+      "freestream_factor": 0.2189583110739347,
+      "instantaneous_zmax_over_c": 0.0030572297589514974,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 158,
+      "time_star": 0.31,
+      "total_aerodynamic_force_n": [
+        0.037241157338532324,
+        2.6154751107954066e-14,
+        0.12897362455614822
+      ]
+    },
+    {
+      "aero_step": 32,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.6263032587282567e-18,
+        "lesp_pin_max_abs": 1.3711254354120683e-14,
+        "lesp_pre_max_abs": 0.31735455986272737,
+        "lev_release_count": 30,
+        "particle_count": 8630,
+        "retained_neumann_max_abs": 1.9984014443252818e-15,
+        "separated_strip_count": 30,
+        "step": 32,
+        "wake_ring_count": 960
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.9645626997205475,
+      "coupling_iterations": 3,
+      "coupling_residual": 4.846782267138362e-15,
+      "freestream_factor": 0.23208660251050173,
+      "instantaneous_zmax_over_c": 0.003358740575665696,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 160,
+      "time_star": 0.32,
+      "total_aerodynamic_force_n": [
+        0.0382492951443521,
+        2.743173797923465e-15,
+        0.13236872889710236
+      ]
+    },
+    {
+      "aero_step": 33,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.6263032587282567e-18,
+        "lesp_pin_max_abs": 1.0241807402167069e-14,
+        "lesp_pre_max_abs": 0.31455763177392054,
+        "lev_release_count": 30,
+        "particle_count": 8901,
+        "retained_neumann_max_abs": 1.4988010832439613e-15,
+        "separated_strip_count": 30,
+        "step": 33,
+        "wake_ring_count": 990
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 0.9898485223618474,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.301554233394461e-15,
+      "freestream_factor": 0.2454792921248144,
+      "instantaneous_zmax_over_c": 0.003677830470984817,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 162,
+      "time_star": 0.33,
+      "total_aerodynamic_force_n": [
+        0.039279307960634724,
+        -6.788067829187339e-15,
+        0.1358309167965512
+      ]
+    },
+    {
+      "aero_step": 34,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.0852430065710905e-14,
+        "lesp_pre_max_abs": 0.31178553784765606,
+        "lev_release_count": 30,
+        "particle_count": 9172,
+        "retained_neumann_max_abs": 1.609823385706477e-15,
+        "separated_strip_count": 30,
+        "step": 34,
+        "wake_ring_count": 1020
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.0163253502283098,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.3077354189051688e-14,
+      "freestream_factor": 0.2591231629491424,
+      "instantaneous_zmax_over_c": 0.004014859392077063,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 166,
+      "time_star": 0.34,
+      "total_aerodynamic_force_n": [
+        0.04035799084527452,
+        1.1730213697082326e-14,
+        0.13945613526728612
+      ]
+    },
+    {
+      "aero_step": 35,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.5557000132560006e-14,
+        "lesp_pre_max_abs": 0.30855498970170686,
+        "lev_release_count": 30,
+        "particle_count": 9443,
+        "retained_neumann_max_abs": 1.4432899320127035e-15,
+        "separated_strip_count": 30,
+        "step": 35,
+        "wake_ring_count": 1050
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.0434134968252498,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.7978282881984127e-14,
+      "freestream_factor": 0.2730047501302266,
+      "instantaneous_zmax_over_c": 0.00437034535606445,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 168,
+      "time_star": 0.35000000000000003,
+      "total_aerodynamic_force_n": [
+        0.04146501963377831,
+        2.9831240017270944e-14,
+        0.14316406924173908
+      ]
+    },
+    {
+      "aero_step": 36,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.2170819907453279e-14,
+        "lesp_pre_max_abs": 0.30486585833271557,
+        "lev_release_count": 30,
+        "particle_count": 9714,
+        "retained_neumann_max_abs": 1.6653345369377348e-15,
+        "separated_strip_count": 30,
+        "step": 36,
+        "wake_ring_count": 1080
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.0696526838691727,
+      "coupling_iterations": 3,
+      "coupling_residual": 9.929764490047306e-15,
+      "freestream_factor": 0.28711035421746367,
+      "instantaneous_zmax_over_c": 0.0047460891239235,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 170,
+      "time_star": 0.36,
+      "total_aerodynamic_force_n": [
+        0.04254542921845609,
+        1.3243719272290622e-14,
+        0.14675347854196955
+      ]
+    },
+    {
+      "aero_step": 37,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 8.493206138382448e-15,
+        "lesp_pre_max_abs": 0.3010101742097218,
+        "lev_release_count": 30,
+        "particle_count": 9985,
+        "retained_neumann_max_abs": 1.4432899320127035e-15,
+        "separated_strip_count": 30,
+        "step": 37,
+        "wake_ring_count": 1110
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.0950067753084132,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.34484915007295e-14,
+      "freestream_factor": 0.30142605468260975,
+      "instantaneous_zmax_over_c": 0.00514073612788779,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 172,
+      "time_star": 0.37,
+      "total_aerodynamic_force_n": [
+        0.043598188282759166,
+        -4.281782719182947e-14,
+        0.15021928898153028
+      ]
+    },
+    {
+      "aero_step": 38,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.1060596882828122e-14,
+        "lesp_pre_max_abs": 0.2988342259026496,
+        "lev_release_count": 30,
+        "particle_count": 10256,
+        "retained_neumann_max_abs": 1.8318679906315083e-15,
+        "separated_strip_count": 30,
+        "step": 38,
+        "wake_ring_count": 1140
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.1184380304510786,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5249773496777025e-14,
+      "freestream_factor": 0.31593772365766093,
+      "instantaneous_zmax_over_c": 0.0055546549307033035,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 172,
+      "time_star": 0.38,
+      "total_aerodynamic_force_n": [
+        0.04458362782129007,
+        -3.355827985287996e-14,
+        0.15341866448602176
+      ]
+    },
+    {
+      "aero_step": 39,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.734723475976807e-18,
+        "lesp_pin_max_abs": 1.4863110742169283e-14,
+        "lesp_pre_max_abs": 0.2969412280407779,
+        "lev_release_count": 30,
+        "particle_count": 10526,
+        "retained_neumann_max_abs": 2.275957200481571e-15,
+        "separated_strip_count": 30,
+        "step": 39,
+        "wake_ring_count": 1170
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.1399753892223474,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.7238044636182844e-14,
+      "freestream_factor": 0.33063103987735426,
+      "instantaneous_zmax_over_c": 0.005987678987509055,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 174,
+      "time_star": 0.39,
+      "total_aerodynamic_force_n": [
+        0.045502571700441564,
+        -1.9052142676001527e-16,
+        0.15635566936406517
+      ]
+    },
+    {
+      "aero_step": 40,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.2526065174565133e-18,
+        "lesp_pin_max_abs": 1.2226331058684536e-14,
+        "lesp_pre_max_abs": 0.29545837106538725,
+        "lev_release_count": 30,
+        "particle_count": 10797,
+        "retained_neumann_max_abs": 3.1086244689504383e-15,
+        "separated_strip_count": 30,
+        "step": 40,
+        "wake_ring_count": 1200
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.1620212286055935,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.884378920730609e-14,
+      "freestream_factor": 0.3454915028125263,
+      "instantaneous_zmax_over_c": 0.006440092673347754,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 176,
+      "time_star": 0.4,
+      "total_aerodynamic_force_n": [
+        0.04644827999131733,
+        -3.6965276759698407e-14,
+        0.15936056121825315
+      ]
+    },
+    {
+      "aero_step": 41,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 7.646661082105766e-15,
+        "lesp_pre_max_abs": 0.29431503579422,
+        "lev_release_count": 30,
+        "particle_count": 11067,
+        "retained_neumann_max_abs": 2.1649348980190553e-15,
+        "separated_strip_count": 30,
+        "step": 41,
+        "wake_ring_count": 1230
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.1849264059440814,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.7988416323755718e-14,
+      "freestream_factor": 0.36050444698038536,
+      "instantaneous_zmax_over_c": 0.006912256501296309,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 176,
+      "time_star": 0.41000000000000003,
+      "total_aerodynamic_force_n": [
+        0.047435518687721445,
+        -1.5126246609431515e-14,
+        0.16248124428607102
+      ]
+    },
+    {
+      "aero_step": 42,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 2.0497492592141953e-14,
+        "lesp_pre_max_abs": 0.2933511778825899,
+        "lev_release_count": 30,
+        "particle_count": 11338,
+        "retained_neumann_max_abs": 3.7192471324942744e-15,
+        "separated_strip_count": 30,
+        "step": 42,
+        "wake_ring_count": 1260
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.208322068003363,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.4612767822792275e-14,
+      "freestream_factor": 0.3756550564175725,
+      "instantaneous_zmax_over_c": 0.007404050431076836,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 178,
+      "time_star": 0.42,
+      "total_aerodynamic_force_n": [
+        0.048452509490427856,
+        -1.7994069775872923e-14,
+        0.16566628338594208
+      ]
+    },
+    {
+      "aero_step": 43,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 2.0067281170099704e-14,
+        "lesp_pre_max_abs": 0.29251078753966486,
+        "lev_release_count": 30,
+        "particle_count": 11609,
+        "retained_neumann_max_abs": 3.83026943495679e-15,
+        "separated_strip_count": 30,
+        "step": 43,
+        "wake_ring_count": 1290
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.2329259720550023,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.206802921037632e-14,
+      "freestream_factor": 0.39092837930172863,
+      "instantaneous_zmax_over_c": 0.00791680875354115,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 178,
+      "time_star": 0.43,
+      "total_aerodynamic_force_n": [
+        0.04953031574495638,
+        -3.7551721714795816e-14,
+        0.16901343185308088
+      ]
+    },
+    {
+      "aero_step": 44,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 9.992007221626409e-15,
+        "lesp_pre_max_abs": 0.29173061006786283,
+        "lev_release_count": 30,
+        "particle_count": 11880,
+        "retained_neumann_max_abs": 2.220446049250313e-15,
+        "separated_strip_count": 30,
+        "step": 44,
+        "wake_ring_count": 1320
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.2567666517366212,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.6148721241485143e-14,
+      "freestream_factor": 0.40630934270713764,
+      "instantaneous_zmax_over_c": 0.00848239577123224,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 180,
+      "time_star": 0.44,
+      "total_aerodynamic_force_n": [
+        0.05059404470876323,
+        -8.643286824108753e-15,
+        0.17225119978252368
+      ]
+    },
+    {
+      "aero_step": 45,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 9.575673587391975e-15,
+        "lesp_pre_max_abs": 0.2911475949865204,
+        "lev_release_count": 30,
+        "particle_count": 12151,
+        "retained_neumann_max_abs": 2.55351295663786e-15,
+        "separated_strip_count": 30,
+        "step": 45,
+        "wake_ring_count": 1350
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.2793521679883983,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.4073640477444769e-14,
+      "freestream_factor": 0.4217827674798845,
+      "instantaneous_zmax_over_c": 0.00907199862902546,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 180,
+      "time_star": 0.45,
+      "total_aerodynamic_force_n": [
+        0.05162398460384189,
+        2.7785391175372265e-16,
+        0.17531213600582685
+      ]
+    },
+    {
+      "aero_step": 46,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 8.826273045769994e-15,
+        "lesp_pre_max_abs": 0.29081077687641205,
+        "lev_release_count": 30,
+        "particle_count": 12422,
+        "retained_neumann_max_abs": 2.220446049250313e-15,
+        "separated_strip_count": 30,
+        "step": 46,
+        "wake_ring_count": 1380
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.3019705177140106,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.8672627294431688e-14,
+      "freestream_factor": 0.43733338321784787,
+      "instantaneous_zmax_over_c": 0.009686595092890188,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 180,
+      "time_star": 0.46,
+      "total_aerodynamic_force_n": [
+        0.05266979262081438,
+        -3.530945609682423e-14,
+        0.17837340125840911
+      ]
+    },
+    {
+      "aero_step": 47,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 9.520162436160717e-15,
+        "lesp_pre_max_abs": 0.2907373796086697,
+        "lev_release_count": 30,
+        "particle_count": 12693,
+        "retained_neumann_max_abs": 3.1086244689504383e-15,
+        "separated_strip_count": 30,
+        "step": 47,
+        "wake_ring_count": 1410
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.3224022274135272,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.1401691256684885e-14,
+      "freestream_factor": 0.45294584334074284,
+      "instantaneous_zmax_over_c": 0.010326485545000059,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 182,
+      "time_star": 0.47000000000000003,
+      "total_aerodynamic_force_n": [
+        0.05365053093988411,
+        2.725505368270098e-14,
+        0.18112838452457924
+      ]
+    },
+    {
+      "aero_step": 48,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 9.658940314238862e-15,
+        "lesp_pre_max_abs": 0.291080557383978,
+        "lev_release_count": 30,
+        "particle_count": 12964,
+        "retained_neumann_max_abs": 1.9984014443252818e-15,
+        "separated_strip_count": 30,
+        "step": 48,
+        "wake_ring_count": 1440
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.3414769020597974,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.1196139988979857e-14,
+      "freestream_factor": 0.46860474023534326,
+      "instantaneous_zmax_over_c": 0.0109919551798662,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 182,
+      "time_star": 0.48,
+      "total_aerodynamic_force_n": [
+        0.054599670254898744,
+        4.6370324030195476e-14,
+        0.1836907697042198
+      ]
+    },
+    {
+      "aero_step": 49,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.0357660829594124e-18,
+        "lesp_pin_max_abs": 1.1574075031717257e-14,
+        "lesp_pre_max_abs": 0.2919106522226297,
+        "lev_release_count": 30,
+        "particle_count": 13234,
+        "retained_neumann_max_abs": 2.3314683517128287e-15,
+        "separated_strip_count": 30,
+        "step": 49,
+        "wake_ring_count": 1470
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.3617509896723239,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.2900737730333089e-14,
+      "freestream_factor": 0.4842946204609358,
+      "instantaneous_zmax_over_c": 0.01168398022458018,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 182,
+      "time_star": 0.49,
+      "total_aerodynamic_force_n": [
+        0.05561074326228754,
+        -7.511198152169996e-14,
+        0.18641363158445884
+      ]
+    },
+    {
+      "aero_step": 50,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 1.4641066137244252e-14,
+        "lesp_pre_max_abs": 0.2931103572599888,
+        "lev_release_count": 30,
+        "particle_count": 13505,
+        "retained_neumann_max_abs": 3.1086244689504383e-15,
+        "separated_strip_count": 30,
+        "step": 50,
+        "wake_ring_count": 1500
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.382125870834975,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.4547132176890303e-14,
+      "freestream_factor": 0.49999999999999994,
+      "instantaneous_zmax_over_c": 0.012402684734140548,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 184,
+      "time_star": 0.5,
+      "total_aerodynamic_force_n": [
+        0.05664286950374903,
+        7.942474802846711e-14,
+        0.18914543473191597
+      ]
+    },
+    {
+      "aero_step": 51,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 7.965850201685498e-15,
+        "lesp_pre_max_abs": 0.29458160939840367,
+        "lev_release_count": 30,
+        "particle_count": 13776,
+        "retained_neumann_max_abs": 2.3314683517128287e-15,
+        "separated_strip_count": 30,
+        "step": 51,
+        "wake_ring_count": 1530
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.403279425803905,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.903794885501522e-14,
+      "freestream_factor": 0.5157053795390641,
+      "instantaneous_zmax_over_c": 0.01315047657976298,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 184,
+      "time_star": 0.51,
+      "total_aerodynamic_force_n": [
+        0.05772773470735737,
+        -2.1314411824055468e-14,
+        0.19197782818778295
+      ]
+    },
+    {
+      "aero_step": 52,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 1.201816424156732e-14,
+        "lesp_pre_max_abs": 0.2962419174661782,
+        "lev_release_count": 30,
+        "particle_count": 14047,
+        "retained_neumann_max_abs": 4.107825191113079e-15,
+        "separated_strip_count": 30,
+        "step": 52,
+        "wake_ring_count": 1560
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.426882238137809,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.2791485001488395e-14,
+      "freestream_factor": 0.5313952597646567,
+      "instantaneous_zmax_over_c": 0.013928013698473718,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 184,
+      "time_star": 0.52,
+      "total_aerodynamic_force_n": [
+        0.05892564864947212,
+        -4.98453817283917e-14,
+        0.19514177148438883
+      ]
+    },
+    {
+      "aero_step": 53,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.0357660829594124e-18,
+        "lesp_pin_max_abs": 8.729128531115293e-15,
+        "lesp_pre_max_abs": 0.29789778082283047,
+        "lev_release_count": 30,
+        "particle_count": 14318,
+        "retained_neumann_max_abs": 2.4424906541753444e-15,
+        "separated_strip_count": 30,
+        "step": 53,
+        "wake_ring_count": 1590
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.4523880619167822,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.268778575081211e-14,
+      "freestream_factor": 0.5470541566592572,
+      "instantaneous_zmax_over_c": 0.014733876688987308,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 186,
+      "time_star": 0.53,
+      "total_aerodynamic_force_n": [
+        0.06021108564907493,
+        2.7711502797317378e-14,
+        0.19856341042182796
+      ]
+    },
+    {
+      "aero_step": 54,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 9.381384558082573e-15,
+        "lesp_pre_max_abs": 0.29932191537147157,
+        "lev_release_count": 30,
+        "particle_count": 14589,
+        "retained_neumann_max_abs": 3.885780586188048e-15,
+        "separated_strip_count": 30,
+        "step": 54,
+        "wake_ring_count": 1620
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.4780057758016125,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.556162886024798e-14,
+      "freestream_factor": 0.5626666167821521,
+      "instantaneous_zmax_over_c": 0.015568265704661287,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 186,
+      "time_star": 0.54,
+      "total_aerodynamic_force_n": [
+        0.06152427872734367,
+        1.3638639913618467e-13,
+        0.20199371759390622
+      ]
+    },
+    {
+      "aero_step": 55,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 9.950373858202965e-15,
+        "lesp_pre_max_abs": 0.3005720366533219,
+        "lev_release_count": 30,
+        "particle_count": 14860,
+        "retained_neumann_max_abs": 3.3306690738754696e-15,
+        "separated_strip_count": 30,
+        "step": 55,
+        "wake_ring_count": 1650
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.5019756304811578,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.153662814896506e-14,
+      "freestream_factor": 0.5782172325201155,
+      "instantaneous_zmax_over_c": 0.01643126152307124,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 186,
+      "time_star": 0.55,
+      "total_aerodynamic_force_n": [
+        0.06280138192946957,
+        -2.66831912468235e-14,
+        0.2051894971873251
+      ]
+    },
+    {
+      "aero_step": 56,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.0357660829594124e-18,
+        "lesp_pin_max_abs": 4.898859096158503e-15,
+        "lesp_pre_max_abs": 0.3018365714982701,
+        "lev_release_count": 30,
+        "particle_count": 15131,
+        "retained_neumann_max_abs": 3.1086244689504383e-15,
+        "separated_strip_count": 30,
+        "step": 56,
+        "wake_ring_count": 1680
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.5246680402982107,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.3979846780274957e-14,
+      "freestream_factor": 0.5936906572928624,
+      "instantaneous_zmax_over_c": 0.017323222629274063,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 188,
+      "time_star": 0.56,
+      "total_aerodynamic_force_n": [
+        0.06404479973177324,
+        9.757169031066049e-15,
+        0.2082051042689059
+      ]
+    },
+    {
+      "aero_step": 57,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 3.469446951953614e-18,
+        "lesp_pin_max_abs": 6.342149028171207e-15,
+        "lesp_pre_max_abs": 0.3032791368917098,
+        "lev_release_count": 30,
+        "particle_count": 15402,
+        "retained_neumann_max_abs": 3.9968028886505635e-15,
+        "separated_strip_count": 30,
+        "step": 57,
+        "wake_ring_count": 1710
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.5486596222835318,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.254240626059152e-14,
+      "freestream_factor": 0.6090716206982713,
+      "instantaneous_zmax_over_c": 0.018244041877934047,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 188,
+      "time_star": 0.5700000000000001,
+      "total_aerodynamic_force_n": [
+        0.06533957222472411,
+        5.814326884540089e-14,
+        0.21139904600912754
+      ]
+    },
+    {
+      "aero_step": 58,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.5052130349130266e-18,
+        "lesp_pin_max_abs": 7.924216838262055e-15,
+        "lesp_pre_max_abs": 0.3047574120661155,
+        "lev_release_count": 30,
+        "particle_count": 15673,
+        "retained_neumann_max_abs": 3.9968028886505635e-15,
+        "separated_strip_count": 30,
+        "step": 58,
+        "wake_ring_count": 1740
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.5757441779758565,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.7890183850689324e-14,
+      "freestream_factor": 0.6243449435824273,
+      "instantaneous_zmax_over_c": 0.019241521283890232,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 188,
+      "time_star": 0.58,
+      "total_aerodynamic_force_n": [
+        0.06675720994310652,
+        -8.416921673526367e-14,
+        0.21501738068835274
+      ]
+    },
+    {
+      "aero_step": 59,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 7.258083023486961e-15,
+        "lesp_pre_max_abs": 0.3060740438002578,
+        "lev_release_count": 30,
+        "particle_count": 15944,
+        "retained_neumann_max_abs": 4.440892098500626e-15,
+        "separated_strip_count": 30,
+        "step": 59,
+        "wake_ring_count": 1770
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.6091466098747325,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.0990439365675386e-14,
+      "freestream_factor": 0.6394955530196146,
+      "instantaneous_zmax_over_c": 0.020274938226583442,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.59,
+      "total_aerodynamic_force_n": [
+        0.06843975202202432,
+        4.683574491778919e-14,
+        0.21949860817878997
+      ]
+    },
+    {
+      "aero_step": 60,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 1.2448375663609568e-14,
+        "lesp_pre_max_abs": 0.306830840998916,
+        "lev_release_count": 30,
+        "particle_count": 16215,
+        "retained_neumann_max_abs": 4.440892098500626e-15,
+        "separated_strip_count": 30,
+        "step": 60,
+        "wake_ring_count": 1800
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.6500724644721068,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.063593410046953e-14,
+      "freestream_factor": 0.6545084971874737,
+      "instantaneous_zmax_over_c": 0.021337595317726995,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.6,
+      "total_aerodynamic_force_n": [
+        0.07043848445942336,
+        -2.1663085821715944e-13,
+        0.22500716981622979
+      ]
+    },
+    {
+      "aero_step": 61,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 5.440092820663267e-15,
+        "lesp_pre_max_abs": 0.30664040458657493,
+        "lev_release_count": 30,
+        "particle_count": 16486,
+        "retained_neumann_max_abs": 4.218847493575595e-15,
+        "separated_strip_count": 30,
+        "step": 61,
+        "wake_ring_count": 1830
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.6928366231385994,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.308602994355697e-14,
+      "freestream_factor": 0.6693689601226457,
+      "instantaneous_zmax_over_c": 0.022428083449166393,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.61,
+      "total_aerodynamic_force_n": [
+        0.07254612309950743,
+        6.671502543117991e-14,
+        0.2307576798911241
+      ]
+    },
+    {
+      "aero_step": 62,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.071532165918825e-18,
+        "lesp_pin_max_abs": 8.423817199343375e-15,
+        "lesp_pre_max_abs": 0.3055315426395874,
+        "lev_release_count": 30,
+        "particle_count": 16757,
+        "retained_neumann_max_abs": 4.218847493575595e-15,
+        "separated_strip_count": 30,
+        "step": 62,
+        "wake_ring_count": 1860
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.728785268023665,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.565987403062315e-14,
+      "freestream_factor": 0.684062276342339,
+      "instantaneous_zmax_over_c": 0.023544438567693286,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.62,
+      "total_aerodynamic_force_n": [
+        0.07446329144654454,
+        7.238648699545158e-14,
+        0.2355500032853503
+      ]
+    },
+    {
+      "aero_step": 63,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 1.6014967130217883e-14,
+        "lesp_pre_max_abs": 0.3042408884057751,
+        "lev_release_count": 30,
+        "particle_count": 17028,
+        "retained_neumann_max_abs": 5.10702591327572e-15,
+        "separated_strip_count": 30,
+        "step": 63,
+        "wake_ring_count": 1890
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.7525885163846295,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.2579197318457207e-14,
+      "freestream_factor": 0.6985739453173903,
+      "instantaneous_zmax_over_c": 0.024684123795629315,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.63,
+      "total_aerodynamic_force_n": [
+        0.07596883678010377,
+        -3.326885208293495e-14,
+        0.23865552001734852
+      ]
+    },
+    {
+      "aero_step": 64,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.5052130349130266e-18,
+        "lesp_pin_max_abs": 5.898059818321144e-15,
+        "lesp_pre_max_abs": 0.3036648059282458,
+        "lev_release_count": 30,
+        "particle_count": 17299,
+        "retained_neumann_max_abs": 4.440892098500626e-15,
+        "separated_strip_count": 30,
+        "step": 64,
+        "wake_ring_count": 1920
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.7689763514054113,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.6873326484612732e-14,
+      "freestream_factor": 0.7128896457825363,
+      "instantaneous_zmax_over_c": 0.025844194877935038,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.64,
+      "total_aerodynamic_force_n": [
+        0.07716687099880792,
+        -2.0372310609306776e-13,
+        0.2407472643421798
+      ]
+    },
+    {
+      "aero_step": 65,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.7220534694101275e-18,
+        "lesp_pin_max_abs": 8.271161533457416e-15,
+        "lesp_pre_max_abs": 0.3041541044747972,
+        "lev_release_count": 30,
+        "particle_count": 17570,
+        "retained_neumann_max_abs": 3.9968028886505635e-15,
+        "separated_strip_count": 30,
+        "step": 65,
+        "wake_ring_count": 1950
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.7848473827174616,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.3101534773061593e-14,
+      "freestream_factor": 0.7269952498697734,
+      "instantaneous_zmax_over_c": 0.027020837538106694,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.65,
+      "total_aerodynamic_force_n": [
+        0.07832431455502958,
+        7.644606518988906e-14,
+        0.24277384947054614
+      ]
+    },
+    {
+      "aero_step": 66,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 0.0,
+        "lesp_pin_max_abs": 6.2727600891321345e-15,
+        "lesp_pre_max_abs": 0.3057282783770214,
+        "lev_release_count": 0,
+        "particle_count": 17570,
+        "retained_neumann_max_abs": 4.218847493575595e-15,
+        "separated_strip_count": 30,
+        "step": 66,
+        "wake_ring_count": 1980
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.8396974083224578,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.9617619169778364e-14,
+      "freestream_factor": 0.7408768370508577,
+      "instantaneous_zmax_over_c": 0.02820982614523954,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 190,
+      "time_star": 0.66,
+      "total_aerodynamic_force_n": [
+        0.08087498504006305,
+        -4.084276319926694e-14,
+        0.2501933136181884
+      ]
+    },
+    {
+      "aero_step": 67,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 5.842548667089886e-15,
+        "lesp_pre_max_abs": 0.30759220522641734,
+        "lev_release_count": 30,
+        "particle_count": 17841,
+        "retained_neumann_max_abs": 6.661338147750939e-15,
+        "separated_strip_count": 30,
+        "step": 67,
+        "wake_ring_count": 2010
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.8342408388602665,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.0593824076000366e-14,
+      "freestream_factor": 0.7545207078751857,
+      "instantaneous_zmax_over_c": 0.02940659948184912,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 192,
+      "time_star": 0.67,
+      "total_aerodynamic_force_n": [
+        0.08148202781450221,
+        -2.107260763453689e-14,
+        0.24920838642238852
+      ]
+    },
+    {
+      "aero_step": 68,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.5052130349130266e-18,
+        "lesp_pin_max_abs": 6.078471059822732e-15,
+        "lesp_pre_max_abs": 0.3104736682439897,
+        "lev_release_count": 30,
+        "particle_count": 18112,
+        "retained_neumann_max_abs": 5.10702591327572e-15,
+        "separated_strip_count": 30,
+        "step": 68,
+        "wake_ring_count": 2040
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.8447959400992564,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.029689810560437e-14,
+      "freestream_factor": 0.7679133974894985,
+      "instantaneous_zmax_over_c": 0.030606834186223564,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 194,
+      "time_star": 0.68,
+      "total_aerodynamic_force_n": [
+        0.08286234743477104,
+        -6.29083916035833e-14,
+        0.2503811017672678
+      ]
+    },
+    {
+      "aero_step": 69,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 1.0602629885170245e-14,
+        "lesp_pre_max_abs": 0.31307135635655475,
+        "lev_release_count": 30,
+        "particle_count": 18383,
+        "retained_neumann_max_abs": 5.10702591327572e-15,
+        "separated_strip_count": 30,
+        "step": 69,
+        "wake_ring_count": 2070
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.938078667696782,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.983474559838823e-14,
+      "freestream_factor": 0.7810416889260654,
+      "instantaneous_zmax_over_c": 0.031851843184700725,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 192,
+      "time_star": 0.6900000000000001,
+      "total_aerodynamic_force_n": [
+        0.08702452751197813,
+        7.655437698692036e-14,
+        0.2630496729242548
+      ]
+    },
+    {
+      "aero_step": 70,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.071532165918825e-18,
+        "lesp_pin_max_abs": 8.923417560424696e-15,
+        "lesp_pre_max_abs": 0.31358466752288683,
+        "lev_release_count": 30,
+        "particle_count": 18654,
+        "retained_neumann_max_abs": 4.218847493575595e-15,
+        "separated_strip_count": 30,
+        "step": 70,
+        "wake_ring_count": 2100
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 1.9744855737242668,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.874206798997251e-14,
+      "freestream_factor": 0.7938926261462365,
+      "instantaneous_zmax_over_c": 0.033136157309720526,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.7000000000000001,
+      "total_aerodynamic_force_n": [
+        0.08914235797215067,
+        1.8157637936624949e-13,
+        0.2678525561867412
+      ]
+    },
+    {
+      "aero_step": 71,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 7.313594174718219e-15,
+        "lesp_pre_max_abs": 0.314443628348181,
+        "lev_release_count": 30,
+        "particle_count": 18925,
+        "retained_neumann_max_abs": 5.995204332975845e-15,
+        "separated_strip_count": 30,
+        "step": 71,
+        "wake_ring_count": 2130
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.0024403903071324,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.681914553331837e-14,
+      "freestream_factor": 0.8064535268264881,
+      "instantaneous_zmax_over_c": 0.03442400260673504,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 194,
+      "time_star": 0.71,
+      "total_aerodynamic_force_n": [
+        0.0911640767552175,
+        -8.86433938404596e-14,
+        0.2714269964505571
+      ]
+    },
+    {
+      "aero_step": 72,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 4.871103520542874e-15,
+        "lesp_pre_max_abs": 0.3147617998294349,
+        "lev_release_count": 30,
+        "particle_count": 19196,
+        "retained_neumann_max_abs": 5.995204332975845e-15,
+        "separated_strip_count": 30,
+        "step": 72,
+        "wake_ring_count": 2160
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.0332689692183266,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.426038498014675e-14,
+      "freestream_factor": 0.8187119948743449,
+      "instantaneous_zmax_over_c": 0.035709375680805996,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 194,
+      "time_star": 0.72,
+      "total_aerodynamic_force_n": [
+        0.09303144919514095,
+        1.8863014449033155e-13,
+        0.2754727434078268
+      ]
+    },
+    {
+      "aero_step": 73,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.071532165918825e-18,
+        "lesp_pin_max_abs": 6.036837696399289e-15,
+        "lesp_pre_max_abs": 0.31510999340361984,
+        "lev_release_count": 30,
+        "particle_count": 19467,
+        "retained_neumann_max_abs": 5.773159728050814e-15,
+        "separated_strip_count": 30,
+        "step": 73,
+        "wake_ring_count": 2190
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.055005439817926,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.0296498588604292e-13,
+      "freestream_factor": 0.8306559326618259,
+      "instantaneous_zmax_over_c": 0.036987231363443104,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.73,
+      "total_aerodynamic_force_n": [
+        0.09431980220044545,
+        -2.782481276636384e-13,
+        0.2783334104615006
+      ]
+    },
+    {
+      "aero_step": 74,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 6.800116025829084e-15,
+        "lesp_pre_max_abs": 0.31573651635733596,
+        "lev_release_count": 30,
+        "particle_count": 19738,
+        "retained_neumann_max_abs": 1.021405182655144e-14,
+        "separated_strip_count": 30,
+        "step": 74,
+        "wake_ring_count": 2220
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.091184150444089,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.1077873907256682e-13,
+      "freestream_factor": 0.8422735529643444,
+      "instantaneous_zmax_over_c": 0.0382539604449989,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 194,
+      "time_star": 0.74,
+      "total_aerodynamic_force_n": [
+        0.0964777452554329,
+        -4.229104046127308e-14,
+        0.28309088118955295
+      ]
+    },
+    {
+      "aero_step": 75,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.5052130349130266e-18,
+        "lesp_pin_max_abs": 4.093947403305265e-15,
+        "lesp_pre_max_abs": 0.3159611516239982,
+        "lev_release_count": 30,
+        "particle_count": 20009,
+        "retained_neumann_max_abs": 6.217248937900877e-15,
+        "separated_strip_count": 30,
+        "step": 75,
+        "wake_ring_count": 2250
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.1380026440324063,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.4088074933028466e-14,
+      "freestream_factor": 0.8535533905932737,
+      "instantaneous_zmax_over_c": 0.039507366310335246,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.75,
+      "total_aerodynamic_force_n": [
+        0.09893037106904078,
+        -1.2067799017023706e-13,
+        0.28934495254852566
+      ]
+    },
+    {
+      "aero_step": 76,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 6.369904603786836e-15,
+        "lesp_pre_max_abs": 0.31641763204540746,
+        "lev_release_count": 30,
+        "particle_count": 20280,
+        "retained_neumann_max_abs": 7.327471962526033e-15,
+        "separated_strip_count": 30,
+        "step": 76,
+        "wake_ring_count": 2280
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.1854738912296376,
+      "coupling_iterations": 3,
+      "coupling_residual": 9.780289191586471e-14,
+      "freestream_factor": 0.8644843137107057,
+      "instantaneous_zmax_over_c": 0.04074491498706632,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.76,
+      "total_aerodynamic_force_n": [
+        0.1011942042462681,
+        8.101299579094112e-14,
+        0.295750160216916
+      ]
+    },
+    {
+      "aero_step": 77,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.5052130349130266e-18,
+        "lesp_pin_max_abs": 9.478529072737274e-15,
+        "lesp_pre_max_abs": 0.3176691976912179,
+        "lev_release_count": 30,
+        "particle_count": 20551,
+        "retained_neumann_max_abs": 6.661338147750939e-15,
+        "separated_strip_count": 30,
+        "step": 77,
+        "wake_ring_count": 2310
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.2368756320790437,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.1816883233477033e-13,
+      "freestream_factor": 0.8750555348152298,
+      "instantaneous_zmax_over_c": 0.04212198403175543,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.77,
+      "total_aerodynamic_force_n": [
+        0.10385335951748934,
+        -1.9976240713676097e-13,
+        0.30262609272690355
+      ]
+    },
+    {
+      "aero_step": 78,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 4.066191827689636e-15,
+        "lesp_pre_max_abs": 0.3184710544292498,
+        "lev_release_count": 30,
+        "particle_count": 20822,
+        "retained_neumann_max_abs": 7.993605777301127e-15,
+        "separated_strip_count": 30,
+        "step": 78,
+        "wake_ring_count": 2340
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.2858371832965996,
+      "coupling_iterations": 3,
+      "coupling_residual": 6.962543548978991e-14,
+      "freestream_factor": 0.8852566213878945,
+      "instantaneous_zmax_over_c": 0.04355381504187599,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.78,
+      "total_aerodynamic_force_n": [
+        0.10636473677194709,
+        1.2958471101720548e-13,
+        0.3091817813452812
+      ]
+    },
+    {
+      "aero_step": 79,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 4.579669976578771e-15,
+        "lesp_pre_max_abs": 0.3196023861257238,
+        "lev_release_count": 30,
+        "particle_count": 21093,
+        "retained_neumann_max_abs": 9.769962616701378e-15,
+        "separated_strip_count": 30,
+        "step": 79,
+        "wake_ring_count": 2370
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.329884061326089,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.907932261015723e-14,
+      "freestream_factor": 0.8950775061878452,
+      "instantaneous_zmax_over_c": 0.04497383872345124,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.79,
+      "total_aerodynamic_force_n": [
+        0.1085805190169972,
+        -2.3450837625949017e-13,
+        0.3150918971898151
+      ]
+    },
+    {
+      "aero_step": 80,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 6.938893903907228e-18,
+        "lesp_pin_max_abs": 7.53563877964325e-15,
+        "lesp_pre_max_abs": 0.3215976311612511,
+        "lev_release_count": 30,
+        "particle_count": 21364,
+        "retained_neumann_max_abs": 1.1102230246251565e-14,
+        "separated_strip_count": 30,
+        "step": 80,
+        "wake_ring_count": 2400
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.373849175091688,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.49084727892156e-14,
+      "freestream_factor": 0.9045084971874737,
+      "instantaneous_zmax_over_c": 0.04637726559280398,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.8,
+      "total_aerodynamic_force_n": [
+        0.11104420548402189,
+        6.590680692170059e-14,
+        0.32091877725930595
+      ]
+    },
+    {
+      "aero_step": 81,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 9.540979117872439e-18,
+        "lesp_pin_max_abs": 4.413136522884997e-15,
+        "lesp_pre_max_abs": 0.3237248163312704,
+        "lev_release_count": 30,
+        "particle_count": 21635,
+        "retained_neumann_max_abs": 7.549516567451064e-15,
+        "separated_strip_count": 30,
+        "step": 81,
+        "wake_ring_count": 2430
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.412017156219359,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.6983543003050566e-13,
+      "freestream_factor": 0.913540287137281,
+      "instantaneous_zmax_over_c": 0.04783412488678955,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.81,
+      "total_aerodynamic_force_n": [
+        0.11309996536254152,
+        -6.320356564504248e-15,
+        0.3260011593366283
+      ]
+    },
+    {
+      "aero_step": 82,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.0625181290357943e-17,
+        "lesp_pin_max_abs": 4.2049697057677804e-15,
+        "lesp_pre_max_abs": 0.3257894082711521,
+        "lev_release_count": 30,
+        "particle_count": 21906,
+        "retained_neumann_max_abs": 7.105427357601002e-15,
+        "separated_strip_count": 30,
+        "step": 82,
+        "wake_ring_count": 2460
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.4466529572952114,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5068500746970582e-13,
+      "freestream_factor": 0.9221639627510075,
+      "instantaneous_zmax_over_c": 0.049311355229956645,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.8200000000000001,
+      "total_aerodynamic_force_n": [
+        0.11477966051704398,
+        -4.768853497857939e-13,
+        0.3306664850522629
+      ]
+    },
+    {
+      "aero_step": 83,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3877787807814457e-17,
+        "lesp_pin_max_abs": 6.772360450213455e-15,
+        "lesp_pre_max_abs": 0.3281291398553719,
+        "lev_release_count": 30,
+        "particle_count": 22177,
+        "retained_neumann_max_abs": 1.199040866595169e-14,
+        "separated_strip_count": 30,
+        "step": 83,
+        "wake_ring_count": 2490
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.485783660489703,
+      "coupling_iterations": 3,
+      "coupling_residual": 9.125282262736425e-14,
+      "freestream_factor": 0.9303710135019718,
+      "instantaneous_zmax_over_c": 0.05082312503881088,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.8300000000000001,
+      "total_aerodynamic_force_n": [
+        0.11690519046560684,
+        2.4125710110234344e-13,
+        0.3358719238988657
+      ]
+    },
+    {
+      "aero_step": 84,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3877787807814457e-17,
+        "lesp_pin_max_abs": 7.827072323607354e-15,
+        "lesp_pre_max_abs": 0.3298249518889228,
+        "lev_release_count": 30,
+        "particle_count": 22448,
+        "retained_neumann_max_abs": 6.217248937900877e-15,
+        "separated_strip_count": 30,
+        "step": 84,
+        "wake_ring_count": 2520
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.52334638933012,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.7418186248283849e-13,
+      "freestream_factor": 0.9381533400219317,
+      "instantaneous_zmax_over_c": 0.05234299126717827,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.84,
+      "total_aerodynamic_force_n": [
+        0.11884162511131091,
+        -4.821891583933757e-13,
+        0.34089857986456223
+      ]
+    },
+    {
+      "aero_step": 85,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3877787807814457e-17,
+        "lesp_pin_max_abs": 2.7478019859472624e-15,
+        "lesp_pre_max_abs": 0.33099866268235106,
+        "lev_release_count": 30,
+        "particle_count": 22719,
+        "retained_neumann_max_abs": 1.2878587085651816e-14,
+        "separated_strip_count": 30,
+        "step": 85,
+        "wake_ring_count": 2550
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.559381615800039,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.0758846000071449e-13,
+      "freestream_factor": 0.9455032620941839,
+      "instantaneous_zmax_over_c": 0.05387273440641336,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.85,
+      "total_aerodynamic_force_n": [
+        0.12039934187435175,
+        -4.4179655593612477e-13,
+        0.3458068405916686
+      ]
+    },
+    {
+      "aero_step": 86,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3660947373317356e-17,
+        "lesp_pin_max_abs": 4.773959005888173e-15,
+        "lesp_pre_max_abs": 0.331875354438828,
+        "lev_release_count": 30,
+        "particle_count": 22990,
+        "retained_neumann_max_abs": 8.43769498715119e-15,
+        "separated_strip_count": 30,
+        "step": 86,
+        "wake_ring_count": 2580
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.5919371445502453,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5331353912403244e-13,
+      "freestream_factor": 0.9524135262330097,
+      "instantaneous_zmax_over_c": 0.05541198709930487,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.86,
+      "total_aerodynamic_force_n": [
+        0.12210299158325105,
+        -2.872051554914101e-16,
+        0.35015616354557194
+      ]
+    },
+    {
+      "aero_step": 87,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3877787807814457e-17,
+        "lesp_pin_max_abs": 9.145462165349727e-15,
+        "lesp_pre_max_abs": 0.3325147961212301,
+        "lev_release_count": 30,
+        "particle_count": 23261,
+        "retained_neumann_max_abs": 9.769962616701378e-15,
+        "separated_strip_count": 30,
+        "step": 87,
+        "wake_ring_count": 2610
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.6271296610288477,
+      "coupling_iterations": 3,
+      "coupling_residual": 7.437423140474671e-14,
+      "freestream_factor": 0.9588773128419905,
+      "instantaneous_zmax_over_c": 0.05699344906682391,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.87,
+      "total_aerodynamic_force_n": [
+        0.12371869230995945,
+        1.4802308684336296e-13,
+        0.3549225687317564
+      ]
+    },
+    {
+      "aero_step": 88,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3227266504323154e-17,
+        "lesp_pin_max_abs": 5.6343818499726694e-15,
+        "lesp_pre_max_abs": 0.33252546941580857,
+        "lev_release_count": 30,
+        "particle_count": 23532,
+        "retained_neumann_max_abs": 7.993605777301127e-15,
+        "separated_strip_count": 30,
+        "step": 88,
+        "wake_ring_count": 2640
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.662226889336706,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.6511068421988138e-13,
+      "freestream_factor": 0.9648882429441257,
+      "instantaneous_zmax_over_c": 0.05858926029737486,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.88,
+      "total_aerodynamic_force_n": [
+        0.12501860607017984,
+        -8.08050891823453e-13,
+        0.3597653643022831
+      ]
+    },
+    {
+      "aero_step": 89,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3877787807814457e-17,
+        "lesp_pin_max_abs": 5.870304242705515e-15,
+        "lesp_pre_max_abs": 0.3327455655078833,
+        "lev_release_count": 30,
+        "particle_count": 23803,
+        "retained_neumann_max_abs": 7.993605777301127e-15,
+        "separated_strip_count": 30,
+        "step": 89,
+        "wake_ring_count": 2670
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.6968252458125903,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.3723663175949997e-13,
+      "freestream_factor": 0.9704403844771128,
+      "instantaneous_zmax_over_c": 0.06019158741805409,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.89,
+      "total_aerodynamic_force_n": [
+        0.12672098215326796,
+        -6.118651592335045e-14,
+        0.3644186220008949
+      ]
+    },
+    {
+      "aero_step": 90,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3877787807814457e-17,
+        "lesp_pin_max_abs": 7.382983113757291e-15,
+        "lesp_pre_max_abs": 0.3328502763537625,
+        "lev_release_count": 30,
+        "particle_count": 24074,
+        "retained_neumann_max_abs": 8.43769498715119e-15,
+        "separated_strip_count": 30,
+        "step": 90,
+        "wake_ring_count": 2700
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.7407021014486963,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.8443779104911594e-13,
+      "freestream_factor": 0.9755282581475768,
+      "instantaneous_zmax_over_c": 0.06205303498713789,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.9,
+      "total_aerodynamic_force_n": [
+        0.12858827215709978,
+        -9.383509594340644e-14,
+        0.37040340061560906
+      ]
+    },
+    {
+      "aero_step": 91,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3444106938820255e-17,
+        "lesp_pin_max_abs": 3.83026943495679e-15,
+        "lesp_pre_max_abs": 0.33277159203498297,
+        "lev_release_count": 30,
+        "particle_count": 24344,
+        "retained_neumann_max_abs": 7.549516567451064e-15,
+        "separated_strip_count": 30,
+        "step": 91,
+        "wake_ring_count": 2730
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.7763721750846218,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.864516194679781e-13,
+      "freestream_factor": 0.9801468428384715,
+      "instantaneous_zmax_over_c": 0.06396601487715632,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 0.91,
+      "total_aerodynamic_force_n": [
+        0.1299211904022574,
+        2.9237202936460704e-13,
+        0.37532185861508943
+      ]
+    },
+    {
+      "aero_step": 92,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3010426069826053e-17,
+        "lesp_pin_max_abs": 5.523359547510154e-15,
+        "lesp_pre_max_abs": 0.3335045776064402,
+        "lev_release_count": 30,
+        "particle_count": 24615,
+        "retained_neumann_max_abs": 1.021405182655144e-14,
+        "separated_strip_count": 30,
+        "step": 92,
+        "wake_ring_count": 2760
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.7983416471805134,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.327518734283939e-13,
+      "freestream_factor": 0.9842915805643155,
+      "instantaneous_zmax_over_c": 0.06584922133331109,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.92,
+      "total_aerodynamic_force_n": [
+        0.13117798265516664,
+        9.582616276003486e-13,
+        0.37822620020011577
+      ]
+    },
+    {
+      "aero_step": 93,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3552527156068805e-17,
+        "lesp_pin_max_abs": 5.564992910933597e-15,
+        "lesp_pre_max_abs": 0.33497455279358584,
+        "lev_release_count": 26,
+        "particle_count": 24850,
+        "retained_neumann_max_abs": 1.021405182655144e-14,
+        "separated_strip_count": 30,
+        "step": 93,
+        "wake_ring_count": 2790
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.8213873799364872,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.886307469389425e-13,
+      "freestream_factor": 0.9879583809693737,
+      "instantaneous_zmax_over_c": 0.06769065809976572,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.93,
+      "total_aerodynamic_force_n": [
+        0.13220116679316501,
+        -1.225791386796904e-13,
+        0.38135746298075734
+      ]
+    },
+    {
+      "aero_step": 94,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.328147661294743e-17,
+        "lesp_pin_max_abs": 3.747002708109903e-15,
+        "lesp_pre_max_abs": 0.3367132236962721,
+        "lev_release_count": 30,
+        "particle_count": 25121,
+        "retained_neumann_max_abs": 1.1102230246251565e-14,
+        "separated_strip_count": 30,
+        "step": 94,
+        "wake_ring_count": 2820
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.839751483783331,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.2419973367073716e-13,
+      "freestream_factor": 0.9911436253643444,
+      "instantaneous_zmax_over_c": 0.06947787817146962,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.9400000000000001,
+      "total_aerodynamic_force_n": [
+        0.13259195295915308,
+        -8.678617178202452e-13,
+        0.3839743606718361
+      ]
+    },
+    {
+      "aero_step": 95,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3335686721571705e-17,
+        "lesp_pin_max_abs": 8.992806499463768e-15,
+        "lesp_pre_max_abs": 0.33895486245519413,
+        "lev_release_count": 28,
+        "particle_count": 25376,
+        "retained_neumann_max_abs": 1.8207657603852567e-14,
+        "separated_strip_count": 30,
+        "step": 95,
+        "wake_ring_count": 2850
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.849650897558324,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.0596314860818036e-13,
+      "freestream_factor": 0.9938441702975689,
+      "instantaneous_zmax_over_c": 0.07119952248135815,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.9500000000000001,
+      "total_aerodynamic_force_n": [
+        0.13297539726853946,
+        2.2883100579337845e-13,
+        0.3853354885416855
+      ]
+    },
+    {
+      "aero_step": 96,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3444106938820255e-17,
+        "lesp_pin_max_abs": 5.412337245047638e-15,
+        "lesp_pre_max_abs": 0.34128006717084086,
+        "lev_release_count": 30,
+        "particle_count": 25647,
+        "retained_neumann_max_abs": 9.325873406851315e-15,
+        "separated_strip_count": 30,
+        "step": 96,
+        "wake_ring_count": 2880
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.863867009704768,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.2057332792255817e-13,
+      "freestream_factor": 0.9960573506572389,
+      "instantaneous_zmax_over_c": 0.07284830042569176,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.96,
+      "total_aerodynamic_force_n": [
+        0.13321548395017346,
+        1.402122775523429e-12,
+        0.38737919620826505
+      ]
+    },
+    {
+      "aero_step": 97,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3769367590565906e-17,
+        "lesp_pin_max_abs": 4.107825191113079e-15,
+        "lesp_pre_max_abs": 0.34314321809651255,
+        "lev_release_count": 30,
+        "particle_count": 25918,
+        "retained_neumann_max_abs": 1.4654943925052066e-14,
+        "separated_strip_count": 30,
+        "step": 97,
+        "wake_ring_count": 2910
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.8768696927789046,
+      "coupling_iterations": 3,
+      "coupling_residual": 2.139410139280172e-13,
+      "freestream_factor": 0.99778098230154,
+      "instantaneous_zmax_over_c": 0.07442150881218763,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.97,
+      "total_aerodynamic_force_n": [
+        0.1327986399066532,
+        1.6765641609392534e-13,
+        0.38943095699794983
+      ]
+    },
+    {
+      "aero_step": 98,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3769367590565906e-17,
+        "lesp_pin_max_abs": 6.702971511174383e-15,
+        "lesp_pre_max_abs": 0.34500156444678526,
+        "lev_release_count": 30,
+        "particle_count": 26189,
+        "retained_neumann_max_abs": 1.2434497875801753e-14,
+        "separated_strip_count": 30,
+        "step": 98,
+        "wake_ring_count": 2940
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.8795214070574167,
+      "coupling_iterations": 3,
+      "coupling_residual": 3.2561021932046244e-13,
+      "freestream_factor": 0.9990133642141358,
+      "instantaneous_zmax_over_c": 0.07592548667086131,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.98,
+      "total_aerodynamic_force_n": [
+        0.1320229553372398,
+        -3.506950047200974e-13,
+        0.39004743264032005
+      ]
+    },
+    {
+      "aero_step": 99,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3769367590565906e-17,
+        "lesp_pin_max_abs": 5.537237335317968e-15,
+        "lesp_pre_max_abs": 0.34642471822429066,
+        "lev_release_count": 30,
+        "particle_count": 26460,
+        "retained_neumann_max_abs": 1.2434497875801753e-14,
+        "separated_strip_count": 30,
+        "step": 99,
+        "wake_ring_count": 2970
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.8777096235058686,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.7774799318973948e-13,
+      "freestream_factor": 0.9997532801828658,
+      "instantaneous_zmax_over_c": 0.07738026039502825,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 0.99,
+      "total_aerodynamic_force_n": [
+        0.1306350702145221,
+        -2.9245963290014387e-13,
+        0.3901761665248825
+      ]
+    },
+    {
+      "aero_step": 100,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3701604954785562e-17,
+        "lesp_pin_max_abs": 4.4825254619240695e-15,
+        "lesp_pre_max_abs": 0.3470797979617154,
+        "lev_release_count": 24,
+        "particle_count": 26679,
+        "retained_neumann_max_abs": 1.5987211554602254e-14,
+        "separated_strip_count": 30,
+        "step": 100,
+        "wake_ring_count": 3000
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.8776566476031866,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5398300412961192e-13,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.07876808329241278,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.0,
+      "total_aerodynamic_force_n": [
+        0.12893965761692722,
+        3.055278469457634e-13,
+        0.39065444590662424
+      ]
+    },
+    {
+      "aero_step": 101,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.1492543028346347e-17,
+        "lesp_pin_max_abs": 4.8433479449272454e-15,
+        "lesp_pre_max_abs": 0.3478104736365452,
+        "lev_release_count": 12,
+        "particle_count": 26789,
+        "retained_neumann_max_abs": 1.3766765505351941e-14,
+        "separated_strip_count": 30,
+        "step": 101,
+        "wake_ring_count": 3030
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.8907540693544465,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.853564869064141e-13,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08000188067227104,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.01,
+      "total_aerodynamic_force_n": [
+        0.12811772174602637,
+        6.511246077901822e-13,
+        0.39283644332361206
+      ]
+    },
+    {
+      "aero_step": 102,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3227266504323154e-17,
+        "lesp_pin_max_abs": 4.524158825347513e-15,
+        "lesp_pre_max_abs": 0.3484953412512102,
+        "lev_release_count": 28,
+        "particle_count": 26792,
+        "retained_neumann_max_abs": 1.3322676295501878e-14,
+        "separated_strip_count": 30,
+        "step": 102,
+        "wake_ring_count": 3060
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.918525016039187,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.5020571927540646e-13,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08113323209704924,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.02,
+      "total_aerodynamic_force_n": [
+        0.12785413751780222,
+        5.902114192345154e-13,
+        0.39703886013362344
+      ]
+    },
+    {
+      "aero_step": 103,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.2935887170467675e-17,
+        "lesp_pin_max_abs": 7.202571872255703e-15,
+        "lesp_pre_max_abs": 0.3491826415884417,
+        "lev_release_count": 10,
+        "particle_count": 26618,
+        "retained_neumann_max_abs": 1.2434497875801753e-14,
+        "separated_strip_count": 30,
+        "step": 103,
+        "wake_ring_count": 3090
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.948848136123777,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.1859918837832117e-13,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08212392397508467,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.03,
+      "total_aerodynamic_force_n": [
+        0.12771785582751927,
+        -4.3401377327126345e-13,
+        0.4015840331648804
+      ]
+    },
+    {
+      "aero_step": 104,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.2414114874959026e-17,
+        "lesp_pin_max_abs": 4.621303340002214e-15,
+        "lesp_pre_max_abs": 0.3506974734064108,
+        "lev_release_count": 30,
+        "particle_count": 26619,
+        "retained_neumann_max_abs": 1.2878587085651816e-14,
+        "separated_strip_count": 30,
+        "step": 104,
+        "wake_ring_count": 3120
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.977354369018644,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.2660760983649967e-13,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08297279773953224,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.04,
+      "total_aerodynamic_force_n": [
+        0.12793416069567803,
+        -5.573585213150545e-14,
+        0.4057581094431138
+      ]
+    },
+    {
+      "aero_step": 105,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3173056395698879e-17,
+        "lesp_pin_max_abs": 7.341349750333848e-15,
+        "lesp_pre_max_abs": 0.3519578313832429,
+        "lev_release_count": 28,
+        "particle_count": 26604,
+        "retained_neumann_max_abs": 1.509903313490213e-14,
+        "separated_strip_count": 30,
+        "step": 105,
+        "wake_ring_count": 3150
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.998338466474866,
+      "coupling_iterations": 3,
+      "coupling_residual": 1.3431380235949502e-13,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08367389643206084,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.05,
+      "total_aerodynamic_force_n": [
+        0.12779689616403345,
+        6.678302117042734e-13,
+        0.40891576113214584
+      ]
+    },
+    {
+      "aero_step": 106,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3806637040245096e-17,
+        "lesp_pin_max_abs": 7.66053886991358e-15,
+        "lesp_pre_max_abs": 0.3534544911028775,
+        "lev_release_count": 30,
+        "particle_count": 26605,
+        "retained_neumann_max_abs": 1.3322676295501878e-14,
+        "separated_strip_count": 30,
+        "step": 106,
+        "wake_ring_count": 3180
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 3.0084250682256246,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.711580909249098e-14,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.0842356343132067,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.06,
+      "total_aerodynamic_force_n": [
+        0.12737213597145158,
+        2.1539817455715204e-13,
+        0.41053645453604537
+      ]
+    },
+    {
+      "aero_step": 107,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3769367590565906e-17,
+        "lesp_pin_max_abs": 5.800915303666443e-15,
+        "lesp_pre_max_abs": 0.3556765955172087,
+        "lev_release_count": 30,
+        "particle_count": 26606,
+        "retained_neumann_max_abs": 1.1546319456101628e-14,
+        "separated_strip_count": 30,
+        "step": 107,
+        "wake_ring_count": 3210
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 3.0110679061813896,
+      "coupling_iterations": 3,
+      "coupling_residual": 4.7497108509781326e-14,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08466592104546686,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 196,
+      "time_star": 1.07,
+      "total_aerodynamic_force_n": [
+        0.12701481988286678,
+        7.26696806029048e-13,
+        0.4110316459022351
+      ]
+    },
+    {
+      "aero_step": 108,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3457659465976324e-17,
+        "lesp_pin_max_abs": 1.189326415129699e-14,
+        "lesp_pre_max_abs": 0.3578614940633353,
+        "lev_release_count": 18,
+        "particle_count": 26501,
+        "retained_neumann_max_abs": 1.1102230246251565e-14,
+        "separated_strip_count": 30,
+        "step": 108,
+        "wake_ring_count": 3240
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 3.009329753433994,
+      "coupling_iterations": 3,
+      "coupling_residual": 9.653660802111607e-14,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08496859891870402,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.08,
+      "total_aerodynamic_force_n": [
+        0.1261945918323878,
+        6.398486883558985e-13,
+        0.41100854847054996
+      ]
+    },
+    {
+      "aero_step": 109,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3444106938820255e-17,
+        "lesp_pin_max_abs": 6.0645932720149176e-15,
+        "lesp_pre_max_abs": 0.35995143828697,
+        "lev_release_count": 30,
+        "particle_count": 26502,
+        "retained_neumann_max_abs": 1.5987211554602254e-14,
+        "separated_strip_count": 30,
+        "step": 109,
+        "wake_ring_count": 3270
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 3.003911476229731,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.352482951552899e-14,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08514779918810084,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.09,
+      "total_aerodynamic_force_n": [
+        0.1252305914043478,
+        2.93963312893164e-13,
+        0.4104798009934827
+      ]
+    },
+    {
+      "aero_step": 110,
+      "aerodynamic": {
+        "cuda_float64": true,
+        "kelvin_max_abs": 1.3769367590565906e-17,
+        "lesp_pin_max_abs": 5.856426454897701e-15,
+        "lesp_pre_max_abs": 0.36205508436910583,
+        "lev_release_count": 26,
+        "particle_count": 26471,
+        "retained_neumann_max_abs": 1.2434497875801753e-14,
+        "separated_strip_count": 30,
+        "step": 110,
+        "wake_ring_count": 3300
+      },
+      "aerodynamic_evaluations": 4,
+      "cn": 2.997463362649027,
+      "coupling_iterations": 3,
+      "coupling_residual": 5.5880289816160695e-14,
+      "freestream_factor": 1.0,
+      "instantaneous_zmax_over_c": 0.08520608871075605,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 198,
+      "time_star": 1.1,
+      "total_aerodynamic_force_n": [
+        0.1245078577034395,
+        2.1273228404533606e-13,
+        0.4097288350189502
+      ]
+    }
+  ],
+  "rejected_trial_count": 0,
+  "rejected_trial_note": "coupling trials run on cloned branches; a non-converged trial never touches committed state and any parent mutation raises the digest guard",
+  "requested_aero_steps": 110,
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-v1",
+  "separated_lev_mandatory": true,
+  "spanwise_peak_count": null,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=16 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_start_time_star": 2.0,
+  "statistics_window_time_star": 20.0,
+  "status": "execution_gate_passed",
+  "step_wall_seconds_last": 183.5300452520023,
+  "step_wall_seconds_mean": 112.95725542847359,
+  "structural_substeps": 50,
+  "structural_substeps_protocol_frozen": 50,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "source": "tests/test_q16_work_conjugate_transfer.py, tests/test_q16_aero_load_packet_gpu.py, tests/test_q16_structural_step_gpu.py, tests/test_q16_flux_v5m_native_gpu.py",
+    "status": "component-level passed (see repository test evidence)"
+  },
+  "trial_count": 429,
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 3300,
+  "zsd_map": null
+}
