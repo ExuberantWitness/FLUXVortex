@@ -119,11 +119,19 @@ def run_case(
     max_aero_steps: int | None = None,
     execution_gate_only: bool = False,
     structural_substeps: int | None = None,
+    young_modulus_override: float | None = None,
     output: Path | None = None,
 ) -> dict[str, Any]:
     case = ROJRATSIRIKUL2011_CASES.get(case_id)
     if case is None:
         raise ValueError(f"unknown case {case_id}; use one of {sorted(ROJRATSIRIKUL2011_CASES)}")
+    import dataclasses
+    if young_modulus_override is not None:
+        # Labeled material-uncertainty branch (handoff section 6, unlocked
+        # after all independent oracles passed; CLAIM_TREE.md quantifies
+        # E_eff~1.4 MPa from the -13% equilibrium-camber deficit).  Never a
+        # replacement for the E=2.2 MPa primary result.
+        case = dataclasses.replace(case, young_modulus_pa=float(young_modulus_override))
     validate_rojratsirikul2011_sources()
     if not torch.cuda.is_available() or not wp.is_cuda_available():
         raise RuntimeError("formal Rojratsirikul native CASE requires CUDA")
@@ -254,6 +262,9 @@ def run_case(
         device=config.DEVICE,
         dtype=torch.float64,
     )
+    pressure_sum = torch.zeros(
+        surface.nc * surface.ns, device=config.DEVICE, dtype=torch.float64
+    )
     records: list[dict[str, Any]] = []
     progress_records: list[dict[str, Any]] = []
     step_wall_times: list[float] = []
@@ -287,6 +298,10 @@ def run_case(
                 "time_star": np.array(
                     [(index + 1) * case.aerodynamic_dt_star for index in range(len(records))],
                     dtype=np.float64,
+                ),
+                "mean_pressure_map": (
+                    (pressure_sum / max(len(records), 1)).reshape(surface.nc, surface.ns)
+                    .cpu().numpy()
                 ),
             },
         )
@@ -340,6 +355,7 @@ def run_case(
             write_partial("failed", {"failed_aero_step": step, "error": "non-finite membrane state"})
             raise RuntimeError(f"non-finite membrane state at aero step {step}")
         z_history[step - 1] = displacement
+        pressure_sum += result.aerodynamic.load.pressure
         total_force = result.aerodynamic.load.total_force
         if not bool(torch.isfinite(total_force).all()):
             write_partial("failed", {"failed_aero_step": step, "error": "non-finite aerodynamic force"})
@@ -473,6 +489,7 @@ def run_case(
         "b": case.span_m,
         "S": case.reference_area_m2,
         "E": case.young_modulus_pa,
+        "E_branch": (young_modulus_override is not None),
         "nu_s": case.poisson_ratio_assumed,
         "rho_m": case.membrane_density_kg_m3,
         "thickness": case.thickness_m,
@@ -570,6 +587,10 @@ def run_case(
                     [(index + 1) * case.aerodynamic_dt_star for index in range(len(records))],
                     dtype=np.float64,
                 ),
+                "mean_pressure_map": (
+                    (pressure_sum / max(len(records), 1)).reshape(surface.nc, surface.ns)
+                    .cpu().numpy()
+                ),
             },
         )
         _write_json(
@@ -605,6 +626,13 @@ def main() -> int:
         "recorded alongside",
     )
     parser.add_argument(
+        "--young-modulus-override",
+        type=float,
+        default=None,
+        help="Labeled material-uncertainty branch (handoff section 6); "
+        "the E=2.2 MPa run remains the primary result",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -619,6 +647,7 @@ def main() -> int:
         max_aero_steps=arguments.max_aero_steps,
         execution_gate_only=arguments.execution_gate_only,
         structural_substeps=arguments.structural_substeps,
+        young_modulus_override=arguments.young_modulus_override,
         output=output,
     )
     printable = dict(result)

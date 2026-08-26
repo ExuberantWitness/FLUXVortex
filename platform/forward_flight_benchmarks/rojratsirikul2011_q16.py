@@ -110,7 +110,10 @@ class Rojratsirikul2011MembraneCase:
     structural_substeps_per_aerodynamic_step: int = 10
     startup_time_star: float = 1.0
     statistics_min_time_star: float = 20.0
-    statistics_start_time_star: float = 2.0
+    # Statistics start after the damped settling transient: the slow first
+ # membrane mode (period ~3 t*) decays with sigma~0.8/t*, so t*>=4 is the
+ # earliest window not contaminated by the startup ring-down.
+    statistics_start_time_star: float = 4.0
     lesp_crit: float = 0.11
 
     @property
