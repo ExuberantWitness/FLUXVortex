@@ -1015,8 +1015,17 @@ class Q16NativeV5MSolver:
             # circulation time derivative, bounded by construction.  The
             # strong-scheme Mf2_vec1 (MATERIAL_MODEL) diverges when every
             # wake row carries a large persistent LEV release.
+            # One-step difference: at this point ``trial.gamma_bound`` still
+            # holds the last COMMITTED bound circulation Gamma_(n-1) (it is
+            # only overwritten with the new Gamma_n at the bottom of
+            # propose()), while ``trial.gamma_previous`` lags one step further
+            # behind (Gamma_(n-2)) because of the state-update ordering
+            # (gamma_previous copies the pre-update gamma_bound).  Reading
+            # gamma_previous here doubled the derivative's amplitude and
+            # shifted its phase; the author's dp_add is (Gamma_n -
+            # Gamma_(n-1))/dt exactly.
             mf2_history = (
-                gamma - trial.gamma_previous
+                gamma - trial.gamma_bound
             ) / self.settings.aerodynamic_dt
             wake_vertex_velocity = None
         elif trial.wake_rings.shape[0]:

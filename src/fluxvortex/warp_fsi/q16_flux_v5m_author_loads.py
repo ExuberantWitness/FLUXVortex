@@ -338,12 +338,21 @@ class Q16NativeAuthorEndpointLoad:
     constant_pressure: torch.Tensor
     constant_generalized_force: wp.array
     added_mass: Q16NativeAddedMassAction
+    # Fluid density: the velocity part (lift2 + Mf2_1) must carry rho exactly
+    # like the constant part (lift1 + Mf2) — the frozen reference paths
+    # (warp_fsi/coupled.py dp_lift1_flat_kernel, platform/warp_vpm/
+    # q16_real_fsi_coupling.py) multiply every pressure term by rho.
+    density: float = 1.0
     # Lazy LU of the fixed aic; the same aic is solved ~80x per outer step.
     _aic_lu: Any = None
 
     def velocity_force(self, structural_velocity: wp.array) -> wp.array:
         live = self.surface.evaluate(self.structural_state, structural_velocity)
-        lift2_pressure = -torch.sum(
+        # Both velocity-part pressures carry rho (the reference frozen paths
+        # bake rho into dp_lift2_w and multiply the Mf2_1 solve by rho): a
+        # bare -V·grad(Gamma) is m^2/s^2 and cannot be summed with the Pa
+        # constant part.
+        lift2_pressure = -self.density * torch.sum(
             live.collocation_velocity * self.gamma_gradient, dim=1
         )
         diagonal_31 = self.geometry.rings[:, 3] - self.geometry.rings[:, 1]
@@ -378,7 +387,9 @@ class Q16NativeAuthorEndpointLoad:
         if lu is None:
             lu = torch.linalg.lu_factor(self.aic)
             object.__setattr__(self, "_aic_lu", lu)
-        mf21_pressure = torch.linalg.lu_solve(lu[0], lu[1], mf21_rhs.unsqueeze(1)).squeeze(1)
+        mf21_pressure = self.density * torch.linalg.lu_solve(
+            lu[0], lu[1], mf21_rhs.unsqueeze(1)
+        ).squeeze(1)
         pressure = lift2_pressure + mf21_pressure
         generalized = pressure @ self.pressure_to_generalized.T
         if not CAPTURING and not bool(torch.isfinite(generalized).all().item()):
@@ -541,6 +552,7 @@ class Q16NativeAuthorLoadAssembler:
                 )
             ),
             added_mass=Q16NativeAddedMassAction(added_mass_matrix.detach().clone()),
+            density=self.density,
         )
 
 

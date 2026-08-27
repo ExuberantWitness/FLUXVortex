@@ -103,6 +103,80 @@ mandatory、历史 GPU V2、V4B、作者 one-state/six-state/QS 曲线）。
 
 ---
 
+## 8. 外部评审更正（2026-08-27，当日追加）：状态升级为 FAIL_IMPLEMENTATION_CONTRACT
+
+外部评审确认了两个**确定性的实现错误**（不是物理假设问题）。本报告
+第 5 节的根因假设表和第 1 节的定性（"FAIL_ACCURACY_WITH_VALID_PHYSICS"）
+**作废**；正确状态为 **FAIL_IMPLEMENTATION_CONTRACT**：H5 结果是在
+带量纲错误与错误时间差分的载荷路径上产生的，在任何物理结论之前必须
+先修复并重跑。
+
+### 8.1 BUG 1：lift2 与 Mf2_1 缺少密度乘法（Pa 与 m²/s² 直接相加）
+
+四个压力分量中，lift1 与 wake-history(Mf2) 携带 ρ，而**速度部分两项
+漏乘 ρ**，然后四项直接求和 —— 把 m²/s² 加进了 Pa 量纲的 Pa 总压：
+
+| 位置 | 分量 | 修复前 |
+|---|---|---|
+| `src/fluxvortex/warp_fsi/rigid_flux_v5m_native.py:200`（修复前行号） | `lift2` | `-Σ v·∇γ`，无 ρ |
+| `src/fluxvortex/warp_fsi/rigid_flux_v5m_native.py:228`（修复前行号） | `mf2_1` | `LU⁻¹(rhs)`，无 ρ |
+| `src/fluxvortex/warp_fsi/q16_flux_v5m_author_loads.py:346`（修复前行号） | `lift2_pressure` | 无 ρ |
+| `src/fluxvortex/warp_fsi/q16_flux_v5m_author_loads.py:381`（修复前行号） | `mf21_pressure` | 无 ρ |
+
+参考（正确实现）：`src/fluxvortex/warp_fsi/coupled.py:88`（`dp2 = rho·(τx·dΓ/dx + τy·dΓ/dy)`）、
+`coupled.py:168`（`s = -rho·x`）与 `platform/warp_vpm/q16_real_fsi_coupling.py:388`
+（lift2 算子内嵌 ρ）、`:1199`（`generalized = fluid_density · A⁻¹scal · map`）。
+
+**修复**：两文件的 lift2/mf2(1)_pressure 计算补 `* self.density`
+（Q16 端点载荷新增 `density` 字段由 assembler 传入）。回归测试
+`tests/test_density_scaling_gpu.py`：ρ=1.0 与 ρ=1000.0 各跑一步
+propose()/assemble()，**全部四个压力分量与力/wrench 必须严格线性缩放**
+（分量级要求 bitwise 精确）。修复前该测试 3/3 用例失败，修复后全过。
+
+### 8.2 BUG 2：bound_rate 使用了两步旧的环量（幅值×2、相位偏移）
+
+`src/fluxvortex/warp_fsi/q16_flux_v5m_native.py:1018`（修复前行号）的
+`wake_history_mode="bound_rate"` 分支读取 `trial.gamma_previous`。由于
+状态更新顺序（propose() 末尾先 `gamma_previous = gamma_bound`，再
+`gamma_bound = gamma`），在 mf2_history 计算点 `gamma_previous` 持有
+**Γ_(n−2)** 而非 Γ_(n−1)，实际计算的是：
+
+```
+(Γ_n − Γ_(n−2)) / dt    而作者弱格式 dp_add 应为    (Γ_n − Γ_(n−1)) / dt
+```
+
+该错误使导数幅值翻倍并引入相位偏移。**修复**：改读
+`trial.gamma_bound`（该时刻仍持有上一步已提交的 Γ_(n−1)，仅在本步末尾
+才被覆盖）。回归测试 `tests/test_gamma_history_gpu.py`：三步推进，
+逐步断言 mf2_history 严格等于 (Γ_n − Γ_(n−1))/dt 且与两步差分相差
+>1.0（判别性下限）。修复前失败，修复后全过。
+
+### 8.3 对第 5 节假设表的两处事实更正
+
+1. **"15° 族 LESP 低于阈值无释放"是错的**。`physics_evidence.json`
+   显示释放确实发生：IZRA-15-015 全程 512 步中 254 步有 LEV 释放
+   （`lev_release_count_total = 6096`，`lev_release_count_max = 24`），
+   最大分离条带数 22/24。第 5 节据此排除 LEV 释放物理的推理不成立。
+   （注意 IZRA-15-090/105 与 25° 族高相位端确实无释放。）
+2. **LEV 双所有权冲突被记录但未被门控**。IZRA-15-015 的
+   `release_owner_conflicts_total = 1490`（3D 分离掩码与 source-bank
+   shed_lev 的不一致计数）——数值被写进诊断但没有 gate 拦截，静默地
+   按 reconcile 规则继续运行。该冲突是否影响环量分配需在修复重跑后
+   复核（建议将非零冲突计数升级为显式 gate 或至少汇总进
+   physics_evidence 顶层字段）。
+
+### 8.4 修复后的必做事项
+
+1. 重跑 H5 Fig.14 12 条件（两 bug 均在载荷路径上，CT 数值必然改变；
+   第 3 节对比表全部作废）。
+2. 重跑后再评估第 5 节剩余假设（几何/相位/来流方向对比实验仍然有效）。
+3. 双所有权冲突（8.3-2）随重跑数据一并复核。
+
+*修复提交：见 git log `fix(critical): lift2/Mf2_1 density dimension +
+bound_rate one-step gamma history`。*
+
+---
+
 *本报告由 H5 运行结束后自动数据 + 手动分析生成。所有数据文件已在
 `artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory/` 中
 git 跟踪。*

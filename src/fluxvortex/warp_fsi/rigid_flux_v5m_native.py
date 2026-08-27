@@ -196,8 +196,14 @@ class RigidAuthorLoadAssembler:
         lift1 = self.density * torch.sum(external_flow * gamma_gradient, dim=1)
         wake_history = self.density * mf2_history
         # Velocity part (author's lift2 + Mf2_1), evaluated on the prescribed
-        # SurfaceFrame velocities instead of a structural substep.
-        lift2 = -torch.sum(geometry.collocation_velocity * gamma_gradient, dim=1)
+        # SurfaceFrame velocities instead of a structural substep.  Both
+        # pressures carry rho exactly like lift1/Mf2 above and like the frozen
+        # reference paths (warp_fsi/coupled.py dp_lift1_flat_kernel,
+        # platform/warp_vpm/q16_real_fsi_coupling.py): summing a bare
+        # m^2/s^2 term into a Pa total would add incompatible units.
+        lift2 = -self.density * torch.sum(
+            geometry.collocation_velocity * gamma_gradient, dim=1
+        )
         diagonal_31 = geometry.rings[:, 3] - geometry.rings[:, 1]
         diagonal_24 = geometry.rings[:, 2] - geometry.rings[:, 0]
         diagonal_31_rate = geometry.ring_velocity[:, 3] - geometry.ring_velocity[:, 1]
@@ -225,7 +231,9 @@ class RigidAuthorLoadAssembler:
             bound_rate * geometry.normals, dim=1
         )
         lu = torch.linalg.lu_factor(aic)
-        mf2_1 = torch.linalg.lu_solve(lu[0], lu[1], mf2_1_rhs.unsqueeze(1)).squeeze(1)
+        mf2_1 = self.density * torch.linalg.lu_solve(
+            lu[0], lu[1], mf2_1_rhs.unsqueeze(1)
+        ).squeeze(1)
 
         pressure = lift1 + wake_history + lift2 + mf2_1
         panel_forces = pressure[:, None] * geometry.areas[:, None] * geometry.normals
