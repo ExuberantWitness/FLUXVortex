@@ -541,6 +541,11 @@ def physics_contract_ok(results: list[dict[str, Any]]) -> tuple[bool, list[str]]
             violations.append(f"{case_id}: proposal mutated the parent state")
         if physics["posthoc_separation_delta_applied"] is not False:
             violations.append(f"{case_id}: post-hoc separation delta applied")
+        if physics.get("release_owner_conflicts_total", 0) > 0:
+            violations.append(
+                f"{case_id}: {physics['release_owner_conflicts_total']} "
+                "LEV dual-ownership conflicts (3D LESP vs source bank)"
+            )
         if not math.isfinite(result["ct"]) or not math.isfinite(result["ct_raw"]):
             violations.append(f"{case_id}: non-finite CT")
     return (not violations), violations
