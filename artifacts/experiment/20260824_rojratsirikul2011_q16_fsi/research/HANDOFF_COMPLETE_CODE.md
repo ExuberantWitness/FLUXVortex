@@ -277,3 +277,18 @@ Remaining U7 work:
 - Constraint reaction extraction and routing to body/joint
 - Roj A16 long-time stationarity with corrected statistics
 - A10/A23 generality runs
+
+### U7-3: Cross-surface AIC with mutual-induction quantification
+
+Commit f87b628. Tests: 13 (8 GPU + 5 CPU). Total suite: 212.
+
+Key quantitative finding: for the Meng left/right mirror pair (2×450 panels):
+- Cross-influence norm ratio |A_cross|/|A_self| = 4.33%
+- But joint solve vs independent solves shifts bound circulation by up to 44.7%
+  of max|gamma| — the AIC's stiff diagonal amplifies the coupling, proving
+  that left/right mutual induction MUST be inside one solve (plan §8.6).
+- Self-blocks bit-identical to single-surface native_aic (torch.equal).
+- Mirror symmetry: A_LR == A_RL, gamma_L == -gamma_R to 1.3e-16.
+
+The cross-AIC builder is production-ready; the U7-4 work is to swap the
+global AIC into the bound solve inside the propose loop.
