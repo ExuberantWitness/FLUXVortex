@@ -314,7 +314,7 @@ def run_one_condition(
     device: str = "cuda:0",
     wake_max_rows: int = 128,
     particle_capacity: int = 131_072,
-    particle_max_age_steps: int = 128,
+    particle_max_age_steps: int = 64,
     dvm_target_spacing_chord: float = 0.018,
     wake_history_mode: str = DEFAULT_WAKE_HISTORY_MODE,
     logger: logging.Logger | None = None,
@@ -965,7 +965,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--wake-max-rows", type=int, default=128)
     parser.add_argument("--particle-capacity", type=int, default=131_072)
-    parser.add_argument("--particle-max-age-steps", type=int, default=128)
+    parser.add_argument("--particle-max-age-steps", type=int, default=64)
     parser.add_argument(
         "--wake-history-mode",
         choices=("material", "bound_rate"),
