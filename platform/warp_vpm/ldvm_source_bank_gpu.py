@@ -281,6 +281,7 @@ class CudaLDVMSourceBank:
         heave_rate_over_u: torch.Tensor | None = None,
         *,
         node_topology_from_cell_count: int | None = None,
+        cell_release_mask: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor | bool]:
         """Advance every section at one common source clock tick.
 
@@ -289,6 +290,21 @@ class CudaLDVMSourceBank:
         own only their shared endpoint kinematics.  Endpoint lanes then inherit
         the union of their adjacent cell events; they do not cast an independent
         material-release vote.
+
+        When ``cell_release_mask`` is supplied (single-owner contract,
+        ``fluxvortex.aero.v5m.separation``), it is a Boolean tensor of one entry
+        per ribbon cell that GATES the bank's own 2D LESP threshold test:
+        ``release = raw_2d_trigger AND mask``.  The 3D actual-surface LESP is
+        the only separation truth, so a strip the 3D solve says is attached can
+        never release, whatever its 2D strip-theory LESP says (dual-ownership
+        suppression).  A strip the 3D solve separates but whose 2D LESP is
+        still subcritical stays unshed — continuing release of existing LEV
+        circulation, pinned in the 3D solve at its free A0 — because forcing
+        the coupled release of a subcritical 2D section pins its LESP at
+        sign*crit from below and injects opposite-signed circulation.  The
+        bank's un-gated 2D opinion is still computed and returned as
+        ``raw_shed_lev`` (diagnostic only), so a caller can count how often
+        the single owner suppressed it.
         """
         alpha = _cuda_vector(
             "alpha", alpha, batch_size=self.batch_size, device=self.device
@@ -379,6 +395,10 @@ class CudaLDVMSourceBank:
         )
         lesp_pre = af_pre[:, 0]
         raw_shed_lev = torch.abs(lesp_pre) > self.lesp_crit
+        if cell_release_mask is not None and node_topology_from_cell_count is None:
+            raise ValueError(
+                "cell_release_mask requires node_topology_from_cell_count"
+            )
         shed_lev = raw_shed_lev
         if node_topology_from_cell_count is not None:
             if (
@@ -391,6 +411,28 @@ class CudaLDVMSourceBank:
                 )
             cell_count = node_topology_from_cell_count
             cell_active = raw_shed_lev[:cell_count]
+            if cell_release_mask is not None:
+                if type(cell_release_mask) is not torch.Tensor or (
+                    cell_release_mask.dtype is not torch.bool
+                ):
+                    raise ValueError(
+                        "cell_release_mask must be a Boolean torch tensor"
+                    )
+                if (
+                    cell_release_mask.device != self.device
+                    or tuple(cell_release_mask.shape) != (cell_count,)
+                ):
+                    raise ValueError(
+                        "cell_release_mask must be CUDA bool of shape "
+                        f"({cell_count},) on {self.device}"
+                    )
+                # Single-owner gate: the caller's 3D separation truth ANDs
+                # with the bank's own 2D LESP trigger — a strip the 3D solve
+                # says is attached may never release (dual-ownership
+                # suppression), while a separated-but-subcritical 2D section
+                # stays unshed (continuing release).  The bank's un-gated
+                # opinion survives only as the returned raw_shed_lev.
+                cell_active = cell_active & cell_release_mask
             node_active = torch.empty(
                 cell_count + 1, device=self.device, dtype=torch.bool
             )

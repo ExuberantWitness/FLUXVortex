@@ -5,7 +5,12 @@ Fix checkpoint for refactor plan §8.3 / §14:
    3D actual-surface LESP vs the frozen lesp_crit.
 2. ``reconcile_release_mask`` returns the 3D truth as the production
    pin/release mask (NOT the union with the source bank's shed_lev) and
-   counts owner disagreements instead of silently unioning them.
+   counts unsanctioned releases — strips the 2D bank shed without the 3D
+   owner saying separated — instead of silently unioning them.  Production
+   gates the bank's own 2D LESP trigger with the 3D mask
+   (``CudaLDVMSourceBank.step(cell_release_mask=...)``), so a nonzero
+   count means the single-owner gate was bypassed; a separated strip the
+   bank has not shed is continuing release, not a conflict.
 3. The A16 production solver is driven for 5 propose steps with per-step
    capture of ``lesp_pre_3d`` and the source bank's ``shed_lev``; in the
    saturated regime (all 30 strips above LESPcrit) the 3D mask is all-True
@@ -204,23 +209,25 @@ class U2FSeparationMaskSyntheticTest(unittest.TestCase):
 
     def test_02_reconcile_returns_3d_truth_not_union(self):
         # source wants to shed but 3D says attached: the source bank may NOT
-        # independently declare separation — a union would pin these strips.
+        # independently declare separation — a union would pin these strips,
+        # and every such unsanctioned release is a dual-ownership conflict.
         surface = torch.zeros(4, device=self.device, dtype=torch.bool)
         source = torch.ones(4, device=self.device, dtype=torch.bool)
         active, conflicts = reconcile_release_mask(surface, source)
         self.assertTrue(torch.equal(active, surface))
         self.assertFalse(bool(active.any().item()))
-        self.assertEqual(conflicts, 0)
+        self.assertEqual(conflicts, 4)
 
     def test_03_reconcile_continuing_release(self):
         # 3D separated but source bank not shedding (yet): still pinned —
-        # the strip carries existing LEV circulation; counted as conflict.
+        # the strip carries existing LEV circulation; this is continuing
+        # release, NOT a dual-ownership conflict.
         surface = torch.ones(4, device=self.device, dtype=torch.bool)
         source = torch.zeros(4, device=self.device, dtype=torch.bool)
         active, conflicts = reconcile_release_mask(surface, source)
         self.assertTrue(torch.equal(active, surface))
         self.assertTrue(bool(active.all().item()))
-        self.assertEqual(conflicts, 4)
+        self.assertEqual(conflicts, 0)
 
     def test_04_reconcile_mixed_and_agreement(self):
         surface = torch.tensor(
@@ -232,7 +239,7 @@ class U2FSeparationMaskSyntheticTest(unittest.TestCase):
         active, conflicts = reconcile_release_mask(surface, source)
         # active IS the 3D truth strip-by-strip
         self.assertTrue(torch.equal(active, surface))
-        self.assertEqual(conflicts, 1)  # only strip 0 disagrees that way
+        self.assertEqual(conflicts, 1)  # only strip 2 released unsanctioned
         # full agreement: saturated all-True → all-True, zero conflicts
         both = torch.ones(30, device=self.device, dtype=torch.bool)
         active, conflicts = reconcile_release_mask(both, both.clone())

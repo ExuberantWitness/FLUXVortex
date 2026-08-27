@@ -24,20 +24,31 @@ def reconcile_release_mask(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Reconcile the source bank's release mask with the 3D truth.
 
+    Production passes the 3D mask INTO ``CudaLDVMSourceBank.step`` (keyword
+    ``cell_release_mask``) as a gate on the bank's own 2D LESP trigger, so the
+    returned ``shed_lev`` can never fire on a strip the 3D solve says is
+    attached.  This function then verifies that single ownership held.
+
     Returns (active_mask, conflict_count):
-    - active_mask: strips where BOTH 3D truth says separated AND source
-      bank says shedding (intersection, NOT union)
-    - conflict_count: strips where the two owners disagree
+    - active_mask: the 3D truth — every separated strip stays pinned (it
+      carries existing LEV circulation), whether or not the bank sheds.
+    - conflict_count: strips that RELEASED without 3D sanction — the only
+      dual-ownership direction still possible, and it must be zero: the
+      3D LESP is the only separation truth.  A separated strip the bank
+      has not (yet) shed is NOT a conflict: it is continuing release —
+      pinned at its free A0, no new particles deposited.
     """
     # The correct mask is the 3D truth, period. The source bank's mask
     # tells us which strips the 2D closure is actively shedding for.
-    # A strip that the source bank wants to shed but 3D says not
-    # separated = a conflict (physics inconsistency).
-    # A strip that 3D says separated but source bank doesn't shed = 
+    # A strip that released while 3D says attached = dual ownership: the
+    # 2D closure independently declared separation.  With the production
+    # gate wired into the bank this cannot happen; a nonzero count means
+    # the gate was bypassed.
+    # A strip that 3D says separated but the bank doesn't shed =
     # continuing release (already have aLEV, no new shedding needed).
-    conflict = surface_separated & ~source_shed_lev  # 3D says separated, source doesn't shed
+    conflict = ~surface_separated & source_shed_lev  # released without the owner's sanction
     active = surface_separated & source_shed_lev      # both agree: shed
-    
+
     # The production pin_active should be surface_separated (the 3D truth),
     # NOT the union with source releases. Strips where 3D says separated
     # but source hasn't caught up yet still need to be pinned (they carry

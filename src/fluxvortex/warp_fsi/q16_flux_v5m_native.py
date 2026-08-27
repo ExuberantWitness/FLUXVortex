@@ -926,8 +926,26 @@ class Q16NativeV5MSolver:
             lesp_pre_3d, self.settings.effective_lesp_crit
         )
         alpha, alpha_rate, heave, _, _ = self._dvm_kinematics(geometry, trial)
+        # Single separation owner (plan §8.3): the 3D mask computed above is
+        # passed INTO the source bank as a gate on its own 2D LESP trigger,
+        # so the bank can never release a strip the 3D solve says is
+        # attached — its 2D strip-theory LESP (computed from the bank's own
+        # 2D wake, not the 3D ring solve) no longer deposits particles or
+        # feeds gamma_lev/TEV on attached strips.  A strip the 3D solve
+        # separates but whose 2D LESP is still subcritical stays unshed
+        # (continuing release: pinned below at its free A0, no new
+        # particles).  Forcing the coupled release of a subcritical 2D
+        # section was rejected: it pins the section's LESP at sign*crit from
+        # below and injects opposite-signed circulation (CT diverges).  The
+        # bank's un-gated 2D opinion survives only as the returned
+        # ``raw_shed_lev`` diagnostic (counted in ``release_gate_overrides``
+        # below).
         source_result = trial.source_bank.step(
-            alpha, alpha_rate, heave, node_topology_from_cell_count=ns
+            alpha,
+            alpha_rate,
+            heave,
+            node_topology_from_cell_count=ns,
+            cell_release_mask=surface_separated,
         )
         trial.alpha_previous = alpha.clone()
         particle_start = trial.particle_field.n
@@ -943,14 +961,23 @@ class Q16NativeV5MSolver:
             rhs = rhs - torch.sum(newborn_velocity * geometry.normals, dim=1)
         # Reconcile the source bank's release mask with the 3D truth (plan
         # §8.3): pin_active IS the 3D mask — never the union of two owners.
-        # The source bank's shed_lev only supplies release strength/position;
-        # strips it sheds without 3D separation no longer pin the bound solve,
-        # and strips 3D separates but the bank hasn't caught up with remain
-        # pinned (continuing release of existing LEV circulation).  The
-        # disagreement count is recorded so a dual-owner conflict cannot hide
-        # inside a silent union.
+        # Because the 3D mask gated the bank's release above, ``released``
+        # can only fire on separated strips, so the conflict count (releases
+        # without the owner's sanction) is a wiring guard that must stay
+        # zero: any nonzero value means a second owner is deciding
+        # separation again.  Separated strips the bank has not shed are NOT
+        # conflicts — they stay pinned (continuing release of existing LEV
+        # circulation).
         pin_active, release_owner_conflicts = reconcile_release_mask(
             surface_separated, released
+        )
+        # Observability (not a gate): how often the single-owner gate
+        # suppressed a 2D strip-theory LESP release vote this step (the
+        # bank wanted to shed a strip the 3D solve says is attached).
+        release_gate_overrides = int(
+            torch.count_nonzero(
+                source_result["raw_shed_lev"][:ns] & ~surface_separated
+            ).item()
         )
         separated_aic = aic.clone()
         separated_rhs = rhs.clone()
@@ -1118,6 +1145,7 @@ class Q16NativeV5MSolver:
                 "lev_release_count": int(torch.count_nonzero(released).item()),
                 "separated_strip_count": int(torch.count_nonzero(pin_active).item()),
                 "release_owner_conflicts": int(release_owner_conflicts),
+                "release_gate_overrides": release_gate_overrides,
                 "lesp_pre_max_abs": float(torch.max(torch.abs(lesp_pre_3d)).item()),
                 "lesp_pin_max_abs": float(pin_error.item()),
                 "kelvin_max_abs": float(kelvin.item()),

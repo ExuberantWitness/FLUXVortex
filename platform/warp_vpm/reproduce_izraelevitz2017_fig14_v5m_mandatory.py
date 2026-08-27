@@ -376,6 +376,7 @@ def run_one_condition(
     lev_release_counts: list[int] = []
     separated_strip_counts: list[int] = []
     release_owner_conflicts: list[int] = []
+    release_gate_overrides: list[int] = []
     wake_ring_counts: list[int] = []
     particle_counts: list[int] = []
     kelvin_max: list[float] = []
@@ -418,6 +419,7 @@ def run_one_condition(
         lev_release_counts.append(int(diag["lev_release_count"]))
         separated_strip_counts.append(int(diag["separated_strip_count"]))
         release_owner_conflicts.append(int(diag["release_owner_conflicts"]))
+        release_gate_overrides.append(int(diag.get("release_gate_overrides", 0)))
         wake_ring_counts.append(int(diag["wake_ring_count"]))
         particle_counts.append(int(diag["particle_count"]))
         kelvin_max.append(float(diag["kelvin_max_abs"]))
@@ -464,6 +466,10 @@ def run_one_condition(
         "lev_release_count_max": max(lev_release_counts),
         "separated_strip_count_max": max(separated_strip_counts),
         "release_owner_conflicts_total": sum(release_owner_conflicts),
+        # Single-owner observability (not a gate): 2D strip-theory LESP
+        # release votes suppressed by the 3D LESP mask (bank wanted to shed
+        # a strip the 3D solve says is attached).
+        "release_gate_overrides_total": sum(release_gate_overrides),
         "tev_shed_count": total_steps,  # exactly one full-span TEV row per step
         "wake_ring_count_max": max(wake_ring_counts),
         "free_wake_convection_count": free_wake_convection_count,
