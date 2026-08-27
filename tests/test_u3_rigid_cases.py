@@ -19,6 +19,7 @@ import math
 import pytest
 import torch
 
+from fluxvortex.cases import izraelevitz2017
 from fluxvortex.cases.baik2011 import BAIK_CASES, BaikCaseConfig
 from fluxvortex.cases.izraelevitz2017 import IZRA_CASES, IzraCaseConfig
 from fluxvortex.cases.protocol import CaseDefinition
@@ -336,23 +337,55 @@ class TestCaseConfigs:
             assert isinstance(config, YangCaseConfig)
             assert config.case_id == case_id
 
-    def test_izra_placeholder_registry(self):
-        assert IZRA_CASES == {}
-        # The config type still exists for the upcoming GT adapter.
-        probe = IzraCaseConfig(case_id="IZRA-01")
-        assert probe.case_id == "IZRA-01"
+    def test_izra_twelve_condition_contract(self):
+        # 12 unique motion conditions — the 14 experimental markers are
+        # replicate observations of these conditions, never 14 cases.
+        assert len(IZRA_CASES) == 12
+        families: dict[float, list[float]] = {}
+        for config in IZRA_CASES.values():
+            assert isinstance(config, IzraCaseConfig)
+            families.setdefault(config.theta_max_deg, []).append(config.phase_offset_deg)
+        assert set(families) == {15.0, 25.0}
+        assert sorted(families[15.0]) == [15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 105.0]
+        assert sorted(families[25.0]) == [45.0, 60.0, 75.0, 90.0, 105.0]
+        for case_id, config in IZRA_CASES.items():
+            assert config.case_id == case_id
+            # Rectangular wing: AR = b/c = 3 and S = b*c.
+            assert config.span_m / config.chord_m == pytest.approx(3.0)
+            assert config.area_m2 == pytest.approx(config.span_m * config.chord_m)
+            assert config.aspect_ratio == pytest.approx(3.0)
+            # Pitch axis at the three-quarter chord.
+            assert config.pivot_fraction_chord == pytest.approx(0.75)
+            # Heave amplitude h/c = 0.6.
+            assert config.heave_amplitude_m / config.chord_m == pytest.approx(0.6)
+            # Forward water flow with a finite Reynolds number — not a
+            # zero-freestream flapper.
+            assert config.freestream_m_s > 0.0
+            assert config.reynolds == pytest.approx(309676.8)
+        # Ground truth: frozen CSV present with the pinned SHA-256.
+        assert IZRA_CASES["IZRA-15-015"].ground_truth_path.is_file()
+        assert (
+            IZRA_CASES["IZRA-15-015"].ground_truth_sha256
+            == "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf"
+        )
+        izraelevitz2017.validate_gt()
+        # The corrected scientific object: a rectangular finite wing in
+        # forward flow.  The wrong prior description must stay gone.
+        doc = (izraelevitz2017.__doc__ or "").lower()
+        assert "elliptical" not in doc
+        assert "hovering" not in doc
 
     def test_configs_are_frozen(self):
         for config in (
             BAIK_CASES["W1"],
             YANG_CASES["YANG-0.0deg"],
-            IzraCaseConfig(case_id="IZRA-01"),
+            IZRA_CASES["IZRA-15-015"],
         ):
             with pytest.raises(Exception):
                 config.case_id = "mutated"  # type: ignore[misc]
 
     def test_configs_satisfy_case_definition_protocol(self):
-        unified = [*BAIK_CASES.values(), *YANG_CASES.values()]
+        unified = [*BAIK_CASES.values(), *YANG_CASES.values(), *IZRA_CASES.values()]
         for config in unified + [ROJ_A16_PRIMARY]:
             assert isinstance(config, CaseDefinition)
 
