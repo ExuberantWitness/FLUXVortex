@@ -134,7 +134,13 @@ def _synthetic_geometry(
 def _assemble_at_density(density: float, nc: int = 4, ns: int = 3, seed: int = 20260827):
     geometry, gamma, external_flow, fields = _synthetic_geometry(nc, ns, seed)
     aic = native_aic(geometry, chordwise_panels=nc)
-    assembler = RigidAuthorLoadAssembler(density=density, device=DEVICE)
+    assembler = RigidAuthorLoadAssembler(
+        density=density,
+        device=DEVICE,
+        chordwise_panels=nc,
+        spanwise_panels=ns,
+        aerodynamic_dt=0.05,
+    )
     return assembler.assemble(
         structural_state=None,
         geometry=geometry,
