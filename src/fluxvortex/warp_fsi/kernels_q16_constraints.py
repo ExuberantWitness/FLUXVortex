@@ -83,6 +83,20 @@ def _q16_constraint_kinematic_violation_kernel(
             wp.atomic_max(flag, 0, 1)
 
 
+@wp.kernel
+def _q16_prescribed_state_update_kernel(
+    candidate: wp.array(dtype=DTYPE, ndim=1),
+    constrained_mask: wp.array(dtype=wp.int32, ndim=1),
+    flag: wp.array(dtype=wp.int32, ndim=1),
+):
+    dof = wp.tid()
+    value = candidate[dof]
+    if not wp.isfinite(value):
+        wp.atomic_max(flag, 0, 1)
+    elif constrained_mask[dof] == 0 and value != DTYPE(0.0):
+        wp.atomic_max(flag, 0, 2)
+
+
 class Q16CudaBoundaryConstraints:
     """Device-resident counterpart of one exact Q16 boundary owner."""
 
@@ -205,6 +219,56 @@ class Q16CudaBoundaryConstraints:
         wp.synchronize_device(self.device)
         if int(flag.numpy()[0]) != 0:
             raise ValueError("structural kinematics violate the frozen boundary")
+
+    def update_prescribed_values(self, new_prescribed_state: Any) -> None:
+        """Replace the device-side prescribed state (for moving boundaries).
+
+        The candidate must be a 1-D Warp array of the full global DOF length
+        with the new prescribed values scattered at the constrained DOF
+        indices and exact zeros elsewhere — the same layout the constructor
+        builds from the boundary owner.  The projection kernels never read
+        free-DOF entries; requiring exact zeros there keeps the stored state
+        reproducible from one ``Q16BoundaryConstraints`` owner.
+        """
+
+        if not isinstance(new_prescribed_state, wp.array):
+            raise TypeError("new prescribed state must be a Warp array")
+        if (
+            not new_prescribed_state.device.is_cuda
+            or new_prescribed_state.device.alias != self.device
+        ):
+            raise ValueError(
+                f"new prescribed state must reside on CUDA device {self.device}"
+            )
+        if new_prescribed_state.dtype != DTYPE:
+            raise TypeError(
+                "new prescribed state must use the frozen float64 Warp dtype"
+            )
+        if (
+            new_prescribed_state.ndim != 1
+            or new_prescribed_state.shape[0] != self.dof_count
+        ):
+            raise ValueError(
+                "new prescribed state must have shape "
+                f"({self.dof_count},)"
+            )
+        flag = wp.zeros(1, dtype=wp.int32, device=self.device)
+        wp.launch(
+            _q16_prescribed_state_update_kernel,
+            dim=new_prescribed_state.shape,
+            inputs=[new_prescribed_state, self._constrained_mask],
+            outputs=[flag],
+            device=self.device,
+        )
+        wp.synchronize_device(self.device)
+        violation = int(flag.numpy()[0])
+        if violation == 1:
+            raise FloatingPointError("new prescribed state contains non-finite values")
+        if violation == 2:
+            raise ValueError(
+                "new prescribed state must be zero at every free degree of freedom"
+            )
+        self._prescribed_state = new_prescribed_state
 
 
 __all__ = ["Q16CudaBoundaryConstraints"]
