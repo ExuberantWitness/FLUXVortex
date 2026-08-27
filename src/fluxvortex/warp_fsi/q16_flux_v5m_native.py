@@ -295,36 +295,20 @@ class Q16NativeV5MSurface:
             trailing = wp.to_torch(self.trailing_transfer.interpolate(state))[0]
             leading_velocity = wp.to_torch(self.leading_transfer.interpolate(velocity))[0]
             trailing_velocity = wp.to_torch(self.trailing_transfer.interpolate(velocity))[0]
-        rear = quarter[-1] + (4.0 / 3.0) * (trailing - quarter[-1])
-        rear_velocity = quarter_velocity[-1] + (4.0 / 3.0) * (
-            trailing_velocity - quarter_velocity[-1]
+        (
+            rings,
+            ring_velocity,
+            collocation,
+            collocation_velocity,
+            normals,
+            areas,
+        ) = assemble_native_ring_geometry(
+            quarter,
+            quarter_velocity,
+            trailing,
+            trailing_velocity,
+            panel_count=self.nc * self.ns,
         )
-        back = torch.cat((quarter[1:], rear.unsqueeze(0)), dim=0)
-        back_velocity = torch.cat(
-            (quarter_velocity[1:], rear_velocity.unsqueeze(0)), dim=0
-        )
-        rings = torch.stack(
-            (quarter[:, :-1], quarter[:, 1:], back[:, 1:], back[:, :-1]), dim=2
-        ).reshape(self.nc * self.ns, 4, 3)
-        ring_velocity = torch.stack(
-            (
-                quarter_velocity[:, :-1],
-                quarter_velocity[:, 1:],
-                back_velocity[:, 1:],
-                back_velocity[:, :-1],
-            ),
-            dim=2,
-        ).reshape(self.nc * self.ns, 4, 3)
-        collocation = torch.mean(rings, dim=1)
-        collocation_velocity = torch.mean(ring_velocity, dim=1)
-        diagonal_31 = rings[:, 3] - rings[:, 1]
-        diagonal_24 = rings[:, 2] - rings[:, 0]
-        cross = torch.linalg.cross(diagonal_31, diagonal_24, dim=1)
-        cross_norm = torch.linalg.vector_norm(cross, dim=1)
-        if bool(torch.any(cross_norm <= 0.0).item()):
-            raise FloatingPointError("native V5M surface contains a collapsed panel")
-        normals = cross / cross_norm[:, None]
-        areas = 0.5 * cross_norm
         for name, value in (
             ("rings", rings),
             ("collocation", collocation),
@@ -348,6 +332,64 @@ class Q16NativeV5MSurface:
             trailing_velocity=trailing_velocity,
             quarter_points=quarter,
         )
+
+
+def assemble_native_ring_geometry(
+    quarter: torch.Tensor,
+    quarter_velocity: torch.Tensor,
+    trailing: torch.Tensor,
+    trailing_velocity: torch.Tensor,
+    *,
+    panel_count: int,
+) -> tuple[
+    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
+]:
+    """Assemble native V5M rings/collocation/normals/areas from quarter lines.
+
+    Single source of truth for the native V5M ring layout (HANDOFF
+    IZRAELEVITZ2017 §8 H2): ``Q16NativeV5MSurface.evaluate`` and the rigid
+    prescribed-motion reference grid both build panels through this helper,
+    so the Q16-interpolated path and the SurfaceFrame path cannot drift apart.
+
+    Inputs are ``(nc, ns+1, 3)`` quarter-chord lines with their velocities and
+    ``(ns+1, 3)`` trailing-edge nodes.  The rear row sits one chordwise panel
+    behind the last quarter line (the author's ``rear = quarter + 4/3 (TE -
+    quarter)`` offset), so the bound sheet spans ``[0.25 dx, c + 0.25 dx]``
+    in physical chord coordinates.  Returns ``(rings, ring_velocity,
+    collocation, collocation_velocity, normals, areas)`` with rings ordered
+    ``reshape(nc, ns, 4, 3)`` and panel index ``i * ns + j``.
+    """
+    rear = quarter[-1] + (4.0 / 3.0) * (trailing - quarter[-1])
+    rear_velocity = quarter_velocity[-1] + (4.0 / 3.0) * (
+        trailing_velocity - quarter_velocity[-1]
+    )
+    back = torch.cat((quarter[1:], rear.unsqueeze(0)), dim=0)
+    back_velocity = torch.cat(
+        (quarter_velocity[1:], rear_velocity.unsqueeze(0)), dim=0
+    )
+    rings = torch.stack(
+        (quarter[:, :-1], quarter[:, 1:], back[:, 1:], back[:, :-1]), dim=2
+    ).reshape(panel_count, 4, 3)
+    ring_velocity = torch.stack(
+        (
+            quarter_velocity[:, :-1],
+            quarter_velocity[:, 1:],
+            back_velocity[:, 1:],
+            back_velocity[:, :-1],
+        ),
+        dim=2,
+    ).reshape(panel_count, 4, 3)
+    collocation = torch.mean(rings, dim=1)
+    collocation_velocity = torch.mean(ring_velocity, dim=1)
+    diagonal_31 = rings[:, 3] - rings[:, 1]
+    diagonal_24 = rings[:, 2] - rings[:, 0]
+    cross = torch.linalg.cross(diagonal_31, diagonal_24, dim=1)
+    cross_norm = torch.linalg.vector_norm(cross, dim=1)
+    if bool(torch.any(cross_norm <= 0.0).item()):
+        raise FloatingPointError("native V5M surface contains a collapsed panel")
+    normals = cross / cross_norm[:, None]
+    areas = 0.5 * cross_norm
+    return rings, ring_velocity, collocation, collocation_velocity, normals, areas
 
 
 def native_ring_velocity_expanded(
@@ -1118,6 +1160,7 @@ __all__ = [
     "Q16NativeV5MOwner",
     "Q16NativeV5MSolver",
     "Q16NativeV5MSurface",
+    "assemble_native_ring_geometry",
     "native_aic",
     "native_ring_velocity_expanded",
 ]

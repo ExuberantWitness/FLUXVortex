@@ -5,6 +5,10 @@ the solver on the global panel set.
 
 The adapter does NOT duplicate any physics — it delegates to the existing
 propose()/commit() and only handles the surface-frame conversion.
+
+RigidV5MStepper (HANDOFF_IZRAELEVITZ2017 §8 H3) is the rigid-prescribed
+sibling: it drives the same native solver through a RigidV5MSurface that
+consumes the SurfaceFrame directly, with no Q16 structural-state bridge.
 """
 from __future__ import annotations
 
@@ -116,6 +120,118 @@ class V5M3DStepper(AerodynamicStepper):
         """
         self._structural_state = state
         self._structural_velocity = velocity
+
+    @property
+    def topology(self) -> MultiSurfaceTopology | None:
+        return self._topology
+
+
+class RigidV5MStepper(AerodynamicStepper):
+    """V5M stepper for rigid prescribed-motion cases (HANDOFF H3).
+
+    Feeds the SurfaceFrame geometry DIRECTLY into the native solver's
+    propose(): each propose stores the frame on the solver's
+    ``RigidV5MSurface`` and advances the frozen native V5M machinery one
+    aerodynamic step.  There is no Q16 structural-state bridge — this class
+    has no ``set_structural_state`` at all, and the rigid surface/assembler
+    reject any non-None structural state, so a raw wp.array cannot leak back
+    onto the rigid path.  ``dt`` is informational: the native solver advances
+    on its frozen ``aerodynamic_dt`` (same contract as ``V5M3DStepper``).
+    """
+
+    def __init__(self, native_solver, *, device: str = "cuda:0"):
+        from ...warp_fsi.rigid_flux_v5m_native import (
+            RigidNativeV5MSolver,
+            RigidV5MSurface,
+        )
+
+        if not isinstance(native_solver, RigidNativeV5MSolver):
+            raise TypeError("RigidV5MStepper requires a RigidNativeV5MSolver")
+        if not isinstance(native_solver.surface, RigidV5MSurface):
+            raise TypeError("RigidNativeV5MSolver must carry a RigidV5MSurface")
+        self._solver = native_solver
+        self.device = device
+        self._topology: MultiSurfaceTopology | None = None
+
+    def initialize(self, surfaces: tuple[Any, ...]) -> Any:
+        """Initialize from the surface frames; return the state owner.
+
+        The owner wraps the solver's fresh ``NativeV5MState`` (built from the
+        frame stored on the rigid surface) and is what ``propose`` expects as
+        ``committed`` — either the owner itself or its ``.state``.
+        """
+        if not surfaces:
+            raise ValueError(
+                "RigidV5MStepper.initialize requires at least one surface frame"
+            )
+        self._topology = MultiSurfaceTopology.from_surface_frames(surfaces)
+        if len(surfaces) != 1:
+            raise NotImplementedError(
+                f"Multi-surface rigid V5M is not yet implemented "
+                f"({len(surfaces)} surfaces); single-surface only"
+            )
+        frame = surfaces[0]
+        surface = self._solver.surface
+        if (frame.chordwise_panels, frame.spanwise_panels) != (surface.nc, surface.ns):
+            raise ValueError(
+                f"surface frame topology "
+                f"{frame.chordwise_panels}x{frame.spanwise_panels} differs "
+                f"from the native solver {surface.nc}x{surface.ns}"
+            )
+        from ...warp_fsi.q16_flux_v5m_native import Q16NativeV5MOwner
+
+        surface.set_frame(frame)
+        return Q16NativeV5MOwner(self._solver.initialize(None, None))
+
+    def propose(self, committed: Any, surfaces: tuple[Any, ...], dt: float) -> Any:
+        """Propose one aero step driven by the current SurfaceFrame."""
+        if len(surfaces) != 1:
+            raise NotImplementedError("multi-surface propose is not supported")
+        if self._topology is None:
+            raise RuntimeError(
+                "RigidV5MStepper.initialize() must be called before propose()"
+            )
+        frame = surfaces[0]
+        surface = self._solver.surface
+        if (frame.chordwise_panels, frame.spanwise_panels) != (surface.nc, surface.ns):
+            raise ValueError(
+                f"surface frame topology "
+                f"{frame.chordwise_panels}x{frame.spanwise_panels} differs "
+                f"from the native solver {surface.nc}x{surface.ns}"
+            )
+        state = self._committed_state(committed)
+        surface.set_frame(frame)
+        return self._solver.propose(state, None, None)
+
+    def commit(self, owner: Any, proposal: Any) -> None:
+        """Commit a proposal."""
+        self._committed_owner(owner).commit(proposal)
+
+    @staticmethod
+    def _committed_owner(committed: Any) -> Any:
+        """Resolve the native owner from a WorldOwner/FSI wrapper.
+
+        Accepts the ``Q16NativeV5MOwner`` returned by ``initialize`` (directly
+        or as ``WorldOwner.aero_state``, the one-way coupling contract) or an
+        FSI wrapper exposing ``.aerodynamic``.
+        """
+        candidate = getattr(committed, "aerodynamic", None)
+        if not hasattr(candidate, "commit"):
+            candidate = getattr(committed, "aero_state", None)
+        if not hasattr(candidate, "commit") and hasattr(committed, "state"):
+            candidate = committed
+        if not hasattr(candidate, "commit"):
+            raise TypeError(
+                "RigidV5MStepper expects the native owner returned by "
+                "initialize(), a WorldOwner carrying it as aero_state, or an "
+                "FSI wrapper around it"
+            )
+        return candidate
+
+    @classmethod
+    def _committed_state(cls, committed: Any) -> Any:
+        owner = cls._committed_owner(committed)
+        return owner.state
 
     @property
     def topology(self) -> MultiSurfaceTopology | None:
