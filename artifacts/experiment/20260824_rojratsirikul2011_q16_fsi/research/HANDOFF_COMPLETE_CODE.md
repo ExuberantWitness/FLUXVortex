@@ -255,3 +255,25 @@ Next (U7, not yet started):
 - A10/A23 generality (same parameters, no per-case tuning)
 - Resolution convergence (5×10→7×14 Q16, 15×30→21×42 V5M)
 - Performance: CUDA graph capture (warp stream issue documented), kernel fusion
+
+### U7 partial (stepper adapter + moving root)
+
+| Slice | Commit | Content | Tests |
+|---|---|---|---|
+| U7-1 | e7a377e | V5M3DStepper adapter: single-surface production parity, multi-surface topology rejection with clear error | 8 |
+| U7-2 | d96571e | MovingRootBoundary + Q16CudaBoundaryConstraints.update_prescribed_values + update kernel with fail-closed validation | 9 |
+
+Physics bugs caught and fixed during U7-2:
+- root_velocities: ω×(R·p_ref) not ω×(p_abs) (finite-difference check exposed)
+- update semantics: absolute-from-reference, not incremental (SE(3) inverse recovers)
+
+Moving-root three-layer status: position ✓, velocity ✓, acceleration pending
+(requires relaxing the zero-constrained-velocity check in require_kinematics);
+constraint reaction routing pending (constraint_reaction is a stub).
+
+Remaining U7 work:
+- Multi-surface V5M propose (global AIC assembly, §8.6)
+- Acceleration layer of moving root (§7.5)
+- Constraint reaction extraction and routing to body/joint
+- Roj A16 long-time stationarity with corrected statistics
+- A10/A23 generality runs
