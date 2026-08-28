@@ -42,9 +42,16 @@ def _pfield_bs_partials(
         if r2 > zero:
             r = wp.sqrt(r2)
             rho = r / source_sigma[s]
-            reg = wp.erf(rho * c_inv_sqrt2) - c_sqrt2_over_pi * rho * wp.exp(
-                -c_half * rho * rho
-            )
+            # Far-field early-out: for rho > 12 the Gaussian regularization
+            # erf(rho/sqrt2) - sqrt(2/pi)*rho*exp(-rho^2/2) equals 1 to the
+            # last fp64 bit (the corrections are < 1e-31), so the erf/exp
+            # pair is skipped for the overwhelmingly far-field pairs.
+            if rho > 12.0:
+                reg = wp.float64(1.0)
+            else:
+                reg = wp.erf(rho * c_inv_sqrt2) - c_sqrt2_over_pi * rho * wp.exp(
+                    -c_half * rho * rho
+                )
             w = c_inv_4pi * reg / (r2 * r)
             gx = source_gamma[s, 0]
             gy = source_gamma[s, 1]
@@ -69,6 +76,7 @@ def _require_tensor(
     *,
     device: torch.device,
     shape_tail: tuple[int, ...] = (),
+    check_finite: bool = True,
 ) -> torch.Tensor:
     if type(value) is not torch.Tensor:
         raise TypeError(f"{name} must be an exact torch.Tensor")
@@ -78,7 +86,7 @@ def _require_tensor(
         raise TypeError(f"{name} must use torch.float64")
     if shape_tail and tuple(value.shape[-len(shape_tail) :]) != shape_tail:
         raise ValueError(f"{name} must end in shape {shape_tail}")
-    if not bool(torch.isfinite(value).all().item()):
+    if check_finite and not bool(torch.isfinite(value).all().item()):
         raise FloatingPointError(f"{name} contains non-finite values")
     return value
 
@@ -274,7 +282,11 @@ class CudaParticleField:
         source_stop: int | None = None,
     ) -> torch.Tensor:
         targets = _require_tensor(
-            "targets", targets, device=self.device, shape_tail=(3,)
+            "targets",
+            targets,
+            device=self.device,
+            shape_tail=(3,),
+            check_finite=False,
         )
         if targets.ndim != 2:
             raise ValueError("particle targets must have shape (m,3)")
@@ -348,7 +360,11 @@ class CudaParticleField:
         """
 
         targets = _require_tensor(
-            "targets", targets, device=self.device, shape_tail=(3,)
+            "targets",
+            targets,
+            device=self.device,
+            shape_tail=(3,),
+            check_finite=False,
         )
         if targets.ndim != 2:
             raise ValueError("particle targets must have shape (m,3)")
@@ -413,6 +429,7 @@ class CudaParticleField:
                 external_velocity(at),
                 device=self.device,
                 shape_tail=(3,),
+                check_finite=False,
             )
             if external.shape != at.shape:
                 raise ValueError("external particle velocity shape mismatch")

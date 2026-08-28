@@ -87,6 +87,9 @@ PARTICLE_MAX_AGE_STEPS = 100
 WAKE_FREE_ROWS = 100
 DVM_TARGET_SPACING_CHORD = 0.018
 COUPLING_TOLERANCE = 5.0e-7
+# Accelerator cadence (labeled deviation from the legacy always-refresh
+# behavior; see Q16CudaNewmarkStepper.reference_tangent_refresh_rtol).
+REFERENCE_TANGENT_REFRESH_RTOL = 2.0e-3
 MAX_COUPLING_ITERATIONS = 20
 RELAXATION = 0.7
 # Statistics-window search (handoff §9 P7): the window must exclude the
@@ -267,6 +270,7 @@ class RojratsirikulCaseRunner:
         *,
         structural_substeps: int | None = None,
         damping_loss_factor: float | None = None,
+        reference_tangent_refresh_rtol: float | None = None,
         device: str | None = None,
     ) -> None:
         if type(spec) is not RojratsirikulCaseConfig:
@@ -274,6 +278,11 @@ class RojratsirikulCaseRunner:
         self.spec = spec
         self.structural_substeps_override = structural_substeps
         self.damping_loss_factor_override = damping_loss_factor
+        self.reference_tangent_refresh_rtol = (
+            REFERENCE_TANGENT_REFRESH_RTOL
+            if reference_tangent_refresh_rtol is None
+            else float(reference_tangent_refresh_rtol)
+        )
         self.device = device or config.DEVICE
         self._platform = platform_roj_module()
 
@@ -335,6 +344,13 @@ class RojratsirikulCaseRunner:
             cg_check_every=16,
             nonsymmetric_solver="reference_dense",
             reference_dense_refresh_after=48,
+            # Labeled accelerator-cadence knob (manifest records it): the
+            # dense quasi-Newton tangent re-assembly costs ~11 s/step at the
+            # formal grid; skipping it while the committed anchor drifts
+            # <0.2% keeps Newton at the same frozen tolerance (the live
+            # nonlinear residual owns acceptance; the code's live-tangent
+            # recovery guards stagnation).
+            reference_tangent_refresh_rtol=self.reference_tangent_refresh_rtol,
             mass_damping_coefficient=0.0,
             # Kelvin-Voigt stiffness damping theta = eta/omega at the
             # physical St~1 lock-in frequency (assumed_literature_sensitivity).
@@ -828,8 +844,6 @@ class RojratsirikulCaseRunner:
             )
             if step % PARTIAL_EVERY == 0 or step == max_aero_steps:
                 write_partial("running")
-            if step % 5 == 0:
-                torch.cuda.empty_cache()
         torch.cuda.synchronize()
 
         payload = self._finalize(
@@ -1129,6 +1143,12 @@ class RojratsirikulCaseRunner:
             "particle_capacity": PARTICLE_CAPACITY,
             "particle_max_age_steps": PARTICLE_MAX_AGE_STEPS,
             "wake_history_mode": "bound_rate",
+            "reference_tangent_refresh_rtol": (
+                self.reference_tangent_refresh_rtol
+            ),
+            "reference_tangent_cache_refresh_count": (
+                self.structural.reference_tangent_cache_refresh_count
+            ),
             "dvm_target_spacing_chord": DVM_TARGET_SPACING_CHORD,
             "perimeter_audit": self.perimeter_audit,
             "assumption_ledger": platform.assumption_ledger(case),

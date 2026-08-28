@@ -422,6 +422,7 @@ class Q16CudaNewmarkStepper:
         "preconditioner",
         "reference_dense_refresh_after",
         "reference_tangent_cache_refresh_count",
+        "reference_tangent_refresh_rtol",
         "stiffness_damping_coefficient",
     )
 
@@ -440,6 +441,14 @@ class Q16CudaNewmarkStepper:
         nonsymmetric_solver: str = "direct",
         reference_dense_refresh_after: int = 32,
         mass_damping_coefficient: float = 0.0,
+        # Accelerator-cadence knob (0.0 = the legacy always-refresh-when-the-
+        # anchor-moved behavior).  The reference tangent is a quasi-Newton
+        # accelerator only — the live nonlinear residual owns acceptance — so
+        # re-assembly is skipped while the committed state has drifted less
+        # than this relative amount from the cached anchor.  Newton converges
+        # to the same frozen tolerance either way; only the iteration count
+        # changes.  Callers must label non-zero values in their manifests.
+        reference_tangent_refresh_rtol: float = 0.0,
         stiffness_damping_coefficient: float = 0.0,
     ) -> None:
         if type(model) is not Q16MITC16EASMesh:
@@ -479,6 +488,16 @@ class Q16CudaNewmarkStepper:
         self.nonsymmetric_solver = nonsymmetric_solver
         self.reference_dense_refresh_after = _positive_int(
             "reference_dense_refresh_after", reference_dense_refresh_after
+        )
+        if (
+            not math.isfinite(reference_tangent_refresh_rtol)
+            or reference_tangent_refresh_rtol < 0.0
+        ):
+            raise ValueError(
+                "reference_tangent_refresh_rtol must be finite and >= 0"
+            )
+        self.reference_tangent_refresh_rtol = float(
+            reference_tangent_refresh_rtol
         )
         self.mass_damping_coefficient = _nonnegative_float(
             "mass_damping_coefficient", mass_damping_coefficient
@@ -572,10 +591,25 @@ class Q16CudaNewmarkStepper:
         if state.shape[0] != 1:
             raise ValueError("reference tangent cache requires one FSI sample")
         state_t = wp.to_torch(state)
-        if self._reference_tangent_anchor_torch is not None and bool(
-            torch.equal(state_t, self._reference_tangent_anchor_torch)
-        ):
-            return False
+        if self._reference_tangent_anchor_torch is not None:
+            anchor = self._reference_tangent_anchor_torch
+            if bool(torch.equal(state_t, anchor)):
+                return False
+            if self.reference_tangent_refresh_rtol > 0.0:
+                # Accelerator cadence: skip the (expensive) dense re-assembly
+                # while the committed state has drifted less than the labeled
+                # relative tolerance from the cached anchor.  Newton still
+                # converges to the same frozen tolerance against the live
+                # nonlinear residual; only the iteration count can change.
+                drift = float(
+                    (state_t - anchor).abs().max().item()
+                )
+                scale = max(
+                    float(anchor.abs().max().item()),
+                    1.0e-30,
+                )
+                if drift <= self.reference_tangent_refresh_rtol * scale:
+                    return False
         linearization = self._operator._linearization_prechecked(state)
         tangent_matrix = torch.empty(
             (self.dof_count, self.dof_count),
@@ -583,12 +617,14 @@ class Q16CudaNewmarkStepper:
             dtype=torch.float64,
         )
         tangent_batch_size = min(64, self.dof_count)
-        # Cap the per-batch EAS projected-B workspace (~250 MB) so repeated
-        # quasi-Newton refreshes cannot fragment the warp pool on large
-        # meshes: a 64-direction batch on the 5x10 Q16 membrane requests a
-        # 1.6 GB contiguous block and a later refresh fails to allocate it.
-        # Column entries are batch-independent, so the cached tangent is
-        # bit-identical for any batch size.
+        # Per-batch EAS projected-B workspace cap.  Column entries are
+        # batch-independent, so the cached tangent is bit-identical for any
+        # batch size; only the launch/conversion overhead changes.  The
+        # historical 256 MB cap forced ~10-direction batches (298 warp
+        # launch+sync rounds per refresh on the 5x10 membrane, ~4 s/step of
+        # pure overhead); 2 GB keeps the worst transient ~1.6 GB on the
+        # formal meshes and cuts the rounds by ~6x.  Reduce only if warp-pool
+        # fragmentation reappears on much larger meshes.
         workspace_per_direction = (
             self._operator.element_count
             * Q16_EAS_QUADRATURE_POINT_COUNT
@@ -596,7 +632,7 @@ class Q16CudaNewmarkStepper:
             * 8
         )
         if workspace_per_direction > 0:
-            budget_directions = max(1, 268_435_456 // workspace_per_direction)
+            budget_directions = max(1, 2_147_483_648 // workspace_per_direction)
             tangent_batch_size = min(tangent_batch_size, budget_directions)
         for start in range(0, self.dof_count, tangent_batch_size):
             stop = min(start + tangent_batch_size, self.dof_count)

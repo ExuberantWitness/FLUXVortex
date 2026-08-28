@@ -22,6 +22,7 @@ from fluxvortex.q16_work_conjugate_transfer import Q16SurfaceTransferMap
 
 from . import config as warp_config
 from .kernels_q16_transfer import Q16CudaSurfaceTransfer
+from .kernels_ring_velocity import native_ring_velocity_fused
 
 from ldvm_source_bank_gpu import CudaLDVMSourceBank
 from pfield_torch_gpu import CudaParticleField
@@ -750,20 +751,18 @@ class Q16NativeV5MSolver:
                 reference_length=reference_length,
             )
             return torch.sum(expanded * gamma[None, :, None], dim=1)
-        total = torch.zeros_like(points)
-        target_cap = max(1, self._RING_TILE_BYTES // (rings.shape[0] * 3 * 8))
-        for start in range(0, points.shape[0], target_cap):
-            stop = min(start + target_cap, points.shape[0])
-            expanded = native_ring_velocity_expanded(
-                points[start:stop],
-                rings,
-                core_fraction=core_fraction,
-                reference_length=reference_length,
-            )
-            total[start:stop] = torch.sum(
-                expanded * gamma[None, :, None], dim=1
-            )
-        return total
+        # Large systems (long free wakes): the tiled torch path materializes
+        # ~15 (tile, rings, 3) intermediates per call and runs ~30x off the
+        # FP64 roofline.  The fused warp kernel accumulates per source block
+        # in registers (same frozen core model; fp64 summation-order
+        # difference only, mirroring the fused particle kernel).
+        return native_ring_velocity_fused(
+            points,
+            rings,
+            gamma,
+            core_fraction=core_fraction,
+            reference_length=reference_length,
+        )
 
     def _external_velocity(
         self,

@@ -169,8 +169,13 @@ class TestMigrationParity(unittest.TestCase):
                 }
             )
 
-        # Unified path (same process, fresh stack).
-        runner = RojratsirikulCaseRunner(ROJ_A16_PRIMARY)
+        # Unified path (same process, fresh stack).  The accelerator-cadence
+        # knob is pinned to the legacy always-refresh value so this test
+        # proves ARCHITECTURE parity bit-exactly; the drift-skip cadence is
+        # validated separately (Newton-tolerance-level trajectory equivalence).
+        runner = RojratsirikulCaseRunner(
+            ROJ_A16_PRIMARY, reference_tangent_refresh_rtol=0.0
+        )
         runner.build()
         payload = runner.run(max_aero_steps=PARITY_STEPS, output=None)
         cls.payload = payload
