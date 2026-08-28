@@ -35,8 +35,13 @@ def reconcile_release_mask(
     - conflict_count: strips that RELEASED without 3D sanction — the only
       dual-ownership direction still possible, and it must be zero: the
       3D LESP is the only separation truth.  A separated strip the bank
-      has not (yet) shed is NOT a conflict: it is continuing release —
-      pinned at its free A0, no new particles deposited.
+      has not (yet) shed is NOT a conflict: it stays pinned at its free
+      A0 with no new particles deposited.  NOTE (audit R3): this pinned
+      state is only a REAL "continuing release" when the strip actually
+      carries LEV circulation; when no LE circulation exists (and none
+      was ever shed) the strip is separated-but-never-shed, which the
+      caller's release-flow diagnostics must expose rather than label
+      "continuing release".
     """
     # The correct mask is the 3D truth, period. The source bank's mask
     # tells us which strips the 2D closure is actively shedding for.

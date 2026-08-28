@@ -150,6 +150,13 @@ class NativeV5MConfig:
     lesp_crit: float = 0.11
     lesp_thickness_ratio: float | None = None
     lesp_reynolds: float | None = None
+    # Documented per-case release-threshold hypothesis (e.g. the Izraelevitz
+    # Fig.14 static-polar Lcrit = sin(CLmax/CLa)).  This is a direct,
+    # caller-owned override with an explicitly stated provenance — it is NOT
+    # the thickness/Re correlation (which for the real NACA 63A015 t/c=0.15
+    # at Re=310k would give ~0.481) and NOT an escape hatch for the frozen
+    # Yamano default: ``lesp_crit`` itself stays pinned at 0.11.
+    lesp_crit_override: float | None = None
     dvm_ndiv: int = 20
     dvm_naterm: int = 8
     dvm_max_wake: int = 64
@@ -192,6 +199,23 @@ class NativeV5MConfig:
             raise ValueError("wake_free_rows must be a non-negative exact int")
         if self.lesp_crit != 0.11:
             raise ValueError("the Yamano native V5M path freezes Lcrit=0.11")
+        if self.lesp_crit_override is not None:
+            if not (
+                math.isfinite(float(self.lesp_crit_override))
+                and float(self.lesp_crit_override) > 0.0
+            ):
+                raise ValueError(
+                    "lesp_crit_override must be finite and positive"
+                )
+            if (
+                self.lesp_thickness_ratio is not None
+                or self.lesp_reynolds is not None
+            ):
+                raise ValueError(
+                    "lesp_crit_override is mutually exclusive with the "
+                    "thickness/Re correlation inputs (lesp_thickness_ratio, "
+                    "lesp_reynolds): one release-threshold source per config"
+                )
         for name in ("density", "freestream", "aerodynamic_dt", "gate_rtol"):
             if not math.isfinite(float(getattr(self, name))) or float(getattr(self, name)) <= 0.0:
                 raise ValueError(f"{name} must be finite and positive")
@@ -203,7 +227,16 @@ class NativeV5MConfig:
 
     @property
     def effective_lesp_crit(self) -> float:
-        """Return the physics-based LESPcrit if thickness/Re are provided."""
+        """Return the release threshold actually used by the separation owner.
+
+        Precedence: (1) an explicit documented per-case hypothesis
+        (``lesp_crit_override`` — e.g. a static-polar Lcrit such as
+        sin(CLmax/CLa)); (2) the thickness/Re correlation when both
+        ``lesp_thickness_ratio`` and ``lesp_reynolds`` are provided; (3) the
+        frozen flat-plate default 0.11.
+        """
+        if self.lesp_crit_override is not None:
+            return float(self.lesp_crit_override)
         if self.lesp_thickness_ratio is not None and self.lesp_reynolds is not None:
             return compute_lesp_crit(
                 self.lesp_thickness_ratio, self.lesp_reynolds)
@@ -476,6 +509,12 @@ class NativeV5MState:
     reference_cell_chord: torch.Tensor
     reference_node_chord: torch.Tensor
     alpha_previous: torch.Tensor | None
+    # Separation mask of this state's LAST step (n_strips,) bool — lets the
+    # next propose() distinguish newly-separated strips from continuing ones
+    # and separate real continuing LEV release from strips that never shed
+    # (audit R3).  Like alpha_previous, it is history metadata, not part of
+    # the numerical digest.
+    separated_previous: torch.Tensor | None
     frontier_nodes: torch.Tensor
     frontier_active: torch.Tensor
     diagnostics: tuple[dict[str, float | int | bool], ...]
@@ -492,6 +531,11 @@ class NativeV5MState:
             reference_cell_chord=self.reference_cell_chord.clone(),
             reference_node_chord=self.reference_node_chord.clone(),
             alpha_previous=None if self.alpha_previous is None else self.alpha_previous.clone(),
+            separated_previous=(
+                None
+                if self.separated_previous is None
+                else self.separated_previous.clone()
+            ),
             frontier_nodes=self.frontier_nodes.clone(),
             frontier_active=self.frontier_active.clone(),
             diagnostics=tuple(dict(item) for item in self.diagnostics),
@@ -655,6 +699,9 @@ class Q16NativeV5MSolver:
             reference_cell_chord=cell_chord,
             reference_node_chord=node_chord,
             alpha_previous=None,
+            separated_previous=torch.zeros(
+                ns, device=self.device, dtype=torch.bool
+            ),
             frontier_nodes=geometry.leading_edge.clone(),
             frontier_active=torch.zeros(ns + 1, device=self.device, dtype=torch.bool),
             diagnostics=(),
@@ -932,11 +979,13 @@ class Q16NativeV5MSolver:
         # attached — its 2D strip-theory LESP (computed from the bank's own
         # 2D wake, not the 3D ring solve) no longer deposits particles or
         # feeds gamma_lev/TEV on attached strips.  A strip the 3D solve
-        # separates but whose 2D LESP is still subcritical stays unshed
-        # (continuing release: pinned below at its free A0, no new
-        # particles).  Forcing the coupled release of a subcritical 2D
-        # section was rejected: it pins the section's LESP at sign*crit from
-        # below and injects opposite-signed circulation (CT diverges).  The
+        # separates but whose 2D LESP is still subcritical stays unshed; it
+        # is a REAL continuing release only if it already carries LE
+        # circulation, otherwise it is merely pinned at its free A0 with no
+        # LEV ever shed (see the release-flow diagnostics below, audit R3).
+        # Forcing the coupled release of a subcritical 2D section was
+        # rejected: it pins the section's LESP at sign*crit from below and
+        # injects opposite-signed circulation (CT diverges). The
         # bank's un-gated 2D opinion survives only as the returned
         # ``raw_shed_lev`` diagnostic (counted in ``release_gate_overrides``
         # below).
@@ -966,18 +1015,47 @@ class Q16NativeV5MSolver:
         # without the owner's sanction) is a wiring guard that must stay
         # zero: any nonzero value means a second owner is deciding
         # separation again.  Separated strips the bank has not shed are NOT
-        # conflicts — they stay pinned (continuing release of existing LEV
-        # circulation).
+        # conflicts — they stay pinned; that is continuing release only when
+        # LEV circulation exists on the strip, otherwise the strip was never
+        # shed at all (see release-flow diagnostics below, audit R3).
         pin_active, release_owner_conflicts = reconcile_release_mask(
             surface_separated, released
         )
         # Observability (not a gate): how often the single-owner gate
         # suppressed a 2D strip-theory LESP release vote this step (the
         # bank wanted to shed a strip the 3D solve says is attached).
+        raw_2d_release = source_result["raw_shed_lev"][:ns]
         release_gate_overrides = int(
-            torch.count_nonzero(
-                source_result["raw_shed_lev"][:ns] & ~surface_separated
-            ).item()
+            torch.count_nonzero(raw_2d_release & ~surface_separated).item()
+        )
+        # Release-flow observability (audit R3): decompose the two owners'
+        # opinions and the strip separation transitions, and record whether
+        # the separated strips actually carry LEV circulation.  A
+        # 3D-separated strip whose 2D LESP is subcritical is only a REAL
+        # "continuing release" if LE circulation exists on it; with none
+        # (e.g. IZRA-15-090: separated_strip_count>0, lev_release=0,
+        # particles=0 for the whole run) the strip is merely held pinned at
+        # its free A0 and no LEV ever existed.
+        previous_separated = (
+            committed.separated_previous
+            if committed.separated_previous is not None
+            else torch.zeros_like(surface_separated)
+        )
+        has_existing_lev_circulation = (
+            torch.count_nonzero(committed.source_bank.lg[:ns], dim=1) > 0
+        )
+        release_3d_only_count = int(
+            torch.count_nonzero(surface_separated & ~raw_2d_release).item()
+        )
+        release_2d_only_count = release_gate_overrides
+        newly_separated_count = int(
+            torch.count_nonzero(surface_separated & ~previous_separated).item()
+        )
+        continuing_separated_count = int(
+            torch.count_nonzero(surface_separated & previous_separated).item()
+        )
+        strips_with_existing_lev_circulation = int(
+            torch.count_nonzero(has_existing_lev_circulation).item()
         )
         separated_aic = aic.clone()
         separated_rhs = rhs.clone()
@@ -1138,6 +1216,7 @@ class Q16NativeV5MSolver:
         trial.wake_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)[: self.settings.wake_max_rows * ns]
         trial.gamma_previous = trial.gamma_bound.clone()
         trial.gamma_bound = gamma.clone()
+        trial.separated_previous = surface_separated.clone()
         trial.step += 1
         trial.diagnostics = trial.diagnostics + (
             {
@@ -1146,6 +1225,14 @@ class Q16NativeV5MSolver:
                 "separated_strip_count": int(torch.count_nonzero(pin_active).item()),
                 "release_owner_conflicts": int(release_owner_conflicts),
                 "release_gate_overrides": release_gate_overrides,
+                # Release-flow decomposition (audit R3)
+                "release_3d_only_count": release_3d_only_count,
+                "release_2d_only_count": release_2d_only_count,
+                "newly_separated_count": newly_separated_count,
+                "continuing_separated_count": continuing_separated_count,
+                "strips_with_existing_lev_circulation": (
+                    strips_with_existing_lev_circulation
+                ),
                 "lesp_pre_max_abs": float(torch.max(torch.abs(lesp_pre_3d)).item()),
                 "lesp_pin_max_abs": float(pin_error.item()),
                 "kelvin_max_abs": float(kelvin.item()),

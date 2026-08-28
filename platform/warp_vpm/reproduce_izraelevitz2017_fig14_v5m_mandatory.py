@@ -61,7 +61,6 @@ from fluxvortex.cases.izraelevitz_kinematics import IzraRigidSurfaceKinematics
 from fluxvortex.warp_fsi.q16_flux_v5m_native import (
     NativeV5MConfig,
     Q16NativeV5MOwner,
-    compute_lesp_crit,
 )
 from fluxvortex.warp_fsi.rigid_flux_v5m_native import (
     RIGID_NATIVE_V5M_CONTRACT,
@@ -75,15 +74,24 @@ ROOT = Path(__file__).resolve().parents[2]
 FROZEN_MAE_GATE = 0.01745211311116545
 FROZEN_MAX_ABS_ERROR_GATE = 0.04963501153092067
 
-# Physics-based LESPcrit (compute_lesp_crit) hitting the frozen Scherer
-# threshold sin(CLmax/CLa) = sin(0.90 / 0.065 deg) = 0.2393 at Re = 310000:
-#   0.11 + 2.0 * (0.0607 - 0.013) * (1 + 0.35 log10(310000/30000)) = 0.23927
-LESP_THICKNESS_RATIO = 0.0607
-LESP_REYNOLDS = 310000.0
+# Release-threshold hypothesis (audit R2): Lcrit = 0.2393 is the
+# STATIC-POLAR-DERIVED value sin(CLmax/CLa) = sin(0.90 / 0.065 deg) =
+# sin(13.85 deg) = 0.2393, from the Scherer 1968 steady calibration
+# (CLa = 0.065 /deg, CLmax = 0.90) of the NACA 63A015 section.  It is NOT
+# the thickness/Re correlation: the real 63A015 has t/c = 0.15, for which
+# compute_lesp_crit(0.15, 310000) ~= 0.481.  Earlier revisions passed a
+# back-solved t/c = 0.0607 through that correlation purely to land on
+# 0.2393 — a value with no airfoil meaning.  The threshold is now passed
+# directly as a documented hypothesis via NativeV5MConfig.lesp_crit_override
+# (the config keeps lesp_crit itself frozen at the Yamano default 0.11).
+LESP_CRIT_STATIC_POLAR = 0.2393
 RELEASE_CONDITION_SOURCE = (
-    "compute_lesp_crit(thickness_ratio=0.0607, reynolds=310000) = 0.239265 "
-    "~= sin(CLmax/CLa) = 0.2393 (Scherer 1968 static CLa=0.065 /deg, "
-    "CLmax=0.90); NOT the Mancini Lcrit=0.11"
+    "static-polar-derived release threshold hypothesis: "
+    "sin(CLmax/CLa) = sin(0.90/0.065 deg) = 0.2393 from the Scherer 1968 "
+    "steady calibration (CLa=0.065 /deg, CLmax=0.90); passed directly as "
+    "NativeV5MConfig.lesp_crit_override=0.2393, NOT from the thickness/Re "
+    "correlation (real NACA 63A015 t/c=0.15 would give Lcrit~=0.481 there) "
+    "and NOT the frozen Yamano flat-plate Lcrit=0.11"
 )
 
 # Thrust sign audit (HANDOFF §4): the historical Ptera world frame treated
@@ -357,8 +365,7 @@ def run_one_condition(
         particle_capacity=particle_capacity,
         particle_max_age_steps=particle_max_age_steps,
         dvm_target_spacing_chord=dvm_target_spacing_chord,
-        lesp_thickness_ratio=LESP_THICKNESS_RATIO,
-        lesp_reynolds=LESP_REYNOLDS,
+        lesp_crit_override=LESP_CRIT_STATIC_POLAR,
         wake_history_mode=wake_history_mode,
         device=device,
     )
@@ -377,6 +384,11 @@ def run_one_condition(
     separated_strip_counts: list[int] = []
     release_owner_conflicts: list[int] = []
     release_gate_overrides: list[int] = []
+    release_3d_only_counts: list[int] = []
+    release_2d_only_counts: list[int] = []
+    newly_separated_counts: list[int] = []
+    continuing_separated_counts: list[int] = []
+    strips_with_existing_lev: list[int] = []
     wake_ring_counts: list[int] = []
     particle_counts: list[int] = []
     kelvin_max: list[float] = []
@@ -420,6 +432,15 @@ def run_one_condition(
         separated_strip_counts.append(int(diag["separated_strip_count"]))
         release_owner_conflicts.append(int(diag["release_owner_conflicts"]))
         release_gate_overrides.append(int(diag.get("release_gate_overrides", 0)))
+        release_3d_only_counts.append(int(diag.get("release_3d_only_count", 0)))
+        release_2d_only_counts.append(int(diag.get("release_2d_only_count", 0)))
+        newly_separated_counts.append(int(diag.get("newly_separated_count", 0)))
+        continuing_separated_counts.append(
+            int(diag.get("continuing_separated_count", 0))
+        )
+        strips_with_existing_lev.append(
+            int(diag.get("strips_with_existing_lev_circulation", 0))
+        )
         wake_ring_counts.append(int(diag["wake_ring_count"]))
         particle_counts.append(int(diag["particle_count"]))
         kelvin_max.append(float(diag["kelvin_max_abs"]))
@@ -456,20 +477,48 @@ def run_one_condition(
         "prescribed_wake": False,
         "release_condition_source": RELEASE_CONDITION_SOURCE,
         "effective_lesp_crit": effective_lesp_crit,
-        "lesp_thickness_ratio": LESP_THICKNESS_RATIO,
-        "lesp_reynolds": LESP_REYNOLDS,
+        "lesp_crit_source": "static-polar hypothesis (lesp_crit_override)",
         "lesp_pre_max_abs_min": min(lesp_pre_max_abs),
         "lesp_pre_max_abs_max": max(lesp_pre_max_abs),
         "lesp_pre_max_abs_final": lesp_pre_max_abs[-1],
         "lev_release_count_total": sum(lev_release_counts),
         "steps_with_lev_release": sum(1 for c in lev_release_counts if c > 0),
         "lev_release_count_max": max(lev_release_counts),
+        "separated_strip_count_total": sum(separated_strip_counts),
         "separated_strip_count_max": max(separated_strip_counts),
         "release_owner_conflicts_total": sum(release_owner_conflicts),
         # Single-owner observability (not a gate): 2D strip-theory LESP
         # release votes suppressed by the 3D LESP mask (bank wanted to shed
         # a strip the 3D solve says is attached).
         "release_gate_overrides_total": sum(release_gate_overrides),
+        # Release-flow decomposition (audit R3), strip-steps aggregated over
+        # the whole run:
+        # 3D says separated while 2D LESP stays subcritical — the strips the
+        # solver holds pinned at their free A0 without shedding.
+        "release_3d_only_count": sum(release_3d_only_counts),
+        # 2D wanted to release while 3D says attached — the gate overrides
+        # (identical population to release_gate_overrides_total).
+        "release_2d_only_count": sum(release_2d_only_counts),
+        # attached -> separated transitions this run.
+        "newly_separated_count": sum(newly_separated_counts),
+        # strips already separated that remain separated.
+        "continuing_separated_count": sum(continuing_separated_counts),
+        # whether ANY strip at ANY step carried nonzero LEV circulation in
+        # the 2D source bank — distinguishes real "continuing release" from
+        # conditions where separated strips never shed a LEV at all.
+        "has_existing_lev_circulation": max(strips_with_existing_lev) > 0,
+        # steps with separated strips but zero LEV circulation AND zero new
+        # releases: the "separated-but-never-shed" signature (e.g. v4
+        # IZRA-15-090 had separated_strip_count_max=8 with lev_release=0
+        # and particles=0 for the entire run).
+        "separated_never_shed_steps": sum(
+            1
+            for separated, existing, released in zip(
+                separated_strip_counts, strips_with_existing_lev, lev_release_counts
+            )
+            if separated > 0 and existing == 0 and released == 0
+        ),
+        "strips_with_existing_lev_circulation_max": max(strips_with_existing_lev),
         "tev_shed_count": total_steps,  # exactly one full-span TEV row per step
         "wake_ring_count_max": max(wake_ring_counts),
         "free_wake_convection_count": free_wake_convection_count,
@@ -898,7 +947,8 @@ def write_artifacts(
             "particle_max_age_steps": args.particle_max_age_steps,
             "dvm_target_spacing_chord": 0.018,
             "release_condition_source": RELEASE_CONDITION_SOURCE,
-            "effective_lesp_crit": compute_lesp_crit(LESP_THICKNESS_RATIO, LESP_REYNOLDS),
+            "effective_lesp_crit": LESP_CRIT_STATIC_POLAR,
+            "lesp_crit_source": "static-polar hypothesis (lesp_crit_override)",
         },
         "load_ownership": {
             "surface_load_owner": SURFACE_LOAD_OWNER,

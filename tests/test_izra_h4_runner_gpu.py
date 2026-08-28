@@ -4,9 +4,13 @@ Covers tests/test_izra_h4_runner_gpu.py scope from the H4 task:
 - load_gt_markers(): exactly 14 Scherer markers, correct fields/replicates;
 - score_all(): synthetic predictions reproduce MAE/RMSE/bias by hand, with
   each replicate scored independently;
-- compute_lesp_crit(0.0607, 310000) ~= 0.2393 (the frozen Scherer threshold);
+- the release threshold Lcrit = 0.2393 is a static-polar hypothesis
+  (sin(CLmax/CLa) = sin(0.90/0.065 deg) from Scherer 1968), passed DIRECTLY
+  via NativeV5MConfig.lesp_crit_override — the thickness/Re correlation is
+  NOT its source (the real NACA 63A015 t/c=0.15 gives 0.481 there);
 - run_one_condition() on IZRA-15-045 with a small grid (4x12, 32 steps per
-  cycle, 1 cycle): runs, finite CT, physics evidence intact;
+  cycle, 1 cycle): runs, finite CT, physics evidence intact, release-flow
+  diagnostics recorded (audit R3);
 - the CT sign convention: freestream is +x in the native frame, so the
   propulsive direction is -x — mean world Fx < 0 and CT_raw = -<Fx>/qS > 0
   on a real thrust-producing condition.
@@ -24,7 +28,10 @@ import torch
 import warp as wp
 
 from fluxvortex.cases.izraelevitz2017 import IZRA_CASES, LESP_THRESHOLD
-from fluxvortex.warp_fsi.q16_flux_v5m_native import compute_lesp_crit
+from fluxvortex.warp_fsi.q16_flux_v5m_native import (
+    NativeV5MConfig,
+    compute_lesp_crit,
+)
 
 import reproduce_izraelevitz2017_fig14_v5m_mandatory as h4
 
@@ -145,18 +152,45 @@ class ScoreAllTest(unittest.TestCase):
 
 
 class LespThresholdTest(unittest.TestCase):
-    """The physics-based LESPcrit reproduces the frozen Scherer 0.2393."""
+    """Lcrit=0.2393 is a static-polar hypothesis passed DIRECTLY (audit R2).
 
-    def test_compute_lesp_crit_hits_frozen_threshold(self):
-        value = compute_lesp_crit(h4.LESP_THICKNESS_RATIO, h4.LESP_REYNOLDS)
-        self.assertAlmostEqual(value, 0.2393, places=4)
-        self.assertAlmostEqual(value, LESP_THRESHOLD, delta=5.0e-5)
+    The value is sin(CLmax/CLa) = sin(0.90 / 0.065 deg) from the Scherer
+    1968 steady calibration — NOT the thickness/Re correlation, which for
+    the real NACA 63A015 (t/c = 0.15) would give ~0.481.  Earlier revisions
+    back-solved a fake t/c = 0.0607 through the correlation to land on
+    0.2393; that indirection is gone: the runner passes the hypothesis via
+    NativeV5MConfig.lesp_crit_override, which is mutually exclusive with
+    the correlation inputs.
+    """
+
+    def test_static_polar_threshold_passes_through_directly(self):
+        value = math.sin(math.radians(0.90 / 0.065))
+        self.assertAlmostEqual(value, 0.2393, delta=5.0e-5)
+        self.assertAlmostEqual(h4.LESP_CRIT_STATIC_POLAR, LESP_THRESHOLD, places=9)
 
     def test_runner_constants_frozen(self):
-        self.assertEqual(h4.LESP_THICKNESS_RATIO, 0.0607)
-        self.assertEqual(h4.LESP_REYNOLDS, 310000.0)
+        self.assertEqual(h4.LESP_CRIT_STATIC_POLAR, 0.2393)
         self.assertEqual(h4.THRUST_SIGN, -1.0)
         self.assertEqual(h4.FROZEN_MAE_GATE, 0.01745211311116545)
+
+    def test_real_airfoil_correlation_does_not_give_the_threshold(self):
+        # Documenting the provenance: the real NACA 63A015 t/c=0.15 at
+        # Re=310000 yields ~0.481 from the correlation — far from the 0.2393
+        # hypothesis actually used, so the threshold cannot honestly be
+        # labelled "thickness/Re correlation based".
+        self.assertAlmostEqual(compute_lesp_crit(0.15, 310000.0), 0.4813, places=3)
+
+    def test_override_is_mutually_exclusive_with_correlation(self):
+        with self.assertRaises(ValueError):
+            NativeV5MConfig(
+                lesp_crit_override=0.2393,
+                lesp_thickness_ratio=0.15,
+                lesp_reynolds=310000.0,
+            )
+
+    def test_override_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            NativeV5MConfig(lesp_crit_override=-0.5)
 
     def test_invalid_inputs_raise(self):
         with self.assertRaises(ValueError):
@@ -199,6 +233,9 @@ class RunOneConditionSmokeTest(unittest.TestCase):
         self.assertIs(physics["joint_tev"], True)
         self.assertIs(physics["prescribed_wake"], False)
         self.assertAlmostEqual(physics["effective_lesp_crit"], 0.2393, places=4)
+        self.assertEqual(
+            physics["lesp_crit_source"], "static-polar hypothesis (lesp_crit_override)"
+        )
         self.assertEqual(physics["proposal_count"], 32)
         self.assertEqual(physics["accepted_commit_count"], 32)
         self.assertEqual(physics["tev_shed_count"], 32)
@@ -207,6 +244,33 @@ class RunOneConditionSmokeTest(unittest.TestCase):
         self.assertIs(physics["posthoc_separation_delta_applied"], False)
         self.assertTrue(physics["cuda_float64_all_steps"])
         self.assertIn("RigidAuthorLoadAssembler", physics["surface_load_owner"])
+
+    def test_release_flow_diagnostics_recorded(self):
+        # Audit R3: the release decomposition must be observable per
+        # condition, so "continuing release" can be told apart from
+        # "separated but never shed".
+        physics = self.result["physics"]
+        for key in (
+            "release_3d_only_count",
+            "release_2d_only_count",
+            "newly_separated_count",
+            "continuing_separated_count",
+            "has_existing_lev_circulation",
+            "separated_never_shed_steps",
+        ):
+            self.assertIn(key, physics)
+        # every separated strip-step is either newly separated or continuing
+        self.assertEqual(
+            physics["newly_separated_count"]
+            + physics["continuing_separated_count"],
+            physics["separated_strip_count_total"],
+        )
+        # the two owners' split must be internally consistent: 2D-only
+        # releases are exactly the gate overrides.
+        self.assertEqual(
+            physics["release_2d_only_count"],
+            physics["release_gate_overrides_total"],
+        )
 
 
 @unittest.skipUnless(CUDA_OK, "CUDA required")

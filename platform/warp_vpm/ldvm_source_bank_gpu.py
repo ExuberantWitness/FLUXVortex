@@ -298,8 +298,10 @@ class CudaLDVMSourceBank:
         the only separation truth, so a strip the 3D solve says is attached can
         never release, whatever its 2D strip-theory LESP says (dual-ownership
         suppression).  A strip the 3D solve separates but whose 2D LESP is
-        still subcritical stays unshed — continuing release of existing LEV
-        circulation, pinned in the 3D solve at its free A0 — because forcing
+        still subcritical stays unshed — pinned in the 3D solve at its free
+        A0, a real continuing release ONLY while the strip still carries LEV
+        circulation (audit R3: with no LE circulation ever shed the strip is
+        separated-but-never-shed, not "continuing release") — because forcing
         the coupled release of a subcritical 2D section pins its LESP at
         sign*crit from below and injects opposite-signed circulation.  The
         bank's un-gated 2D opinion is still computed and returned as
@@ -430,8 +432,10 @@ class CudaLDVMSourceBank:
                 # with the bank's own 2D LESP trigger — a strip the 3D solve
                 # says is attached may never release (dual-ownership
                 # suppression), while a separated-but-subcritical 2D section
-                # stays unshed (continuing release).  The bank's un-gated
-                # opinion survives only as the returned raw_shed_lev.
+                # stays unshed (pinned; continuing release only if the strip
+                # carries LEV circulation, else separated-but-never-shed).
+                # The bank's un-gated opinion survives only as the returned
+                # raw_shed_lev.
                 cell_active = cell_active & cell_release_mask
             node_active = torch.empty(
                 cell_count + 1, device=self.device, dtype=torch.bool
