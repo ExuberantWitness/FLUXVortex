@@ -1172,7 +1172,17 @@ class RojratsirikulCaseRunner:
             "retention_ledger": (
                 self._retention_totals(records) if records else None
             ),
-            "window_selection": window_report,
+            "window_selection": (
+                {
+                    **window_report,
+                    "window": [
+                        window_report["window"].start,
+                        window_report["window"].stop,
+                    ],
+                }
+                if window_report is not None
+                else None
+            ),
             "mean_Cn": statistics["mean_cn"] if statistics else None,
             "mean_zmax_over_c": (
                 statistics["zmax_over_c_mean_map"] if statistics else None
