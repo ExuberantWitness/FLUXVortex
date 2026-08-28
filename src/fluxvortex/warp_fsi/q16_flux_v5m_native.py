@@ -517,7 +517,7 @@ class NativeV5MState:
     separated_previous: torch.Tensor | None
     frontier_nodes: torch.Tensor
     frontier_active: torch.Tensor
-    diagnostics: tuple[dict[str, float | int | bool], ...]
+    diagnostics: tuple[dict[str, Any], ...]
 
     def clone(self) -> "NativeV5MState":
         return NativeV5MState(
@@ -777,7 +777,21 @@ class Q16NativeV5MSolver:
             + self._ring_velocity(points, trial.wake_rings, trial.wake_gamma, rough=False)
         )
 
-    def _advance_material_state(self, geometry: NativeV5MGeometry, trial: NativeV5MState) -> None:
+    def _advance_material_state(
+        self, geometry: NativeV5MGeometry, trial: NativeV5MState
+    ) -> dict[str, float | int]:
+        """Convect the free wake/particles; return the retention record.
+
+        The particle age-cull that mirrors the ring-wake truncation happens
+        here; the removed circulation/impulse are audited BEFORE removal so
+        the caller's circulation ledger can carry the accounting (plan §5.9,
+        §8.5 — a silent cap that destroys circulation is forbidden).
+        """
+        retention: dict[str, float | int] = {
+            "particle_cull_count": 0,
+            "particle_cull_circulation": 0.0,
+            "particle_cull_linear_impulse": [0.0, 0.0, 0.0],
+        }
         dt = self.settings.aerodynamic_dt
         if trial.wake_rings.shape[0]:
             ns = self.settings.spanwise_panels
@@ -836,10 +850,32 @@ class Q16NativeV5MSolver:
             if self.settings.particle_max_age_steps > 0:
                 horizon = trial.step - self.settings.particle_max_age_steps
                 if horizon > 0:
-                    trial.particle_field.remove_mask(
-                        trial.particle_field.birth_step[: trial.particle_field.n]
-                        < horizon
+                    alive = trial.particle_field.n
+                    stale = (
+                        trial.particle_field.birth_step[:alive] < horizon
                     )
+                    removed = int(torch.count_nonzero(stale).item())
+                    if removed:
+                        # Audit before removal (retention ledger, plan §8.5).
+                        retention["particle_cull_count"] = removed
+                        retention["particle_cull_circulation"] = float(
+                            trial.particle_field.circul[:alive][stale]
+                            .sum()
+                            .item()
+                        )
+                        impulse = 0.5 * torch.cross(
+                            trial.particle_field.pos[:alive][stale],
+                            trial.particle_field.gamma[:alive][stale],
+                            dim=1,
+                        ).sum(dim=0)
+                        retention["particle_cull_linear_impulse"] = [
+                            float(value) for value in impulse.tolist()
+                        ]
+                        trial.particle_field.remove_mask(
+                            trial.particle_field.birth_step[: trial.particle_field.n]
+                            < horizon
+                        )
+        return retention
 
     def _dvm_kinematics(
         self, geometry: NativeV5MGeometry, trial: NativeV5MState
@@ -931,7 +967,7 @@ class Q16NativeV5MSolver:
         parent_digest = committed.digest()
         trial = committed.clone()
         geometry = self.surface.evaluate(structural_state, structural_velocity)
-        self._advance_material_state(geometry, trial)
+        retention = self._advance_material_state(geometry, trial)
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
         wake_velocity = self._ring_velocity(
             geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False
@@ -1212,8 +1248,35 @@ class Q16NativeV5MSolver:
             ),
             dim=1,
         )
-        trial.wake_rings = torch.cat((new_wake, trial.wake_rings), dim=0)[: self.settings.wake_max_rows * ns]
-        trial.wake_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)[: self.settings.wake_max_rows * ns]
+        combined_rings = torch.cat((new_wake, trial.wake_rings), dim=0)
+        combined_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)
+        wake_capacity = self.settings.wake_max_rows * ns
+        if combined_rings.shape[0] > wake_capacity:
+            # Audit the truncated oldest rows BEFORE the slice (retention
+            # ledger, plan §8.5): circulation and the closed-filament impulse
+            # 0.5*Gamma*sum(x_i x x_j) of each dropped ring.
+            dropped_rings = combined_rings[wake_capacity:]
+            dropped_gamma = combined_gamma[wake_capacity:]
+            retention["wake_truncate_ring_count"] = int(
+                dropped_rings.shape[0]
+            )
+            retention["wake_truncate_circulation"] = float(
+                dropped_gamma.sum().item()
+            )
+            corners = dropped_rings.reshape(-1, 4, 3)
+            cross_sum = torch.cross(
+                corners, torch.roll(corners, -1, dims=1), dim=2
+            ).sum(dim=1)
+            impulse = 0.5 * dropped_gamma[:, None] * cross_sum
+            retention["wake_truncate_linear_impulse"] = [
+                float(value) for value in impulse.sum(dim=0).tolist()
+            ]
+        else:
+            retention["wake_truncate_ring_count"] = 0
+            retention["wake_truncate_circulation"] = 0.0
+            retention["wake_truncate_linear_impulse"] = [0.0, 0.0, 0.0]
+        trial.wake_rings = combined_rings[:wake_capacity]
+        trial.wake_gamma = combined_gamma[:wake_capacity]
         trial.gamma_previous = trial.gamma_bound.clone()
         trial.gamma_bound = gamma.clone()
         trial.separated_previous = surface_separated.clone()
@@ -1240,6 +1303,7 @@ class Q16NativeV5MSolver:
                 "wake_ring_count": int(trial.wake_gamma.numel()),
                 "particle_count": int(trial.particle_field.n),
                 "cuda_float64": True,
+                **retention,
             },
         )
         if committed.digest() != parent_digest:
