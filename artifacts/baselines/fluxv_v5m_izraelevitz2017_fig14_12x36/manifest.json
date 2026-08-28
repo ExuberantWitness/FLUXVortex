@@ -1,0 +1,201 @@
+{
+  "conditions": {
+    "IZRA-15-015": {
+      "ct": 0.1869180652594952,
+      "ct_raw": 0.2439180652594952,
+      "elapsed_seconds": 1370.5292119759833,
+      "gpu_peak_memory_mib": 2639.69873046875,
+      "phase_offset_deg": 15.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-030": {
+      "ct": 0.18384888838886007,
+      "ct_raw": 0.24084888838886007,
+      "elapsed_seconds": 1320.9220121529652,
+      "gpu_peak_memory_mib": 2639.49658203125,
+      "phase_offset_deg": 30.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-045": {
+      "ct": 0.1866624439084809,
+      "ct_raw": 0.2436624439084809,
+      "elapsed_seconds": 1207.3279943490052,
+      "gpu_peak_memory_mib": 2639.29150390625,
+      "phase_offset_deg": 45.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-060": {
+      "ct": 0.20920687515267727,
+      "ct_raw": 0.26620687515267727,
+      "elapsed_seconds": 1053.7302620720002,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 60.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-075": {
+      "ct": 0.2210226515918145,
+      "ct_raw": 0.2780226515918145,
+      "elapsed_seconds": 870.39961635496,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 75.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-090": {
+      "ct": 0.22671464057064739,
+      "ct_raw": 0.2837146405706474,
+      "elapsed_seconds": 738.2055966369808,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 90.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-105": {
+      "ct": 0.22416061658420205,
+      "ct_raw": 0.28116061658420205,
+      "elapsed_seconds": 727.4637305060169,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 105.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-25-045": {
+      "ct": 0.10256157820121448,
+      "ct_raw": 0.15956157820121447,
+      "elapsed_seconds": 1254.5464295340353,
+      "gpu_peak_memory_mib": 2639.34423828125,
+      "phase_offset_deg": 45.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-060": {
+      "ct": 0.10452359146649876,
+      "ct_raw": 0.16152359146649875,
+      "elapsed_seconds": 1115.1769193379441,
+      "gpu_peak_memory_mib": 2638.93994140625,
+      "phase_offset_deg": 60.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-075": {
+      "ct": 0.15006456572248758,
+      "ct_raw": 0.20706456572248758,
+      "elapsed_seconds": 776.2835216370877,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 75.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-090": {
+      "ct": 0.11338439647084206,
+      "ct_raw": 0.17038439647084205,
+      "elapsed_seconds": 741.2869764610659,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 90.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-105": {
+      "ct": 0.09836686738222986,
+      "ct_raw": 0.15536686738222985,
+      "elapsed_seconds": 730.9008553990861,
+      "gpu_peak_memory_mib": 2638.85888671875,
+      "phase_offset_deg": 105.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    }
+  },
+  "diagnostic_only": false,
+  "git": {
+    "branch": "run/q16-lev-tev-pc-fsi-20260821",
+    "changed_files": [
+      "M artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/UNIFIED_Q16_V5M_FSI_REFACTOR_PLAN_20260826.md",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_12x36/",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_12x36_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_lev_single_owner_check/",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_lev_single_owner_check_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v2/",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v2_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v3_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v4_run.log",
+      "?? docs/forward_flight_large_pitch/reproductions/HANDOFF_IZRAELEVITZ2017_FIG14_SCHERER1968_20260827.md"
+    ],
+    "dirty": true,
+    "head": "f87c3a3c3374d56b554f57077a25a8b106d3d57d"
+  },
+  "ground_truth": {
+    "experimental_markers": 14,
+    "path": "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig14_digitized.csv",
+    "sha256": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf",
+    "unique_conditions": 12
+  },
+  "load_ownership": {
+    "cd0": 0.057,
+    "cd0_subtraction_count": 1,
+    "posthoc_separation_delta": "none",
+    "profile_drag_owner": "scorer (CT = CT_raw - Cd0, subtracted exactly once)",
+    "separated_load_owner": "RigidNativeV5MSolver.propose (integrated LEV ribbon particles + pinned LESP strips)",
+    "surface_load_owner": "RigidAuthorLoadAssembler (single integrated author-pressure owner)"
+  },
+  "metrics": {
+    "bias_ct": 0.027718270110768557,
+    "gate": {
+      "limit": 0.01745211311116545,
+      "max_abs_error_limit": 0.04963501153092067,
+      "metric": "14-marker MAE_CT",
+      "passed": false,
+      "value": 0.03784242074967471
+    },
+    "mae_ct": 0.03784242074967471,
+    "max_abs_error_condition": [
+      25.0,
+      105.0
+    ],
+    "max_abs_error_ct": 0.08631322138222985,
+    "n_markers": 14,
+    "rmse_ct": 0.04672359169958388
+  },
+  "numerics": {
+    "chordwise_panels": 12,
+    "cpu_role": "scheduling / I/O / hashing only",
+    "cuda_version": "13.0",
+    "cycles": 4,
+    "device": "cuda:0",
+    "dtype": "float64",
+    "gpu_name": "NVIDIA GeForce RTX 4090 D",
+    "grid": "12x36",
+    "scored_window": "last complete cycle",
+    "spanwise_panels": 36,
+    "steps_per_cycle": 128,
+    "torch_version": "2.11.0+cu130"
+  },
+  "physics_switches": {
+    "dvm_target_spacing_chord": 0.018,
+    "effective_lesp_crit": 0.2393,
+    "enable_lev": true,
+    "joint_tev": true,
+    "lesp_crit_source": "static-polar hypothesis (lesp_crit_override)",
+    "particle_capacity": 131072,
+    "particle_max_age_steps": 64,
+    "prescribed_wake": false,
+    "release_condition_source": "static-polar-derived release threshold hypothesis: sin(CLmax/CLa) = sin(0.90/0.065 deg) = 0.2393 from the Scherer 1968 steady calibration (CLa=0.065 /deg, CLmax=0.90); passed directly as NativeV5MConfig.lesp_crit_override=0.2393, NOT from the thickness/Re correlation (real NACA 63A015 t/c=0.15 would give Lcrit~=0.481 there) and NOT the frozen Yamano flat-plate Lcrit=0.11",
+    "wake_history_mode": "bound_rate",
+    "wake_max_rows": 128
+  },
+  "schema": "flux-v5m-izraelevitz2017-fig14-mandatory-v1",
+  "sha256": {
+    "case_config": "b9f02f9a99df403a9caf00222a822c3daf6d9fafb7fb27ae0fa54942afb72ce9",
+    "ground_truth_csv": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf",
+    "kinematics": "c0d02c4e1428f224315a6904932403e4ed3bf94abbe595e4f4fa162683e688ae",
+    "native_v5m": "86e33436f79b6c6d62140ed7ad0deaf314106e9787b4bf3430b37edac5052ad9",
+    "rigid_native": "3c1e5bc3bc8e65ed7b2c23bdbe93a9e97cd2dfae8682da20449cd75810371d7d",
+    "runner": "0d03196521e498a902042bc3807b22d7011a991ecb8608e7ee8df25c80489d23",
+    "stepper": "c00e7beb8f48da9cdb2287adc755ca1e5c700fb442cbe3d2776a71840b73cff1"
+  },
+  "status": "FAIL_ACCURACY_WITH_VALID_PHYSICS"
+}

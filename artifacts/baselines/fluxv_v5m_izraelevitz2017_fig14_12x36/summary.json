@@ -1,0 +1,35 @@
+{
+  "bias_ct": 0.027718270110768557,
+  "cases_attempted": [
+    "IZRA-15-015",
+    "IZRA-15-030",
+    "IZRA-15-045",
+    "IZRA-15-060",
+    "IZRA-15-075",
+    "IZRA-15-090",
+    "IZRA-15-105",
+    "IZRA-25-045",
+    "IZRA-25-060",
+    "IZRA-25-075",
+    "IZRA-25-090",
+    "IZRA-25-105"
+  ],
+  "conditions_completed": 12,
+  "elapsed_seconds_total": 11906.77312641713,
+  "gpu_name": "NVIDIA GeForce RTX 4090 D",
+  "mae_ct": 0.03784242074967471,
+  "max_abs_error_ct": 0.08631322138222985,
+  "n_markers_scored": 14,
+  "paper": "Izraelevitz, Zhu & Triantafyllou 2017, AIAA J 55(4), Figure 14 \u2014 Scherer 1968 open-square experiment",
+  "qualification_gate": {
+    "limit": 0.01745211311116545,
+    "max_abs_error_limit": 0.04963501153092067,
+    "metric": "14-marker MAE_CT",
+    "passed": false,
+    "value": 0.03784242074967471
+  },
+  "rmse_ct": 0.04672359169958388,
+  "schema": "flux-v5m-izraelevitz2017-fig14-mandatory-v1",
+  "status": "FAIL_ACCURACY_WITH_VALID_PHYSICS",
+  "torch_version": "2.11.0+cu130"
+}
