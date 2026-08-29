@@ -294,6 +294,45 @@ ROJRATSIRIKUL2011_UNIFIED_CASES: dict[str, RojratsirikulCaseConfig] = {
     config.case_id: config
     for config in (ROJ_A10, ROJ_A16_PRIMARY, ROJ_A17_MODE, ROJ_A23)
 }
+
+
+def _sweep_case(angle_deg: float) -> RojratsirikulCaseConfig:
+    """Figure 6/9 curve-sweep case with oracle-loaded targets (P1).
+
+    Same frozen material/damping/LEV/retention contract as the anchor
+    cases; only the incidence varies.  Targets are exact-match lookups in
+    the full-curve digitized oracle package (no fitting, no per-angle
+    tuning), with the H1-consistent Cn engineering band of +/-0.08.
+    """
+
+    from . import rojratsirikul2011_observations as _obs
+
+    zmax = _obs.figure6_value(5.0, angle_deg).zmax_over_c
+    cn = _obs.figure9_value("flexible_membrane", 5.0, angle_deg).cn
+    return RojratsirikulCaseConfig(
+        case_id=f"ROJ11-SWEEP-A{int(round(angle_deg)):02d}",
+        angle_deg=angle_deg,
+        target_zmax_over_c=zmax,
+        target_cn_band=(cn - 0.08, cn + 0.08),
+        target_strouhal=None,
+        target_chordwise_peak_count=None,
+        target_spanwise_peak_count=None,
+        purpose=(
+            "Figure 6/9 U=5 m/s curve sweep point; targets loaded "
+            "exact-match from the 20260829 full-curve digitized oracle"
+        ),
+    )
+
+
+ROJ_A05_SWEEP = _sweep_case(5.0)
+ROJ_A21_SWEEP = _sweep_case(21.0)
+ROJ_A25_SWEEP = _sweep_case(25.0)
+ROJRATSIRIKUL2011_UNIFIED_CASES.update(
+    {
+        config.case_id: config
+        for config in (ROJ_A05_SWEEP, ROJ_A21_SWEEP, ROJ_A25_SWEEP)
+    }
+)
 ROJRATSIRIKUL2011_SENSITIVITY_BRANCHES: dict[str, RojratsirikulCaseConfig] = {
     ROJ_A16_E14.case_id: ROJ_A16_E14
 }

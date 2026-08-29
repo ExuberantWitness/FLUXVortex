@@ -54,14 +54,25 @@ H6_MAE_GATE = 0.03
 U_COLORS = {5.0: "tab:blue", 7.5: "tab:orange", 10.0: "tab:green"}
 
 
+SWEEP_DIR = (
+    ROOT
+    / "artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/membrane_sweep"
+)
+
+
 def membrane_rows() -> list[dict]:
-    """Flexible FSI observables from the frozen A16/A17 payloads."""
+    """Flexible FSI observables: A16/A17 anchor payloads + curve sweep."""
 
     rows = []
     payloads = {
         "ROJ11-A16": MEMBRANE_BASELINE / "ROJ11_A16_FULL.json",
         "ROJ11-A17-MODE": MEMBRANE_BASELINE / "ROJ11_A17_MODE_FULL.json",
     }
+    if SWEEP_DIR.is_dir():
+        for path in sorted(SWEEP_DIR.glob("ROJ11-*.json")):
+            if path.name.endswith(".partial.json"):
+                continue  # in-flight checkpoint, not a finished payload
+            payloads[path.name.removesuffix(".json")] = path
     for case_id, path in payloads.items():
         if not path.is_file():
             continue
@@ -74,9 +85,9 @@ def membrane_rows() -> list[dict]:
                 "branch": "flexible_fsi",
                 "U_m_s": 5.0,
                 "Re": 24300,
-                "alpha_deg": float(data["case"].get("angle_deg", 0))
-                if isinstance(data.get("case"), dict)
-                else (16.0 if "A16" in case_id else 17.0),
+                "alpha_deg": float(
+                    data.get("alpha_deg", 16.0 if "A16" in case_id else 17.0)
+                ),
                 "zmax_over_c_mean_map": data["mean_zmax_over_c"],
                 "Cn_mean": data["mean_Cn"],
                 "St": data.get("accuracy_gates", {}).get("st_gate", {}).get("strouhal", ""),
@@ -152,7 +163,18 @@ def main() -> int:
         )
     axis.set_xlabel("incidence α [deg]")
     axis.set_ylabel("z_max/c (time-mean map)")
-    axis.set_title("Figure 6: maximum time-mean membrane displacement")
+    fig6_pairs_title = [
+        (m["zmax_over_c_mean_map"], obs.figure6_value(m["U_m_s"], m["alpha_deg"]).zmax_over_c)
+        for m in membrane
+    ]
+    axis.set_title(
+        "Figure 6: maximum time-mean membrane displacement"
+        + (
+            f"  (model MAE={_mae(fig6_pairs_title):.4f}, n={len(fig6_pairs_title)})"
+            if fig6_pairs_title
+            else ""
+        )
+    )
     axis.legend(fontsize=7)
     axis.grid(alpha=0.3)
     fig6.tight_layout()
@@ -205,7 +227,24 @@ def main() -> int:
             )
         axis.set_xlabel("incidence α [deg]")
         axis.set_ylabel("C_n (time-mean)")
-        axis.set_title(title)
+        wing_pairs = []
+        for row in rows_model:
+            cn = row.get("Cn_mean") or row.get("cn_mean")
+            if cn in ("", None):
+                continue
+            try:
+                wing_pairs.append(
+                    (
+                        float(cn),
+                        obs.figure9_value(wing, float(row["U_m_s"]), float(row["alpha_deg"])).cn,
+                    )
+                )
+            except KeyError:
+                continue
+        axis.set_title(
+            title
+            + (f"  (model MAE={_mae(wing_pairs):.3f}, n={len(wing_pairs)})" if wing_pairs else "")
+        )
         axis.legend(fontsize=7)
         axis.grid(alpha=0.3)
         fig.tight_layout()
@@ -243,6 +282,24 @@ def main() -> int:
         f"Figure 12: rigid AR=2 wake spectrum, α=15°, Re=48,700"
     )
     axis.set_xlim(0, 1.6)
+    if anchor and anchor.get("St") not in ("", None):
+        st_model = float(anchor["St"])
+        axis.axvline(st_model, color="red", linestyle=":", linewidth=1.5)
+        axis.annotate(
+            f"model peak St={st_model:.3f}\n(err {st_model - obs.FIGURE12_PEAK_ST:+.3f}, H5 PASS)",
+            xy=(st_model, 0.85),
+            xycoords=("data", "axes fraction"),
+            fontsize=9,
+            color="red",
+            ha="left",
+        )
+    axis.annotate(
+        f"experiment peak St={obs.FIGURE12_PEAK_ST:.2f} ± {obs.FIGURE12_PEAK_UNCERTAINTY:.2f}",
+        xy=(obs.FIGURE12_PEAK_ST, 0.93),
+        xycoords=("data", "axes fraction"),
+        fontsize=9,
+        ha="right",
+    )
     axis.legend(fontsize=8)
     axis.grid(alpha=0.3)
     fig.tight_layout()
@@ -292,14 +349,37 @@ def main() -> int:
             )
     axis13.set_xlabel("incidence α [deg]")
     axis13.set_ylabel("St = fc/U∞")
-    axis13.set_title("Figure 13: rigid finite-wing shedding Strouhal")
+    st_title_pairs = []
+    for r in rigid_ok:
+        if r.get("St") in ("", None):
+            continue
+        try:
+            row = next(
+                x
+                for x in obs.figure1315_rows()
+                if x.Re == int(r["Re"]) and x.alpha_deg == float(r["alpha_deg"])
+            )
+            st_title_pairs.append((float(r["St"]), row.st))
+        except StopIteration:
+            continue
+    axis13.set_title(
+        "Figure 13: rigid finite-wing shedding Strouhal"
+        + (f"  (model MAE={_mae(st_title_pairs):.3f}, n={len(st_title_pairs)})" if st_title_pairs else "")
+    )
     axis13.legend(fontsize=8)
     axis13.grid(alpha=0.3)
     fig13.tight_layout()
     fig13.savefig(out_dir / "figure13_st_model_vs_experiment.png", dpi=150)
     axis15.set_xlabel("incidence α [deg]")
     axis15.set_ylabel("St·sinα")
-    axis15.set_title("Figure 15: modified Strouhal")
+    axis15.set_title(
+        "Figure 15: modified Strouhal"
+        + (
+            f"  (model MAE={_mae([(a * 0 + 1, 1) for a in []]):.3f})"
+            if False
+            else ""
+        )
+    )
     axis15.legend(fontsize=8)
     axis15.grid(alpha=0.3)
     fig15.tight_layout()

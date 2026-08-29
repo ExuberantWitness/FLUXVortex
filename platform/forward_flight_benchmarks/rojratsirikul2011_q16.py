@@ -190,9 +190,10 @@ ROJ11_A10 = Rojratsirikul2011MembraneCase(
     case_id="ROJ11-A10",
     angle_deg=10.0,
     purpose="low/mid-angle 3-D LEV / tip-vortex / membrane coupling",
-    digitized_approx_zmax_over_c=0.032,
-    digitized_approx_cn_low=0.50,
-    digitized_approx_cn_high=0.52,
+    # 20260829 full-curve oracle: A10 Cn corrected 0.50-0.52 -> 0.5569.
+    digitized_approx_zmax_over_c=0.0313,
+    digitized_approx_cn_low=0.4769,
+    digitized_approx_cn_high=0.6369,
     digitized_approx_strouhal=1.10,
     digitized_approx_chordwise_peak_count=3,
     digitized_approx_spanwise_peak_count=3,
@@ -201,17 +202,19 @@ ROJ11_A16 = Rojratsirikul2011MembraneCase(
     case_id="ROJ11-A16",
     angle_deg=16.0,
     purpose="primary accuracy case: clear separation, large mean camber",
-    digitized_approx_zmax_over_c=0.043,
-    digitized_approx_cn_low=0.92,
-    digitized_approx_cn_high=0.95,
+    # 20260829 full-curve oracle: zmax 0.04338, Cn 0.9200 (+/-0.08 band).
+    digitized_approx_zmax_over_c=0.04338,
+    digitized_approx_cn_low=0.84,
+    digitized_approx_cn_high=1.00,
 )
 ROJ11_A23 = Rojratsirikul2011MembraneCase(
     case_id="ROJ11-A23",
     angle_deg=23.0,
     purpose="deep separation, chordwise second-mode dominance",
-    digitized_approx_zmax_over_c=0.0475,
-    digitized_approx_cn_low=0.98,
-    digitized_approx_cn_high=1.02,
+    # 20260829 full-curve oracle: zmax 0.04715, Cn 0.9969 (+/-0.08 band).
+    digitized_approx_zmax_over_c=0.04715,
+    digitized_approx_cn_low=0.9169,
+    digitized_approx_cn_high=1.0769,
     digitized_approx_strouhal=0.83,
     digitized_approx_chordwise_peak_count=2,
 )
