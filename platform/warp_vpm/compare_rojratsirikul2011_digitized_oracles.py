@@ -305,6 +305,53 @@ def main() -> int:
     fig15.tight_layout()
     fig15.savefig(out_dir / "figure15_modified_st_model_vs_experiment.png", dpi=150)
 
+    # ── Figure 14: 2D cross-literature relation (diagnostic) ────────────
+    fig14 = plt.figure(figsize=(7.2, 5.0))
+    axis14 = fig14.add_subplot(1, 1, 1)
+    relation = obs.figure14_relation()
+    axis14.fill_between(
+        [r["alpha_deg"] for r in relation],
+        [r["st_lower"] for r in relation],
+        [r["st_upper"] for r in relation],
+        color="gray",
+        alpha=0.18,
+        label="diagnostic band St*=0.15–0.20",
+    )
+    axis14.plot(
+        [r["alpha_deg"] for r in relation],
+        [r["st_fit"] for r in relation],
+        linestyle="--",
+        color="black",
+        linewidth=1.4,
+        label="published fit St=0.17/sinα (2D relation)",
+    )
+    for U in (5.0, 7.5, 10.0):
+        points = sorted(
+            (float(r["alpha_deg"]), float(r["St"]))
+            for r in rigid_ok
+            if float(r["U_m_s"]) == U and r.get("St") not in ("", None)
+        )
+        if points:
+            _plot_curve(
+                axis14,
+                points,
+                "red",
+                f"model U={U} AR=2 finite wing (context, not 2D)",
+                "*",
+                "full",
+            )
+    axis14.set_xlabel("incidence α [deg]")
+    axis14.set_ylabel("St = fc/U∞")
+    axis14.set_title(
+        "Figure 14 relation: 2D St=0.17/sinα with the AR=2 finite-wing model"
+    )
+    axis14.set_ylim(0, 2.2)
+    axis14.legend(fontsize=8)
+    axis14.grid(alpha=0.3)
+    fig14.tight_layout()
+    fig14.savefig(out_dir / "figure14_2d_relation_model_context.png", dpi=150)
+    plt.close(fig14)
+
     # ── scores.json ──────────────────────────────────────────────────────
     scores: dict = {}
 
