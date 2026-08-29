@@ -230,8 +230,12 @@ class RojratsirikulCaseConfig:
 ROJ_A10 = RojratsirikulCaseConfig(
     case_id="ROJ11-A10",
     angle_deg=10.0,
-    target_zmax_over_c=0.032,
-    target_cn_band=(0.50, 0.52),
+    # Figure 6/9 full-curve oracle 20260829: A10 U5 Cn corrected 0.50-0.52
+    # -> 0.5569 (legacy sparse-CSV reading; see
+    # rojratsirikul2011_observations.A10_U5_CN).  Cn band = anchor +/- 0.08
+    # (H1-consistent engineering gate).
+    target_zmax_over_c=0.0313,
+    target_cn_band=(0.4769, 0.6369),
     target_strouhal=1.10,
     target_chordwise_peak_count=3,
     target_spanwise_peak_count=3,
@@ -241,8 +245,10 @@ ROJ_A10 = RojratsirikulCaseConfig(
 ROJ_A16_PRIMARY = RojratsirikulCaseConfig(
     case_id="ROJ11-A16",
     angle_deg=16.0,
-    target_zmax_over_c=0.043,
-    target_cn_band=(0.92, 0.95),
+    # Figure 6/9 full-curve oracle 20260829: zmax 0.04338, Cn 0.9200
+    # (H1: |Cn - 0.92| <= 0.08).
+    target_zmax_over_c=0.04338,
+    target_cn_band=(0.84, 1.00),
     # A16 gates ONLY the mean quantities; the dynamic-mode oracles at ~17 deg
     # belong to ROJ11-A17-MODE and must never be applied here.
     target_strouhal=None,
@@ -253,8 +259,9 @@ ROJ_A16_PRIMARY = RojratsirikulCaseConfig(
 ROJ_A17_MODE = RojratsirikulCaseConfig(
     case_id="ROJ11-A17-MODE",
     angle_deg=17.0,
-    target_zmax_over_c=0.0445,
-    target_cn_band=(0.97, 0.97),
+    # Figure 6/9 full-curve oracle 20260829: zmax 0.04396, Cn 0.9662.
+    target_zmax_over_c=0.04396,
+    target_cn_band=(0.8862, 1.0462),
     target_strouhal=0.85,
     target_chordwise_peak_count=2,
     # "spanwise peaks no longer visible" — zero peaks above the digitization
@@ -266,8 +273,9 @@ ROJ_A17_MODE = RojratsirikulCaseConfig(
 ROJ_A23 = RojratsirikulCaseConfig(
     case_id="ROJ11-A23",
     angle_deg=23.0,
-    target_zmax_over_c=0.0475,
-    target_cn_band=(0.98, 1.02),
+    # Figure 6/9 full-curve oracle 20260829: zmax 0.04715, Cn 0.9969.
+    target_zmax_over_c=0.04715,
+    target_cn_band=(0.9169, 1.0769),
     target_strouhal=0.83,
     target_chordwise_peak_count=2,
     target_spanwise_peak_count=None,
