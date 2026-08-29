@@ -325,12 +325,20 @@ def _sweep_case(angle_deg: float) -> RojratsirikulCaseConfig:
 
 
 ROJ_A05_SWEEP = _sweep_case(5.0)
+ROJ_A13_SWEEP = _sweep_case(13.0)
+ROJ_A19_SWEEP = _sweep_case(19.0)
 ROJ_A21_SWEEP = _sweep_case(21.0)
 ROJ_A25_SWEEP = _sweep_case(25.0)
 ROJRATSIRIKUL2011_UNIFIED_CASES.update(
     {
         config.case_id: config
-        for config in (ROJ_A05_SWEEP, ROJ_A21_SWEEP, ROJ_A25_SWEEP)
+        for config in (
+            ROJ_A05_SWEEP,
+            ROJ_A13_SWEEP,
+            ROJ_A19_SWEEP,
+            ROJ_A21_SWEEP,
+            ROJ_A25_SWEEP,
+        )
     }
 )
 ROJRATSIRIKUL2011_SENSITIVITY_BRANCHES: dict[str, RojratsirikulCaseConfig] = {
