@@ -573,6 +573,13 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             pressure=author.constant_pressure,
             total_force=author.total_force,
             total_moment=author.total_moment,
+            # material mode: the refined author has no packet; inherit the
+            # unified packet the inherited Q16 propose published.
+            surface_load_packet=(
+                author.surface_load_packet
+                if author.surface_load_packet is not None
+                else proposal.load.surface_load_packet
+            ),
         )
         return replace(proposal, load=kj_load)
 
@@ -650,6 +657,7 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             pressure=refined.constant_pressure,
             total_force=refined.total_force,
             total_moment=refined.total_moment,
+            surface_load_packet=refined.surface_load_packet,
         )
         return refined, load
 

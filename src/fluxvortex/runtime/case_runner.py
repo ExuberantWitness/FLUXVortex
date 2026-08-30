@@ -76,7 +76,9 @@ from .result_schema import ResultStatus
 
 
 SCHEMA = "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2"
-EXECUTION_GATE_STEPS = 110  # handoff §9 P6: t*=1 startup + 10 constant steps
+EXECUTION_GATE_STEPS = 110
+# M1-4 shadow cadence: audit-only 5P->Q16 resolved consumer evaluation.
+SHADOW_RESOLVED_CADENCE = 50  # handoff §9 P6: t*=1 startup + 10 constant steps
 PARTIAL_EVERY = 10
 UNIFIED_PATH_VERIFY_EVERY = 50
 # Numerical retention protocol (handoff §6.3 item 6) — identical to the
@@ -332,6 +334,7 @@ class RojratsirikulCaseRunner:
             )
         )
         self.perimeter_audit = perimeter_audit
+        self.mesh = mesh  # Q16 mesh owner (shadow transfer vertex map)
         effective_loss = case.structural_damping_loss_factor
         self.structural = Q16CudaNewmarkStepper(
             model,
@@ -387,6 +390,8 @@ class RojratsirikulCaseRunner:
             ),
         )
         self.transfer = Q16NativePanelLoadTransfer(self.surface)
+        self._shadow_resolved_consumer = None
+        self._shadow_evidence: list[dict[str, float]] = []
         self.normal_t = torch.tensor(
             platform.plate_normal(case),
             device=self.device,
@@ -628,6 +633,7 @@ class RojratsirikulCaseRunner:
         case = self.case
         if execution_gate_only and max_aero_steps is None:
             max_aero_steps = EXECUTION_GATE_STEPS
+        self._max_aero_steps_hint = max_aero_steps
         if max_aero_steps is None:
             max_aero_steps = int(
                 math.ceil(
@@ -744,6 +750,16 @@ class RojratsirikulCaseRunner:
                 write_partial("failed", failure)
                 raise
 
+            if (
+                step % SHADOW_RESOLVED_CADENCE == 0
+                or step == int(self._max_aero_steps_hint or 0)
+            ):
+                try:
+                    self._record_shadow_evidence(result)
+                except Exception as error:  # noqa: BLE001 -- shadow is audit
+                    self._shadow_evidence.append(
+                        {"shadow_error": f"{type(error).__name__}: {error}"}
+                    )
             quarter = wp.to_torch(
                 self.surface.quarter_transfer.interpolate(result.structural.state)
             )[0].reshape(self.surface.nc, self.surface.ns + 1, 3)
@@ -862,6 +878,41 @@ class RojratsirikulCaseRunner:
 
     # -- statistics, gates, payload ----------------------------------------
 
+    def _record_shadow_evidence(self, result: Any) -> None:
+        """Audit-only 5P->Q16 resolved consumer evaluation (M1-4 prep).
+
+        Never applies loads; records the generalized-projection difference
+        vs the legacy consumer, the conservative closures of the real
+        Ptera transfer, and the work-conjugacy identity.
+        """
+
+        if self._shadow_resolved_consumer is None:
+            from fluxvortex.warp_fsi.q16_shadow_resolved_consumer import (
+                ShadowResolvedConsumer,
+            )
+            from ..warp_fsi.q16_flux_v5m_native import _surface_map
+
+            roj_platform = self._platform
+            nc, ns = roj_platform.FORMAL_AERO_GRID
+            ce, se = roj_platform.FORMAL_Q16_GRID
+            fractions = tuple(
+                (i / nc, j / ns) for i in range(nc + 1) for j in range(ns + 1)
+            )
+            vertex_map = _surface_map(self.mesh, ce, se, fractions)
+            self._shadow_resolved_consumer = ShadowResolvedConsumer(
+                vertex_map,
+                chordwise_panels=nc,
+                spanwise_panels=ns,
+                device=self.device,
+            )
+        evidence = self._shadow_resolved_consumer.evaluate(
+            proposal=result.aerodynamic,
+            structural_state=result.structural.state,
+            structural_velocity=result.structural.velocity,
+        )
+        evidence["aero_step"] = int(self.owner.aerodynamic.state.step)
+        self._shadow_evidence.append(evidence)
+
     def _finalize(
         self,
         *,
@@ -892,6 +943,41 @@ class RojratsirikulCaseRunner:
                 "proposal; consumer switch pending (M1-4)"
             ),
         }
+        numeric_shadow = [
+            e for e in self._shadow_evidence if "shadow_error" not in e
+        ]
+        if numeric_shadow:
+            import statistics as _stats
+
+            def _series(key: str) -> list[float]:
+                return [e[key] for e in numeric_shadow if key in e]
+
+            def _summary(key: str) -> dict[str, float]:
+                values = _series(key)
+                if not values:
+                    return {}
+                return {
+                    "mean": _stats.fmean(values),
+                    "max": max(values),
+                    "n": len(values),
+                }
+
+            resolved_evidence["shadow_5p_to_q16"] = {
+                "generalized_projection_relative": _summary(
+                    "generalized_projection_relative"
+                ),
+                "transfer_force_max_abs_error": _summary(
+                    "transfer_force_max_abs_error"
+                ),
+                "transfer_moment_max_abs_error": _summary(
+                    "transfer_moment_max_abs_error"
+                ),
+                "work_relative_error": _summary("work_relative_error"),
+            }
+        elif self._shadow_evidence:
+            resolved_evidence["shadow_5p_to_q16"] = {
+                "error": self._shadow_evidence[-1].get("shadow_error", "unknown")
+            }
         platform = self._platform
         time_star = torch.tensor(
             [record["time_star"] for record in records],
