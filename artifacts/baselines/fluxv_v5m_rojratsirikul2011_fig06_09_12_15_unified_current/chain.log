@@ -1062,3 +1062,436 @@ Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:
 Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 7.33 ms  (cached)
 Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.43 ms  (cached)
 Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.40 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "chordwise_peak_count": {
+      "digitized_target": 2,
+      "passed": false,
+      "value": 1
+    },
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.9169,
+        1.0769
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 1.7095908124034884
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.04715,
+      "passed": true,
+      "tolerance": 0.005,
+      "value": 0.04453461552550004
+    },
+    "st_gate": {
+      "digitized_target": 0.83,
+      "passed": false,
+      "strouhal": 0.44444444444444436,
+      "tolerance": 0.08
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 1000,
+  "alpha_deg": 23.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-A23",
+  "chordwise_peak_count": 1,
+  "commit_count": 1000,
+  "coupling_iteration_mean": 1.999,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "dirty_state_digest": "3baff4b2de0bdbbff66a11633614ad1385bc33e036f2827489795b845a20904e",
+  "discarded_trial_count": 1999,
+  "dominant_St": 0.44444444444444436,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 12787.86171529605,
+  "execution_gate_only": false,
+  "formal_replay_count": 1000,
+  "free_wake": true,
+  "git_head": "8f11443aa9103e8edf7a64cc424784b51d080ddb",
+  "is_calibration_sensitivity": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 30000,
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.7755575615628914e-17,
+  "max_abs_lesp_pre": 0.6447848258208781,
+  "mean_Cn": 1.7095908124034884,
+  "mean_zmax_over_c": 0.04453461552550004,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 2999,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 93,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": -1.7223466305515273e-14,
+    "particle_cull_count_total": 243549,
+    "removed_over_retained": 1.8912534035046862,
+    "retained_circulation_live": {
+      "gamma_bound": 99.35686008055112,
+      "particle_circulation": -1.214306433183765e-17,
+      "wake_gamma": 2773.293641592254
+    },
+    "wake_truncate_circulation_total": 5432.910038368137,
+    "wake_truncate_ring_count_total": 21000
+  },
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 2,
+    "max_over_c": 0.07545744709699266,
+    "min_over_c": -0.014969757373996438,
+    "station": [
+      9,
+      15
+    ]
+  },
+  "spanwise_peak_count": 1,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=23 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 15.609227992012165,
+  "step_wall_seconds_mean": 12.7795751333707,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.2765013677935718,
+      "virtual_work_error": 5.9900351293555565e-15
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 9000,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      1000
+    ]
+  },
+  "zsd_max_over_c": 0.019330590608673686
+}
+=== membrane ROJ11-SWEEP-A25 (Sun Aug 30 11:04:09 AM CST 2026) ===
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.48 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.23 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.40 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.81 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.48 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 0.99 ms  (cached)
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.42 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.40 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.8538,
+        1.0138
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 1.837057084460534
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.04696,
+      "passed": true,
+      "tolerance": 0.005,
+      "value": 0.04512910393344552
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 1000,
+  "alpha_deg": 25.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-SWEEP-A25",
+  "chordwise_peak_count": 1,
+  "commit_count": 1000,
+  "coupling_iteration_mean": 1.999,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "dirty_state_digest": "916f119bf4f3d3a33fd858e5c21834a9755fbd5a1157a012ca52f6379a9829fc",
+  "discarded_trial_count": 1999,
+  "dominant_St": 0.44444444444444436,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 12875.866081064916,
+  "execution_gate_only": false,
+  "formal_replay_count": 1000,
+  "free_wake": true,
+  "git_head": "8f11443aa9103e8edf7a64cc424784b51d080ddb",
+  "is_calibration_sensitivity": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 29970,
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.7755575615628914e-17,
+  "max_abs_lesp_pre": 0.7074440767597227,
+  "mean_Cn": 1.837057084460534,
+  "mean_zmax_over_c": 0.04512910393344552,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 2999,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 99,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": 5.50651375625516e-15,
+    "particle_cull_count_total": 243281,
+    "removed_over_retained": 1.890431954652295,
+    "retained_circulation_live": {
+      "gamma_bound": 107.64476784418383,
+      "particle_circulation": -1.474514954580286e-17,
+      "wake_gamma": 2999.606631127071
+    },
+    "wake_truncate_circulation_total": 5874.047335753307,
+    "wake_truncate_ring_count_total": 21000
+  },
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 2,
+    "max_over_c": 0.07722471104346211,
+    "min_over_c": -0.016236607522368884,
+    "station": [
+      9,
+      15
+    ]
+  },
+  "spanwise_peak_count": 1,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=25 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 13.804041257011704,
+  "step_wall_seconds_mean": 12.867906877924922,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.2777348733509854,
+      "virtual_work_error": 4.423430827463827e-15
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 9000,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      1000
+    ]
+  },
+  "zsd_max_over_c": 0.01991822212936936
+}
+=== rigid U5 curve (Sun Aug 30 02:39:02 PM CST 2026) ===
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-08-30 14:39:03,169 INFO resuming: 3 cases already complete
+2026-08-30 14:39:03,343 INFO ROJR-RIGID-U5p0-A090 start: U=5.0 alpha=9.0 steps=3000 dt*=0.01
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.39 ms  (cached)
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.41 ms  (cached)
+2026-08-30 14:45:37,813 INFO ROJR-RIGID-U5p0-A090 step 500/3000 Cn(inst)=0.6458 particles=10406 wake_rows=9000 (394s)
+2026-08-30 14:54:21,615 INFO ROJR-RIGID-U5p0-A090 step 1000/3000 Cn(inst)=0.6432 particles=14278 wake_rows=9000 (918s)
+2026-08-30 15:03:33,910 INFO ROJR-RIGID-U5p0-A090 step 1500/3000 Cn(inst)=0.6342 particles=19118 wake_rows=9000 (1471s)
+2026-08-30 15:13:08,139 INFO ROJR-RIGID-U5p0-A090 step 2000/3000 Cn(inst)=0.6426 particles=17182 wake_rows=9000 (2045s)
+2026-08-30 15:22:18,223 INFO ROJR-RIGID-U5p0-A090 step 2500/3000 Cn(inst)=0.6350 particles=18392 wake_rows=9000 (2595s)
+2026-08-30 15:31:52,378 INFO ROJR-RIGID-U5p0-A090 step 3000/3000 Cn(inst)=0.6376 particles=18150 wake_rows=9000 (3169s)
+2026-08-30 15:31:52,395 INFO ROJR-RIGID-U5p0-A090 done: Cn=0.6391 St=0.5784 St*=0.0905 stationary=True (3169s)
+2026-08-30 15:31:52,423 INFO ROJR-RIGID-U5p0-A110 start: U=5.0 alpha=11.0 steps=3000 dt*=0.01
+2026-08-30 15:38:56,974 INFO ROJR-RIGID-U5p0-A110 step 500/3000 Cn(inst)=0.7741 particles=18392 wake_rows=9000 (425s)
+2026-08-30 15:48:55,304 INFO ROJR-RIGID-U5p0-A110 step 1000/3000 Cn(inst)=0.7900 particles=24442 wake_rows=9000 (1023s)
+2026-08-30 15:58:39,829 INFO ROJR-RIGID-U5p0-A110 step 1500/3000 Cn(inst)=0.7794 particles=15246 wake_rows=9000 (1607s)
+2026-08-30 16:08:08,526 INFO ROJR-RIGID-U5p0-A110 step 2000/3000 Cn(inst)=0.7694 particles=19118 wake_rows=9000 (2176s)
+2026-08-30 16:18:08,309 INFO ROJR-RIGID-U5p0-A110 step 2500/3000 Cn(inst)=0.7752 particles=23232 wake_rows=9000 (2776s)
+2026-08-30 16:27:51,021 INFO ROJR-RIGID-U5p0-A110 step 3000/3000 Cn(inst)=0.7766 particles=13552 wake_rows=9000 (3359s)
+2026-08-30 16:27:51,027 INFO ROJR-RIGID-U5p0-A110 done: Cn=0.7730 St=0.8506 St*=0.1623 stationary=False (3359s)
+2026-08-30 16:27:51,055 INFO ROJR-RIGID-U5p0-A130 start: U=5.0 alpha=13.0 steps=3000 dt*=0.01
+2026-08-30 16:36:06,111 INFO ROJR-RIGID-U5p0-A130 step 500/3000 Cn(inst)=0.9062 particles=24442 wake_rows=9000 (495s)
+2026-08-30 16:46:23,855 INFO ROJR-RIGID-U5p0-A130 step 1000/3000 Cn(inst)=0.9077 particles=17666 wake_rows=9000 (1113s)
+2026-08-30 16:56:59,464 INFO ROJR-RIGID-U5p0-A130 step 1500/3000 Cn(inst)=0.9061 particles=22022 wake_rows=9000 (1748s)
+2026-08-30 17:07:16,547 INFO ROJR-RIGID-U5p0-A130 step 2000/3000 Cn(inst)=0.9027 particles=19118 wake_rows=9000 (2365s)
+2026-08-30 17:17:53,795 INFO ROJR-RIGID-U5p0-A130 step 2500/3000 Cn(inst)=0.9130 particles=20086 wake_rows=9000 (3003s)
+2026-08-30 17:28:08,711 INFO ROJR-RIGID-U5p0-A130 step 3000/3000 Cn(inst)=0.8898 particles=22506 wake_rows=9000 (3618s)
+2026-08-30 17:28:08,718 INFO ROJR-RIGID-U5p0-A130 done: Cn=0.9057 St=0.9012 St*=0.2027 stationary=False (3618s)
+2026-08-30 17:28:08,745 INFO ROJR-RIGID-U5p0-A150 start: U=5.0 alpha=15.0 steps=3000 dt*=0.01
+2026-08-30 17:36:45,911 INFO ROJR-RIGID-U5p0-A150 step 500/3000 Cn(inst)=1.0280 particles=21296 wake_rows=9000 (517s)
+2026-08-30 17:47:43,934 INFO ROJR-RIGID-U5p0-A150 step 1000/3000 Cn(inst)=1.0373 particles=24442 wake_rows=9000 (1175s)
+2026-08-30 17:58:45,379 INFO ROJR-RIGID-U5p0-A150 step 1500/3000 Cn(inst)=1.0324 particles=20328 wake_rows=9000 (1837s)
+2026-08-30 18:09:53,355 INFO ROJR-RIGID-U5p0-A150 step 2000/3000 Cn(inst)=1.0355 particles=20812 wake_rows=9000 (2505s)
+2026-08-30 18:20:57,078 INFO ROJR-RIGID-U5p0-A150 step 2500/3000 Cn(inst)=1.0317 particles=24200 wake_rows=9000 (3168s)
+2026-08-30 18:31:55,114 INFO ROJR-RIGID-U5p0-A150 step 3000/3000 Cn(inst)=1.0231 particles=23232 wake_rows=9000 (3826s)
+2026-08-30 18:31:55,120 INFO ROJR-RIGID-U5p0-A150 done: Cn=1.0359 St=0.5899 St*=0.1527 stationary=True (3826s)
+2026-08-30 18:31:55,147 INFO ROJR-RIGID-U5p0-A170 start: U=5.0 alpha=17.0 steps=3000 dt*=0.01
+2026-08-30 18:40:51,564 INFO ROJR-RIGID-U5p0-A170 step 500/3000 Cn(inst)=1.1701 particles=22264 wake_rows=9000 (536s)
+2026-08-30 18:52:27,964 INFO ROJR-RIGID-U5p0-A170 step 1000/3000 Cn(inst)=1.1735 particles=22748 wake_rows=9000 (1233s)
+2026-08-30 19:04:08,168 INFO ROJR-RIGID-U5p0-A170 step 1500/3000 Cn(inst)=1.1704 particles=23232 wake_rows=9000 (1933s)
+2026-08-30 19:15:45,411 INFO ROJR-RIGID-U5p0-A170 step 2000/3000 Cn(inst)=1.1799 particles=24200 wake_rows=9000 (2630s)
+2026-08-30 19:27:21,614 INFO ROJR-RIGID-U5p0-A170 step 2500/3000 Cn(inst)=1.1785 particles=24442 wake_rows=9000 (3326s)
+2026-08-30 19:39:01,740 INFO ROJR-RIGID-U5p0-A170 step 3000/3000 Cn(inst)=1.1666 particles=24442 wake_rows=9000 (4027s)
+2026-08-30 19:39:01,747 INFO ROJR-RIGID-U5p0-A170 done: Cn=1.1631 St=0.5500 St*=0.1608 stationary=True (4027s)
+2026-08-30 19:39:01,773 INFO ROJR-RIGID-U5p0-A190 start: U=5.0 alpha=19.0 steps=3000 dt*=0.01
+2026-08-30 19:48:08,791 INFO ROJR-RIGID-U5p0-A190 step 500/3000 Cn(inst)=1.2852 particles=24200 wake_rows=9000 (547s)
+2026-08-30 20:00:12,496 INFO ROJR-RIGID-U5p0-A190 step 1000/3000 Cn(inst)=1.2809 particles=23474 wake_rows=9000 (1271s)
+2026-08-30 20:12:10,666 INFO ROJR-RIGID-U5p0-A190 step 1500/3000 Cn(inst)=1.2852 particles=23958 wake_rows=9000 (1989s)
+2026-08-30 20:24:16,625 INFO ROJR-RIGID-U5p0-A190 step 2000/3000 Cn(inst)=1.2709 particles=24200 wake_rows=9000 (2715s)
+2026-08-30 20:36:24,566 INFO ROJR-RIGID-U5p0-A190 step 2500/3000 Cn(inst)=1.2697 particles=24442 wake_rows=9000 (3443s)
+2026-08-30 20:48:29,240 INFO ROJR-RIGID-U5p0-A190 step 3000/3000 Cn(inst)=1.2646 particles=23716 wake_rows=9000 (4167s)
+2026-08-30 20:48:29,247 INFO ROJR-RIGID-U5p0-A190 done: Cn=1.2876 St=0.6160 St*=0.2006 stationary=True (4167s)
+2026-08-30 20:48:29,273 INFO ROJR-RIGID-U5p0-A210 start: U=5.0 alpha=21.0 steps=3000 dt*=0.01
+2026-08-30 20:57:52,494 INFO ROJR-RIGID-U5p0-A210 step 500/3000 Cn(inst)=1.3993 particles=24442 wake_rows=9000 (563s)
+2026-08-30 21:10:03,776 INFO ROJR-RIGID-U5p0-A210 step 1000/3000 Cn(inst)=1.4121 particles=24442 wake_rows=9000 (1295s)
