@@ -129,22 +129,45 @@ def main() -> int:
         damping_loss_factor=arguments.damping_loss_factor,
         output=output,
     )
-    printable = dict(result)
-    for key in (
-        "records",
-        "mean_map",
-        "zsd_map",
-        "assumption_ledger",
-        "field_roles",
-    ):
-        printable.pop(key, None)
-    if "window_selection" in printable:
-        printable["window_selection"] = {
-            key: value
-            for key, value in printable["window_selection"].items()
-            if key != "candidates"
-        }
-    print(json.dumps(printable, indent=2, sort_keys=True, allow_nan=False))
+    # M0-1 (MODIFICATION_PLAN_ROJ_ACCURACY_PERFORMANCE_20260830): the
+    # solver-execution status owns the CLI exit code; post-processing /
+    # artifact failures are reported with a SEPARATE non-zero code so a
+    # successful solve is never misread as a failed one.
+    try:
+        printable = dict(result)
+        for key in (
+            "records",
+            "mean_map",
+            "zsd_map",
+            "assumption_ledger",
+            "field_roles",
+        ):
+            printable.pop(key, None)
+        window = printable.get("window_selection")
+        if isinstance(window, dict):  # None on degenerate short slices
+            printable["window_selection"] = {
+                key: value
+                for key, value in window.items()
+                if key != "candidates"
+            }
+        else:
+            printable["window_selection"] = window  # None serialized as null
+        print(json.dumps(printable, indent=2, sort_keys=True, allow_nan=False))
+    except Exception as error:  # noqa: BLE001 -- artifact layer only
+        print(
+            json.dumps(
+                {
+                    "artifact_status": "failed",
+                    "solver_status": result.get("result_status", {}),
+                    "artifact_error": f"{type(error).__name__}: {error}",
+                },
+                indent=2,
+            )
+        )
+        # Solver completed -> keep its own verdict distinct (exit 3 = the
+        # solve itself is fine but the artifact/report layer failed).
+        solver_exit = int(result.get("result_status", {}).get("exit_code", 1))
+        return 3 if solver_exit == 0 else solver_exit
     return int(result["result_status"]["exit_code"])
 
 

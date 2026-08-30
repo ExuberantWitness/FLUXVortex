@@ -114,6 +114,49 @@ def rigid_rows(model_csv: Path) -> list[dict]:
         return list(csv.DictReader(handle))
 
 
+H7_CERTIFICATE_PATH = (
+    ROOT / "artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/h7_certificate.json"
+)
+
+
+def h7_qualification() -> dict:
+    """M0-1: without an H7 certificate a numeric PASS is explicitly
+    unqualified — grid/dt/memory convergence has not been demonstrated
+    (MODIFICATION_PLAN_ROJ_ACCURACY_PERFORMANCE_20260830 §1.1)."""
+
+    if H7_CERTIFICATE_PATH.is_file():
+        return json.loads(H7_CERTIFICATE_PATH.read_text())
+    return {
+        "status": "LOCAL_OBSERVABLE_PASS_NUMERICALLY_UNQUALIFIED",
+        "reason": "no H7 convergence certificate on record",
+        "certificate_path": str(H7_CERTIFICATE_PATH),
+    }
+
+
+def _grouped_by_u(rows, value_key):
+    """Group model oracle pairs by freestream speed (M0-1: mixing U=5 and
+    U=10 model points into one MAE hides per-velocity quality)."""
+
+    groups: dict[float, list[tuple[float, float]]] = {}
+    for row in rows:
+        value = row.get(value_key)
+        if value in ("", None):
+            continue
+        try:
+            if value_key == "Cn_mean":
+                experiment = obs.figure9_value(
+                    "flexible_membrane" if row["branch"] == "flexible_fsi" else "rigid_flat_plate",
+                    float(row["U_m_s"]),
+                    float(row["alpha_deg"]),
+                ).cn
+            else:
+                experiment = obs.figure6_value(float(row["U_m_s"]), float(row["alpha_deg"])).zmax_over_c
+        except KeyError:
+            continue
+        groups.setdefault(float(row["U_m_s"]), []).append((float(value), experiment))
+    return groups
+
+
 def _mae(pairs: list[tuple[float, float]]) -> float:
     return sum(abs(m - e) for m, e in pairs) / max(1, len(pairs))
 
@@ -456,24 +499,42 @@ def main() -> int:
         for m in membrane
     ]
     if fig6_pairs:
-        scores["H2_figure6"] = {
+        h2 = {
             "n_model_points": len(fig6_pairs),
-            "mae": _mae(fig6_pairs),
+            "mae_all": _mae(fig6_pairs),
             "gate": H2_MAE_GATE,
-            "pass": _mae(fig6_pairs) <= H2_MAE_GATE,
-            "note": "model points so far: membrane A16/A17 at U=5 only",
+            "note": "U-grouped MAEs below; combined value is report-only",
         }
+        for U, pairs in sorted(_grouped_by_u(membrane, "zmax_over_c_mean_map").items()):
+            h2[f"mae_U{U:g}"] = _mae(pairs)
+            h2[f"n_U{U:g}"] = len(pairs)
+        h2["pass_qualified"] = all(
+            v <= H2_MAE_GATE
+            for k, v in h2.items()
+            if k.startswith("mae_U")
+        )
+        h2["qualification"] = h7_qualification()
+        scores["H2_figure6"] = h2
     fig9_flex_pairs = [
         (m["Cn_mean"], obs.figure9_value("flexible_membrane", m["U_m_s"], m["alpha_deg"]).cn)
         for m in membrane
     ]
     if fig9_flex_pairs:
-        scores["H3_figure9_flexible"] = {
+        h3 = {
             "n_model_points": len(fig9_flex_pairs),
-            "mae": _mae(fig9_flex_pairs),
+            "mae_all": _mae(fig9_flex_pairs),
             "gate": H3_MAE_GATE,
-            "pass": _mae(fig9_flex_pairs) <= H3_MAE_GATE,
         }
+        for U, pairs in sorted(
+            _grouped_by_u(membrane, "Cn_mean").items()
+        ):
+            h3[f"mae_U{U:g}"] = _mae(pairs)
+            h3[f"n_U{U:g}"] = len(pairs)
+        h3["pass_qualified"] = all(
+            v <= H3_MAE_GATE for k, v in h3.items() if k.startswith("mae_U")
+        )
+        h3["qualification"] = h7_qualification()
+        scores["H3_figure9_flexible"] = h3
     fig9_rigid_pairs = []
     for r in rigid_ok:
         if r.get("Cn_mean") in ("", None):
@@ -486,12 +547,22 @@ def main() -> int:
             continue
         fig9_rigid_pairs.append((float(r["Cn_mean"]), experiment))
     if fig9_rigid_pairs:
-        scores["H4_figure9_rigid"] = {
+        h4 = {
             "n_model_points": len(fig9_rigid_pairs),
-            "mae": _mae(fig9_rigid_pairs),
+            "mae_all": _mae(fig9_rigid_pairs),
             "gate": H4_MAE_GATE,
-            "pass": _mae(fig9_rigid_pairs) <= H4_MAE_GATE,
         }
+        rigid_ok_rows = [dict(r, branch="rigid") for r in rigid_ok]
+        for U, pairs in sorted(
+            _grouped_by_u(rigid_ok_rows, "Cn_mean").items()
+        ):
+            h4[f"mae_U{U:g}"] = _mae(pairs)
+            h4[f"n_U{U:g}"] = len(pairs)
+        h4["pass_qualified"] = all(
+            v <= H4_MAE_GATE for k, v in h4.items() if k.startswith("mae_U")
+        )
+        h4["qualification"] = h7_qualification()
+        scores["H4_figure9_rigid"] = h4
     anchor_row = next(
         (r for r in rigid_ok if float(r["U_m_s"]) == 10.0 and float(r["alpha_deg"]) == 15.0),
         None,
