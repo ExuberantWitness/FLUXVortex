@@ -877,6 +877,21 @@ class RojratsirikulCaseRunner:
         substeps: int,
     ) -> dict[str, Any]:
         case = self.case
+        # M1-3 migration evidence: the unified resolved point-load packet is
+        # published by the Q16 native propose alongside the legacy pressure
+        # quadrature; the relative discrepancy between the two totals is the
+        # M1-4 hard-gate input (dual-owner removal).
+        resolved_evidence = {
+            "resolved_vs_quadrature_relative": getattr(
+                self.aerodynamic,
+                "_last_resolved_vs_quadrature_relative",
+                float("nan"),
+            ),
+            "note": (
+                "unified NativeV5MSurfaceLoadPacket published on every "
+                "proposal; consumer switch pending (M1-4)"
+            ),
+        }
         platform = self._platform
         time_star = torch.tensor(
             [record["time_star"] for record in records],
@@ -1246,6 +1261,7 @@ class RojratsirikulCaseRunner:
                 step_wall_times[-1] if step_wall_times else None
             ),
             "elapsed_seconds": elapsed_seconds,
+            "resolved_load_evidence": resolved_evidence,
             "aero_steps": len(records),
             "execution_gate_only": execution_gate_only,
             "records": records,

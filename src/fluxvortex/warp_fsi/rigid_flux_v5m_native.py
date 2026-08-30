@@ -535,6 +535,9 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
         self.surface = surface
         self.settings = settings
         self.device = torch.device(settings.device)
+        # M1 hooks (this __init__ intentionally skips super().__init__).
+        self._resolved_load_assembler = None
+        self._last_resolved_vs_quadrature_relative = float("nan")
         self.author_load_assembler = RigidAuthorLoadAssembler(
             density=settings.density,
             device=self.device,

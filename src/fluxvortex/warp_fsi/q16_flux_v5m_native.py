@@ -514,6 +514,10 @@ class NativeV5MLoad:
     pressure: torch.Tensor
     total_force: torch.Tensor
     total_moment: torch.Tensor
+    # M1 unified owner: resolved 5-point-per-panel load every consumer
+    # projects.  None on legacy/compat paths only; the formal rigid and Q16
+    # proposals always publish it.
+    surface_load_packet: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -606,6 +610,8 @@ class Q16NativeV5MSolver:
         surface.panel_load_transfer = self.load_transfer
         from .q16_flux_v5m_author_loads import Q16NativeAuthorLoadAssembler
 
+        self._resolved_load_assembler = None
+        self._last_resolved_vs_quadrature_relative = float("nan")
         self.author_load_assembler = Q16NativeAuthorLoadAssembler(
             surface, density=settings.density
         )
@@ -1165,6 +1171,59 @@ class Q16NativeV5MSolver:
         pressure = author_load.constant_pressure
         panel_forces = pressure[:, None] * geometry.areas[:, None] * geometry.normals
         generalized = wp.clone(author_load.constant_generalized_force)
+        # M1-3: publish the unified resolved packet from the SAME solver
+        # state (shared NativeResolvedLoadAssembler; induction via this
+        # solver's own kernels, wake state as advanced for this solve).
+        # The pressure-quadrature totals above stay in place during
+        # migration; the recorded discrepancy becomes the M1-4 hard gate.
+        if self._resolved_load_assembler is None:
+            from fluxvortex.aero.v5m.load_packet import (
+                NativeResolvedLoadAssembler,
+            )
+
+            self._resolved_load_assembler = NativeResolvedLoadAssembler(
+                density=self.settings.density,
+                device=self.settings.device,
+                chordwise_panels=self.settings.chordwise_panels,
+                spanwise_panels=self.settings.spanwise_panels,
+                aerodynamic_dt=self.settings.aerodynamic_dt,
+                wake_history_mode="bound_rate",
+            )
+        resolved = self._resolved_load_assembler
+        mids_flat = resolved.leg_midpoints_flat(geometry)
+        solution_velocity_flat = (
+            self.v_inf[None, :].expand(mids_flat.shape[0], 3)
+            + self._ring_velocity(
+                mids_flat, geometry.rings, gamma, rough=False
+            )
+            + self._ring_velocity(
+                mids_flat, trial.wake_rings, trial.wake_gamma, rough=False
+            )
+        )
+        if trial.particle_field.n:
+            solution_velocity_flat = (
+                solution_velocity_flat
+                + trial.particle_field.velocity_at_cuda(mids_flat)
+            )
+        packet = resolved.assemble_packet(
+            geometry=geometry,
+            gamma=gamma,
+            solution_velocity_flat=solution_velocity_flat.contiguous(),
+            mf2_history=mf2_history,
+            component_ledger={
+                "author_constant_pressure": author_load.constant_pressure,
+            },
+        )
+        quadrature_force = torch.sum(panel_forces, dim=0)
+        force_scale = max(
+            float(torch.linalg.vector_norm(quadrature_force).item()), 1e-30
+        )
+        self._last_resolved_vs_quadrature_relative = float(
+            torch.linalg.vector_norm(
+                packet.total_force_I - quadrature_force
+            ).item()
+            / force_scale
+        )
         load = NativeV5MLoad(
             panel_positions=geometry.collocation.clone(),
             panel_forces=panel_forces.clone(),
@@ -1173,6 +1232,7 @@ class Q16NativeV5MSolver:
             total_moment=torch.sum(
                 torch.linalg.cross(geometry.collocation, panel_forces, dim=1), dim=0
             ),
+            surface_load_packet=packet,
         )
 
         rear = geometry.rings.reshape(nc, ns, 4, 3)[-1, :, 2:4]
