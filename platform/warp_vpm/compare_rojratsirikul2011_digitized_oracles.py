@@ -505,17 +505,23 @@ def main() -> int:
             "gate": H5_ST_TOL,
             "pass": abs(dst) <= H5_ST_TOL,
         }
+    # Model Re is the precise value (e.g. 24325); the oracle uses the
+    # paper's nominal 24300.  Match by freestream speed instead.
+    U_TO_ORACLE_RE = {5.0: 24300, 7.5: 36500, 10.0: 48700}
     st_pairs = []
     for r in rigid_ok:
-        if r.get("St") in ("", None) or float(r["U_m_s"]) == 10.0:
-            continue  # Re=48,700 curve needs identity re-verification first
+        if r.get("St") in ("", None):
+            continue
+        U_model = float(r["U_m_s"])
+        oracle_re = U_TO_ORACLE_RE.get(U_model)
+        alpha_model = float(r["alpha_deg"])
         try:
             experiment = next(
                 row
                 for row in obs.figure1315_rows()
-                if row.Re == int(r["Re"])
-                and row.alpha_deg == float(r["alpha_deg"])
-                and row.alpha_deg != 15.0  # exclude the Re=48700 anchor row
+                if row.Re == oracle_re
+                and row.alpha_deg == alpha_model
+                and not (row.Re == 48700 and U_model != 10.0)
             )
         except StopIteration:
             continue
