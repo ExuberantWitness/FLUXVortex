@@ -1,0 +1,51 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-08-29 12:59:56,842 INFO ROJR-RIGID-U10p0-A150 start: U=10.0 alpha=15.0 steps=4000 dt*=0.01
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.44 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.46 ms  (cached)
+2026-08-29 13:09:33,318 INFO ROJR-RIGID-U10p0-A150 step 500/4000 Cn(inst)=1.0280 particles=21296 wake_rows=9000 (576s)
+2026-08-29 13:21:49,805 INFO ROJR-RIGID-U10p0-A150 step 1000/4000 Cn(inst)=1.0373 particles=24442 wake_rows=9000 (1313s)
+2026-08-29 13:34:10,904 INFO ROJR-RIGID-U10p0-A150 step 1500/4000 Cn(inst)=1.0324 particles=20328 wake_rows=9000 (2054s)
+2026-08-29 13:46:35,088 INFO ROJR-RIGID-U10p0-A150 step 2000/4000 Cn(inst)=1.0355 particles=20812 wake_rows=9000 (2798s)
+2026-08-29 13:59:03,268 INFO ROJR-RIGID-U10p0-A150 step 2500/4000 Cn(inst)=1.0317 particles=24200 wake_rows=9000 (3546s)
+2026-08-29 14:11:32,686 INFO ROJR-RIGID-U10p0-A150 step 3000/4000 Cn(inst)=1.0231 particles=23232 wake_rows=9000 (4296s)
+2026-08-29 14:24:06,750 INFO ROJR-RIGID-U10p0-A150 step 3500/4000 Cn(inst)=1.0370 particles=20328 wake_rows=9000 (5050s)
+2026-08-29 14:36:41,959 INFO ROJR-RIGID-U10p0-A150 step 4000/4000 Cn(inst)=1.0374 particles=21538 wake_rows=9000 (5805s)
+2026-08-29 14:36:41,970 INFO ROJR-RIGID-U10p0-A150 done: Cn=1.0359 St=0.5455 St*=0.1412 stationary=True (5805s)
+2026-08-29 14:36:41,976 INFO ROJR-RIGID-U5p0-A000 start: U=5.0 alpha=0.0 steps=3000 dt*=0.01
+2026-08-29 14:39:11,170 INFO ROJR-RIGID-U5p0-A000 step 500/3000 Cn(inst)=0.0000 particles=0 wake_rows=9000 (149s)
+2026-08-29 14:42:31,049 INFO ROJR-RIGID-U5p0-A000 step 1000/3000 Cn(inst)=0.0000 particles=0 wake_rows=9000 (349s)
+2026-08-29 14:45:52,361 INFO ROJR-RIGID-U5p0-A000 step 1500/3000 Cn(inst)=0.0000 particles=0 wake_rows=9000 (550s)
+2026-08-29 14:49:12,352 INFO ROJR-RIGID-U5p0-A000 step 2000/3000 Cn(inst)=0.0000 particles=0 wake_rows=9000 (750s)
+2026-08-29 14:52:27,148 INFO ROJR-RIGID-U5p0-A000 step 2500/3000 Cn(inst)=0.0000 particles=0 wake_rows=9000 (945s)
+2026-08-29 14:55:34,237 INFO ROJR-RIGID-U5p0-A000 step 3000/3000 Cn(inst)=0.0000 particles=0 wake_rows=9000 (1132s)
+2026-08-29 14:55:34,239 INFO ROJR-RIGID-U5p0-A000 done: Cn=0.0000 St=no-peak St*=- stationary=True (1132s)
+2026-08-29 14:55:34,243 INFO ROJR-RIGID-U5p0-A050 start: U=5.0 alpha=5.0 steps=3000 dt*=0.01
+2026-08-29 14:57:48,204 INFO ROJR-RIGID-U5p0-A050 step 500/3000 Cn(inst)=0.3622 particles=0 wake_rows=9000 (134s)
+2026-08-29 15:00:49,920 INFO ROJR-RIGID-U5p0-A050 step 1000/3000 Cn(inst)=0.3627 particles=0 wake_rows=9000 (316s)
+2026-08-29 15:03:53,178 INFO ROJR-RIGID-U5p0-A050 step 1500/3000 Cn(inst)=0.3627 particles=0 wake_rows=9000 (499s)
+2026-08-29 15:06:56,830 INFO ROJR-RIGID-U5p0-A050 step 2000/3000 Cn(inst)=0.3627 particles=0 wake_rows=9000 (683s)
+2026-08-29 15:10:05,694 INFO ROJR-RIGID-U5p0-A050 step 2500/3000 Cn(inst)=0.3627 particles=0 wake_rows=9000 (871s)
+2026-08-29 15:13:20,758 INFO ROJR-RIGID-U5p0-A050 step 3000/3000 Cn(inst)=0.3627 particles=0 wake_rows=9000 (1067s)
+2026-08-29 15:13:20,763 INFO ROJR-RIGID-U5p0-A050 done: Cn=0.3627 St=0.6000 St*=0.0523 stationary=True (1067s)
+2026-08-29 15:13:20,768 INFO ROJR-RIGID-U5p0-A090 start: U=5.0 alpha=9.0 steps=3000 dt*=0.01
+Traceback (most recent call last):
+  File "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/platform/warp_vpm/queue_roj_rigid_fig9_12_13_15.py", line 44, in <module>
+    from fluxvortex.aero.v5m.stepper import RigidV5MStepper
+ModuleNotFoundError: No module named 'fluxvortex.aero'
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-08-29 17:59:59,471 INFO resuming: 3 cases already complete
+2026-08-29 17:59:59,743 INFO ROJR-RIGID-U5p0-A090 start: U=5.0 alpha=9.0 steps=3000 dt*=0.01
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 1.99 ms  (cached)
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.61 ms  (cached)

@@ -34,3 +34,8 @@ researchpaper/
 # analysis data git-visible so independent agents can re-derive results.
 !artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/**
 !artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/**
+
+# Rojratsirikul 2011 reproduction raw time-series (forensic retention,
+# user directive 20260830): full z(x,y,t) and probe histories.
+!artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/**/*.npz
+!artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/*.npz

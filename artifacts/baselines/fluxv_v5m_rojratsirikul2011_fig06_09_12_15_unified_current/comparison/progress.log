@@ -1,0 +1,40 @@
+[18:06] membrane payloads=1 rigid cases=3
+figures + scores written to /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/comparison
+  H1_a16_dual_gate: zmax_model=0.04513189196455311 zmax_target=0.04338 zmax_error=0.0017518919645531095 zmax_pass=True cn_model=1.2634750170542508 cn_target=0.92 cn_error=0.34347501705425076 cn_pass=False both_pass=False
+  H2_figure6: n_model_points=3 mae=0.006058019280702845 gate=0.006 pass=False note=model points so far: membrane A16/A17 at U=5 only
+  H3_figure9_flexible: n_model_points=3 mae=0.30026260706029617 gate=0.1 pass=False
+  H4_figure9_rigid: n_model_points=3 mae=0.15442117958763282 gate=0.08 pass=False
+  H5_figure12_peak: st_model=0.5454840299432765 st_target=0.58 error=-0.034515970056723466 gate=0.05 pass=True
+  H6_figure13_15: n_model_points=0
+[21:06] membrane payloads=2 rigid cases=3
+figures + scores written to /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/comparison
+  H1_a16_dual_gate: zmax_model=0.04513189196455311 zmax_target=0.04338 zmax_error=0.0017518919645531095 zmax_pass=True cn_model=1.2634750170542508 cn_target=0.92 cn_error=0.34347501705425076 cn_pass=False both_pass=False
+  H2_figure6: n_model_points=4 mae=0.006683574479172604 gate=0.006 pass=False note=model points so far: membrane A16/A17 at U=5 only
+  H3_figure9_flexible: n_model_points=4 mae=0.29204673972267414 gate=0.1 pass=False
+  H4_figure9_rigid: n_model_points=3 mae=0.15442117958763282 gate=0.08 pass=False
+  H5_figure12_peak: st_model=0.5454840299432765 st_target=0.58 error=-0.034515970056723466 gate=0.05 pass=True
+  H6_figure13_15: n_model_points=0
+[00:46] membrane payloads=3 rigid cases=3
+figures + scores written to /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/comparison
+  H1_a16_dual_gate: zmax_model=0.04513189196455311 zmax_target=0.04338 zmax_error=0.0017518919645531095 zmax_pass=True cn_model=1.2634750170542508 cn_target=0.92 cn_error=0.34347501705425076 cn_pass=False both_pass=False
+  H2_figure6: n_model_points=5 mae=0.0060907600650634995 gate=0.006 pass=False note=model points so far: membrane A16/A17 at U=5 only
+  H3_figure9_flexible: n_model_points=5 mae=0.337821943831355 gate=0.1 pass=False
+  H4_figure9_rigid: n_model_points=3 mae=0.15442117958763282 gate=0.08 pass=False
+  H5_figure12_peak: st_model=0.5454840299432765 st_target=0.58 error=-0.034515970056723466 gate=0.05 pass=True
+  H6_figure13_15: n_model_points=0
+[04:06] membrane payloads=4 rigid cases=3
+figures + scores written to /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/comparison
+  H1_a16_dual_gate: zmax_model=0.04513189196455311 zmax_target=0.04338 zmax_error=0.0017518919645531095 zmax_pass=True cn_model=1.2634750170542508 cn_target=0.92 cn_error=0.34347501705425076 cn_pass=False both_pass=False
+  H2_figure6: n_model_points=6 mae=0.005605817945381426 gate=0.006 pass=True note=model points so far: membrane A16/A17 at U=5 only
+  H3_figure9_flexible: n_model_points=6 mae=0.33119631517261744 gate=0.1 pass=False
+  H4_figure9_rigid: n_model_points=3 mae=0.15442117958763282 gate=0.08 pass=False
+  H5_figure12_peak: st_model=0.5454840299432765 st_target=0.58 error=-0.034515970056723466 gate=0.05 pass=True
+  H6_figure13_15: n_model_points=0
+[07:36] membrane payloads=5 rigid cases=3
+figures + scores written to /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/baselines/fluxv_v5m_rojratsirikul2011_fig06_09_12_15_unified_current/comparison
+  H1_a16_dual_gate: zmax_model=0.04513189196455311 zmax_target=0.04338 zmax_error=0.0017518919645531095 zmax_pass=True cn_model=1.2634750170542508 cn_target=0.92 cn_error=0.34347501705425076 cn_pass=False both_pass=False
+  H2_figure6: n_model_points=7 mae=0.005312446479403221 gate=0.006 pass=True note=model points so far: membrane A16/A17 at U=5 only
+  H3_figure9_flexible: n_model_points=7 mae=0.33967080700807556 gate=0.1 pass=False
+  H4_figure9_rigid: n_model_points=3 mae=0.15442117958763282 gate=0.08 pass=False
+  H5_figure12_peak: st_model=0.5454840299432765 st_target=0.58 error=-0.034515970056723466 gate=0.05 pass=True
+  H6_figure13_15: n_model_points=0

@@ -89,7 +89,6 @@ QUEUE: tuple[tuple[float, float, float], ...] = (
     (5.0, 25.0, 30.0),
     (5.0, 27.0, 30.0),
     (5.0, 30.0, 30.0),
-),
 )
 CN_WINDOW_STAR = (10.0, None)  # (start, end); None = run end
 PSD_WINDOW_STAR = (10.0, None)
@@ -262,6 +261,7 @@ def run_case(
             raise AssertionError(f"{run_id}: St* closure violated ({closure:.2e})")
     # Retention-induced spectral-jump audit: culls happen at fixed ages, so
     # a steady late-time particle plateau means no unresolved retention shock.
+    probe_points_world = probes.detach().cpu().numpy()
     plateau = particle_counts[-500:]
     plateau_spread = (max(plateau) - min(plateau)) / max(1, max(plateau))
     result = {
@@ -290,10 +290,14 @@ def run_case(
         "steps": total_steps,
         "seconds": elapsed,
         "seconds_per_step": elapsed / total_steps,
-        "cn_history_every10": [round(v, 6) for v in cn_history[::10]],
+        "probe_points_world": [list(map(float, row)) for row in probe_points_world],
+        "cn_history": [round(v, 6) for v in cn_history],
+        "particle_counts": particle_counts,
+        "wake_rows": wake_rows_list,
         "source_status": "success",
         "failure_reason": "",
     }
+    result["_probe_history_array"] = observer.velocity_history()
     log.info(
         "%s done: Cn=%.4f St=%s St*=%s stationary=%s (%.0fs)",
         run_id,
@@ -353,6 +357,16 @@ def main() -> int:
             LOG.info("limit %d reached; stopping", args.limit)
             break
         result = run_case(U, alpha, t_star, device=args.device, log=LOG)
+        probe_history = result.pop("_probe_history_array", None)
+        if probe_history is not None:
+            import numpy as np
+
+            np.savez_compressed(
+                cases_dir / f"{run_id}_probe_history.npz",
+                velocity=probe_history,
+                probe_points=result.get("probe_points_world", np.zeros((0, 3))),
+                aero_dt=DT_STAR * CHORD_M / U,
+            )
         (cases_dir / f"{run_id}.json").write_text(json.dumps(result, indent=2))
         row = {
             "run_id": run_id,
