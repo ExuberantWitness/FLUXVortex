@@ -146,3 +146,70 @@ def native_ring_velocity_fused(
 
 
 __all__ = ["native_ring_velocity_fused", "RING_BS_BLOCK_SIZE"]
+
+
+# ── Expanded (per-leg) finite-ring influence, shared load path (M1-2) ────
+_FOUR_PI = 4.0 * math.pi
+_EPS_V = 1.0e-9
+
+
+def native_ring_velocity_expanded(
+    points: torch.Tensor,
+    rings: torch.Tensor,
+    *,
+    core_fraction: float,
+    reference_length: float,
+) -> torch.Tensor:
+    """Finite-ring influence with the paper's fourth-order core model."""
+
+    if rings.shape[0] == 0:
+        return torch.zeros(
+            (points.shape[0], 0, 3), device=points.device, dtype=torch.float64
+        )
+    starts = rings.reshape(-1, 3)
+    ends = torch.roll(rings, shifts=-1, dims=1).reshape(-1, 3)
+    a = points[:, None, :] - starts[None, :, :]
+    b = points[:, None, :] - ends[None, :, :]
+    edge = a - b
+    cross = torch.linalg.cross(a, b, dim=2)
+    cross_sq = torch.sum(cross * cross, dim=2)
+    cross_norm = torch.sqrt(cross_sq)
+    norm_a = torch.linalg.vector_norm(a, dim=2)
+    norm_b = torch.linalg.vector_norm(b, dim=2)
+    edge_norm = torch.linalg.vector_norm(edge, dim=2)
+    eps = torch.finfo(torch.float64).eps
+    unit_difference = a / torch.clamp(norm_a, min=eps)[:, :, None] - b / torch.clamp(
+        norm_b, min=eps
+    )[:, :, None]
+    scalar = torch.sum(edge * unit_difference, dim=2)
+    base = (
+        cross
+        / (cross_sq + _EPS_V)[:, :, None]
+        * scalar[:, :, None]
+        / _FOUR_PI
+    )
+    source_edge = torch.linalg.vector_norm(
+        torch.roll(rings, shifts=-1, dims=1) - rings, dim=2
+    )
+    source_scale = torch.maximum(
+        torch.max(source_edge, dim=1).values,
+        torch.full(
+            (rings.shape[0],),
+            float(reference_length),
+            device=points.device,
+            dtype=torch.float64,
+        ),
+    )
+    core = source_scale * float(core_fraction)
+    h = cross_norm / torch.clamp(edge_norm, min=eps)
+    core_leg = core.repeat_interleave(4)[None, :]
+    kv = h * h / torch.sqrt(h**4 + core_leg**4)
+    velocity = (kv[:, :, None] * base).reshape(
+        points.shape[0], rings.shape[0], 4, 3
+    ).sum(dim=2)
+    if not bool(torch.isfinite(velocity).all().item()):
+        raise FloatingPointError("native ring influence is non-finite")
+    return velocity
+
+
+__all__ = ["RING_BS_BLOCK_SIZE", "native_ring_velocity_expanded", "native_ring_velocity_fused"]

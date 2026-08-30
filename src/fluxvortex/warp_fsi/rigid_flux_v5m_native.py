@@ -39,6 +39,11 @@ from typing import Any
 import torch
 import warp as wp
 
+from fluxvortex.aero.v5m.load_packet import (
+    NativeResolvedLoadAssembler,
+    NativeV5MSurfaceLoadPacket,
+    validate_packet,
+)
 from fluxvortex.kinematics.frames import SurfaceFrame
 
 from . import config as warp_config
@@ -168,6 +173,9 @@ class RigidAuthorLoad:
     total_force: torch.Tensor
     total_moment: torch.Tensor
     constant_generalized_force: wp.array  # (1, 6) world wrench [F; M]
+    # M1: the unified resolved point-load owner every consumer projects.
+    # Same integration as panel_forces/total_force above (5 points/panel).
+    surface_load_packet: NativeV5MSurfaceLoadPacket | None = None
 
     @property
     def total_pressure(self) -> torch.Tensor:
@@ -228,143 +236,35 @@ class RigidAuthorLoadAssembler:
         aerodynamic_dt: float | None = None,
         wake_history_mode: str = "bound_rate",
     ) -> None:
-        self.density = float(density)
-        self.device = torch.device(device)
-        self.chordwise_panels = None if chordwise_panels is None else int(chordwise_panels)
-        self.spanwise_panels = None if spanwise_panels is None else int(spanwise_panels)
-        self.aerodynamic_dt = None if aerodynamic_dt is None else float(aerodynamic_dt)
-        if wake_history_mode not in {"material", "bound_rate"}:
-            raise ValueError(
-                "wake_history_mode must be 'material' or 'bound_rate'"
-            )
-        self.wake_history_mode = wake_history_mode
-        # Material-mode fallback for Gamma_last (the Fig.14 mandatory runner
-        # uses bound_rate, where the mf2_history input IS dGamma/dt exactly).
-        self._previous_gamma: torch.Tensor | None = None
+        # M1-2: the resolved KJ+dGamma machinery lives in the shared
+        # NativeResolvedLoadAssembler (aero/v5m/load_packet.py); this class
+        # keeps only the rigid author-pressure ledger on top of it.
+        self._resolved = NativeResolvedLoadAssembler(
+            density=density,
+            device=device,
+            chordwise_panels=chordwise_panels,
+            spanwise_panels=spanwise_panels,
+            aerodynamic_dt=aerodynamic_dt,
+            wake_history_mode=wake_history_mode,
+        )
+        self.density = self._resolved.density
+        self.device = self._resolved.device
+        self.chordwise_panels = self._resolved.chordwise_panels
+        self.spanwise_panels = self._resolved.spanwise_panels
+        self.aerodynamic_dt = self._resolved.aerodynamic_dt
+        self.wake_history_mode = self._resolved.wake_history_mode
+
+    @property
+    def _previous_gamma(self):
+        return self._resolved._previous_gamma
+
+    @_previous_gamma.setter
+    def _previous_gamma(self, value):
+        self._resolved._previous_gamma = value
 
     # ------------------------------------------------------------------
     # Pterra-faithful force extraction
     # ------------------------------------------------------------------
-    def _panel_topology(self, geometry: NativeV5MGeometry) -> tuple[int, int]:
-        count = int(geometry.normals.shape[0])
-        ns = self.spanwise_panels
-        if ns is None:
-            ns = int(geometry.leading_edge.shape[0]) - 1
-        if ns < 1 or count % ns:
-            raise ValueError(
-                "rigid native V5M grid topology is inconsistent with the "
-                "load assembler topology"
-            )
-        nc = count // ns
-        if self.chordwise_panels is not None and nc != self.chordwise_panels:
-            raise ValueError(
-                "rigid native V5M chordwise topology differs from the load "
-                "assembler topology"
-            )
-        return nc, ns
-
-    def _bound_velocity(
-        self, points: torch.Tensor, rings: torch.Tensor, gamma: torch.Tensor, nc: int
-    ) -> torch.Tensor:
-        """Mirror of ``Q16NativeV5MSolver._ring_velocity(rough=False)``."""
-
-        if rings.shape[0] == 0:
-            return torch.zeros_like(points)
-        core_fraction = 1.0e-6
-        reference_length = 1.0 / nc
-        full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
-        if full_bytes <= _RING_TILE_BYTES:
-            expanded = native_ring_velocity_expanded(
-                points,
-                rings,
-                core_fraction=core_fraction,
-                reference_length=reference_length,
-            )
-            return torch.sum(expanded * gamma[None, :, None], dim=1)
-        total = torch.zeros_like(points)
-        target_cap = max(1, _RING_TILE_BYTES // (rings.shape[0] * 3 * 8))
-        for start in range(0, points.shape[0], target_cap):
-            stop = min(start + target_cap, points.shape[0])
-            expanded = native_ring_velocity_expanded(
-                points[start:stop],
-                rings,
-                core_fraction=core_fraction,
-                reference_length=reference_length,
-            )
-            total[start:stop] = torch.sum(
-                expanded * gamma[None, :, None], dim=1
-            )
-        return total
-
-    def _delta_grid(
-        self, gamma: torch.Tensor, mf2_history: torch.Tensor, nc: int, ns: int
-    ) -> tuple[torch.Tensor | None, torch.Tensor]:
-        """Return ``(Gamma_n - Gamma_{n-1} grid, dGamma/dt)``.
-
-        In bound_rate mode the solver's mf2_history input IS
-        ``(gamma - gamma_bound)/dt`` with gamma_bound the last committed
-        circulation, so the identity below is exact and repeat-safe for
-        re-proposals of one committed parent.  This reproduces Pterra's
-        zeros-initialised first-step history too (the initial native
-        gamma_bound is exactly zero).
-        """
-        if self.wake_history_mode == "bound_rate":
-            gamma_rate = mf2_history
-            return (mf2_history * self.aerodynamic_dt).reshape(nc, ns), gamma_rate
-        if self._previous_gamma is not None:
-            delta = (gamma - self._previous_gamma).reshape(nc, ns)
-            return delta, delta.reshape(-1) / self.aerodynamic_dt
-        return None, torch.zeros_like(gamma)
-
-    @staticmethod
-    def _effective_leg_strengths(
-        grid: torch.Tensor, delta_grid: torch.Tensor | None
-    ) -> tuple[torch.Tensor, ...]:
-        """Pterra effective filament strengths on the native (nc, ns) grid.
-
-        Pterasoftware ``_calculate_loads``: half the circulation difference
-        with the neighbour across each edge, full circulation on the
-        outermost filaments, and the shed ``Gamma_now - Gamma_last`` on the
-        trailing-edge back filaments.
-        """
-        right = grid.clone()
-        right[:, :-1] = 0.5 * (grid[:, :-1] - grid[:, 1:])
-        front = grid.clone()
-        front[1:, :] = 0.5 * (grid[1:, :] - grid[:-1, :])
-        left = grid.clone()
-        left[:, 1:] = 0.5 * (grid[:, 1:] - grid[:, :-1])
-        back = grid.clone()
-        back[:-1, :] = 0.5 * (grid[:-1, :] - grid[1:, :])
-        if delta_grid is not None:
-            back[-1, :] = delta_grid[-1, :]
-        return tuple(part.reshape(-1) for part in (front, right, back, left))
-
-    @staticmethod
-    def _leg_layout(
-        geometry: NativeV5MGeometry,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
-        """Filament midpoints, grid-motion velocities and vectors per leg.
-
-        Filament legs follow the native ring traversal 0->1->2->3->0:
-        front 0->1 (leading-edge side), right 1->2 (span +j side),
-        back 2->3 (trailing-edge side), left 3->0 (span -j side).  The
-        movement velocity is Pterra's ``-(x_n - x_{n-1})/dt`` at the filament
-        centre; the analytic ring-corner velocities are its exact
-        continuous-time form.
-        """
-        rings = geometry.rings
-        ring_velocity = geometry.ring_velocity
-        mids = []
-        movements = []
-        lengths = []
-        for start, end in ((0, 1), (1, 2), (2, 3), (3, 0)):
-            a = rings[:, start]
-            b = rings[:, end]
-            mids.append(0.5 * (a + b))
-            movements.append(-0.5 * (ring_velocity[:, start] + ring_velocity[:, end]))
-            lengths.append(b - a)
-        return mids, movements, lengths
-
     def _integrate_kj(
         self,
         geometry: NativeV5MGeometry,
@@ -426,10 +326,10 @@ class RigidAuthorLoadAssembler:
                 "the Pterra force extraction requires aerodynamic_dt "
                 "(construct RigidAuthorLoadAssembler with the solver dt)"
             )
-        nc, ns = self._panel_topology(geometry)
+        nc, ns = self._resolved.panel_topology(geometry)
         count = nc * ns
-        delta_grid, gamma_rate = self._delta_grid(gamma, mf2_history, nc, ns)
-        leg_strengths = self._effective_leg_strengths(
+        delta_grid, gamma_rate = self._resolved.delta_grid(gamma, mf2_history, nc, ns)
+        leg_strengths = self._resolved.effective_leg_strengths(
             gamma.reshape(nc, ns), delta_grid
         )
 
@@ -448,16 +348,16 @@ class RigidAuthorLoadAssembler:
         # Split external_flow into its exact bound part at the collocation
         # points and the far field (freestream + wake + particles), then
         # re-evaluate the bound part at the filament midpoints.
-        bound_collocation = self._bound_velocity(
+        bound_collocation = self._resolved.bound_velocity(
             geometry.collocation, geometry.rings, gamma, nc
         )
         far_field = external_flow - bound_collocation
-        mids, movements, lengths = self._leg_layout(geometry)
+        mids, movements, lengths = self._resolved.leg_layout(geometry)
         leg_velocities = []
         for neighbour in leg_neighbours:
             far_value = 0.5 * (far_field + far_field[neighbour])
             leg_velocities.append(far_value)
-        bound_mids = self._bound_velocity(
+        bound_mids = self._resolved.bound_velocity(
             torch.cat(mids, dim=0), geometry.rings, gamma, nc
         )
         for leg in range(4):
@@ -471,7 +371,7 @@ class RigidAuthorLoadAssembler:
 
     def leg_midpoints_flat(self, geometry: NativeV5MGeometry) -> torch.Tensor:
         """All four filament midpoints stacked: (4 * panel_count, 3)."""
-        mids, _, _ = self._leg_layout(geometry)
+        mids, _, _ = self._resolved.leg_layout(geometry)
         return torch.cat(mids, dim=0)
 
     def refine_kj_with_solution_velocity(
@@ -489,17 +389,17 @@ class RigidAuthorLoadAssembler:
         evaluates its four leg centres.  ``gamma_rate`` is dGamma/dt of the
         same state (bound_rate: the solver's mf2_history).
         """
-        nc, ns = self._panel_topology(geometry)
+        nc, ns = self._resolved.panel_topology(geometry)
         if self.aerodynamic_dt is None:
             raise ValueError(
                 "the Pterra force extraction requires aerodynamic_dt "
                 "(construct RigidAuthorLoadAssembler with the solver dt)"
             )
         delta_grid = (gamma_rate * self.aerodynamic_dt).reshape(nc, ns)
-        leg_strengths = self._effective_leg_strengths(
+        leg_strengths = self._resolved.effective_leg_strengths(
             gamma.reshape(nc, ns), delta_grid
         )
-        mids, movements, lengths = self._leg_layout(geometry)
+        mids, movements, lengths = self._resolved.leg_layout(geometry)
         count = nc * ns
         leg_velocities = [
             solution_velocity[leg * count : (leg + 1) * count] for leg in range(4)
@@ -716,12 +616,27 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
                 geometry, gamma, gamma_rate, velocity
             )
         )
+        # M1-1: publish the unified surface-load packet from the SAME
+        # integration inputs; consumers project it, never re-integrate.
+        packet = assembler._resolved.assemble_packet(
+            geometry=geometry,
+            gamma=gamma,
+            solution_velocity_flat=velocity,
+            mf2_history=gamma_rate,
+            component_ledger={
+                "lift1_pressure": author.lift1_pressure,
+                "wake_history_pressure": author.wake_history_pressure,
+                "lift2_pressure": author.lift2_pressure,
+                "mf2_1_pressure": author.mf2_1_pressure,
+            },
+        )
         wrench = torch.cat((total_force, total_moment)).unsqueeze(0).contiguous()
         refined = replace(
             author,
             panel_forces=panel_forces.detach().clone(),
             total_force=total_force.detach().clone(),
             total_moment=total_moment.detach().clone(),
+            surface_load_packet=packet,
             constant_generalized_force=wp.from_torch(
                 wrench, dtype=warp_config.DTYPE, requires_grad=False
             ),
