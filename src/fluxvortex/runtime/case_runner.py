@@ -754,12 +754,9 @@ class RojratsirikulCaseRunner:
                 step % SHADOW_RESOLVED_CADENCE == 0
                 or step == int(self._max_aero_steps_hint or 0)
             ):
-                try:
-                    self._record_shadow_evidence(result)
-                except Exception as error:  # noqa: BLE001 -- shadow is audit
-                    self._shadow_evidence.append(
-                        {"shadow_error": f"{type(error).__name__}: {error}"}
-                    )
+                # Hard gate (directive 1): a shadow contract violation is a
+                # formal-path failure, never silently swallowed.
+                self._record_shadow_evidence(result)
             quarter = wp.to_torch(
                 self.surface.quarter_transfer.interpolate(result.structural.state)
             )[0].reshape(self.surface.nc, self.surface.ns + 1, 3)
@@ -878,6 +875,11 @@ class RojratsirikulCaseRunner:
 
     # -- statistics, gates, payload ----------------------------------------
 
+    def spec_shared(self, key: str) -> float:
+        from ..cases.rojratsirikul2011 import _SHARED
+
+        return float(_SHARED[key])
+
     def _record_shadow_evidence(self, result: Any) -> None:
         """Audit-only 5P->Q16 resolved consumer evaluation (M1-4 prep).
 
@@ -909,6 +911,9 @@ class RojratsirikulCaseRunner:
             proposal=result.aerodynamic,
             structural_state=result.structural.state,
             structural_velocity=result.structural.velocity,
+            structural_acceleration=result.structural.acceleration,
+            committed_aerodynamic_load=self.owner.aerodynamic_load,
+            time_star=self.owner.aerodynamic.state.step * self.spec_shared("aerodynamic_dt_star"),
         )
         evidence["aero_step"] = int(self.owner.aerodynamic.state.step)
         self._shadow_evidence.append(evidence)
@@ -963,8 +968,8 @@ class RojratsirikulCaseRunner:
                 }
 
             resolved_evidence["shadow_5p_to_q16"] = {
-                "generalized_projection_relative": _summary(
-                    "generalized_projection_relative"
+                "fiveP_instantaneous_vs_legacy_constant_only_relative": _summary(
+                    "fiveP_instantaneous_vs_legacy_constant_only_relative"
                 ),
                 "transfer_force_max_abs_error": _summary(
                     "transfer_force_max_abs_error"
@@ -972,7 +977,23 @@ class RojratsirikulCaseRunner:
                 "transfer_moment_max_abs_error": _summary(
                     "transfer_moment_max_abs_error"
                 ),
-                "work_relative_error": _summary("work_relative_error"),
+                "work_pointwise_relative_error": _summary(
+                    "work_pointwise_relative_error"
+                ),
+                "legacy_decomposition_norms": {
+                    key: _summary(key)
+                    for key in (
+                        "legacy_constant_norm",
+                        "legacy_velocity_norm",
+                        "legacy_mf1_action_norm",
+                    )
+                },
+                "samples_time_star": [e["time_star"] for e in numeric_shadow],
+                "decomposition_note": (
+                    "5P comparison is against the CONSTANT component only; "
+                    "production substeps add velocity_force and Mf1 (norms "
+                    "in ledger)"
+                ),
             }
         elif self._shadow_evidence:
             resolved_evidence["shadow_5p_to_q16"] = {
