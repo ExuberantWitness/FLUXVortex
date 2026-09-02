@@ -390,6 +390,18 @@ class RojratsirikulCaseRunner:
             ),
         )
         self.transfer = Q16NativePanelLoadTransfer(self.surface)
+        self._cpu_fallback_count = 0
+        self._cn_normal_gpu = torch.tensor(
+            self._platform.plate_normal(case),
+            device=self.device,
+            dtype=torch.float64,
+        )
+        self._cn_q_area = float(
+            0.5
+            * case.fluid_density_kg_m3
+            * case.freestream_m_s**2
+            * (case.chord_m * case.span_m)
+        )
         self._shadow_resolved_consumer = None
         self._shadow_evidence: list[dict[str, float]] = []
         self.normal_t = torch.tensor(
@@ -810,10 +822,14 @@ class RojratsirikulCaseRunner:
             self.world.generation = self.owner.generation
 
             diagnostics = result.aerodynamic.trial_state.diagnostics[-1]
-            cn = self._platform.normal_force_coefficient(
-                total_force.cpu().tolist(), case,
-                normal=self._platform.plate_normal(case),
-            )
+            # G000: Cn is a GPU float64 projection (F . n / qS); only the
+            # final scalar syncs to host for the record.  The historical
+            # platform CPU path (cpu().tolist() + numpy) is retired from
+            # the formal loop.
+            if total_force.device.type != "cuda":
+                self._cpu_fallback_count += 1
+            cn_gpu = torch.dot(total_force, self._cn_normal_gpu) / self._cn_q_area
+            cn = float(cn_gpu.item())
             step_wall_times.append(time.perf_counter() - step_started)
             formal_replay_counts.append(replay_events)
             records.append(
@@ -1220,7 +1236,7 @@ class RojratsirikulCaseRunner:
             ),
             "device": self.device,
             "dtype": "float64",
-            "cpu_fallback_count": 0,
+            "cpu_fallback_count": int(self._cpu_fallback_count),
             "runtime_legacy_module_count": len(self.loaded_legacy_modules),
             "q16_macro_chord": platform.FORMAL_Q16_GRID[0],
             "q16_macro_span": platform.FORMAL_Q16_GRID[1],
