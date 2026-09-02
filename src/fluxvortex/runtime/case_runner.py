@@ -404,6 +404,13 @@ class RojratsirikulCaseRunner:
         )
         self._shadow_resolved_consumer = None
         self._shadow_evidence: list[dict[str, float]] = []
+        import torch as _torch
+
+        self._reference_rows_gpu = _torch.tensor(
+            self.mesh.reference_rows,
+            device=self.device,
+            dtype=_torch.float64,
+        )
         self.normal_t = torch.tensor(
             platform.plate_normal(case),
             device=self.device,
@@ -830,6 +837,29 @@ class RojratsirikulCaseRunner:
                 self._cpu_fallback_count += 1
             cn_gpu = torch.dot(total_force, self._cn_normal_gpu) / self._cn_q_area
             cn = float(cn_gpu.item())
+            # G000-2/4 two-tap: full-action Cn from the rigid-body wrench of
+            # the production aero decomposition (constant + velocity + Mf1)
+            # at the committed endpoint -- full space, BEFORE constraints.
+            from ..warp_fsi.q16_rigid_body_wrench import aero_generalized_wrench
+            import warp as _wp
+
+            load = self.owner.aerodynamic_load
+            q_aero = (
+                _wp.to_torch(load.constant_generalized_force)[0]
+                + _wp.to_torch(
+                    load.velocity_force(self.owner.velocity)
+                )[0]
+                + load.added_mass.generalized_matrix
+                @ _wp.to_torch(self.owner.acceleration)[0]
+            )
+            force_full, moment_full = aero_generalized_wrench(
+                q_aero,
+                _wp.to_torch(self.owner.state)[0],
+                reference_rows=self._reference_rows_gpu,
+            )
+            cn_full_action = float(
+                (torch.dot(force_full, self._cn_normal_gpu) / self._cn_q_area).item()
+            )
             step_wall_times.append(time.perf_counter() - step_started)
             formal_replay_counts.append(replay_events)
             records.append(
@@ -842,6 +872,12 @@ class RojratsirikulCaseRunner:
                         (displacement.max() / case.chord_m).item()
                     ),
                     "total_aerodynamic_force_n": total_force.cpu().tolist(),
+                    "cn_tap": "two_tap_G000",
+                    "cn_constant_current": cn,
+                    "cn_full_action": cn_full_action,
+                    "aero_wrench_full_action_n": (
+                        force_full.cpu().tolist() + moment_full.cpu().tolist()
+                    ),
                     "coupling_iterations": result.coupling_iterations,
                     "aerodynamic_evaluations": result.aerodynamic_evaluations,
                     "coupling_residual": result.residual,

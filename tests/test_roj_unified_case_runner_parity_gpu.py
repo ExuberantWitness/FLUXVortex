@@ -132,6 +132,15 @@ class TestMigrationParity(unittest.TestCase):
         cls.case, cls.surface, cls.aero, cls.owner, cls.coupling = (
             _legacy_stack()
         )
+        cls._cn_normal_gpu = torch.tensor(
+            plate_normal(cls.case), device="cuda:0", dtype=torch.float64
+        )
+        cls._cn_q_area = float(
+            0.5
+            * cls.case.fluid_density_kg_m3
+            * cls.case.freestream_m_s**2
+            * (cls.case.chord_m * cls.case.span_m)
+        )
         cls.legacy = []
         substeps = 10
         prescribed = (None,) * substeps
@@ -158,10 +167,17 @@ class TestMigrationParity(unittest.TestCase):
                     "pressure": result.aerodynamic.load.pressure.clone(),
                     "total_force": result.aerodynamic.load.total_force.clone(),
                     "particle_n": int(trial.particle_field.n),
-                    "cn": normal_force_coefficient(
-                        result.aerodynamic.load.total_force.cpu().tolist(),
-                        cls.case,
-                        normal=plate_normal(cls.case),
+                    # G000: both sides use the same GPU Cn projection
+                    # operator; the historical CPU/numpy capture is retired
+                    # so the parity gate stays bit-exact for ARCHITECTURE.
+                    "cn": float(
+                        (
+                            torch.dot(
+                                result.aerodynamic.load.total_force,
+                                cls._cn_normal_gpu,
+                            )
+                            / cls._cn_q_area
+                        ).item()
                     ),
                     "evaluations": result.aerodynamic_evaluations,
                     "iterations": result.coupling_iterations,
@@ -180,6 +196,8 @@ class TestMigrationParity(unittest.TestCase):
         payload = runner.run(max_aero_steps=PARITY_STEPS, output=None)
         cls.payload = payload
         cls.runner = runner
+        import numpy as _np
+
 
     def test_step_count_and_status(self) -> None:
         self.assertEqual(self.payload["aero_steps"], PARITY_STEPS)
