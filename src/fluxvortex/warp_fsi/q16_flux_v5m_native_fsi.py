@@ -297,6 +297,7 @@ class Q16NativeV5MFSIStepper:
         coupling_iteration: int,
         formal_replay: bool,
         progress_callback: ProgressCallback | None,
+        rhs_observer: list | None = None,
     ) -> tuple[Q16StructuralStepResult, Q16NativeStructuralCheckpoint | None]:
         count = len(prescribed_forces)
         if count < 1:
@@ -414,6 +415,52 @@ class Q16NativeV5MFSIStepper:
                 totals["refresh"] += subresult.live_tangent_refresh_count
                 totals["fallback"] += subresult.indefinite_fallback_count
                 residual_max = max(residual_max, subresult.relative_residual_max)
+            if rhs_observer is not None:
+                # E0 production-RHS observer: READ-ONLY audit of the
+                # corrector pass.  Records the actual decomposition the
+                # structure consumed, the accepted-increment algorithmic
+                # work, and the predictor-lag diagnostic (fixed-point
+                # diagnostic only, never added back into totals).
+                q_before = wp.to_torch(state)[0]
+                dq = wp.to_torch(result.state)[0] - q_before
+                constant_t = wp.to_torch(constant)[0]
+                velocity_t = wp.to_torch(velocity_force)[0]
+                aero_t = wp.to_torch(aerodynamic)[0]
+                acc_t = wp.to_torch(result.acceleration)[0]
+                v_avg_acc_t = 0.5 * (wp.to_torch(velocity)[0] + wp.to_torch(result.velocity)[0])
+                v_avg_acc = wp.from_torch(
+                    v_avg_acc_t.unsqueeze(0).contiguous(),
+                    dtype=config.DTYPE,
+                    requires_grad=False,
+                )
+                vf_acc_anchor = owner.aerodynamic_load.velocity_force(v_avg_acc)
+                vf_acc_end = aerodynamic_load_end.velocity_force(v_avg_acc)
+                vf_acc_t = wp.to_torch(
+                    _interpolate(vf_acc_anchor, vf_acc_end, beta)
+                )[0]
+                rhs_observer.append(
+                    {
+                        "coupling_iteration": int(coupling_iteration),
+                        "formal_replay": bool(formal_replay),
+                        "substep": index + 1,
+                        "constant_norm": float(constant_t.norm().item()),
+                        "velocity_norm": float(velocity_t.norm().item()),
+                        "mf1_action_norm": float(
+                            (added_mass.generalized_matrix @ acc_t).norm().item()
+                        ),
+                        "total_aero_norm": float(aero_t.norm().item()),
+                        "dq_norm": float(dq.norm().item()),
+                        "w_algorithmic": float(torch.dot(aero_t, dq).item()),
+                        "dw_predictor_lag": float(
+                            torch.dot(velocity_t - vf_acc_t, dq).item()
+                        ),
+                        "identity": (
+                            "formal_committed"
+                            if formal_replay
+                            else "nonformal_causal"
+                        ),
+                    }
+                )
             state, velocity, acceleration = result.state, result.velocity, result.acceleration
             if checkpoint_substep == index + 1:
                 checkpoint = Q16NativeStructuralCheckpoint(
@@ -465,6 +512,7 @@ class Q16NativeV5MFSIStepper:
         checkpoint_substep: int | None = None,
         author_startup: bool = False,
         progress_callback: ProgressCallback | None = None,
+        rhs_observer: list | None = None,
     ) -> Q16NativeV5MFSIStepResult:
         if type(owner) is not Q16NativeV5MFSIOwner:
             raise TypeError("owner must be the native Q16/V5M owner")
@@ -557,6 +605,7 @@ class Q16NativeV5MFSIStepper:
                 coupling_iteration=iteration,
                 formal_replay=False,
                 progress_callback=progress_callback,
+                rhs_observer=rhs_observer,
             )
             residual = _relative_error(
                 structural.state,
@@ -601,6 +650,7 @@ class Q16NativeV5MFSIStepper:
                     checkpoint_substep=checkpoint_substep,
                     coupling_iteration=iteration,
                     formal_replay=True,
+                    rhs_observer=rhs_observer,
                     progress_callback=progress_callback,
                 )
                 formal_residual = _relative_error(

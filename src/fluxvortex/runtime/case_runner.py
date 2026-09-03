@@ -404,6 +404,10 @@ class RojratsirikulCaseRunner:
         )
         self._shadow_resolved_consumer = None
         self._shadow_evidence: list[dict[str, float]] = []
+        # E0 production-RHS observer tape (read-only; on/off parity is the
+        # E0 exit gate -- see tests/test_e0_rhs_observer_parity_gpu.py).
+        self.rhs_observer_enabled = True
+        self._rhs_tape: list[dict] = []
         import torch as _torch
 
         self._reference_rows_gpu = _torch.tensor(
@@ -752,6 +756,9 @@ class RojratsirikulCaseRunner:
                     prescribed_forces=prescribed,
                     load_betas=load_betas,
                     progress_callback=report,
+                    rhs_observer=(
+                        self._rhs_tape if self.rhs_observer_enabled else None
+                    ),
                 )
                 committed_digest = self.owner.aerodynamic.state.digest()
                 if self.owner.generation != generation_before + 1:
@@ -989,6 +996,33 @@ class RojratsirikulCaseRunner:
         # published by the Q16 native propose alongside the legacy pressure
         # quadrature; the relative discrepancy between the two totals is the
         # M1-4 hard-gate input (dual-owner removal).
+        rhs_summary: dict[str, Any] = {"enabled": bool(self.rhs_observer_enabled)}
+        formal_entries = [e for e in self._rhs_tape if e["formal_replay"]]
+        if formal_entries:
+            import statistics as _rst
+
+            def _rsum(key: str) -> dict[str, float]:
+                values = [e[key] for e in formal_entries if key in e]
+                if not values:
+                    return {}
+                return {
+                    "mean": _rst.fmean(values),
+                    "max_abs": max(abs(v) for v in values),
+                    "n": len(values),
+                }
+
+            rhs_summary.update(
+                {
+                    "formal_substep_entries": len(formal_entries),
+                    "total_entries_including_nonformal": len(self._rhs_tape),
+                    "w_algorithmic": _rsum("w_algorithmic"),
+                    "dw_predictor_lag": _rsum("dw_predictor_lag"),
+                    "constant_norm": _rsum("constant_norm"),
+                    "velocity_norm": _rsum("velocity_norm"),
+                    "mf1_action_norm": _rsum("mf1_action_norm"),
+                    "dq_norm": _rsum("dq_norm"),
+                }
+            )
         resolved_evidence = {
             "resolved_vs_quadrature_relative": getattr(
                 self.aerodynamic,
@@ -1421,6 +1455,7 @@ class RojratsirikulCaseRunner:
             ),
             "elapsed_seconds": elapsed_seconds,
             "resolved_load_evidence": resolved_evidence,
+            "rhs_observer_evidence": rhs_summary,
             "aero_steps": len(records),
             "execution_gate_only": execution_gate_only,
             "records": records,
