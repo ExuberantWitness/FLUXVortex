@@ -1,0 +1,819 @@
+=== ROJ11-SWEEP-A05 (Thu Sep  3 08:10:37 AM CST 2026) ===
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.48 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.17 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.29 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.83 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.52 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 0.98 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.42 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.42 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.1785,
+        0.3385
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 0.4470011366310462
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.01971,
+      "passed": false,
+      "tolerance": 0.005,
+      "value": 0.03022697038440502
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 150,
+  "alpha_deg": 5.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-SWEEP-A05",
+  "chordwise_peak_count": 1,
+  "commit_count": 150,
+  "coupling_iteration_mean": 1.9133333333333333,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "dirty_state_digest": "34052db253af3a4337c825935b3a230f0f0d211c03d8acb89216ff914aa9a32d",
+  "discarded_trial_count": 287,
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 1130.0270263759885,
+  "execution_gate_only": false,
+  "formal_replay_count": 150,
+  "free_wake": true,
+  "git_head": "f5668567e3622d990bb53e36dd25153fe841a135",
+  "is_calibration_sensitivity": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 0,
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 0.0,
+  "max_abs_lesp_pre": 0.14086383205175246,
+  "mean_Cn": 0.4470011366310462,
+  "mean_zmax_over_c": 0.03022697038440502,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 437,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 11,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 0.043362418410137674,
+    "shadow_5p_to_q16": {
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 0.860396491353584,
+        "mean": 0.7586520594710416,
+        "n": 3
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.013223812935094503,
+          "mean": 0.007738126483615485,
+          "n": 3
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.0005551580257495558,
+          "mean": 0.0004726108115179371,
+          "n": 3
+        },
+        "legacy_velocity_norm": {
+          "max": 0.0010058648534555686,
+          "mean": 0.0006277029468724461,
+          "n": 3
+        }
+      },
+      "samples_time_star": [
+        0.5,
+        1.0,
+        1.5
+      ],
+      "transfer_force_max_abs_error": {
+        "max": 2.7755575615628914e-17,
+        "mean": 1.1598704491068886e-17,
+        "n": 3
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 8.673617379884035e-19,
+        "mean": 4.336808689942018e-19,
+        "n": 3
+      },
+      "work_pointwise_relative_error": {
+        "max": 3.3096475164451613e-16,
+        "mean": 1.1032158388150538e-16,
+        "n": 3
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": 0.0,
+    "particle_cull_count_total": 0,
+    "removed_over_retained": 0.0,
+    "retained_circulation_live": {
+      "gamma_bound": 18.859041077482708,
+      "particle_circulation": 0.0,
+      "wake_gamma": 142.05624165931638
+    },
+    "wake_truncate_circulation_total": 0.0,
+    "wake_truncate_ring_count_total": 0
+  },
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.07278321830740624,
+      "mean": 0.006879582538545031,
+      "n": 1500
+    },
+    "dq_norm": {
+      "max_abs": 3.864774074263395e-05,
+      "mean": 2.2104158602237193e-05,
+      "n": 1500
+    },
+    "dw_predictor_lag": {
+      "max_abs": 2.0009928910633087e-12,
+      "mean": -1.0571118627410733e-14,
+      "n": 1500
+    },
+    "enabled": true,
+    "formal_substep_entries": 1500,
+    "mf1_action_norm": {
+      "max_abs": 0.004978288826508549,
+      "mean": 0.00044900431150262174,
+      "n": 1500
+    },
+    "total_entries_including_nonformal": 4370,
+    "velocity_norm": {
+      "max_abs": 0.0019819882770305483,
+      "mean": 0.000586340720239707,
+      "n": 1500
+    },
+    "w_algorithmic": {
+      "max_abs": 8.605649666856982e-07,
+      "mean": 5.4419788029108624e-08,
+      "n": 1500
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 0,
+    "max_over_c": 0.03992804041048904,
+    "min_over_c": 0.015057436100729358,
+    "station": [
+      9,
+      21
+    ]
+  },
+  "spanwise_peak_count": 3,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=5 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 8.883874430088326,
+  "step_wall_seconds_mean": 7.531979030674944,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.49693666781716317,
+      "virtual_work_error": 3.290101334935033e-16
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 4500,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      150
+    ]
+  },
+  "zsd_max_over_c": 0.007828769979087283
+}
+=== ROJ11-A16 (Thu Sep  3 08:29:44 AM CST 2026) ===
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.47 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.19 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.38 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.83 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.53 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 1.03 ms  (cached)
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.42 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.45 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.41 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.84,
+        1.0
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 1.544700707179501
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.04338,
+      "passed": false,
+      "tolerance": 0.005,
+      "value": 0.0648332148820375
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 150,
+  "alpha_deg": 16.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-A16",
+  "chordwise_peak_count": 1,
+  "commit_count": 150,
+  "coupling_iteration_mean": 1.98,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "dirty_state_digest": "34052db253af3a4337c825935b3a230f0f0d211c03d8acb89216ff914aa9a32d",
+  "discarded_trial_count": 297,
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 1487.529847642989,
+  "execution_gate_only": false,
+  "formal_replay_count": 150,
+  "free_wake": true,
+  "git_head": "f5668567e3622d990bb53e36dd25153fe841a135",
+  "is_calibration_sensitivity": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 4002,
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 1.3877787807814457e-17,
+  "max_abs_lesp_pre": 0.41659660580941515,
+  "mean_Cn": 1.544700707179501,
+  "mean_zmax_over_c": 0.0648332148820375,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 447,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 21,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 0.056691511822393285,
+    "shadow_5p_to_q16": {
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 1.2856195914973656,
+        "mean": 1.1269912429509792,
+        "n": 3
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.018593765967416586,
+          "mean": 0.014328960674791308,
+          "n": 3
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.0011150417649449381,
+          "mean": 0.0007864981046648063,
+          "n": 3
+        },
+        "legacy_velocity_norm": {
+          "max": 0.0020373852615189606,
+          "mean": 0.001513395046547761,
+          "n": 3
+        }
+      },
+      "samples_time_star": [
+        0.5,
+        1.0,
+        1.5
+      ],
+      "transfer_force_max_abs_error": {
+        "max": 2.7755575615628914e-17,
+        "mean": 1.8511622717926984e-17,
+        "n": 3
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 8.673617379884035e-19,
+        "mean": 2.8912057932946783e-19,
+        "n": 3
+      },
+      "work_pointwise_relative_error": {
+        "max": 0.0,
+        "mean": 0.0,
+        "n": 3
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": -3.9996370608920764e-15,
+    "particle_cull_count_total": 13212,
+    "removed_over_retained": 8.014769918159588e-18,
+    "retained_circulation_live": {
+      "gamma_bound": 65.75982363420673,
+      "particle_circulation": -5.152128723651117e-15,
+      "wake_gamma": 433.2734738569461
+    },
+    "wake_truncate_circulation_total": 0.0,
+    "wake_truncate_ring_count_total": 0
+  },
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.019338808170796137,
+      "mean": 0.011757004437270619,
+      "n": 1500
+    },
+    "dq_norm": {
+      "max_abs": 8.829222010099246e-05,
+      "mean": 4.761369632819857e-05,
+      "n": 1500
+    },
+    "dw_predictor_lag": {
+      "max_abs": 3.66053467867641e-14,
+      "mean": 1.787981744154744e-15,
+      "n": 1500
+    },
+    "enabled": true,
+    "formal_substep_entries": 1500,
+    "mf1_action_norm": {
+      "max_abs": 0.0018273518413461176,
+      "mean": 0.0008411627019947623,
+      "n": 1500
+    },
+    "total_entries_including_nonformal": 4470,
+    "velocity_norm": {
+      "max_abs": 0.0021118656527554743,
+      "mean": 0.0010552002119687278,
+      "n": 1500
+    },
+    "w_algorithmic": {
+      "max_abs": 6.681858063331954e-07,
+      "mean": 2.0065933918939054e-07,
+      "n": 1500
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 0,
+    "max_over_c": 0.06914701168130885,
+    "min_over_c": 0.04784012935459419,
+    "station": [
+      7,
+      18
+    ]
+  },
+  "spanwise_peak_count": 2,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=16 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 11.546872357954271,
+  "step_wall_seconds_mean": 9.91494597633835,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.29407677450667885,
+      "virtual_work_error": 4.0509214722441583e-16
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 4500,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      150
+    ]
+  },
+  "zsd_max_over_c": 0.006165847490452317
+}
+=== ROJ11-SWEEP-A25 (Thu Sep  3 08:54:48 AM CST 2026) ===
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.47 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.19 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.60 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.80 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.53 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 1.03 ms  (cached)
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.41 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.46 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.40 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.8538,
+        1.0138
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 2.1308037595241833
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.04696,
+      "passed": false,
+      "tolerance": 0.005,
+      "value": 0.07124711712154272
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 150,
+  "alpha_deg": 25.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-SWEEP-A25",
+  "chordwise_peak_count": 1,
+  "commit_count": 150,
+  "coupling_iteration_mean": 1.9933333333333334,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "dirty_state_digest": "34052db253af3a4337c825935b3a230f0f0d211c03d8acb89216ff914aa9a32d",
+  "discarded_trial_count": 299,
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 1602.008911825018,
+  "execution_gate_only": false,
+  "formal_replay_count": 150,
+  "free_wake": true,
+  "git_head": "f5668567e3622d990bb53e36dd25153fe841a135",
+  "is_calibration_sensitivity": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 4470,
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.7755575615628914e-17,
+  "max_abs_lesp_pre": 0.6329396212986651,
+  "mean_Cn": 2.1308037595241833,
+  "mean_zmax_over_c": 0.07124711712154272,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 449,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 26,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 0.11937688064661026,
+    "shadow_5p_to_q16": {
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 1.3352719943099678,
+        "mean": 1.0801957457027547,
+        "n": 3
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.026402893214561966,
+          "mean": 0.02120234903430172,
+          "n": 3
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.0026543129118759045,
+          "mean": 0.0013872054427341758,
+          "n": 3
+        },
+        "legacy_velocity_norm": {
+          "max": 0.0022616667318572747,
+          "mean": 0.00161901545183444,
+          "n": 3
+        }
+      },
+      "samples_time_star": [
+        0.5,
+        1.0,
+        1.5
+      ],
+      "transfer_force_max_abs_error": {
+        "max": 3.63207727782644e-18,
+        "mean": 1.8408849386993462e-18,
+        "n": 3
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 3.469446951953614e-18,
+        "mean": 1.4456028966473393e-18,
+        "n": 3
+      },
+      "work_pointwise_relative_error": {
+        "max": 2.542291448492773e-16,
+        "mean": 1.453510092057447e-16,
+        "n": 3
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": 7.644994121265569e-15,
+    "particle_cull_count_total": 13216,
+    "removed_over_retained": 1.0077664909983549e-17,
+    "retained_circulation_live": {
+      "gamma_bound": 100.76435383935022,
+      "particle_circulation": -7.13318293321663e-15,
+      "wake_gamma": 657.8433384735756
+    },
+    "wake_truncate_circulation_total": 0.0,
+    "wake_truncate_ring_count_total": 0
+  },
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.027243380917379087,
+      "mean": 0.01726920631657505,
+      "n": 1500
+    },
+    "dq_norm": {
+      "max_abs": 0.00011646529341676937,
+      "mean": 6.647510403022579e-05,
+      "n": 1500
+    },
+    "dw_predictor_lag": {
+      "max_abs": 6.252837867657052e-14,
+      "mean": 1.1213212907920073e-15,
+      "n": 1500
+    },
+    "enabled": true,
+    "formal_substep_entries": 1500,
+    "mf1_action_norm": {
+      "max_abs": 0.002878826252971745,
+      "mean": 0.0011263896130271455,
+      "n": 1500
+    },
+    "total_entries_including_nonformal": 4490,
+    "velocity_norm": {
+      "max_abs": 0.0025653657369240188,
+      "mean": 0.0013676073924106336,
+      "n": 1500
+    },
+    "w_algorithmic": {
+      "max_abs": 1.341533171741504e-06,
+      "mean": 2.7823388751118575e-07,
+      "n": 1500
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 0,
+    "max_over_c": 0.06761187777027003,
+    "min_over_c": 0.023026882136798446,
+    "station": [
+      10,
+      9
+    ]
+  },
+  "spanwise_peak_count": 2,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=25 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 13.47016670589801,
+  "step_wall_seconds_mean": 10.67816982342008,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.2777348733509854,
+      "virtual_work_error": 4.511434830119348e-16
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 4500,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      150
+    ]
+  },
+  "zsd_max_over_c": 0.014609851139050428
+}
+3-point validation complete Thu Sep  3 09:21:47 AM CST 2026

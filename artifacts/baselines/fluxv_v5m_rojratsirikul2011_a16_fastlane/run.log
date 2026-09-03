@@ -1,0 +1,16 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.47 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.18 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.38 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.88 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.50 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 0.98 ms  (cached)
+Module pfield_torch_gpu 9237418 load on device 'cuda:0' took 0.40 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 7.68 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.38 ms  (cached)
