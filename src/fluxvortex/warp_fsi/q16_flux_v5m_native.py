@@ -188,11 +188,11 @@ class NativeV5MConfig:
     dvm_smoothing_radius_chord: float = 0.04
     dvm_target_spacing_chord: float = 0.04 / 2.125
     gate_rtol: float = 1.0e-8
-    # P1 joint separation solve (experimental, default OFF): full-surface
-    # no-penetration with newborn-LEV unknowns; the incremental release
-    # bookkeeping for sustained separation is NOT yet Kelvin-closed
-    # (alpha>=15 divergence observed 20260906), so the legacy pinned path
-    # remains the production default.
+    # P1 joint separation solve (experimental, default OFF). The current LE
+    # AIC surrogate differs from the deposited ribbon's induction, even on
+    # the first step. The deposited-flow gate rejects such proposals. A
+    # small augmented-system residual alone is not physical acceptance;
+    # material-sheet topology and circulation history remain unresolved.
     joint_separation_solve: bool = False
     device: str = "cuda:0"
 
@@ -203,6 +203,8 @@ class NativeV5MConfig:
             raise ValueError("spanwise_panels must be a positive exact int")
         if type(self.particle_max_age_steps) is not int or self.particle_max_age_steps < 0:
             raise ValueError("particle_max_age_steps must be a non-negative exact int")
+        if type(self.joint_separation_solve) is not bool:
+            raise TypeError("joint_separation_solve must be an exact bool")
         if self.wake_history_mode not in LOAD_HISTORY_MODELS:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
@@ -1067,10 +1069,10 @@ class Q16NativeV5MSolver:
         # rows KEEP the full solid-surface no-penetration equation; a
         # newborn-LEV unknown per active strip (basis = the SAME LE ring
         # whose induction column already exists in AIC) absorbs the
-        # separation constraint.  The LESP pin applies to the TOTAL LE
-        # circulation (bound panel + newborn LEV) at the 3D criterion
-        # sign(LESP)*crit -- the 2D source bank no longer decides the
-        # release strength through a second flow field.
+        # separation constraint. The pin below applies to BOUND circulation.
+        # WARNING: the repeated LE AIC column is only a surrogate, not the
+        # Gaussian particle ribbon that is actually deposited. The physical
+        # post-deposition gate below must also pass before returning a trial.
         le_indices = torch.arange(ns, device=self.device, dtype=torch.int64)
         active_indices = le_indices[pin_active]
         lesp_pre = -gamma_pre[:ns] / scale
@@ -1173,6 +1175,37 @@ class Q16NativeV5MSolver:
             )
         elif not joint_solve:
             pass  # legacy path deposited before the solve (original order)
+
+        algebraic_neumann_max = residual_max
+        if joint_solve:
+            # Check the actual uncommitted sources at the load time level,
+            # before insertion of the next TE wake row. In particular, do
+            # not reuse A[:, LE] @ q as evidence of the particle induction.
+            newborn_velocity = trial.particle_field.velocity_at_cuda(
+                geometry.collocation,
+                source_start=particle_start,
+                source_stop=trial.particle_field.n,
+            )
+            bound_velocity = self._ring_velocity(
+                geometry.collocation, geometry.rings, gamma, rough=False
+            )
+            particle_velocity = particle_velocity + newborn_velocity
+            deposited_residual = torch.sum(
+                (self.v_inf + wake_velocity + particle_velocity + bound_velocity
+                 - geometry.collocation_velocity) * geometry.normals,
+                dim=1,
+            )
+            residual_max = torch.max(torch.abs(deposited_residual))
+            residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
+            if not bool(torch.isfinite(deposited_residual).all().item()) or bool(
+                (residual_max > self.settings.gate_rtol * residual_scale).item()
+            ):
+                raise RuntimeError(
+                    "native V5M joint deposited-flow Neumann rows failed: "
+                    f"actual={float(residual_max.item()):.9e} m/s, "
+                    f"algebraic={float(algebraic_neumann_max.item()):.9e} m/s; "
+                    "LE AIC surrogate and deposited ribbon are inconsistent"
+                )
         gamma_tev = gamma.reshape(nc, ns)[-1] + gamma_lev
         kelvin = torch.max(
             torch.abs(gamma_tev - gamma.reshape(nc, ns)[-1] - gamma_lev)
@@ -1180,9 +1213,10 @@ class Q16NativeV5MSolver:
         if bool((kelvin > self.settings.gate_rtol * torch.clamp(torch.max(torch.abs(gamma)), min=1.0)).item()):
             raise RuntimeError("native V5M joint TEV relation failed")
 
-        bound_velocity = self._ring_velocity(
-            geometry.collocation, geometry.rings, gamma, rough=False
-        )
+        if not joint_solve:
+            bound_velocity = self._ring_velocity(
+                geometry.collocation, geometry.rings, gamma, rough=False
+            )
         external_flow = self.v_inf + wake_velocity + particle_velocity + bound_velocity
         grid = gamma.reshape(nc, ns)
         dx = torch.linalg.vector_norm(
@@ -1411,6 +1445,10 @@ class Q16NativeV5MSolver:
                 "lesp_pin_max_abs": float(pin_error.item()),
                 "kelvin_max_abs": float(kelvin.item()),
                 "full_surface_neumann_max_abs": float(residual_max.item()),
+                "algebraic_neumann_max_abs": float(algebraic_neumann_max.item()),
+                "neumann_acceptance_scope": (
+                    "deposited_flow_all_rows" if joint_solve else "legacy_retained_rows"
+                ),
                 "newborn_lev_circulation_max_abs": float(
                     torch.max(torch.abs(gamma_lev_newborn)).item()
                 ) if gamma_lev_newborn.numel() else 0.0,
