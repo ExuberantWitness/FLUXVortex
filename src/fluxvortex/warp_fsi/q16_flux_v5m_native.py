@@ -1079,31 +1079,92 @@ class Q16NativeV5MSolver:
         gamma_lev_newborn = torch.zeros(ns, device=self.device, dtype=torch.float64)
         joint_solve = bool(getattr(self.settings, "joint_separation_solve", False))
         if joint_solve and active_indices.numel():
+            # P1-2 REAL-operator joint solve: the newborn-LEV basis is the
+            # induction of the material vortex-sheet ribbon that will
+            # actually be deposited (same frontier geometry, spacing and
+            # Gaussian sigma as _deposit_dvm_ribbon), evaluated per active
+            # strip at unit strength on a scratch field -- NOT the AIC LE
+            # surrogate (review: 105% off, false acceptance).
             k = int(active_indices.numel())
             panel_count = int(aic.shape[0])
-            augmented = torch.zeros(
-                (panel_count + k, panel_count + k),
-                device=self.device,
-                dtype=torch.float64,
-            )
-            augmented[:panel_count, :panel_count] = aic
-            augmented[:panel_count, panel_count:] = aic[:, active_indices]
-            # Nonsingular pin: the BOUND LE circulation is pinned at the
-            # critical LESP (Ramesh LESP-mod); the duplicate newborn-LEV
-            # column then carries the excess uniquely (top rows determine
-            # only the sum of the two, the pin fixes the split).
-            pin_rows = torch.zeros(
-                (k, panel_count + k), device=self.device, dtype=torch.float64
-            )
-            # Gamma units: LESP = -Gamma_le/scale pinned at sign*crit.
-            pin_rows[torch.arange(k), active_indices] = 1.0
-            augmented[panel_count:] = pin_rows
             crit = self.settings.effective_lesp_crit
-            pin_target = -torch.sign(lesp_pre[active_indices]) * crit * scale[active_indices]
-            augmented_rhs = torch.cat((rhs, pin_target))
-            solution = torch.linalg.solve(augmented, augmented_rhs)
-            gamma = solution[:panel_count]
-            gamma_lev_newborn[active_indices] = solution[panel_count:]
+            pin_target_gamma = -torch.sign(lesp_pre[active_indices]) * crit * scale[active_indices]
+            # Pinned bound system (LE rows pinned at the critical LESP in
+            # Gamma units; every other row keeps no-penetration).
+            pinned_aic = aic.clone()
+            pinned_aic[active_indices] = 0.0
+            pinned_aic[active_indices, active_indices] = 1.0
+            pinned_rhs0 = rhs.clone()
+            pinned_rhs0[active_indices] = pin_target_gamma
+            # Ribbon frontier/geometry inputs (identical to the deposit).
+            alpha_rate, _, _, node_x, node_normal = self._dvm_kinematics(
+                geometry, trial
+            )
+            del alpha_rate
+            birth_2d = source_result["lev_birth_position"][ns:]
+            anchor_2d = source_result["lev_edge_position"][ns:]
+            displacement = birth_2d - anchor_2d
+            frontier = geometry.leading_edge + trial.reference_node_chord[:, None] * (
+                displacement[:, :1] * node_x + displacement[:, 1:] * node_normal
+            )
+            smoothing = (
+                self.settings.dvm_smoothing_radius_chord
+                * float(torch.mean(trial.reference_cell_chord).item())
+            )
+            spacing = (
+                self.settings.dvm_target_spacing_chord
+                * float(torch.mean(trial.reference_cell_chord).item())
+            )
+
+            ribbon_basis = torch.zeros(
+                (panel_count, k), device=self.device, dtype=torch.float64
+            )
+            scratch = CudaParticleField(
+                self.settings.particle_capacity, device=self.settings.device
+            )
+            for j, strip in enumerate(active_indices.tolist()):
+                le_line = geometry.leading_edge[strip : strip + 2]
+                front_line = frontier[strip : strip + 2]
+                scratch.n = 0
+                scratch.add_connected_ribbon_particles(
+                    le_line,
+                    front_line,
+                    -torch.ones(
+                        1, device=self.device, dtype=torch.float64
+                    ),
+                    smoothing_radius=smoothing,
+                    target_spacing=spacing,
+                    birth_step=trial.step,
+                )
+                if scratch.n:
+                    ribbon_basis[:, j] = torch.sum(
+                        scratch.velocity_at_cuda(geometry.collocation)
+                        * geometry.normals,
+                        dim=1,
+                    )
+            # Linearity of the pinned solve: Gamma(gamma) = Gamma_0 +
+            # sum_j gamma_j Gamma_j with Gamma_j = solve(pin, -b_j).
+            gamma_0 = torch.linalg.solve(pinned_aic, pinned_rhs0)
+            basis_rhs = -ribbon_basis  # (P, k)
+            # The pin constrains the ABSOLUTE bound value (carried by
+            # gamma_0); basis responses must keep the pinned rows at zero.
+            basis_rhs[active_indices, :] = 0.0
+            pinned_batch = pinned_aic[None, :, :].expand(k, -1, -1).contiguous()
+            gammas_j = torch.linalg.solve(
+                pinned_batch, basis_rhs.T.contiguous()[:, :, None]
+            ).squeeze(-1)  # (k, P): row j = Gamma_j
+            # LE-row closure with the REAL ribbon operator: for each active
+            # strip s: aic[le_s].Gamma(gamma) + sum_j b[le_s, j] gamma_j
+            # = rhs[le_s].  (The pinned rows themselves do not enforce the
+            # LE no-penetration; the newborn sheet does, exactly.)
+            le_rows = aic[active_indices]  # (k, P)
+            closure_matrix = (
+                le_rows @ gammas_j.T + ribbon_basis[active_indices, :]
+            )  # (k, k)
+            closure_rhs = rhs[active_indices] - le_rows @ gamma_0
+            newborn = torch.linalg.solve(closure_matrix, closure_rhs)
+            gamma = gamma_0 + newborn @ gammas_j
+            gamma_lev_newborn[active_indices] = newborn
         elif active_indices.numel():
             # legacy production path: pin row replaces the LE no-penetration
             separated_aic = aic.clone()
@@ -1119,7 +1180,9 @@ class Q16NativeV5MSolver:
         # legacy path checks the retained rows exactly as before.
         total_residual = aic @ gamma - rhs
         if joint_solve and active_indices.numel():
-            lev_induction = aic[:, active_indices] @ gamma_lev_newborn[active_indices]
+            # REAL ribbon operator (per-unit-strength deposited-sheet
+            # induction), consistent with the closure equations above.
+            lev_induction = ribbon_basis @ gamma_lev_newborn[active_indices]
             total_residual = total_residual + lev_induction
         if joint_solve:
             residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
@@ -1169,6 +1232,17 @@ class Q16NativeV5MSolver:
             )
             joint_shed = source_result["shed_lev"].clone()
             joint_shed[:ns] = joint_shed[:ns] | release_override
+            # Node mask must follow the strip override: a strip's ribbon
+            # spans nodes [s, s+1]; without them the frontier falls back to
+            # the leading edge and deposits coincident canceling edges
+            # (review finding 2).  Node j is active when either adjacent
+            # strip is releasing.
+            node_override = torch.zeros(
+                ns + 1, device=self.device, dtype=joint_shed.dtype
+            )
+            node_override[:-1] = node_override[:-1] | release_override.to(joint_shed.dtype)
+            node_override[1:] = node_override[1:] | release_override.to(joint_shed.dtype)
+            joint_shed[ns:] = joint_shed[ns:] | node_override
             joint_source_result["shed_lev"] = joint_shed
             gamma_lev, released = self._deposit_dvm_ribbon(
                 geometry, trial, joint_source_result

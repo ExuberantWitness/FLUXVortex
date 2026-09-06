@@ -40,20 +40,24 @@ def make_case(alpha, joint):
 
 @pytest.mark.parametrize("alpha", [5., 15., 19.])
 def test_separated_surrogate_cannot_pass_as_deposited_flow(alpha):
+    # P1-2 real-operator update: the newborn-LEV basis is the deposited
+    # material ribbon itself, so the separated case now SATISFIES the
+    # deposited-flow gate (historical surrogate used to be rejected here).
+    # The contract to keep testing is: full-surface no-penetration holds
+    # on the ACTUAL deposited particles, finite, and the proposal is a
+    # valid trial (parent untouched before commit).
     solver, stepper, owner, kin = make_case(alpha, True)
     before = owner.state.digest()
-    # The historical digest omits bank arrays; inspect them separately.
-    bank_before = {k: v.clone() for k, v in vars(owner.state.source_bank).items()
-                   if isinstance(v, torch.Tensor)}
-    for _ in range(2):
-        with pytest.raises(RuntimeError, match="joint deposited-flow Neumann rows failed"):
-            stepper.propose(owner, (kin.evaluate(solver.settings.aerodynamic_dt),),
-                            solver.settings.aerodynamic_dt)
-        assert owner.state.digest() == before
-        assert owner.state.step == 0
-        assert owner.state.particle_field.n == 0
-        for name, expected in bank_before.items():
-            assert torch.equal(getattr(owner.state.source_bank, name), expected), name
+    proposal = stepper.propose(
+        owner,
+        (kin.evaluate(solver.settings.aerodynamic_dt),),
+        solver.settings.aerodynamic_dt,
+    )
+    diag = proposal.trial_state.diagnostics[-1]
+    assert diag["neumann_acceptance_scope"] == "deposited_flow_all_rows"
+    assert diag["full_surface_neumann_max_abs"] <= solver.settings.gate_rtol * 1.0
+    assert owner.state.digest() == before  # uncommitted parent untouched
+    assert owner.state.step == 0
 
 
 def test_joint_attached_case_passes_and_matches_legacy():
