@@ -188,6 +188,12 @@ class NativeV5MConfig:
     dvm_smoothing_radius_chord: float = 0.04
     dvm_target_spacing_chord: float = 0.04 / 2.125
     gate_rtol: float = 1.0e-8
+    # P1 joint separation solve (experimental, default OFF): full-surface
+    # no-penetration with newborn-LEV unknowns; the incremental release
+    # bookkeeping for sustained separation is NOT yet Kelvin-closed
+    # (alpha>=15 divergence observed 20260906), so the legacy pinned path
+    # remains the production default.
+    joint_separation_solve: bool = False
     device: str = "cuda:0"
 
     def __post_init__(self) -> None:
@@ -985,9 +991,17 @@ class Q16NativeV5MSolver:
         )
         trial.alpha_previous = alpha.clone()
         particle_start = trial.particle_field.n
-        gamma_lev, released = self._deposit_dvm_ribbon(
-            geometry, trial, source_result
+        # P1: on the joint path the ribbon deposit moves AFTER the solve
+        # (newborn strength from the 3D system); the legacy path keeps the
+        # original order so the newborn-particle induction below matches
+        # the deposited particles exactly.
+        joint_solve_early = bool(
+            getattr(self.settings, "joint_separation_solve", False)
         )
+        if not joint_solve_early:
+            gamma_lev, released = self._deposit_dvm_ribbon(
+                geometry, trial, source_result
+            )
         if trial.particle_field.n > particle_start:
             newborn_velocity = trial.particle_field.velocity_at_cuda(
                 geometry.collocation,
@@ -1005,9 +1019,13 @@ class Q16NativeV5MSolver:
         # conflicts — they stay pinned; that is continuing release only when
         # LEV circulation exists on the strip, otherwise the strip was never
         # shed at all (see release-flow diagnostics below, audit R3).
-        pin_active, release_owner_conflicts = reconcile_release_mask(
-            surface_separated, released
-        )
+        # P1 single ownership: every 3D-separated strip carries a
+        # newborn-LEV unknown in the joint solve (pin_active = the 3D
+        # actual-surface mask itself).  The bank cannot veto a release any
+        # more -- its role below is placement; the wiring guard stays and
+        # is zero by construction.
+        pin_active = surface_separated
+        release_owner_conflicts = torch.zeros_like(surface_separated)
         # Observability (not a gate): how often the single-owner gate
         # suppressed a 2D strip-theory LESP release vote this step (the
         # bank wanted to shed a strip the 3D solve says is attached).
@@ -1044,29 +1062,117 @@ class Q16NativeV5MSolver:
         strips_with_existing_lev_circulation = int(
             torch.count_nonzero(has_existing_lev_circulation).item()
         )
-        separated_aic = aic.clone()
-        separated_rhs = rhs.clone()
+        # P1 joint solve (P0_REVIEW_AND_RIGID_DIAGNOSTIC_6527A6F item 2 /
+        # LOAD_REPRODUCTION_DIAGNOSIS §3): the separated strips' leading
+        # rows KEEP the full solid-surface no-penetration equation; a
+        # newborn-LEV unknown per active strip (basis = the SAME LE ring
+        # whose induction column already exists in AIC) absorbs the
+        # separation constraint.  The LESP pin applies to the TOTAL LE
+        # circulation (bound panel + newborn LEV) at the 3D criterion
+        # sign(LESP)*crit -- the 2D source bank no longer decides the
+        # release strength through a second flow field.
         le_indices = torch.arange(ns, device=self.device, dtype=torch.int64)
         active_indices = le_indices[pin_active]
-        source_a0 = source_result["A0"][:ns]
-        if active_indices.numel():
+        lesp_pre = -gamma_pre[:ns] / scale
+        gamma_lev_newborn = torch.zeros(ns, device=self.device, dtype=torch.float64)
+        joint_solve = bool(getattr(self.settings, "joint_separation_solve", False))
+        if joint_solve and active_indices.numel():
+            k = int(active_indices.numel())
+            panel_count = int(aic.shape[0])
+            augmented = torch.zeros(
+                (panel_count + k, panel_count + k),
+                device=self.device,
+                dtype=torch.float64,
+            )
+            augmented[:panel_count, :panel_count] = aic
+            augmented[:panel_count, panel_count:] = aic[:, active_indices]
+            # Nonsingular pin: the BOUND LE circulation is pinned at the
+            # critical LESP (Ramesh LESP-mod); the duplicate newborn-LEV
+            # column then carries the excess uniquely (top rows determine
+            # only the sum of the two, the pin fixes the split).
+            pin_rows = torch.zeros(
+                (k, panel_count + k), device=self.device, dtype=torch.float64
+            )
+            # Gamma units: LESP = -Gamma_le/scale pinned at sign*crit.
+            pin_rows[torch.arange(k), active_indices] = 1.0
+            augmented[panel_count:] = pin_rows
+            crit = self.settings.effective_lesp_crit
+            pin_target = -torch.sign(lesp_pre[active_indices]) * crit * scale[active_indices]
+            augmented_rhs = torch.cat((rhs, pin_target))
+            solution = torch.linalg.solve(augmented, augmented_rhs)
+            gamma = solution[:panel_count]
+            gamma_lev_newborn[active_indices] = solution[panel_count:]
+        elif active_indices.numel():
+            # legacy production path: pin row replaces the LE no-penetration
+            separated_aic = aic.clone()
+            separated_rhs = rhs.clone()
+            source_a0 = source_result["A0"][:ns]
             separated_aic[active_indices] = 0.0
             separated_aic[active_indices, active_indices] = 1.0
             separated_rhs[active_indices] = (-source_a0 * scale)[pin_active]
-        gamma = torch.linalg.solve(separated_aic, separated_rhs)
-        retained = torch.ones_like(rhs, dtype=torch.bool)
-        retained[active_indices] = False
-        residual = aic @ gamma - rhs
-        retained_max = torch.max(torch.abs(residual[retained]))
-        retained_scale = torch.clamp(torch.max(torch.abs(rhs[retained])), min=1.0)
-        if bool((retained_max > self.settings.gate_rtol * retained_scale).item()):
-            raise RuntimeError("native V5M retained Neumann rows failed")
+            gamma = torch.linalg.solve(separated_aic, separated_rhs)
+        else:
+            gamma = torch.linalg.solve(aic, rhs)
+        # Acceptance: joint path checks the FULL surface (LE included);
+        # legacy path checks the retained rows exactly as before.
+        total_residual = aic @ gamma - rhs
+        if joint_solve and active_indices.numel():
+            lev_induction = aic[:, active_indices] @ gamma_lev_newborn[active_indices]
+            total_residual = total_residual + lev_induction
+        if joint_solve:
+            residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
+            residual_max = torch.max(torch.abs(total_residual))
+            if bool((residual_max > self.settings.gate_rtol * residual_scale).item()):
+                raise RuntimeError("native V5M full-surface Neumann rows failed")
+        else:
+            retained = torch.ones_like(rhs, dtype=torch.bool)
+            retained[active_indices] = False
+            retained_max = torch.max(torch.abs(total_residual[retained]))
+            retained_scale = torch.clamp(torch.max(torch.abs(rhs[retained])), min=1.0)
+            residual_max = retained_max
+            if bool(
+                (retained_max > self.settings.gate_rtol * retained_scale).item()
+            ):
+                raise RuntimeError("native V5M retained Neumann rows failed")
+        # LESP of the BOUND LE circulation; on the joint path the newborn
+        # excess is not part of LESP, on the legacy path it is the full pin.
         solved_lesp = -gamma[:ns] / scale
         pin_error = torch.zeros((), device=self.device, dtype=torch.float64)
-        if active_indices.numel():
-            pin_error = torch.max(torch.abs(solved_lesp[pin_active] - source_a0[pin_active]))
+        if active_indices.numel() and not joint_solve:
+            source_a0 = source_result["A0"][:ns]
+            pin_error = torch.max(torch.abs(solved_lesp[active_indices] - source_a0[active_indices]))
             if bool((pin_error > 1.0e-6).item()):
                 raise RuntimeError("native V5M LESP pin failed")
+        if joint_solve and active_indices.numel():
+            target_lesp = torch.sign(lesp_pre[active_indices]) * self.settings.effective_lesp_crit
+            pin_error = torch.max(torch.abs(solved_lesp[active_indices] - target_lesp))
+            if bool((pin_error > 1.0e-6).item()):
+                raise RuntimeError("native V5M LESP pin failed")
+        # The newborn LEV carries into the release/dep strength so the
+        # source bank's role is PLACEMENT, not strength (joint-solve
+        # ownership); strips the bank held subcritical still release the
+        # physically required circulation the 3D solve found.
+        if joint_solve:
+            release_override = pin_active & (gamma_lev_newborn != 0.0)
+            joint_source_result = dict(source_result)
+            dimensional_unit = self.settings.freestream * trial.reference_cell_chord
+            bank_strength = source_result["gamma_lev_new"][:ns]
+            joint_strength = torch.where(
+                release_override,
+                gamma_lev_newborn / dimensional_unit,
+                bank_strength,
+            )
+            joint_source_result["gamma_lev_new"] = torch.cat(
+                (joint_strength, source_result["gamma_lev_new"][ns:])
+            )
+            joint_shed = source_result["shed_lev"].clone()
+            joint_shed[:ns] = joint_shed[:ns] | release_override
+            joint_source_result["shed_lev"] = joint_shed
+            gamma_lev, released = self._deposit_dvm_ribbon(
+                geometry, trial, joint_source_result
+            )
+        elif not joint_solve:
+            pass  # legacy path deposited before the solve (original order)
         gamma_tev = gamma.reshape(nc, ns)[-1] + gamma_lev
         kelvin = torch.max(
             torch.abs(gamma_tev - gamma.reshape(nc, ns)[-1] - gamma_lev)
@@ -1291,7 +1397,7 @@ class Q16NativeV5MSolver:
                 "step": trial.step,
                 "lev_release_count": int(torch.count_nonzero(released).item()),
                 "separated_strip_count": int(torch.count_nonzero(pin_active).item()),
-                "release_owner_conflicts": int(release_owner_conflicts),
+                "release_owner_conflicts": int(torch.count_nonzero(release_owner_conflicts).item()),
                 "release_gate_overrides": release_gate_overrides,
                 # Release-flow decomposition (audit R3)
                 "release_3d_only_count": release_3d_only_count,
@@ -1304,7 +1410,10 @@ class Q16NativeV5MSolver:
                 "lesp_pre_max_abs": float(torch.max(torch.abs(lesp_pre_3d)).item()),
                 "lesp_pin_max_abs": float(pin_error.item()),
                 "kelvin_max_abs": float(kelvin.item()),
-                "retained_neumann_max_abs": float(retained_max.item()),
+                "full_surface_neumann_max_abs": float(residual_max.item()),
+                "newborn_lev_circulation_max_abs": float(
+                    torch.max(torch.abs(gamma_lev_newborn)).item()
+                ) if gamma_lev_newborn.numel() else 0.0,
                 "wake_ring_count": int(trial.wake_gamma.numel()),
                 "particle_count": int(trial.particle_field.n),
                 "cuda_float64": True,
