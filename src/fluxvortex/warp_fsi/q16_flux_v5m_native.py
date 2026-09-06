@@ -1452,20 +1452,38 @@ class Q16NativeV5MSolver:
         )
 
         rear = geometry.rings.reshape(nc, ns, 4, 3)[-1, :, 2:4]
+        # P1 review (P1_REAL_B_REVIEW item 2): the newborn TE wake row must
+        # CONNECT the current trailing edge to the CONVECTED front edge of
+        # the previous newest row, not span a fixed U*dt segment while the
+        # previous front is re-anchored back to the TE (that left exactly
+        # a U*dt = 0.01c gap between the newborn row's rear edge and the
+        # previous row's front edge).  Row-to-row chaining keeps the sheet
+        # continuous; the wing TE only anchors the newborn row's front.
+        downstream = rear + self.v_inf * self.settings.aerodynamic_dt
+        reconnect_wake = bool(
+            getattr(self.settings, "joint_separation_solve", False)
+        )
         if trial.wake_rings.shape[0]:
-            # Re-anchor the convected chain to the current trailing edge,
-            # newest row first (generate_wake.m r_wake_1 update).
             chain = trial.wake_rings.reshape(-1, ns, 4, 3)
+            convected_front = torch.stack(
+                (chain[0, :, 0].clone(), chain[0, :, 1].clone()), dim=1
+            )
             chain[1:, :, 0] = chain[:-1, :, 3]
             chain[1:, :, 1] = chain[:-1, :, 2]
             chain[0, :, 0] = rear[:, 1]
             chain[0, :, 1] = rear[:, 0]
+            # Experimental joint path: the newborn row's downstream edge IS
+            # the previous row's convected front edge (continuous sheet);
+            # the legacy default keeps the historical U*dt segment and TE
+            # re-anchor bit-for-bit.
+            if reconnect_wake:
+                downstream = convected_front
         new_wake = torch.stack(
             (
                 rear[:, 1],
                 rear[:, 0],
-                rear[:, 0] + self.v_inf * self.settings.aerodynamic_dt,
-                rear[:, 1] + self.v_inf * self.settings.aerodynamic_dt,
+                downstream[:, 0],
+                downstream[:, 1],
             ),
             dim=1,
         )

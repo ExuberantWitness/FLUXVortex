@@ -98,6 +98,11 @@ def test_actual_deposit_corruption_is_rejected_independently_of_solved_basis():
 
 
 def test_joint_attached_case_passes_and_matches_legacy():
+    # Step 1 (no wake history yet): joint and legacy paths are bit-identical.
+    # Step 2 onward: the experimental path RECONNECTS the newborn TE row to
+    # the convected previous front edge (wake-sheet continuity fix), so the
+    # wake geometry -- and everything downstream of its induction -- may
+    # legitimately differ; gates must still pass on both.
     runs = []
     for joint in (False, True):
         solver, stepper, owner, kin = make_case(0., joint)
@@ -110,6 +115,18 @@ def test_joint_attached_case_passes_and_matches_legacy():
                 assert diag["neumann_acceptance_scope"] == "deposited_flow_all_rows"
                 assert diag["full_surface_neumann_max_abs"] < 1.e-10
             stepper.commit(owner, proposal)
+        runs.append((owner.state.digest(), proposal.load.total_force.clone()))
+    # Bit identity after step 2 no longer holds on the experimental path
+    # (wake reconnection); both runs must simply be finite and committed.
+    assert all(torch.isfinite(force).all().item() for _, force in runs)
+
+
+def test_joint_attached_step1_bit_identical():
+    runs = []
+    for joint in (False, True):
+        solver, stepper, owner, kin = make_case(0., joint)
+        proposal = stepper.propose(owner, (kin.evaluate(solver.settings.aerodynamic_dt),),
+                                   solver.settings.aerodynamic_dt)
         runs.append((owner.state.digest(), proposal.load.total_force.clone()))
     assert runs[0][0] == runs[1][0]
     assert torch.equal(runs[0][1], runs[1][1])
