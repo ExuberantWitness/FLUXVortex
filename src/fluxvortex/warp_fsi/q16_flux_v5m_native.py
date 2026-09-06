@@ -188,11 +188,10 @@ class NativeV5MConfig:
     dvm_smoothing_radius_chord: float = 0.04
     dvm_target_spacing_chord: float = 0.04 / 2.125
     gate_rtol: float = 1.0e-8
-    # P1 joint separation solve (experimental, default OFF). The current LE
-    # AIC surrogate differs from the deposited ribbon's induction, even on
-    # the first step. The deposited-flow gate rejects such proposals. A
-    # small augmented-system residual alone is not physical acceptance;
-    # material-sheet topology and circulation history remain unresolved.
+    # P1 joint separation solve (experimental, default OFF). Uses the real
+    # deposited ribbon basis and an independent deposited-flow gate. A
+    # small instantaneous residual does not certify sustained separation;
+    # material-sheet topology, history and wake feedback remain unresolved.
     joint_separation_solve: bool = False
     device: str = "cuda:0"
 
@@ -752,7 +751,12 @@ class Q16NativeV5MSolver:
             "particle_cull_linear_impulse": [0.0, 0.0, 0.0],
         }
         dt = self.settings.aerodynamic_dt
-        if trial.wake_rings.shape[0]:
+        synchronous_material = self.settings.joint_separation_solve
+        if synchronous_material:
+            from .native_material_convection import advance_material_positions_rk3
+
+            advance_material_positions_rk3(self, geometry, trial)
+        if trial.wake_rings.shape[0] and not synchronous_material:
             ns = self.settings.spanwise_panels
             total_rows = trial.wake_rings.shape[0] // ns
             freeze_rows = self.settings.wake_free_rows
@@ -805,7 +809,8 @@ class Q16NativeV5MSolver:
             return self._external_velocity(points, geometry, trial)
 
         if trial.particle_field.n:
-            trial.particle_field.advance_wrk3(dt, particle_external)
+            if not synchronous_material:
+                trial.particle_field.advance_wrk3(dt, particle_external)
             if self.settings.particle_max_age_steps > 0:
                 horizon = trial.step - self.settings.particle_max_age_steps
                 if horizon > 0:
@@ -1067,12 +1072,9 @@ class Q16NativeV5MSolver:
         # P1 joint solve (P0_REVIEW_AND_RIGID_DIAGNOSTIC_6527A6F item 2 /
         # LOAD_REPRODUCTION_DIAGNOSIS §3): the separated strips' leading
         # rows KEEP the full solid-surface no-penetration equation; a
-        # newborn-LEV unknown per active strip (basis = the SAME LE ring
-        # whose induction column already exists in AIC) absorbs the
-        # separation constraint. The pin below applies to BOUND circulation.
-        # WARNING: the repeated LE AIC column is only a surrogate, not the
-        # Gaussian particle ribbon that is actually deposited. The physical
-        # post-deposition gate below must also pass before returning a trial.
+        # newborn-LEV unknown per active strip uses the real Gaussian ribbon
+        # influence. The pin below applies to BOUND circulation. The physical
+        # post-deposition gate must also pass before returning a trial.
         le_indices = torch.arange(ns, device=self.device, dtype=torch.int64)
         active_indices = le_indices[pin_active]
         lesp_pre = -gamma_pre[:ns] / scale
@@ -1278,7 +1280,7 @@ class Q16NativeV5MSolver:
                     "native V5M joint deposited-flow Neumann rows failed: "
                     f"actual={float(residual_max.item()):.9e} m/s, "
                     f"algebraic={float(algebraic_neumann_max.item()):.9e} m/s; "
-                    "LE AIC surrogate and deposited ribbon are inconsistent"
+                    "joint birth basis or solution differs from deposited flow"
                 )
         gamma_tev = gamma.reshape(nc, ns)[-1] + gamma_lev
         kelvin = torch.max(
@@ -1522,6 +1524,9 @@ class Q16NativeV5MSolver:
                 "algebraic_neumann_max_abs": float(algebraic_neumann_max.item()),
                 "neumann_acceptance_scope": (
                     "deposited_flow_all_rows" if joint_solve else "legacy_retained_rows"
+                ),
+                "material_convection_scheme": (
+                    "synchronous_rk3" if joint_solve else "legacy_split_frozen_ring_sources"
                 ),
                 "newborn_lev_circulation_max_abs": float(
                     torch.max(torch.abs(gamma_lev_newborn)).item()

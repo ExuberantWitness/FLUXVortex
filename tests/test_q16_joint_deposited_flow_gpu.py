@@ -1,8 +1,7 @@
-"""Regressions for the false physical acceptance in P1 stage 1.
+"""Joint real-birth acceptance, independent rejection and transaction checks.
 
-Until the actual birth operator and material history are implemented, the
-experimental path must reject inconsistent separated proposals. The flag is
-explicitly enabled here; the pre-existing native suite uses its OFF default.
+The real basis must pass, while corruption of the actual deposited sources
+must still fail. These tests do not certify material-history physics.
 """
 from dataclasses import replace
 
@@ -39,7 +38,7 @@ def make_case(alpha, joint):
 
 
 @pytest.mark.parametrize("alpha", [5., 15., 19.])
-def test_separated_surrogate_cannot_pass_as_deposited_flow(alpha):
+def test_real_birth_passes_and_trial_preserves_complete_bank(alpha):
     # P1-2 real-operator update: the newborn-LEV basis is the deposited
     # material ribbon itself, so the separated case now SATISFIES the
     # deposited-flow gate (historical surrogate used to be rejected here).
@@ -48,16 +47,54 @@ def test_separated_surrogate_cannot_pass_as_deposited_flow(alpha):
     # valid trial (parent untouched before commit).
     solver, stepper, owner, kin = make_case(alpha, True)
     before = owner.state.digest()
-    proposal = stepper.propose(
-        owner,
-        (kin.evaluate(solver.settings.aerodynamic_dt),),
-        solver.settings.aerodynamic_dt,
-    )
-    diag = proposal.trial_state.diagnostics[-1]
-    assert diag["neumann_acceptance_scope"] == "deposited_flow_all_rows"
-    assert diag["full_surface_neumann_max_abs"] <= solver.settings.gate_rtol * 1.0
-    assert owner.state.digest() == before  # uncommitted parent untouched
-    assert owner.state.step == 0
+    # The existing state digest omits these trajectory-defining bank arrays.
+    bank_before = {name: value.clone() for name, value in vars(owner.state.source_bank).items()
+                   if isinstance(value, torch.Tensor)}
+    proposals = []
+    for _ in range(2):
+        proposal = stepper.propose(
+            owner,
+            (kin.evaluate(solver.settings.aerodynamic_dt),),
+            solver.settings.aerodynamic_dt,
+        )
+        diag = proposal.trial_state.diagnostics[-1]
+        assert diag["neumann_acceptance_scope"] == "deposited_flow_all_rows"
+        assert diag["full_surface_neumann_max_abs"] <= solver.settings.gate_rtol
+        assert diag["lev_release_count"] > 0
+        assert proposal.trial_state.frontier_active.any().item()
+        assert owner.state.digest() == before
+        assert owner.state.step == 0
+        for name, value in bank_before.items():
+            assert torch.equal(getattr(owner.state.source_bank, name), value), name
+        proposals.append(proposal)
+    assert proposals[0].trial_state.digest() == proposals[1].trial_state.digest()
+    assert torch.equal(proposals[0].load.total_force, proposals[1].load.total_force)
+    for name in bank_before:
+        assert torch.equal(getattr(proposals[0].trial_state.source_bank, name),
+                           getattr(proposals[1].trial_state.source_bank, name)), name
+
+
+def test_actual_deposit_corruption_is_rejected_independently_of_solved_basis():
+    solver, stepper, owner, kin = make_case(15., True)
+    original = solver._deposit_dvm_ribbon
+    before = owner.state.digest()
+    bank_before = owner.state.source_bank.lg.clone()
+
+    def corrupted_deposit(geometry, trial, result):
+        start = trial.particle_field.n
+        deposited = original(geometry, trial, result)
+        # Deliberately corrupt ONLY actual sources, leaving the B matrix,
+        # solved strengths, pin, and algebraic residual unchanged.
+        trial.particle_field.gamma[start:trial.particle_field.n].mul_(1.01)
+        return deposited
+
+    solver._deposit_dvm_ribbon = corrupted_deposit
+    with pytest.raises(RuntimeError, match="joint deposited-flow Neumann rows failed"):
+        stepper.propose(owner, (kin.evaluate(solver.settings.aerodynamic_dt),),
+                        solver.settings.aerodynamic_dt)
+    assert owner.state.digest() == before
+    assert owner.state.particle_field.n == 0
+    assert torch.equal(owner.state.source_bank.lg, bank_before)
 
 
 def test_joint_attached_case_passes_and_matches_legacy():
