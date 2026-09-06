@@ -438,6 +438,9 @@ class Q16NativeV5MFSIStepper:
                 vf_acc_t = wp.to_torch(
                     _interpolate(vf_acc_anchor, vf_acc_end, beta)
                 )[0]
+                mf1_action_t = added_mass.generalized_matrix @ acc_t
+                w_nonacc = float(torch.dot(aero_t, dq).item())
+                w_acc = float(torch.dot(mf1_action_t, dq).item())
                 rhs_observer.append(
                     {
                         "coupling_iteration": int(coupling_iteration),
@@ -445,12 +448,14 @@ class Q16NativeV5MFSIStepper:
                         "substep": index + 1,
                         "constant_norm": float(constant_t.norm().item()),
                         "velocity_norm": float(velocity_t.norm().item()),
-                        "mf1_action_norm": float(
-                            (added_mass.generalized_matrix @ acc_t).norm().item()
-                        ),
+                        "mf1_action_norm": float(mf1_action_t.norm().item()),
                         "total_aero_norm": float(aero_t.norm().item()),
                         "dq_norm": float(dq.norm().item()),
-                        "w_algorithmic": float(torch.dot(aero_t, dq).item()),
+                        # P0-b: the structure consumed total = nonacc + acc;
+                        # all three work components recorded separately.
+                        "w_nonaccelerative": w_nonacc,
+                        "w_accelerative": w_acc,
+                        "w_algorithmic": w_nonacc + w_acc,
                         "dw_predictor_lag": float(
                             torch.dot(velocity_t - vf_acc_t, dq).item()
                         ),

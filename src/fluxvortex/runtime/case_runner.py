@@ -1015,6 +1015,8 @@ class RojratsirikulCaseRunner:
                 {
                     "formal_substep_entries": len(formal_entries),
                     "total_entries_including_nonformal": len(self._rhs_tape),
+                    "w_nonaccelerative": _rsum("w_nonaccelerative"),
+                    "w_accelerative": _rsum("w_accelerative"),
                     "w_algorithmic": _rsum("w_algorithmic"),
                     "dw_predictor_lag": _rsum("dw_predictor_lag"),
                     "constant_norm": _rsum("constant_norm"),

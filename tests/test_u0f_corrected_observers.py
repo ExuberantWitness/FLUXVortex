@@ -306,9 +306,11 @@ class TestRojratsirikulCaseConfig:
         assert ROJ_A16_E14.is_calibration_sensitivity != ROJ_A16_PRIMARY.is_calibration_sensitivity
 
     def test_digitized_targets_shared(self):
+        # 20260829 full-curve oracle correction (A10 Cn fix commit 0f321e5):
+        # zmax 0.04338, Cn 0.9200 with the H1-consistent +/-0.08 band.
         for cfg in (ROJ_A16_PRIMARY, ROJ_A16_E14):
-            assert cfg.target_zmax_over_c == pytest.approx(0.043)
-            assert cfg.target_cn_band == (0.92, 0.95)
+            assert cfg.target_zmax_over_c == pytest.approx(0.04338)
+            assert cfg.target_cn_band == (0.84, 1.00)
 
     def test_config_is_frozen_and_hashable(self):
         with pytest.raises(dataclasses.FrozenInstanceError):

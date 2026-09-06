@@ -512,12 +512,25 @@ class Q16NativeAuthorLoadAssembler:
         # author's three-step assembly: nvec_Sc_global → Mf1_mat → Qf_p_mat_i.
         sn = self._normal_shape_matrix(geometry)     # (n_dof, n_quad)
         pw = self._quadrature.interpolation_area_weights  # (n_quad, n_panels)
-        # Author's Mf1: the dynamic-pressure convention q=ρU²/2 means the
-        # added-mass force carries ρ/2. The non-dimensional Mf1_mat is
-        # converted to dimensional generalized force via ρ/2, matching the
-        # author's non-dimensional formulation where the factor is absorbed.
-        added_mass_matrix = 0.5 * self.density * (
-            sn @ (pw @ gamma_rate))                 # (n_dof, n_dof)
+        # P0-a fix (LOAD_REPRODUCTION_DIAGNOSIS_AND_MODIFICATION_20260906
+        # §1): the constant/velocity pressure mapping corrects the flat
+        # quadrature areas by geometry.areas/reference_area; Mf1 must use
+        # the SAME surface-integral mapping, and the coefficient is rho
+        # (SI unsteady Bernoulli rho*dGamma/dt), not rho/2 -- the old
+        # 0.5*rho with the bare projected-area weights produced exactly
+        # 0.5*cos(alpha) of the same-equation pressure integral (operator
+        # diagnosis 20260906).  Attached-flow limit now satisfies
+        # M_a = rho * P(q) * A(q)^-1 * N(q) with one consistent pressure
+        # surface.
+        panel_reference_area = (
+            float(np.ptp(self.surface.mesh.reference_rows[:, 0]))
+            * float(np.ptp(self.surface.mesh.reference_rows[:, 1]))
+            / (self.surface.nc * self.surface.ns)
+        )
+        mf1_area_ratio = geometry.areas / panel_reference_area
+        added_mass_matrix = self.density * (
+            sn @ ((pw * mf1_area_ratio[None, :]) @ gamma_rate)
+        )  # (n_dof, n_dof)
         dp_lift1 = self.density * torch.sum(external_flow * gamma_gradient, dim=1)
         constant_pressure = dp_lift1 + self.density * mf2_history
         constant_generalized = constant_pressure @ pressure_map.T
