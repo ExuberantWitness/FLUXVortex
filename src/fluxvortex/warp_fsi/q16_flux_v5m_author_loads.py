@@ -502,35 +502,16 @@ class Q16NativeAuthorLoadAssembler:
         neumann = self._neumann_map(geometry)
         gamma_rate = torch.linalg.solve(aic, neumann)
 
-        # Author's Mf1 (calc_fluid_force.m:154 + strong [2-3]):
-        #   Step 1: neumann[p, j] = n̂_p · S_j(panel_center)   (bare, no area)
-        #   Step 2: gamma_rate = A⁻¹ @ neumann                 (DOF→panel pressure)
-        #   Step 3: Mf1 = ρ · SN @ (P_w @ gamma_rate)          (integrate to DOF)
-        # where SN[i, q] = S_i(x_q) · n̂(x_q) is the normal-projected shape
-        # function at each quadrature point, and P_w[q, p] are the p_interp
-        # area-weighted interpolation weights. This exactly mirrors the
-        # author's three-step assembly: nvec_Sc_global → Mf1_mat → Qf_p_mat_i.
-        sn = self._normal_shape_matrix(geometry)     # (n_dof, n_quad)
-        pw = self._quadrature.interpolation_area_weights  # (n_quad, n_panels)
-        # P0-a fix (LOAD_REPRODUCTION_DIAGNOSIS_AND_MODIFICATION_20260906
-        # §1): the constant/velocity pressure mapping corrects the flat
-        # quadrature areas by geometry.areas/reference_area; Mf1 must use
-        # the SAME surface-integral mapping, and the coefficient is rho
-        # (SI unsteady Bernoulli rho*dGamma/dt), not rho/2 -- the old
-        # 0.5*rho with the bare projected-area weights produced exactly
-        # 0.5*cos(alpha) of the same-equation pressure integral (operator
-        # diagnosis 20260906).  Attached-flow limit now satisfies
-        # M_a = rho * P(q) * A(q)^-1 * N(q) with one consistent pressure
-        # surface.
-        panel_reference_area = (
-            float(np.ptp(self.surface.mesh.reference_rows[:, 0]))
-            * float(np.ptp(self.surface.mesh.reference_rows[:, 1]))
-            / (self.surface.nc * self.surface.ns)
-        )
-        mf1_area_ratio = geometry.areas / panel_reference_area
-        added_mass_matrix = self.density * (
-            sn @ ((pw * mf1_area_ratio[None, :]) @ gamma_rate)
-        )  # (n_dof, n_dof)
+        # P0 finish (P0_REVIEW_AND_RIGID_DIAGNOSTIC_6527A6F item 1):
+        # the acceleration action reuses the FULL pressure mapping P(q)
+        # directly, Mf1 = rho * P(q) @ A(q)^-1 @ N(q), instead of the
+        # historical quadrature-normal side path (SN @ (Pw @ gamma_rate))
+        # which used a different normal interpolation and left a 0.06-0.11%
+        # curved-surface residual even after the area fix.  Exactly the
+        # same surface operator the constant/velocity pressures use; also
+        # removes the last _normal_shape_matrix consumer (the ~1.47 GiB
+        # unit-force transient of the old assembly).
+        added_mass_matrix = self.density * (pressure_map @ gamma_rate)
         dp_lift1 = self.density * torch.sum(external_flow * gamma_gradient, dim=1)
         constant_pressure = dp_lift1 + self.density * mf2_history
         constant_generalized = constant_pressure @ pressure_map.T

@@ -1019,6 +1019,30 @@ class RojratsirikulCaseRunner:
                     "w_accelerative": _rsum("w_accelerative"),
                     "w_algorithmic": _rsum("w_algorithmic"),
                     "dw_predictor_lag": _rsum("dw_predictor_lag"),
+                    # Both work-ratio conventions, explicitly labelled
+                    # (review 20260906: max-abs component ratio is NOT the
+                    # signed cumulative-energy ratio).
+                    "w_ratio_conventions": {
+                        "max_abs_component_ratio": (
+                            abs(_rsum("w_accelerative")["max_abs"])
+                            / max(
+                                abs(_rsum("w_nonaccelerative")["max_abs"]),
+                                1e-300,
+                            )
+                        ),
+                        "signed_cumulative_ratio": (
+                            sum(e["w_accelerative"] for e in formal_entries)
+                            / max(
+                                abs(
+                                    sum(
+                                        e["w_nonaccelerative"]
+                                        for e in formal_entries
+                                    )
+                                ),
+                                1e-300,
+                            )
+                        ),
+                    },
                     "constant_norm": _rsum("constant_norm"),
                     "velocity_norm": _rsum("velocity_norm"),
                     "mf1_action_norm": _rsum("mf1_action_norm"),
