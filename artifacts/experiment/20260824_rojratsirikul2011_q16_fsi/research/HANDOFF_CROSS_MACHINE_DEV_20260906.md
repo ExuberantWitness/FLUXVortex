@@ -31,7 +31,8 @@ python3 -m pytest tests/test_roj_unified_case_runner_parity_gpu.py -q
 ## 2. 当前状态（详见 §5 文档索引，此处为执行摘要）
 
 - **载荷合同/观测层（P0/G000/E0）完成**：GPU Cn、全空间 T_RBᵀQ_aero wrench、two-tap 双 Cn、production-RHS observer（实际功带含 Mf1·a）、Mf1 统一同源映射（机器精度）。
-- **分离/尾迹物理线（P1，实验 flag `joint_separation_solve`，默认 OFF）**：真实材料涡带算子 → RK3 同步对流 → TE 尾迹重连接——三角度（A5/A15/A19）150 步全部稳定，**A19 发散已根治**（4.45e6 → 0.716 vs 实验 0.78）。验证数据入库：`artifacts/baselines/fluxv_v5m_rojratsirikul2011_p1_joint_validation/`。
+- **分离/尾迹物理线（P1，实验 flag `joint_separation_solve`，默认 OFF）**：真实材料涡带算子 → RK3 同步对流 → TE 尾迹重连接。
+  **2026-11-20 更正**：`6db341f` 的“TE 重连接”实际并未连通（旧前沿仍被重锚回 TE，且新排下游顶点顺序未反向），因此其后的 0.104/0.595/0.716 与“A19 发散已根治”**均已撤回**。真正的修正在 `f3dbdbc`：几何红测 `diagnose_roj_te_connectivity.py --require-connected` 由 exit 1（gap 4.64e-3 m、有向余弦 +0.9999、A0 面积 ~1e-8 m²）转为 exit 0（gap 0.0、余弦 −1.000000、A0 面积比 1.000000）。修正后四角度 150 步（t*=1.5，启动段，**非**稳态精度）：Cn = 0.000 / 0.324 / 0.537 / 0.666（A0/A5/A15/A19），对应实验 0.020 / 0.3413 / 0.70 / **0.8000** —— 高角**过预测消失**，转为欠预测。验证数据：`artifacts/baselines/fluxv_v5m_rojratsirikul2011_p1_joint_validation/te_fixed_150step.json`。
 - **生产路径逐位冻结**：一切实验物理在 flag 后面；`test_roj_unified_case_runner_parity_gpu.py` 是不可协商的守卫。
 - **Cn 精度声明冻结**：双消费者（U1）未裁决前不得宣称精度改善。
 
