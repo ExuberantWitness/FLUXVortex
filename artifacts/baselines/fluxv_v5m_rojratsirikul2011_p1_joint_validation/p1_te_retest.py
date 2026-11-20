@@ -1,0 +1,206 @@
+"""A4 re-test after the TE sheet-connectivity correction.
+
+Runs the frozen Roj rigid case (15x30 V5M, AR=2 flat plate, U=5 m/s) at
+A0/A5/A15/A19 for a short window and records, per angle:
+
+* the TE geometry invariants that the pre-fix code violated
+  (row-to-row join gap, shared-edge directed cosine, newborn polygon area);
+* the load and release diagnostics (last-step Cn, last-50-step mean Cn);
+* the joint-path gate diagnostics (deposited-flow Neumann, newborn LEV
+  circulation, Kelvin identity).
+
+Every row is a STARTUP-SEGMENT sample: t* = steps*0.01, so 150 steps is
+t* = 1.5.  These numbers must not be read as steady-state accuracy.
+
+Usage:
+  PYTHONPATH=src:platform:platform/warp_vpm python3 \
+    artifacts/baselines/fluxv_v5m_rojratsirikul2011_p1_joint_validation/p1_te_retest.py \
+    --out <result.json> [--steps 150] [--angles 0,5,15,19] [--legacy]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+
+import torch
+
+from fluxvortex.aero.v5m.stepper import RigidV5MStepper
+from fluxvortex.cases.izraelevitz_kinematics import build_izra_reference_grid
+from fluxvortex.kinematics.prescribed_rigid import PrescribedRigidSurfaceKinematics
+from fluxvortex.warp_fsi.q16_flux_v5m_native import NativeV5MConfig
+from fluxvortex.warp_fsi.rigid_flux_v5m_native import (
+    RigidNativeV5MSolver,
+    RigidV5MSurface,
+)
+
+DEVICE = "cuda:0"
+CHORD_M = 0.0688
+SPAN_M = 0.1375
+FREESTREAM = 5.0
+DT_STAR = 0.01
+NC, NS = 15, 30
+DT = DT_STAR * CHORD_M / FREESTREAM
+Q_AREA = 0.5 * 1.208 * FREESTREAM**2 * CHORD_M * SPAN_M
+ANALYTIC_NEWBORN_AREA = FREESTREAM * DT * SPAN_M / NS
+
+# Digitized Figure 9 rigid U=5 m/s anchors (exact CSV lookup values).
+EXPERIMENT_CN = {0.0: 0.02, 5.0: 0.3413, 15.0: 0.70, 19.0: 0.80}
+
+
+def fixed_pitch_law(alpha_deg: float):
+    theta = math.radians(alpha_deg)
+    half = 0.5 * theta
+    quat = torch.tensor(
+        [math.cos(half), 0.0, math.sin(half), 0.0], device=DEVICE, dtype=torch.float64
+    )
+    zero = torch.zeros(3, device=DEVICE, dtype=torch.float64)
+
+    def law(_t: float):
+        return zero, quat, zero, zero.clone()
+
+    return law
+
+
+def geometry_invariants(wake_rings: torch.Tensor, te_ring: torch.Tensor) -> dict:
+    chain = wake_rings.reshape(-1, NS, 4, 3)
+    if chain.shape[0] < 2:
+        return {}
+    back = chain[:-1, :, [3, 2]]
+    front = chain[1:, :, :2]
+    new_edge = chain[0, :, 3] - chain[0, :, 2]
+    old_edge = chain[1, :, 1] - chain[1, :, 0]
+    cosine = (new_edge * old_edge).sum(-1) / (
+        new_edge.norm(dim=-1) * old_edge.norm(dim=-1)
+    )
+    area = 0.5 * torch.cross(chain[0], chain[0].roll(-1, dims=1), dim=-1).sum(1)
+    front_to_te = (chain[1, :, :2] - te_ring).norm(dim=-1).max()
+    return {
+        "join_gap_max_m": float((back - front).norm(dim=-1).max().item()),
+        "cosine_min": float(cosine.min().item()),
+        "cosine_max": float(cosine.max().item()),
+        "newborn_area_max_m2": float(area.norm(dim=-1).max().item()),
+        "front_to_te_max_m": float(front_to_te.item()),
+    }
+
+
+def run(alpha: float, steps: int, joint: bool) -> dict:
+    reference = build_izra_reference_grid(
+        chordwise_panels=NC,
+        spanwise_panels=NS,
+        chord_m=CHORD_M,
+        span_m=SPAN_M,
+        pivot_fraction_chord=0.25,
+        device=DEVICE,
+    )
+    kin = PrescribedRigidSurfaceKinematics(
+        reference, fixed_pitch_law(alpha), surface_id="w", body_id="b"
+    )
+    surface = RigidV5MSurface(chordwise_panels=NC, spanwise_panels=NS, device=DEVICE)
+    settings = NativeV5MConfig(
+        chordwise_panels=NC,
+        spanwise_panels=NS,
+        density=1.208,
+        freestream=FREESTREAM,
+        aerodynamic_dt=DT,
+        lesp_crit=0.11,
+        wake_max_rows=300,
+        particle_capacity=32768,
+        particle_max_age_steps=100,
+        wake_history_mode="bound_rate",
+        wake_free_rows=100,
+        dvm_target_spacing_chord=0.018,
+        device=DEVICE,
+        joint_separation_solve=joint,
+    )
+    solver = RigidNativeV5MSolver(surface, settings)
+    stepper = RigidV5MStepper(solver, device=DEVICE)
+    owner = stepper.initialize((kin.evaluate(0.0),))
+    normal = torch.tensor(
+        [math.sin(math.radians(alpha)), 0.0, math.cos(math.radians(alpha))],
+        device=DEVICE,
+        dtype=torch.float64,
+    )
+
+    cn_series: list[float] = []
+    lev_total = 0
+    particles = 0
+    deposited = 0.0
+    newborn = 0.0
+    kelvin = 0.0
+    geom: dict = {}
+    worst_gap = 0.0
+    worst_cosine = -2.0
+    for step in range(1, steps + 1):
+        proposal = stepper.propose(owner, (kin.evaluate(step * DT),), DT)
+        cn_series.append(float(torch.dot(proposal.load.total_force, normal).item()) / Q_AREA)
+        stepper.commit(owner, proposal)
+        diag = owner.state.diagnostics[-1]
+        lev_total += int(diag["lev_release_count"])
+        particles = int(diag["particle_count"])
+        deposited = max(deposited, float(diag.get("full_surface_neumann_max_abs", 0.0)))
+        newborn = max(newborn, abs(float(diag.get("newborn_lev_circulation_max_abs", 0.0))))
+        kelvin = max(kelvin, float(diag["kelvin_max_abs"]))
+        if step >= 2:
+            geometry = solver.surface.evaluate(None, None)
+            te_ring = geometry.rings.reshape(NC, NS, 4, 3)[-1, :, [3, 2]]
+            invariants = geometry_invariants(owner.state.wake_rings, te_ring)
+            if invariants:
+                geom = invariants
+                worst_gap = max(worst_gap, invariants["join_gap_max_m"])
+                worst_cosine = max(worst_cosine, invariants["cosine_max"])
+
+    tail = cn_series[-50:]
+    return {
+        "alpha_deg": alpha,
+        "joint": joint,
+        "steps": steps,
+        "t_star": steps * DT_STAR,
+        "cn_last": cn_series[-1],
+        "cn_tail50_mean": sum(tail) / len(tail),
+        "cn_tail50_min": min(tail),
+        "cn_tail50_max": max(tail),
+        "experiment_cn": EXPERIMENT_CN.get(alpha),
+        "lev_release_total": lev_total,
+        "particles": particles,
+        "deposited_neumann_max_m_s": deposited,
+        "newborn_lev_max": newborn,
+        "kelvin_max": kelvin,
+        "worst_join_gap_max_m": worst_gap,
+        "worst_cosine_max": worst_cosine,
+        "final_geometry": geom,
+        "newborn_area_over_analytic": (
+            geom.get("newborn_area_max_m2", float("nan")) / ANALYTIC_NEWBORN_AREA
+            if geom
+            else float("nan")
+        ),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--steps", type=int, default=150)
+    parser.add_argument("--angles", default="0,5,15,19")
+    parser.add_argument("--legacy", action="store_true", help="run with joint flag OFF")
+    args = parser.parse_args()
+    if not torch.cuda.is_available():
+        raise RuntimeError("GPU-only")
+    angles = [float(a) for a in args.angles.split(",") if a.strip()]
+    results = [run(a, args.steps, joint=not args.legacy) for a in angles]
+    payload = {
+        "note": (
+            "startup-segment samples (t* = steps*0.01); NOT steady-state accuracy"
+        ),
+        "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
+        "streamwise_segment_m": FREESTREAM * DT,
+        "results": results,
+    }
+    with open(args.out, "w") as handle:
+        json.dump(payload, handle, indent=1)
+    print(json.dumps(payload, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

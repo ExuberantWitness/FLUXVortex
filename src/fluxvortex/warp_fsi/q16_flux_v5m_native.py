@@ -1452,32 +1452,48 @@ class Q16NativeV5MSolver:
         )
 
         rear = geometry.rings.reshape(nc, ns, 4, 3)[-1, :, 2:4]
-        # P1 review (P1_REAL_B_REVIEW item 2): the newborn TE wake row must
-        # CONNECT the current trailing edge to the CONVECTED front edge of
-        # the previous newest row, not span a fixed U*dt segment while the
-        # previous front is re-anchored back to the TE (that left exactly
-        # a U*dt = 0.01c gap between the newborn row's rear edge and the
-        # previous row's front edge).  Row-to-row chaining keeps the sheet
-        # continuous; the wing TE only anchors the newborn row's front.
+        # P1 review (P1_REAL_B_REVIEW item 2, corrected per
+        # P1_SHARED_EDGE_TIME_DISCRETE_DERIVATION_AND_REVIEW items 1-2):
+        # the newborn TE wake row must CONNECT the current trailing edge to
+        # the CONVECTED front edge of the previous newest row, not span a
+        # fixed U*dt segment while the previous front is re-anchored back to
+        # the TE.  Two independent defects had to be fixed together:
+        #   (a) the TE re-anchor of the previous front ran unconditionally,
+        #       so the old front never stayed at its convected position;
+        #   (b) the convected front was written into the newborn row in the
+        #       SAME order, producing a crossed quadrilateral whose shared
+        #       edge had the same direction (cosine +1) instead of opposite.
+        # Required endpoint identity for row k (newest) and k+1:
+        #   r[k, 3] == r[k+1, 0],  r[k, 2] == r[k+1, 1]
+        # so the shared edge vectors are exact negatives.
         downstream = rear + self.v_inf * self.settings.aerodynamic_dt
         reconnect_wake = bool(
             getattr(self.settings, "joint_separation_solve", False)
         )
         if trial.wake_rings.shape[0]:
             chain = trial.wake_rings.reshape(-1, ns, 4, 3)
+            # Captured BEFORE any mutation: the previous newest row's
+            # convected front edge.
             convected_front = torch.stack(
                 (chain[0, :, 0].clone(), chain[0, :, 1].clone()), dim=1
             )
             chain[1:, :, 0] = chain[:-1, :, 3]
             chain[1:, :, 1] = chain[:-1, :, 2]
-            chain[0, :, 0] = rear[:, 1]
-            chain[0, :, 1] = rear[:, 0]
-            # Experimental joint path: the newborn row's downstream edge IS
-            # the previous row's convected front edge (continuous sheet);
-            # the legacy default keeps the historical U*dt segment and TE
-            # re-anchor bit-for-bit.
             if reconnect_wake:
-                downstream = convected_front
+                # Continuous material sheet: the downstream edge of the
+                # newborn row IS the previous row's convected front edge,
+                # traversed in the OPPOSITE direction:
+                #   new[2] = old[1],  new[3] = old[0]
+                # The previous front is NOT re-anchored to the wing TE.
+                downstream = torch.stack(
+                    (convected_front[:, 1], convected_front[:, 0]), dim=1
+                )
+            else:
+                # Legacy default, bit-for-bit: re-anchor the newest row's
+                # front to the current trailing edge and keep the U*dt
+                # downstream segment.
+                chain[0, :, 0] = rear[:, 1]
+                chain[0, :, 1] = rear[:, 0]
         new_wake = torch.stack(
             (
                 rear[:, 1],

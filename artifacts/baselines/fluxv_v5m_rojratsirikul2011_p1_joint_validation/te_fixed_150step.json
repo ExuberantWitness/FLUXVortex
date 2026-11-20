@@ -1,0 +1,111 @@
+{
+ "note": "startup-segment samples (t* = steps*0.01); NOT steady-state accuracy",
+ "analytic_newborn_area_m2": 3.1533333333333338e-06,
+ "streamwise_segment_m": 0.000688,
+ "results": [
+  {
+   "alpha_deg": 0.0,
+   "joint": true,
+   "steps": 150,
+   "t_star": 1.5,
+   "cn_last": 0.0,
+   "cn_tail50_mean": 0.0,
+   "cn_tail50_min": 0.0,
+   "cn_tail50_max": 0.0,
+   "experiment_cn": 0.02,
+   "lev_release_total": 0,
+   "particles": 0,
+   "deposited_neumann_max_m_s": 0.0,
+   "newborn_lev_max": 0.0,
+   "kelvin_max": 0.0,
+   "worst_join_gap_max_m": 0.0,
+   "worst_cosine_max": -1.0,
+   "final_geometry": {
+    "join_gap_max_m": 0.0,
+    "cosine_min": -1.0,
+    "cosine_max": -1.0,
+    "newborn_area_max_m2": 3.1533333333334545e-06,
+    "front_to_te_max_m": 0.0006880000000000011
+   },
+   "newborn_area_over_analytic": 1.0000000000000382
+  },
+  {
+   "alpha_deg": 5.0,
+   "joint": true,
+   "steps": 150,
+   "t_star": 1.5,
+   "cn_last": 0.3236895211722971,
+   "cn_tail50_mean": 0.3254198302373198,
+   "cn_tail50_min": 0.24461732651374765,
+   "cn_tail50_max": 0.7368592593493521,
+   "experiment_cn": 0.3413,
+   "lev_release_total": 3778,
+   "particles": 26127,
+   "deposited_neumann_max_m_s": 4.829470157119431e-15,
+   "newborn_lev_max": 0.09311063812855348,
+   "kelvin_max": 3.469446951953614e-18,
+   "worst_join_gap_max_m": 0.0,
+   "worst_cosine_max": -0.9999999999999999,
+   "final_geometry": {
+    "join_gap_max_m": 0.0,
+    "cosine_min": -1.0000000000000002,
+    "cosine_max": -0.9999999999999999,
+    "newborn_area_max_m2": 3.144709739969865e-06,
+    "front_to_te_max_m": 0.000687060677301181
+   },
+   "newborn_area_over_analytic": 0.9972652452335723
+  },
+  {
+   "alpha_deg": 15.0,
+   "joint": true,
+   "steps": 150,
+   "t_star": 1.5,
+   "cn_last": 0.5370965271604129,
+   "cn_tail50_mean": 0.4569653821049869,
+   "cn_tail50_min": -1.6251555802321997,
+   "cn_tail50_max": 1.7890934325633188,
+   "experiment_cn": 0.7,
+   "lev_release_total": 4346,
+   "particles": 27369,
+   "deposited_neumann_max_m_s": 2.8199664825478976e-14,
+   "newborn_lev_max": 1.0760360902969737,
+   "kelvin_max": 5.551115123125783e-17,
+   "worst_join_gap_max_m": 0.0,
+   "worst_cosine_max": -0.9999999999999999,
+   "final_geometry": {
+    "join_gap_max_m": 0.0,
+    "cosine_min": -1.0000000000000002,
+    "cosine_max": -0.9999999999999999,
+    "newborn_area_max_m2": 3.774716178135996e-06,
+    "front_to_te_max_m": 0.0008248898118745077
+   },
+   "newborn_area_over_analytic": 1.1970558704448189
+  },
+  {
+   "alpha_deg": 19.0,
+   "joint": true,
+   "steps": 150,
+   "t_star": 1.5,
+   "cn_last": 0.6662863821081989,
+   "cn_tail50_mean": 0.6578333009278531,
+   "cn_tail50_min": -4.400231164174216,
+   "cn_tail50_max": 4.517532455432317,
+   "experiment_cn": 0.8,
+   "lev_release_total": 4392,
+   "particles": 27371,
+   "deposited_neumann_max_m_s": 2.4868995751603507e-14,
+   "newborn_lev_max": 1.4827722756538362,
+   "kelvin_max": 2.220446049250313e-16,
+   "worst_join_gap_max_m": 0.0,
+   "worst_cosine_max": -0.9999999999999998,
+   "final_geometry": {
+    "join_gap_max_m": 0.0,
+    "cosine_min": -1.0000000000000002,
+    "cosine_max": -0.9999999999999999,
+    "newborn_area_max_m2": 4.266729324419467e-06,
+    "front_to_te_max_m": 0.0009658348904295001
+   },
+   "newborn_area_over_analytic": 1.3530854094353488
+  }
+ ]
+}
