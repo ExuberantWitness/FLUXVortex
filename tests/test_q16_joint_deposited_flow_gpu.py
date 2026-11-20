@@ -122,14 +122,28 @@ def test_joint_attached_case_passes_and_matches_legacy():
 
 
 def test_joint_attached_step1_bit_identical():
+    # Step 1 has no wake history, so the joint and legacy TE row fall back to
+    # the same U*dt segment and must produce the SAME TRIAL state (not just
+    # the same untouched parent -- the parent digest is equal by construction
+    # and therefore proves nothing about the proposal).
     runs = []
     for joint in (False, True):
         solver, stepper, owner, kin = make_case(0., joint)
+        parent_before = owner.state.digest()
         proposal = stepper.propose(owner, (kin.evaluate(solver.settings.aerodynamic_dt),),
                                    solver.settings.aerodynamic_dt)
-        runs.append((owner.state.digest(), proposal.load.total_force.clone()))
-    assert runs[0][0] == runs[1][0]
-    assert torch.equal(runs[0][1], runs[1][1])
+        assert owner.state.digest() == parent_before, "proposal mutated the parent"
+        runs.append(
+            (
+                parent_before,
+                proposal.trial_state.digest(),
+                proposal.load.total_force.clone(),
+                proposal.trial_state.wake_rings.clone(),
+            )
+        )
+    assert runs[0][1] == runs[1][1], "step-1 trial states differ"
+    assert torch.equal(runs[0][2], runs[1][2])
+    assert torch.equal(runs[0][3], runs[1][3])
 
 
 @pytest.mark.parametrize("invalid", ["false", 0, 1, None])
