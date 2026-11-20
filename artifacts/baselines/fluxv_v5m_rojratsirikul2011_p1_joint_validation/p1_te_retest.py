@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 
 import torch
 
@@ -213,6 +214,16 @@ def run(
             )
             te_leg_delta_cn_series.append(
                 float(torch.dot(torch.tensor(delta, device=DEVICE, dtype=torch.float64), normal).item() / q_area)
+            )
+        if step % 25 == 0 or step <= 3:
+            # Progress trace: without it a failure deep in a 300-step leg cannot be
+            # localised (the first Stage 2 run died with only a traceback and no
+            # step number).  Goes to stderr so the JSON payload is unaffected.
+            print(
+                f"[a={alpha:g}] step {step}/{steps} cn={cn_series[-1]:+.4f} "
+                f"n_p={particles} newborn={step_newborn:.3e}",
+                file=sys.stderr,
+                flush=True,
             )
         cull_count_series.append(int(diag.get("particle_cull_count", 0)))
         cull_circulation_series.append(

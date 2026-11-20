@@ -104,6 +104,31 @@ TRANSFER_ERROR_TOLERANCE = 1.0e-9
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 
+def _q16_nonsymmetric_solver_choice() -> str:
+    """Q16 linear-solver selection, with a default-preserving experiment hook.
+
+    Stage 3 (2026-11-21) tests the matrix-free path that already exists
+    (``_gmres_solve``) against the production ``reference_dense`` path.  That
+    path needs no new operator plumbing -- ``_effective_action`` already accepts
+    an arbitrary ``AccelerationLoadAction`` -- so the whole experiment is this
+    selection.  The default is unchanged, so the production path stays
+    bit-identical.
+
+    Attribution: this module does not write a manifest, so a run using the hook
+    must state it explicitly (the env assignment appears in the command line and
+    in the run log).  Do not claim a run used the default without checking that.
+    """
+
+    allowed = {"direct", "gmres", "reference_dense"}
+    choice = os.environ.get("FLUXV_Q16_NONSYMMETRIC_SOLVER", "reference_dense").strip()
+    if choice not in allowed:
+        raise ValueError(
+            "FLUXV_Q16_NONSYMMETRIC_SOLVER must be one of "
+            f"{sorted(allowed)}, got {choice!r}"
+        )
+    return choice
+
+
 def apply_freestream(solver: Q16NativeV5MSolver, case: Any, factor: float) -> None:
     """Set the ramped freestream magnitude on the live solver.
 
@@ -345,7 +370,7 @@ class RojratsirikulCaseRunner:
             cg_tolerance=2.0e-10,
             max_cg_iterations=2048,
             cg_check_every=16,
-            nonsymmetric_solver="reference_dense",
+            nonsymmetric_solver=_q16_nonsymmetric_solver_choice(),
             reference_dense_refresh_after=48,
             # Labeled accelerator-cadence knob (manifest records it): the
             # dense quasi-Newton tangent re-assembly costs ~11 s/step at the
