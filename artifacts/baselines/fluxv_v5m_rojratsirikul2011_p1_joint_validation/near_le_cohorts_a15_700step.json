@@ -1,0 +1,363 @@
+{
+ "alpha_deg": 15.0,
+ "steps": 700,
+ "probes": [
+  {
+   "particles": 25704,
+   "newest_birth_step": 99,
+   "total_le_normal_velocity_rms": 1.1532546472570224,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.07491732798366957,
+     "le_normal_velocity_rms": 0.06706577320685198,
+     "mean_le_distance_over_chord": 0.5021387814495917
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.17137754695855775,
+     "le_normal_velocity_rms": 0.15221774572592203,
+     "mean_le_distance_over_chord": 0.5024872282095557
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.2818297683639182,
+     "le_normal_velocity_rms": 0.24495368295878303,
+     "mean_le_distance_over_chord": 0.5033496259839617
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.8463155947784023,
+     "le_normal_velocity_rms": 0.7282651043972661,
+     "mean_le_distance_over_chord": 0.5055235096378468
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 1.0199760988648625,
+     "le_normal_velocity_rms": 0.9365623388415099,
+     "mean_le_distance_over_chord": 0.5141339060419183
+    },
+    {
+     "cohort": "older",
+     "particles": 22994,
+     "le_normal_velocity_max_abs": 1.1407220180005253,
+     "le_normal_velocity_rms": 0.9784445502158021,
+     "mean_le_distance_over_chord": 0.8382151811477654
+    }
+   ],
+   "step": 100,
+   "newborn_max_abs": 0.06934983321562312
+  },
+  {
+   "particles": 52804,
+   "newest_birth_step": 199,
+   "total_le_normal_velocity_rms": 1.2313115665388459,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.08654721701236179,
+     "le_normal_velocity_rms": 0.08159321588710346,
+     "mean_le_distance_over_chord": 0.5021432532216016
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.1568046156794876,
+     "le_normal_velocity_rms": 0.14622012758722386,
+     "mean_le_distance_over_chord": 0.5025289670685176
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.2265885867053947,
+     "le_normal_velocity_rms": 0.21049179408312152,
+     "mean_le_distance_over_chord": 0.5033519250418119
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.5982244191710804,
+     "le_normal_velocity_rms": 0.5542742605202411,
+     "mean_le_distance_over_chord": 0.505291637645988
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 1.1284128510590665,
+     "le_normal_velocity_rms": 1.018581961310943,
+     "mean_le_distance_over_chord": 0.5124040575606242
+    },
+    {
+     "cohort": "older",
+     "particles": 50094,
+     "le_normal_velocity_max_abs": 0.8623277339629494,
+     "le_normal_velocity_rms": 0.7818673778839683,
+     "mean_le_distance_over_chord": 1.277592228415448
+    }
+   ],
+   "step": 200,
+   "newborn_max_abs": 0.07697585888046504
+  },
+  {
+   "particles": 54471,
+   "newest_birth_step": 299,
+   "total_le_normal_velocity_rms": 1.0908250595621016,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.09220772308217894,
+     "le_normal_velocity_rms": 0.08193677093141735,
+     "mean_le_distance_over_chord": 0.5021392127292413
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.16875659853695568,
+     "le_normal_velocity_rms": 0.1454763982314271,
+     "mean_le_distance_over_chord": 0.5024554090397465
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.2475530152817563,
+     "le_normal_velocity_rms": 0.2097774523479058,
+     "mean_le_distance_over_chord": 0.5032174342212191
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.6732126926848281,
+     "le_normal_velocity_rms": 0.5697291391172393,
+     "mean_le_distance_over_chord": 0.5051351481981163
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 1.1498854135192293,
+     "le_normal_velocity_rms": 1.0593599238049258,
+     "mean_le_distance_over_chord": 0.512761746849532
+    },
+    {
+     "cohort": "older",
+     "particles": 51761,
+     "le_normal_velocity_max_abs": 1.1586173991023414,
+     "le_normal_velocity_rms": 0.9787479222061316,
+     "mean_le_distance_over_chord": 1.2387862781330434
+    }
+   ],
+   "step": 300,
+   "newborn_max_abs": 0.08188615779063994
+  },
+  {
+   "particles": 54471,
+   "newest_birth_step": 399,
+   "total_le_normal_velocity_rms": 1.2240142455834973,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.09571789347926613,
+     "le_normal_velocity_rms": 0.08983074698332631,
+     "mean_le_distance_over_chord": 0.5021412416881454
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.20081734484299105,
+     "le_normal_velocity_rms": 0.17710120894709255,
+     "mean_le_distance_over_chord": 0.5025800640199077
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.30861733932750923,
+     "le_normal_velocity_rms": 0.2649575476169154,
+     "mean_le_distance_over_chord": 0.5035388965113009
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.756391803243725,
+     "le_normal_velocity_rms": 0.6830105321813587,
+     "mean_le_distance_over_chord": 0.5058499163745581
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 1.128188470243245,
+     "le_normal_velocity_rms": 0.9152842973126011,
+     "mean_le_distance_over_chord": 0.5145091176363681
+    },
+    {
+     "cohort": "older",
+     "particles": 51761,
+     "le_normal_velocity_max_abs": 0.9970025980673413,
+     "le_normal_velocity_rms": 0.8927182026670922,
+     "mean_le_distance_over_chord": 1.3324164271648926
+    }
+   ],
+   "step": 400,
+   "newborn_max_abs": 0.13341871043944356
+  },
+  {
+   "particles": 54471,
+   "newest_birth_step": 499,
+   "total_le_normal_velocity_rms": 1.0597518530907493,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.0839473421352854,
+     "le_normal_velocity_rms": 0.07331924281074922,
+     "mean_le_distance_over_chord": 0.5021310362570104
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.1455930082886686,
+     "le_normal_velocity_rms": 0.12057907669457989,
+     "mean_le_distance_over_chord": 0.5024040424406151
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.2129013320721551,
+     "le_normal_velocity_rms": 0.17195830331609963,
+     "mean_le_distance_over_chord": 0.5030983173225301
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.5596117268669021,
+     "le_normal_velocity_rms": 0.4485816203471724,
+     "mean_le_distance_over_chord": 0.5046902716351132
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 1.1257817455667154,
+     "le_normal_velocity_rms": 1.008874150969797,
+     "mean_le_distance_over_chord": 0.5109200905363152
+    },
+    {
+     "cohort": "older",
+     "particles": 51761,
+     "le_normal_velocity_max_abs": 0.9684671140977688,
+     "le_normal_velocity_rms": 0.7685913469976701,
+     "mean_le_distance_over_chord": 1.2686935028786304
+    }
+   ],
+   "step": 500,
+   "newborn_max_abs": 0.08390860897891082
+  },
+  {
+   "particles": 54471,
+   "newest_birth_step": 599,
+   "total_le_normal_velocity_rms": 1.166872031824089,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.12486850040696595,
+     "le_normal_velocity_rms": 0.10044203470162541,
+     "mean_le_distance_over_chord": 0.5021387317225794
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.4058752745438521,
+     "le_normal_velocity_rms": 0.25353495853763386,
+     "mean_le_distance_over_chord": 0.5027179620028812
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.5976226085631833,
+     "le_normal_velocity_rms": 0.3869622021393644,
+     "mean_le_distance_over_chord": 0.5039874249103683
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.9416474064313602,
+     "le_normal_velocity_rms": 0.8118038742050263,
+     "mean_le_distance_over_chord": 0.5071313309421764
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 1.0784246263376003,
+     "le_normal_velocity_rms": 0.6920274513129816,
+     "mean_le_distance_over_chord": 0.5193670743134982
+    },
+    {
+     "cohort": "older",
+     "particles": 51761,
+     "le_normal_velocity_max_abs": 1.1119919576916202,
+     "le_normal_velocity_rms": 0.8875397335735541,
+     "mean_le_distance_over_chord": 1.3104773311073687
+    }
+   ],
+   "step": 600,
+   "newborn_max_abs": 0.358688795681303
+  },
+  {
+   "particles": 53447,
+   "newest_birth_step": 699,
+   "total_le_normal_velocity_rms": 2773.098800859445,
+   "cohorts": [
+    {
+     "cohort": "newest",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 6440.064062585476,
+     "le_normal_velocity_rms": 2771.1199062214005,
+     "mean_le_distance_over_chord": 0.5021310694177813
+    },
+    {
+     "cohort": "second",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 2.7749690684314485,
+     "le_normal_velocity_rms": 2.705441041419188,
+     "mean_le_distance_over_chord": 29.199752800798848
+    },
+    {
+     "cohort": "third",
+     "particles": 271,
+     "le_normal_velocity_max_abs": 0.24136924044138644,
+     "le_normal_velocity_rms": 0.17913464803997478,
+     "mean_le_distance_over_chord": 48.82457976204093
+    },
+    {
+     "cohort": "4-5",
+     "particles": 542,
+     "le_normal_velocity_max_abs": 0.98102687651832,
+     "le_normal_velocity_rms": 0.8635001638080394,
+     "mean_le_distance_over_chord": 68.98265423559066
+    },
+    {
+     "cohort": "6-10",
+     "particles": 1355,
+     "le_normal_velocity_max_abs": 3.675831607744741,
+     "le_normal_velocity_rms": 3.57809070300415,
+     "mean_le_distance_over_chord": 107.02540728540693
+    },
+    {
+     "cohort": "older",
+     "particles": 50737,
+     "le_normal_velocity_max_abs": 1.4880868026183984,
+     "le_normal_velocity_rms": 1.1844223414636352,
+     "mean_le_distance_over_chord": 264.52893398283754
+    }
+   ],
+   "step": 700,
+   "newborn_max_abs": 7084.556246391618
+  }
+ ]
+}
