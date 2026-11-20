@@ -207,6 +207,16 @@ class NativeV5MConfig:
     # no-penetration closure.  Makes Gamma_shed proportional to dt (bounded);
     # see the L2-1 oracle finding (ratio 22.9 -> 48.5 when dt halves).
     flux_consistent_shedding: bool = False
+    # E1-WINDOW (0 = OFF, production default): restrict the particles that may
+    # enter the sharp-LE closure RHS to the most recent
+    # `le_constraint_window_steps` steps.  Measured rationale: the pre-blow-up
+    # LE induction is dominated by the ACCUMULATED wake (older 26%, rows 6-10
+    # 25%, rows 4-5 22%, newest 3%, mean distance 1.3c), i.e. far-field wake
+    # drives a LOCAL separation judgement and ratchets newborn.  The far wake
+    # stays fully active in the non-LE rows and in the loads.  For the frozen
+    # dt*=0.01, one chord of convection is 1/dt* = 100 steps, so 100 is a
+    # DERIVED window, not a searched one.
+    le_constraint_window_steps: int = 0
     # P1 joint separation solve (experimental, default OFF). Uses the real
     # deposited ribbon basis and an independent deposited-flow gate. A
     # small instantaneous residual does not certify sustained separation;
@@ -229,6 +239,10 @@ class NativeV5MConfig:
             raise TypeError("te_leg_candidate_diagnostic must be an exact bool")
         if type(self.flux_consistent_shedding) is not bool:
             raise TypeError("flux_consistent_shedding must be an exact bool")
+        if type(self.le_constraint_window_steps) is not int:
+            raise TypeError("le_constraint_window_steps must be an exact int")
+        if self.le_constraint_window_steps < 0:
+            raise ValueError("le_constraint_window_steps must be >= 0")
         if self.wake_history_mode not in LOAD_HISTORY_MODELS:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
@@ -1153,6 +1167,10 @@ class Q16NativeV5MSolver:
         # joint), otherwise the diagnostics dict raises UnboundLocalError.
         flux_shed_max = 0.0
         le_flux_residual = torch.zeros((), device=self.device, dtype=torch.float64)
+        le_window_steps = int(
+            getattr(self.settings, "le_constraint_window_steps", 0)
+        )
+        le_window_fraction = 0.0
         joint_solve = bool(getattr(self.settings, "joint_separation_solve", False))
         # B1: the load derivative operators (Mf1 and the substep Mf2_1) must
         # linearize the SAME bound system that produced gamma.  The assembler
@@ -1321,6 +1339,39 @@ class Q16NativeV5MSolver:
                     le_rows @ gammas_j.T + ribbon_basis[active_indices, :]
                 )  # (k, k)
                 closure_rhs = rhs[active_indices] - le_rows @ gamma_0
+                # E1-WINDOW: drop the OLD particle induction from the LE rows
+                # only.  rhs carries -n.(v_inf + wake + particles), so removing
+                # the old particles means ADDING +n.v_old there.
+                if le_window_steps > 0 and trial.particle_field.n:
+                    field = trial.particle_field
+                    live = field.n
+                    cutoff = trial.step - le_window_steps
+                    old_mask = field.birth_step[:live] < cutoff
+                    old_count = int(torch.count_nonzero(old_mask).item())
+                    if old_count:
+                        le_window_fraction = float(old_count) / float(live)
+                        scratch_old = CudaParticleField(
+                            max(old_count, 1), device=self.settings.device
+                        )
+                        scratch_old.pos[:old_count].copy_(
+                            field.pos[:live][old_mask]
+                        )
+                        scratch_old.gamma[:old_count].copy_(
+                            field.gamma[:live][old_mask]
+                        )
+                        scratch_old.sigma[:old_count].copy_(
+                            field.sigma[:live][old_mask]
+                        )
+                        scratch_old.circul[:old_count].copy_(
+                            field.circul[:live][old_mask]
+                        )
+                        scratch_old.n = old_count
+                        v_old = scratch_old.velocity_at_cuda(
+                            geometry.collocation[active_indices]
+                        )
+                        closure_rhs = closure_rhs + torch.sum(
+                            v_old * geometry.normals[active_indices], dim=1
+                        )
                 newborn = torch.linalg.solve(closure_matrix, closure_rhs)
                 gamma = gamma_0 + newborn @ gammas_j
                 gamma_lev_newborn[active_indices] = newborn
@@ -1359,7 +1410,10 @@ class Q16NativeV5MSolver:
         if joint_solve:
             residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
             residual_max = torch.max(torch.abs(total_residual))
-            if bool(getattr(self.settings, "flux_consistent_shedding", False)) and active_indices.numel():
+            if (
+                bool(getattr(self.settings, "flux_consistent_shedding", False))
+                or le_window_steps > 0
+            ) and active_indices.numel():
                 # E1-FLUX prescribes the shed strength, so the LE rows are not
                 # equations of this model.  Every other row must still close
                 # exactly; the LE residual lives in the diagnostics.
@@ -1461,9 +1515,10 @@ class Q16NativeV5MSolver:
                 raise FloatingPointError(
                     "native V5M joint deposited-flow Neumann residual is non-finite"
                 )
-            if bool(getattr(self.settings, "flux_consistent_shedding", False)):
-                # E1-FLUX prescribes the shed strength, so the LE rows are not
-                # equations of this model and are not required to close; every
+            if bool(getattr(self.settings, "flux_consistent_shedding", False)) or le_window_steps > 0:
+                # E1-FLUX prescribes the shed strength, and E1-WINDOW keeps the
+                # far-field particles out of the LE rows; in both cases those
+                # rows are not equations of this model and are not required to close; every
                 # other row must.  The LE residual is recorded in the
                 # diagnostics (flux_le_no_penetration_residual), and this is a
                 # DIFFERENT discrete model, not a relaxed gate on the old one.
@@ -1811,6 +1866,8 @@ class Q16NativeV5MSolver:
                     getattr(self.settings, "flux_consistent_shedding", False)
                 ),
                 "flux_shed_max": float(flux_shed_max),
+                "le_constraint_window_steps": int(le_window_steps),
+                "le_window_old_particle_fraction": float(le_window_fraction),
                 "flux_le_no_penetration_residual": float(le_flux_residual.item()),
                 "te_leg_candidate": te_leg_candidate,
                 "lev_strip_last_release_max_abs": float(

@@ -91,6 +91,7 @@ def run(
     particle_age: int = 100,
     particle_capacity: int = 32768,
     flux: bool = False,
+    window: int = 0,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -120,6 +121,7 @@ def run(
         device=DEVICE,
         joint_separation_solve=joint,
         flux_consistent_shedding=flux,
+        le_constraint_window_steps=window,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -210,6 +212,12 @@ def main() -> int:
     parser.add_argument("--angles", default="0,5,15,19")
     parser.add_argument("--legacy", action="store_true", help="run with joint flag OFF")
     parser.add_argument(
+        "--window",
+        type=int,
+        default=0,
+        help="E1-WINDOW: LE-closure RHS window in steps (0 = off)",
+    )
+    parser.add_argument(
         "--flux",
         action="store_true",
         help="E1-FLUX: prescribe the shed circulation as 0.5*U_s^2*dt",
@@ -238,6 +246,7 @@ def main() -> int:
             particle_age=args.particle_age,
             particle_capacity=args.particle_capacity,
             flux=args.flux,
+            window=args.window,
         )
         for a in angles
     ]
