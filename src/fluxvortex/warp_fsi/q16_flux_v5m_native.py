@@ -222,6 +222,23 @@ class NativeV5MConfig:
     # small instantaneous residual does not certify sustained separation;
     # material-sheet topology, history and wake feedback remain unresolved.
     joint_separation_solve: bool = False
+    # Route A experiment (default OFF): deposit the newborn LE sheet OPEN
+    # (spanwise filament only, net vorticity -gamma_lev) instead of closing it
+    # into a zero-circulation loop.  Measured (S2.0, diagnose_roj_le_kernel_sign)
+    # the closed deposit induces only 3.9% (A15) / 4.5% (A19) of a monopole's
+    # normal velocity at the first collocation row, because the closure sheet sits
+    # ds=0.0049c away and cancels the LE sheet to 96%; the joint closure then
+    # inflates gamma_lev ~25x (independent cross-check: L2-1 measured 22.9), which
+    # is the gamma_lev ~ 1/dt runaway.  Default OFF keeps the production path
+    # bit-identical.
+    le_open_deposit: bool = False
+    # Route A sub-variant (default OFF): the closed ribbon contributed zero net
+    # vorticity, so the shed amount gamma_lev was booked into the TE wake row as
+    # ``gamma_tev = Gamma_TE + gamma_lev``.  With an open LE deposit that same
+    # circulation now sits at the leading edge, where the physics puts it; this
+    # flag removes it from the TE row so the total is not counted twice.  Which
+    # variant is right is decided by measurement, not by assertion.
+    le_open_deposit_drop_tev_compensation: bool = False
     device: str = "cuda:0"
 
     def __post_init__(self) -> None:
@@ -233,6 +250,21 @@ class NativeV5MConfig:
             raise ValueError("particle_max_age_steps must be a non-negative exact int")
         if type(self.joint_separation_solve) is not bool:
             raise TypeError("joint_separation_solve must be an exact bool")
+        if type(self.le_open_deposit) is not bool:
+            raise TypeError("le_open_deposit must be an exact bool")
+        if type(self.le_open_deposit_drop_tev_compensation) is not bool:
+            raise TypeError(
+                "le_open_deposit_drop_tev_compensation must be an exact bool"
+            )
+        if self.le_open_deposit_drop_tev_compensation and not self.le_open_deposit:
+            raise ValueError(
+                "le_open_deposit_drop_tev_compensation requires le_open_deposit"
+            )
+        if self.le_open_deposit and not self.joint_separation_solve:
+            raise ValueError(
+                "le_open_deposit requires joint_separation_solve "
+                "(the closure basis and the deposit must agree)"
+            )
         if type(self.load_derivative_active_set) is not bool:
             raise TypeError("load_derivative_active_set must be an exact bool")
         if type(self.te_leg_candidate_diagnostic) is not bool:
@@ -978,21 +1010,36 @@ class Q16NativeV5MSolver:
             displacement[:, :1] * node_x + displacement[:, 1:] * node_normal
         )
         frontier = torch.where(node_active[:, None], frontier, geometry.leading_edge)
-        trial.particle_field.add_connected_ribbon_particles(
-            geometry.leading_edge,
-            frontier,
-            -gamma_lev,
-            smoothing_radius=self.settings.dvm_smoothing_radius_chord
-            * float(torch.mean(trial.reference_cell_chord).item()),
-            target_spacing=self.settings.dvm_target_spacing_chord
-            * float(torch.mean(trial.reference_cell_chord).item()),
-            birth_step=trial.step,
-            connector_source_strips=torch.clamp(
-                torch.arange(ns + 1, device=self.device, dtype=torch.int64) - 1,
-                min=0,
-                max=ns - 1,
-            ),
-        )
+        if self.settings.le_open_deposit:
+            # Route A: a single-signed spanwise filament ON the physical leading
+            # edge.  Net vorticity is -gamma_lev (not zero), so the deposited field
+            # is a monopole sheet and its induction at the first collocation row is
+            # the full monopole value instead of 4% of it.
+            trial.particle_field.add_open_filament_particles(
+                geometry.leading_edge,
+                -gamma_lev,
+                smoothing_radius=self.settings.dvm_smoothing_radius_chord
+                * float(torch.mean(trial.reference_cell_chord).item()),
+                target_spacing=self.settings.dvm_target_spacing_chord
+                * float(torch.mean(trial.reference_cell_chord).item()),
+                birth_step=trial.step,
+            )
+        else:
+            trial.particle_field.add_connected_ribbon_particles(
+                geometry.leading_edge,
+                frontier,
+                -gamma_lev,
+                smoothing_radius=self.settings.dvm_smoothing_radius_chord
+                * float(torch.mean(trial.reference_cell_chord).item()),
+                target_spacing=self.settings.dvm_target_spacing_chord
+                * float(torch.mean(trial.reference_cell_chord).item()),
+                birth_step=trial.step,
+                connector_source_strips=torch.clamp(
+                    torch.arange(ns + 1, device=self.device, dtype=torch.int64) - 1,
+                    min=0,
+                    max=ns - 1,
+                ),
+            )
         trial.frontier_nodes = torch.where(
             node_active[:, None], frontier, trial.frontier_nodes
         )
@@ -1230,16 +1277,27 @@ class Q16NativeV5MSolver:
                 le_line = geometry.leading_edge[strip : strip + 2]
                 front_line = frontier[strip : strip + 2]
                 scratch.n = 0
-                scratch.add_connected_ribbon_particles(
-                    le_line,
-                    front_line,
-                    -torch.ones(
-                        1, device=self.device, dtype=torch.float64
-                    ),
-                    smoothing_radius=smoothing,
-                    target_spacing=spacing,
-                    birth_step=trial.step,
-                )
+                if self.settings.le_open_deposit:
+                    scratch.add_open_filament_particles(
+                        le_line,
+                        -torch.ones(
+                            1, device=self.device, dtype=torch.float64
+                        ),
+                        smoothing_radius=smoothing,
+                        target_spacing=spacing,
+                        birth_step=trial.step,
+                    )
+                else:
+                    scratch.add_connected_ribbon_particles(
+                        le_line,
+                        front_line,
+                        -torch.ones(
+                            1, device=self.device, dtype=torch.float64
+                        ),
+                        smoothing_radius=smoothing,
+                        target_spacing=spacing,
+                        birth_step=trial.step,
+                    )
                 if scratch.n:
                     ribbon_basis[:, j] = torch.sum(
                         scratch.velocity_at_cuda(geometry.collocation)
@@ -1545,9 +1603,14 @@ class Q16NativeV5MSolver:
                     f"algebraic={float(algebraic_neumann_max.item()):.9e} m/s; "
                     "joint birth basis or solution differs from deposited flow"
                 )
-        gamma_tev = gamma.reshape(nc, ns)[-1] + gamma_lev
+        tev_compensation = (
+            torch.zeros_like(gamma_lev)
+            if getattr(self.settings, "le_open_deposit_drop_tev_compensation", False)
+            else gamma_lev
+        )
+        gamma_tev = gamma.reshape(nc, ns)[-1] + tev_compensation
         kelvin = torch.max(
-            torch.abs(gamma_tev - gamma.reshape(nc, ns)[-1] - gamma_lev)
+            torch.abs(gamma_tev - gamma.reshape(nc, ns)[-1] - tev_compensation)
         )
         if bool((kelvin > self.settings.gate_rtol * torch.clamp(torch.max(torch.abs(gamma)), min=1.0)).item()):
             raise RuntimeError("native V5M joint TEV relation failed")

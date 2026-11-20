@@ -93,6 +93,10 @@ def run(
     flux: bool = False,
     window: int = 0,
     te_leg: bool = False,
+    le_open: bool = False,
+    le_open_drop_tev: bool = False,
+    sigma_chord: float | None = None,
+    spacing_chord: float | None = None,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -118,12 +122,15 @@ def run(
         particle_max_age_steps=particle_age,
         wake_history_mode="bound_rate",
         wake_free_rows=100,
-        dvm_target_spacing_chord=0.018,
+        dvm_target_spacing_chord=0.018 if spacing_chord is None else spacing_chord,
+        **({} if sigma_chord is None else {"dvm_smoothing_radius_chord": sigma_chord}),
         device=DEVICE,
         joint_separation_solve=joint,
         flux_consistent_shedding=flux,
         le_constraint_window_steps=window,
         te_leg_candidate_diagnostic=te_leg,
+        le_open_deposit=le_open,
+        le_open_deposit_drop_tev_compensation=le_open_drop_tev,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -255,9 +262,38 @@ def main() -> int:
         default=32768,
         help="particle_capacity (raise together with --particle-age)",
     )
+    parser.add_argument(
+        "--le-open",
+        action="store_true",
+        help="Route A: deposit the newborn LE sheet as an OPEN spanwise filament "
+        "(net vorticity -gamma_lev) instead of a closed zero-circulation ribbon",
+    )
+    parser.add_argument(
+        "--le-open-no-tev",
+        action="store_true",
+        help="Route A sub-variant: also remove the +gamma_lev compensation from the "
+        "TE wake row (requires --le-open)",
+    )
+    parser.add_argument(
+        "--sigma",
+        type=float,
+        default=None,
+        help="EXPERIMENT ONLY (route A): dvm_smoothing_radius_chord. A MONOPOLE core "
+        "must satisfy sigma <= x_c0/4 = 0.015c so the collocation sits on the 1/r "
+        "branch (f(4)=0.2499 vs 0.25); the frozen dipole value 0.04c is 2.7x too "
+        "large for that role. Keep smoothing/spacing = 2.125.",
+    )
+    parser.add_argument(
+        "--spacing",
+        type=float,
+        default=None,
+        help="EXPERIMENT ONLY (route A): dvm_target_spacing_chord; must stay sigma/2.125",
+    )
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("GPU-only")
+    le_open = bool(args.le_open or args.le_open_no_tev)
+    le_open_drop_tev = bool(args.le_open_no_tev)
     angles = [float(a) for a in args.angles.split(",") if a.strip()]
     results = [
         run(
@@ -269,6 +305,10 @@ def main() -> int:
             flux=args.flux,
             window=args.window,
             te_leg=args.te_leg,
+            le_open=le_open,
+            le_open_drop_tev=le_open_drop_tev,
+            sigma_chord=args.sigma,
+            spacing_chord=args.spacing,
         )
         for a in angles
     ]
@@ -278,6 +318,10 @@ def main() -> int:
         ),
         "particle_max_age_steps": int(args.particle_age),
         "particle_capacity": int(args.particle_capacity),
+        "le_open_deposit": le_open,
+        "le_open_deposit_drop_tev_compensation": le_open_drop_tev,
+        "dvm_smoothing_radius_chord": args.sigma,
+        "dvm_target_spacing_chord": args.spacing,
         "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
         "streamwise_segment_m": FREESTREAM * DT,
         "results": results,

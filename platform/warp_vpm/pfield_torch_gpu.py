@@ -131,6 +131,7 @@ class CudaParticleField:
         "target_chunk_size",
         "kernel_calls",
         "last_connected_ribbon_diagnostics",
+        "last_open_filament_diagnostics",
     )
 
     def __init__(
@@ -169,6 +170,7 @@ class CudaParticleField:
         self.target_chunk_size = int(target_chunk_size)
         self.kernel_calls = 0
         self.last_connected_ribbon_diagnostics: dict[str, float | int] | None = None
+        self.last_open_filament_diagnostics: dict[str, float | int] | None = None
 
     @property
     def positions_cuda(self) -> torch.Tensor:
@@ -662,6 +664,141 @@ class CudaParticleField:
             "seam_count": 0,
             "global_vector_closure": float(closure.item()),
             "connectors_have_strip_owner": connector_source_strips is not None,
+        }
+        return particle_count
+
+    def add_open_filament_particles(
+        self,
+        nodes: torch.Tensor,
+        strengths: torch.Tensor,
+        *,
+        smoothing_radius: float,
+        target_spacing: float,
+        birth_step: int,
+        source_strips: torch.Tensor | None = None,
+    ) -> int:
+        """Deposit one spanwise filament WITHOUT closing it (nonzero net vorticity).
+
+        ``add_connected_ribbon_particles`` closes every deposit into a loop so the
+        net vorticity ``sum(gamma_p)`` is machine zero; measured on the Roj A15
+        case that deposit induces only 3.9% of a monopole's normal velocity at the
+        first collocation row (S2.0), because the closure sheet sits ``ds`` away
+        and cancels the leading-edge sheet to 96%.  A real leading-edge vortex is a
+        *single-signed* sheet, so this entry point deliberately deposits only the
+        spanwise edges and leaves ``sum(gamma_p)`` nonzero.
+
+        The edge subdivision mirrors ``add_connected_ribbon_particles`` exactly
+        (same ``ceil(length/spacing)`` counts, mid-edge particle placement, and
+        ``gamma = circulation * segment``) so a caller can swap the two and change
+        nothing but the closure.
+
+        Returns the number of particles deposited.
+        """
+
+        nodes = _require_tensor(
+            "nodes", nodes, device=self.device, shape_tail=(3,)
+        )
+        circulation = _require_tensor("strengths", strengths, device=self.device)
+        if (
+            nodes.ndim != 2
+            or circulation.ndim != 1
+            or nodes.shape[0] != circulation.shape[0] + 1
+            or circulation.numel() < 1
+        ):
+            raise ValueError(
+                "open filament requires (s+1,3) nodes and (s,) strengths"
+            )
+        if not math.isfinite(smoothing_radius) or smoothing_radius <= 0.0:
+            raise ValueError("smoothing_radius must be finite and positive")
+        if not math.isfinite(target_spacing) or target_spacing <= 0.0:
+            raise ValueError("target_spacing must be finite and positive")
+        if smoothing_radius / target_spacing < 2.125:
+            raise ValueError(
+                "target_spacing violates the frozen minimum overlap 2.125"
+            )
+        if type(birth_step) is not int or birth_step < 0:
+            raise ValueError("birth_step must be a nonnegative exact int")
+
+        span_cells = circulation.shape[0]
+        if source_strips is None:
+            source_strips = torch.arange(
+                span_cells, device=self.device, dtype=torch.int64
+            )
+        else:
+            source_strips = _require_source_strip(
+                source_strips, device=self.device, count=span_cells
+            )
+
+        starts = nodes[:-1]
+        edge_vector = nodes[1:] - starts
+        edge_length = torch.linalg.vector_norm(edge_vector, dim=1)
+        active = (torch.abs(circulation) >= 1.0e-14) & (
+            edge_length >= 1.0e-12
+        )
+        starts = starts[active]
+        edge_vector = edge_vector[active]
+        edge_length = edge_length[active]
+        circulation = circulation[active]
+        source_strips = source_strips[active]
+        if starts.shape[0] == 0:
+            self.last_open_filament_diagnostics = {
+                "span_cell_count": int(span_cells),
+                "retained_edge_count": 0,
+                "particle_count": 0,
+                "net_vector_moment": 0.0,
+            }
+            return 0
+
+        spacing = torch.as_tensor(
+            target_spacing, device=self.device, dtype=torch.float64
+        )
+        counts = torch.clamp(torch.ceil(edge_length / spacing), min=1.0).to(
+            torch.int64
+        )
+        particle_count = int(torch.sum(counts).item())
+        if self.n + particle_count > self.capacity:
+            raise OverflowError(
+                "particle capacity exceeded by open filament: "
+                f"{self.n}+{particle_count}>{self.capacity}"
+            )
+        edge_index = torch.repeat_interleave(
+            torch.arange(starts.shape[0], device=self.device, dtype=torch.int64),
+            counts,
+        )
+        offsets = torch.cumsum(counts, dim=0) - counts
+        local_index = torch.arange(
+            particle_count, device=self.device, dtype=torch.int64
+        ) - torch.repeat_interleave(offsets, counts)
+        particle_counts = counts[edge_index]
+        fraction = (
+            local_index.to(torch.float64) + 0.5
+        ) / particle_counts.to(torch.float64)
+        segment = edge_vector[edge_index] / particle_counts[:, None]
+        positions = starts[edge_index] + fraction[:, None] * edge_vector[edge_index]
+        particle_circulation = circulation[edge_index]
+        gamma = particle_circulation[:, None] * segment
+        sigma = torch.full(
+            (particle_count,),
+            smoothing_radius,
+            device=self.device,
+            dtype=torch.float64,
+        )
+        self.add_particles(
+            positions,
+            gamma,
+            sigma,
+            circul=particle_circulation,
+            ptype=TYPE_FRESH_SHED,
+            birth_step=birth_step,
+            source_strip=source_strips[edge_index],
+        )
+        self.last_open_filament_diagnostics = {
+            "span_cell_count": int(span_cells),
+            "retained_edge_count": int(starts.shape[0]),
+            "particle_count": particle_count,
+            "net_vector_moment": float(
+                torch.linalg.vector_norm(torch.sum(gamma, dim=0)).item()
+            ),
         }
         return particle_count
 
