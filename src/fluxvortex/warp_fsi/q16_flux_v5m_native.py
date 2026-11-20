@@ -196,6 +196,11 @@ class NativeV5MConfig:
     # recorded in the diagnostics as 'pinned_ignores_newborn_coupling'.
     # Default OFF: the production path keeps the historical operator.
     load_derivative_active_set: bool = False
+    # B2 diagnostic (U2): record, on the same state, the TE-leg force implied
+    # by the bound-rate history (Gamma_n - Gamma_{n-1}) versus the strength of
+    # the wake row actually inserted (gamma_tev = Gamma_TE + gamma_lev).
+    # Measurement only -- no production path reads the result.  Default OFF.
+    te_leg_candidate_diagnostic: bool = False
     # P1 joint separation solve (experimental, default OFF). Uses the real
     # deposited ribbon basis and an independent deposited-flow gate. A
     # small instantaneous residual does not certify sustained separation;
@@ -214,6 +219,8 @@ class NativeV5MConfig:
             raise TypeError("joint_separation_solve must be an exact bool")
         if type(self.load_derivative_active_set) is not bool:
             raise TypeError("load_derivative_active_set must be an exact bool")
+        if type(self.te_leg_candidate_diagnostic) is not bool:
+            raise TypeError("te_leg_candidate_diagnostic must be an exact bool")
         if self.wake_history_mode not in LOAD_HISTORY_MODELS:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
@@ -1463,6 +1470,42 @@ class Q16NativeV5MSolver:
                 "author_constant_pressure": author_load.constant_pressure,
             },
         )
+        # B2 diagnostic (U2, off by default): the TE leg of the last chordwise
+        # row currently carries (Gamma_n - Gamma_{n-1}) from the bound-rate
+        # history, while the wake row actually inserted carries
+        # gamma_tev = Gamma_TE + gamma_lev.  Quantify the two candidates on
+        # the SAME state instead of guessing which one the load should use.
+        te_leg_candidate: dict[str, object] = {}
+        if bool(getattr(self.settings, "te_leg_candidate_diagnostic", False)):
+            packet_alt = resolved.assemble_packet(
+                geometry=geometry,
+                gamma=gamma,
+                solution_velocity_flat=solution_velocity_flat.contiguous(),
+                mf2_history=mf2_history,
+                te_leg_strength_override=gamma_tev.reshape(-1),
+            )
+            delta = packet_alt.total_force_I - packet.total_force_I
+            force_norm = max(
+                float(torch.linalg.vector_norm(packet.total_force_I).item()), 1e-30
+            )
+            bound_rate_te = (
+                (gamma - trial.gamma_bound).reshape(
+                    self.settings.chordwise_panels, self.settings.spanwise_panels
+                )[-1]
+            )
+            te_leg_candidate = {
+                "te_leg_baseline_strength_max_abs": float(
+                    bound_rate_te.abs().max().item()
+                ),
+                "te_leg_shed_strength_max_abs": float(gamma_tev.abs().max().item()),
+                "te_leg_candidate_force_delta_norm_n": float(
+                    torch.linalg.vector_norm(delta).item()
+                ),
+                "te_leg_candidate_force_delta_relative": float(
+                    torch.linalg.vector_norm(delta).item() / force_norm
+                ),
+                "te_leg_candidate_delta_n": delta.detach().cpu().tolist(),
+            }
         quadrature_force = torch.sum(panel_forces, dim=0)
         force_scale = max(
             float(torch.linalg.vector_norm(quadrature_force).item()), 1e-30
@@ -1596,6 +1639,7 @@ class Q16NativeV5MSolver:
                     "synchronous_rk3" if joint_solve else "legacy_split_frozen_ring_sources"
                 ),
                 "load_derivative_scope": load_derivative_scope,
+                "te_leg_candidate": te_leg_candidate,
                 "newborn_lev_circulation_max_abs": float(
                     torch.max(torch.abs(gamma_lev_newborn)).item()
                 ) if gamma_lev_newborn.numel() else 0.0,

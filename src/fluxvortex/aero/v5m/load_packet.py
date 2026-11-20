@@ -246,6 +246,7 @@ class NativeResolvedLoadAssembler:
         solution_velocity_flat: torch.Tensor,
         mf2_history: torch.Tensor,
         component_ledger: Mapping[str, torch.Tensor] | None = None,
+        te_leg_strength_override: torch.Tensor | None = None,
     ) -> NativeV5MSurfaceLoadPacket:
         """Assemble the resolved point-load packet.
 
@@ -267,6 +268,22 @@ class NativeResolvedLoadAssembler:
         leg_strengths = self.effective_leg_strengths(
             gamma.reshape(nc, ns), delta_grid
         )
+        if te_leg_strength_override is not None:
+            # B2 diagnostic only: the trailing-edge leg of the last chordwise
+            # row carries (Gamma_n - Gamma_{n-1}) today, while the wake row
+            # actually inserted carries gamma_tev = Gamma_TE + gamma_lev.  A
+            # caller may pass the alternative strength for the SAME state to
+            # quantify the difference; the production paths never set this.
+            override = te_leg_strength_override.reshape(-1)
+            if override.shape != (ns,):
+                raise ValueError(
+                    f"te_leg_strength_override must have shape ({ns},), "
+                    f"got {tuple(override.shape)}"
+                )
+            front, right, back, left = leg_strengths
+            back = back.clone()
+            back[(nc - 1) * ns :] = override
+            leg_strengths = (front, right, back, left)
         mids, movements, lengths = self.leg_layout(geometry)
         point_forces: list[torch.Tensor] = []
         total_moment = torch.zeros(3, device=self.device, dtype=torch.float64)

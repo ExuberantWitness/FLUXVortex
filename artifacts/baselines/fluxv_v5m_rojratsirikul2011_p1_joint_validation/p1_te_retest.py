@@ -123,6 +123,8 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
     )
 
     cn_series: list[float] = []
+    newborn_series: list[float] = []
+    particle_series: list[int] = []
     lev_total = 0
     particles = 0
     deposited = 0.0
@@ -139,7 +141,10 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
         lev_total += int(diag["lev_release_count"])
         particles = int(diag["particle_count"])
         deposited = max(deposited, float(diag.get("full_surface_neumann_max_abs", 0.0)))
-        newborn = max(newborn, abs(float(diag.get("newborn_lev_circulation_max_abs", 0.0))))
+        step_newborn = abs(float(diag.get("newborn_lev_circulation_max_abs", 0.0)))
+        newborn = max(newborn, step_newborn)
+        newborn_series.append(step_newborn)
+        particle_series.append(particles)
         kelvin = max(kelvin, float(diag["kelvin_max_abs"]))
         if step >= 2:
             geometry = solver.surface.evaluate(None, None)
@@ -169,6 +174,11 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
         "worst_join_gap_max_m": worst_gap,
         "worst_cosine_max": worst_cosine,
         "final_geometry": geom,
+        # Full series so a divergence can be located to a step instead of
+        # being discovered as a single terminal number.
+        "cn_series": cn_series,
+        "newborn_series": newborn_series,
+        "particle_series": particle_series,
         "newborn_area_over_analytic": (
             geom.get("newborn_area_max_m2", float("nan")) / ANALYTIC_NEWBORN_AREA
             if geom
