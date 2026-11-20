@@ -92,6 +92,7 @@ def run(
     particle_capacity: int = 32768,
     flux: bool = False,
     window: int = 0,
+    te_leg: bool = False,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -122,6 +123,7 @@ def run(
         joint_separation_solve=joint,
         flux_consistent_shedding=flux,
         le_constraint_window_steps=window,
+        te_leg_candidate_diagnostic=te_leg,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -135,6 +137,7 @@ def run(
     cn_series: list[float] = []
     newborn_series: list[float] = []
     particle_series: list[int] = []
+    te_leg_delta_cn_series: list[float] = []
     cull_count_series: list[int] = []
     cull_circulation_series: list[float] = []
     lev_total = 0
@@ -157,6 +160,18 @@ def run(
         newborn = max(newborn, step_newborn)
         newborn_series.append(step_newborn)
         particle_series.append(particles)
+        candidate = diag.get("te_leg_candidate") or {}
+        delta = candidate.get("te_leg_candidate_delta_n")
+        if delta:
+            q_area = 0.5 * 1.208 * FREESTREAM**2 * CHORD_M * SPAN_M
+            normal = torch.tensor(
+                [math.sin(math.radians(alpha)), 0.0, math.cos(math.radians(alpha))],
+                device=DEVICE,
+                dtype=torch.float64,
+            )
+            te_leg_delta_cn_series.append(
+                float(torch.dot(torch.tensor(delta, device=DEVICE, dtype=torch.float64), normal).item() / q_area)
+            )
         cull_count_series.append(int(diag.get("particle_cull_count", 0)))
         cull_circulation_series.append(
             float(diag.get("particle_cull_circulation", 0.0))
@@ -195,6 +210,7 @@ def run(
         "cn_series": cn_series,
         "newborn_series": newborn_series,
         "particle_series": particle_series,
+        "te_leg_delta_cn_series": te_leg_delta_cn_series,
         "cull_count_series": cull_count_series,
         "cull_circulation_series": cull_circulation_series,
         "newborn_area_over_analytic": (
@@ -211,6 +227,11 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=150)
     parser.add_argument("--angles", default="0,5,15,19")
     parser.add_argument("--legacy", action="store_true", help="run with joint flag OFF")
+    parser.add_argument(
+        "--te-leg",
+        action="store_true",
+        help="L2-3: record the two TE-leg strength candidates per step",
+    )
     parser.add_argument(
         "--window",
         type=int,
@@ -247,6 +268,7 @@ def main() -> int:
             particle_capacity=args.particle_capacity,
             flux=args.flux,
             window=args.window,
+            te_leg=args.te_leg,
         )
         for a in angles
     ]
