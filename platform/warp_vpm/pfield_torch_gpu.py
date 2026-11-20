@@ -976,6 +976,69 @@ class CudaParticleField:
         }
         return particle_count
 
+    def apply_vortex_stretching(
+        self,
+        delta_time: float,
+        *,
+        core_spreading: bool = False,
+    ) -> dict[str, float]:
+        """One Euler step of 3-D vortex stretching on the live particles.
+
+        ``d(gamma)/dt = J . gamma`` with ``J[i,m] = du_i/dx_m`` (see
+        ``_pfield_jacobian_partials`` for the storage convention), i.e. the
+        Helmholtz stretching term for a Lagrangian vortex element.  With
+        ``core_spreading`` the core radius follows the standard rVPM choice
+        ``d(sigma)/dt = -sigma Z`` with ``Z = (S . gamma)/|gamma|^2`` and
+        ``S = J . gamma``, so a stretched element tightens instead of growing.
+
+        First order in time for the strength (positions keep their RK3 update),
+        which the diagnostics record.  Leaves the field unchanged when empty.
+        """
+
+        summary = {
+            "particle_count": int(self.n),
+            "stretching_growth_max": 1.0,
+            "stretching_shrink_max": 1.0,
+            "core_radius_ratio_min": 1.0,
+            "core_radius_ratio_max": 1.0,
+        }
+        if self.n == 0:
+            return summary
+        if not math.isfinite(delta_time) or delta_time <= 0.0:
+            raise ValueError("stretching delta_time must be finite and positive")
+
+        _, jacobian = self.velocity_and_jacobian_self_cuda(self.pos[: self.n])
+        gamma = self.gamma[: self.n]
+        stretch_rate = torch.einsum("nim,nm->ni", jacobian, gamma)
+        dot = torch.sum(stretch_rate * gamma, dim=1)
+        norm_sq = torch.clamp(torch.sum(gamma * gamma, dim=1), min=1.0e-300)
+        z = dot / norm_sq
+
+        updated = gamma + delta_time * stretch_rate
+        if not bool(torch.isfinite(updated).all().item()):
+            raise FloatingPointError("vortex stretching produced non-finite strength")
+        magnitude = torch.linalg.vector_norm(gamma, dim=1)
+        ratio = torch.linalg.vector_norm(updated, dim=1) / torch.clamp(
+            magnitude, min=1.0e-300
+        )
+
+        if core_spreading:
+            sigma = self.sigma[: self.n]
+            new_sigma = torch.clamp(
+                sigma * (1.0 - delta_time * z),
+                min=sigma * 0.5,
+                max=sigma * 2.0,
+            )
+            summary["core_radius_ratio_min"] = float((new_sigma / sigma).min().item())
+            summary["core_radius_ratio_max"] = float((new_sigma / sigma).max().item())
+            self.sigma[: self.n].copy_(new_sigma)
+
+        self.gamma[: self.n].copy_(updated)
+        self.circul[: self.n].copy_(torch.linalg.vector_norm(updated, dim=1))
+        summary["stretching_growth_max"] = float(ratio.max().item())
+        summary["stretching_shrink_max"] = float(1.0 / ratio.min().item())
+        return summary
+
     def snapshot_numpy(self) -> dict[str, object]:
         """Explicit serialization boundary; never used by time integration."""
 

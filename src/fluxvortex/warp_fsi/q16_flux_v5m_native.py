@@ -239,6 +239,16 @@ class NativeV5MConfig:
     # flag removes it from the TE row so the total is not counted twice.  Which
     # variant is right is decided by measurement, not by assertion.
     le_open_deposit_drop_tev_compensation: bool = False
+    # Stage 2 experiment (default OFF): 3-D vortex stretching of the particle
+    # strengths, d(gamma)/dt = J . gamma, plus the rVPM core-radius evolution
+    # d(sigma)/dt = -sigma Z when ``particle_core_spreading`` is also set.
+    # Nothing else in the pipeline updates a particle's strength after birth, so
+    # the LEV's circulation accumulates without bound (L2-4: 82 x cU by step 300
+    # against a literature detachment cap of 4.2) and the zero-vorticity dipole
+    # deposit merely hides that from the loads (S2.0/A1-A3).  Stretching is the
+    # physical saturation mechanism, so it is measured, not asserted.
+    particle_stretching: bool = False
+    particle_core_spreading: bool = False
     device: str = "cuda:0"
 
     def __post_init__(self) -> None:
@@ -259,6 +269,14 @@ class NativeV5MConfig:
         if self.le_open_deposit_drop_tev_compensation and not self.le_open_deposit:
             raise ValueError(
                 "le_open_deposit_drop_tev_compensation requires le_open_deposit"
+            )
+        if type(self.particle_stretching) is not bool:
+            raise TypeError("particle_stretching must be an exact bool")
+        if type(self.particle_core_spreading) is not bool:
+            raise TypeError("particle_core_spreading must be an exact bool")
+        if self.particle_core_spreading and not self.particle_stretching:
+            raise ValueError(
+                "particle_core_spreading requires particle_stretching"
             )
         if self.le_open_deposit and not self.joint_separation_solve:
             raise ValueError(
@@ -1063,6 +1081,22 @@ class Q16NativeV5MSolver:
             dtype=torch.float64,
         )
         retention = self._advance_material_state(geometry, trial)
+        # Stage 2 (experimental, default OFF): 3-D vortex stretching on the live
+        # particles.  Applied right after the material convection so the strength
+        # is updated from the same positions the next stage will see; first order
+        # in time for the strength (positions keep their RK3 update).
+        # Rationale: A1/A2/A3 showed Gamma_LEV accumulates without bound and
+        # nothing saturates it -- the dipole representation merely hid it.  The
+        # Helmholtz stretching term is the physical mechanism for both, so it is
+        # measured rather than asserted.
+        if getattr(self.settings, "particle_stretching", False):
+            stretching = trial.particle_field.apply_vortex_stretching(
+                self.settings.aerodynamic_dt,
+                core_spreading=bool(
+                    getattr(self.settings, "particle_core_spreading", False)
+                ),
+            )
+            retention["particle_stretching"] = stretching
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
         wake_velocity = self._ring_velocity(
             geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False

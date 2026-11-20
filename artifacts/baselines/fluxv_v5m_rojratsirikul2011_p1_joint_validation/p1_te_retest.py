@@ -98,6 +98,8 @@ def run(
     sigma_chord: float | None = None,
     spacing_chord: float | None = None,
     ramp_steps: int = 0,
+    stretching: bool = False,
+    core_spreading: bool = False,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -132,6 +134,8 @@ def run(
         te_leg_candidate_diagnostic=te_leg,
         le_open_deposit=le_open,
         le_open_deposit_drop_tev_compensation=le_open_drop_tev,
+        particle_stretching=stretching,
+        particle_core_spreading=core_spreading,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -322,6 +326,16 @@ def main() -> int:
         help="EXPERIMENT ONLY (route A): dvm_target_spacing_chord; must stay sigma/2.125",
     )
     parser.add_argument(
+        "--stretching",
+        action="store_true",
+        help="Stage 2: 3-D vortex stretching d(gamma)/dt = J . gamma on the particles",
+    )
+    parser.add_argument(
+        "--core-spreading",
+        action="store_true",
+        help="Stage 2: also evolve the core radius d(sigma)/dt = -sigma Z (needs --stretching)",
+    )
+    parser.add_argument(
         "--ramp-steps",
         type=int,
         default=0,
@@ -351,6 +365,8 @@ def main() -> int:
             sigma_chord=args.sigma,
             spacing_chord=args.spacing,
             ramp_steps=int(args.ramp_steps),
+            stretching=bool(args.stretching or args.core_spreading),
+            core_spreading=bool(args.core_spreading),
         )
         for a in angles
     ]
@@ -365,6 +381,8 @@ def main() -> int:
         "dvm_smoothing_radius_chord": args.sigma,
         "dvm_target_spacing_chord": args.spacing,
         "ramp_steps": int(args.ramp_steps),
+        "particle_stretching": bool(args.stretching or args.core_spreading),
+        "particle_core_spreading": bool(args.core_spreading),
         "ramp_protocol": "frozen half-cosine 0->U0 over t* in [0,1]; 0 = impulsive start",
         "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
         "streamwise_segment_m": FREESTREAM * DT,
