@@ -125,6 +125,7 @@ def main() -> int:
     for step in range(1, args.steps + 1):
         proposal = stepper.propose(owner, (kin.evaluate(step * DT),), DT)
         state = proposal.trial_state
+        trial_grid_old = proposal.trial_state.gamma_bound.reshape(NC, NS)
         geometry = solver.surface.evaluate(None, None)
 
         chord = 0.5 * (
@@ -155,6 +156,16 @@ def main() -> int:
         sign = torch.sign(gamma_b)
         target = -sign * settings.effective_lesp_crit * scale
         net = gamma_b - lam
+        # Kelvin-implied shed amount: the step's decrease of each strip's TOTAL
+        # bound circulation.  trial.gamma_bound still holds the committed value
+        # here, so this is a genuine per-step increment (same convention the
+        # bound_rate TEV path uses).
+        grid_new = state.gamma_bound.reshape(NC, NS)
+        grid_old = trial_grid_old
+        lambda_kelvin = -(grid_new.sum(dim=0) - grid_old.sum(dim=0))
+        kelvin_ratio = torch.median(
+            lam.abs() / torch.clamp(lambda_kelvin.abs(), min=1e-30)
+        )
         ratio = net / torch.where(
             target.abs() > 0, target, torch.full_like(target, float("nan"))
         )
@@ -174,6 +185,13 @@ def main() -> int:
                     )
                     if bool(torch.isfinite(ratio).any().item())
                     else float("nan"),
+                    "sum_gamma_bound_median": float(
+                        torch.median(grid_new.sum(dim=0)).item()
+                    ),
+                    "lambda_kelvin_median": float(
+                        torch.median(lambda_kelvin).item()
+                    ),
+                    "lambda_solved_over_kelvin_median": float(kelvin_ratio.item()),
                     "lambda_over_gamma_median": float(
                         torch.median(
                             (lam.abs() / torch.clamp(gamma_b.abs(), min=1e-30))
