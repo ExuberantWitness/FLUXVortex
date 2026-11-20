@@ -179,3 +179,45 @@ def test_st_closure_identity_on_synthetic_observer() -> None:
         abs(summary.st_modified - summary.st_mean * math.sin(math.radians(15.0)))
         <= 1e-12
     )
+
+
+def test_spectral_resolution_is_reported_from_the_welch_segment():
+    """The St grid spacing must come from the SEGMENT, not the record.
+
+    P1_SHARED_EDGE review (Q-C): the frozen Roj cases saved 2000/3000-step
+    probe records and the estimator silently shortened the segment to keep
+    8 averages, so the true St resolution was 0.40/0.267 -- not the
+    record-based 1/T*.  These numbers are the ones quoted in the H5/H6
+    discussion, so pin them.
+    """
+
+    from fluxvortex.warp_fsi.wake_probe_observer import _welch_segment_length
+
+    chord, U, dt_star = 0.0688, 5.0, 0.01
+    aero_dt = dt_star * chord / U
+
+    class _Obs:
+        def __init__(self, n):
+            t = np.arange(n) * aero_dt
+            signal = np.sin(2.0 * np.pi * 90.0 * t)
+            self._h = np.stack([np.stack([signal, 0 * signal, 0 * signal], axis=1)] * 12, axis=1)
+
+        def velocity_history(self):
+            return self._h
+
+    for n, expected_segment, expected_dst in (
+        (3000, 375, 1.0 / (375 * dt_star)),
+        (2000, 250, 1.0 / (250 * dt_star)),
+    ):
+        assert _welch_segment_length(n) == expected_segment, n
+        summary = summarize_probes(
+            _Obs(n),
+            chord_m=chord,
+            freestream_m_s=U,
+            delta_time_s=aero_dt,
+            alpha_deg=15.0,
+        )
+        assert summary.psd_segment_samples == expected_segment
+        assert summary.psd_grid_spacing_st == pytest.approx(expected_dst, rel=1e-12)
+        # The resolution is U-independent for the frozen dt* law.
+        assert summary.psd_grid_spacing_st > 0.2, "coarse grid must be disclosed"

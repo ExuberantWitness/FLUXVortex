@@ -129,15 +129,36 @@ class WakeProbeSummary:
     # grid and PSD of the probe whose peak power is largest.
     dominant_psd_st: tuple[float, ...] = ()
     dominant_psd: tuple[float, ...] = ()
+    # Honest frequency resolution (P1_SHARED_EDGE... review, Q-C).  The
+    # Strouhal grid spacing is set by the WELCH SEGMENT length, not by the
+    # whole record: dSt = (fs / n_segment) * c / U.  For the frozen Roj
+    # cases this is 0.267 (3000 samples) or 0.400 (2000 samples), i.e. the
+    # reported peak carries ~+-dSt/2 of quantisation.  A whole-window DFT
+    # would give dSt = 1 / T*_window, so dSt <= 0.02 needs T*_window >= 50.
+    # Zero padding does not add information and is not used here.
+    psd_grid_spacing_st: float = float("nan")
+    psd_segment_samples: int = 0
+
+
+def _welch_segment_length(n_samples: int) -> int:
+    """Segment length used by the Welch estimator for ``n_samples`` points.
+
+    Starts at N/4 and halves until at least 8 segments fit with 50 % overlap.
+    This is the quantity that sets the Strouhal resolution -- report it
+    instead of assuming the whole record defines the grid.
+    """
+
+    segment = min(n_samples, max(64, n_samples // 4))
+    while segment > 64 and n_samples // (segment // 2) - 1 < 8:
+        segment = (segment // 2) + (segment % 2)
+    return segment
 
 
 def _welch_psd(signal: np.ndarray, sample_rate_hz: float) -> tuple[np.ndarray, np.ndarray]:
     """Hann-window Welch PSD with 50% overlap (8 segments minimum)."""
 
     n = signal.shape[0]
-    segment = min(n, max(64, n // 4))
-    while segment > 64 and n // (segment // 2) - 1 < 8:
-        segment = (segment // 2) + (segment % 2)
+    segment = _welch_segment_length(n)
     step = max(1, segment // 2)
     starts = range(0, n - segment + 1, step)
     window = np.hanning(segment)
@@ -232,6 +253,8 @@ def summarize_probes(
             window_start_index=int(start_index),
         )
     st_mean = float(np.mean(finite))
+    segment = _welch_segment_length(int(history.shape[0]))
+    grid_spacing_st = (1.0 / (segment * delta_time_s)) * chord_m / freestream_m_s
     return WakeProbeSummary(
         st_per_probe=tuple(st_peaks),
         st_mean=st_mean,
@@ -244,6 +267,8 @@ def summarize_probes(
         if best_st_grid is not None
         else (),
         dominant_psd=tuple(float(v) for v in best_psd) if best_psd is not None else (),
+        psd_grid_spacing_st=float(grid_spacing_st),
+        psd_segment_samples=int(segment),
     )
 
 

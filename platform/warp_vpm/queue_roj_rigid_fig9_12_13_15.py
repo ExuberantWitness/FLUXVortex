@@ -274,6 +274,11 @@ def run_case(
         "St": summary.st_mean if has_shedding else None,
         "St_modified": summary.st_modified if has_shedding else None,
         "St_spread_across_probes": summary.st_spread if has_shedding else None,
+        # Honest spectral resolution: the peak carries ~+-dSt/2 of
+        # quantisation, and dSt is set by the Welch SEGMENT length, not by
+        # the record length (P1_SHARED_EDGE review, Q-C).
+        "St_grid_spacing": summary.psd_grid_spacing_st,
+        "psd_segment_samples": summary.psd_segment_samples,
         "st_per_probe": list(summary.st_per_probe),
         "dominant_psd_st": list(summary.dominant_psd_st),
         "dominant_psd": list(summary.dominant_psd),
