@@ -84,7 +84,13 @@ def geometry_invariants(wake_rings: torch.Tensor, te_ring: torch.Tensor) -> dict
     }
 
 
-def run(alpha: float, steps: int, joint: bool) -> dict:
+def run(
+    alpha: float,
+    steps: int,
+    joint: bool,
+    particle_age: int = 100,
+    particle_capacity: int = 32768,
+) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
         spanwise_panels=NS,
@@ -105,8 +111,8 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
         aerodynamic_dt=DT,
         lesp_crit=0.11,
         wake_max_rows=300,
-        particle_capacity=32768,
-        particle_max_age_steps=100,
+        particle_capacity=particle_capacity,
+        particle_max_age_steps=particle_age,
         wake_history_mode="bound_rate",
         wake_free_rows=100,
         dvm_target_spacing_chord=0.018,
@@ -125,6 +131,8 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
     cn_series: list[float] = []
     newborn_series: list[float] = []
     particle_series: list[int] = []
+    cull_count_series: list[int] = []
+    cull_circulation_series: list[float] = []
     lev_total = 0
     particles = 0
     deposited = 0.0
@@ -145,6 +153,10 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
         newborn = max(newborn, step_newborn)
         newborn_series.append(step_newborn)
         particle_series.append(particles)
+        cull_count_series.append(int(diag.get("particle_cull_count", 0)))
+        cull_circulation_series.append(
+            float(diag.get("particle_cull_circulation", 0.0))
+        )
         kelvin = max(kelvin, float(diag["kelvin_max_abs"]))
         if step >= 2:
             geometry = solver.surface.evaluate(None, None)
@@ -179,6 +191,8 @@ def run(alpha: float, steps: int, joint: bool) -> dict:
         "cn_series": cn_series,
         "newborn_series": newborn_series,
         "particle_series": particle_series,
+        "cull_count_series": cull_count_series,
+        "cull_circulation_series": cull_circulation_series,
         "newborn_area_over_analytic": (
             geom.get("newborn_area_max_m2", float("nan")) / ANALYTIC_NEWBORN_AREA
             if geom
@@ -193,15 +207,38 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=150)
     parser.add_argument("--angles", default="0,5,15,19")
     parser.add_argument("--legacy", action="store_true", help="run with joint flag OFF")
+    parser.add_argument(
+        "--particle-age",
+        type=int,
+        default=100,
+        help="particle_max_age_steps (retention horizon; frozen Roj value 100)",
+    )
+    parser.add_argument(
+        "--particle-capacity",
+        type=int,
+        default=32768,
+        help="particle_capacity (raise together with --particle-age)",
+    )
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("GPU-only")
     angles = [float(a) for a in args.angles.split(",") if a.strip()]
-    results = [run(a, args.steps, joint=not args.legacy) for a in angles]
+    results = [
+        run(
+            a,
+            args.steps,
+            joint=not args.legacy,
+            particle_age=args.particle_age,
+            particle_capacity=args.particle_capacity,
+        )
+        for a in angles
+    ]
     payload = {
         "note": (
             "startup-segment samples (t* = steps*0.01); NOT steady-state accuracy"
         ),
+        "particle_max_age_steps": int(args.particle_age),
+        "particle_capacity": int(args.particle_capacity),
         "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
         "streamwise_segment_m": FREESTREAM * DT,
         "results": results,

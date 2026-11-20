@@ -489,6 +489,17 @@ class NativeV5MState:
     frontier_nodes: torch.Tensor
     frontier_active: torch.Tensor
     diagnostics: tuple[dict[str, Any], ...]
+    # Leading-edge shedding ledger (history metadata, like separated_previous
+    # -- NOT hashed by digest()):
+    #   lev_strip_last_release -- per-strip strength (m^2/s, same measure as
+    #     gamma_bound) deposited by the MOST RECENT release; this is the
+    #     "lambda_first" of the discrete sheet and the only unambiguous
+    #     per-strip LEV number the solver can offer (the per-particle
+    #     `circul` array is an EDGE-level quantity repeated per particle and
+    #     must never be summed per strip; see the 20261120 note).
+    #   lev_strip_released_total -- running sum of every deposit, diagnostic.
+    lev_strip_last_release: torch.Tensor | None = None
+    lev_strip_released_total: torch.Tensor | None = None
 
     def clone(self) -> "NativeV5MState":
         return NativeV5MState(
@@ -509,6 +520,16 @@ class NativeV5MState:
             ),
             frontier_nodes=self.frontier_nodes.clone(),
             frontier_active=self.frontier_active.clone(),
+            lev_strip_last_release=(
+                None
+                if self.lev_strip_last_release is None
+                else self.lev_strip_last_release.clone()
+            ),
+            lev_strip_released_total=(
+                None
+                if self.lev_strip_released_total is None
+                else self.lev_strip_released_total.clone()
+            ),
             diagnostics=tuple(dict(item) for item in self.diagnostics),
         )
 
@@ -678,6 +699,12 @@ class Q16NativeV5MSolver:
             alpha_previous=None,
             separated_previous=torch.zeros(
                 ns, device=self.device, dtype=torch.bool
+            ),
+            lev_strip_last_release=torch.zeros(
+                ns, device=self.device, dtype=torch.float64
+            ),
+            lev_strip_released_total=torch.zeros(
+                ns, device=self.device, dtype=torch.float64
             ),
             frontier_nodes=geometry.leading_edge.clone(),
             frontier_active=torch.zeros(ns + 1, device=self.device, dtype=torch.bool),
@@ -909,6 +936,17 @@ class Q16NativeV5MSolver:
         gamma_lev = result["gamma_lev_new"][:ns] * (
             self.settings.freestream * trial.reference_cell_chord
         )
+        # Leading-edge shedding ledger (m^2/s, the SAME measure as the bound
+        # circulation): the newest LE sheet row is exactly this strength, so
+        # it is the only unambiguous per-strip LEV number the solver can
+        # offer.  Never reconstruct it from particle `circul` (edge-level,
+        # repeated per particle).
+        trial.lev_strip_last_release = gamma_lev.detach().clone()
+        if trial.lev_strip_released_total is None:
+            trial.lev_strip_released_total = torch.zeros_like(gamma_lev)
+        trial.lev_strip_released_total = (
+            trial.lev_strip_released_total + gamma_lev.detach()
+        )
         alpha, _, _, node_x, node_normal = self._dvm_kinematics(geometry, trial)
         del alpha
         birth_2d = result["lev_birth_position"][ns:]
@@ -948,6 +986,13 @@ class Q16NativeV5MSolver:
         parent_digest = committed.digest()
         trial = committed.clone()
         geometry = self.surface.evaluate(structural_state, structural_velocity)
+        # This step's release is not known yet: clear the per-step record so a
+        # non-releasing step cannot inherit the previous step's strength.
+        trial.lev_strip_last_release = torch.zeros(
+            self.settings.spanwise_panels,
+            device=self.device,
+            dtype=torch.float64,
+        )
         retention = self._advance_material_state(geometry, trial)
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
         wake_velocity = self._ring_velocity(
@@ -1640,6 +1685,18 @@ class Q16NativeV5MSolver:
                 ),
                 "load_derivative_scope": load_derivative_scope,
                 "te_leg_candidate": te_leg_candidate,
+                "lev_strip_last_release_max_abs": float(
+                    torch.max(
+                        torch.abs(trial.lev_strip_last_release)
+                    ).item()
+                )
+                if trial.lev_strip_last_release is not None
+                else 0.0,
+                "lev_strip_released_total_sum": float(
+                    trial.lev_strip_released_total.sum().item()
+                )
+                if trial.lev_strip_released_total is not None
+                else 0.0,
                 "newborn_lev_circulation_max_abs": float(
                     torch.max(torch.abs(gamma_lev_newborn)).item()
                 ) if gamma_lev_newborn.numel() else 0.0,
