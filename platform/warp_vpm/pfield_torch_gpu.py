@@ -64,6 +64,122 @@ def _pfield_bs_partials(
     partials[t, b, 2] = accz
 
 
+@wp.kernel
+def _pfield_jacobian_partials(
+    targets: wp.array2d(dtype=wp.float64),
+    source_pos: wp.array2d(dtype=wp.float64),
+    source_gamma: wp.array2d(dtype=wp.float64),
+    source_sigma: wp.array1d(dtype=wp.float64),
+    block_size: int,
+    partials: wp.array3d(dtype=wp.float64),
+):
+    """Analytic velocity-gradient Jacobian of the Gaussian blob field.
+
+    STORAGE CONVENTION (documented once, because mixing it up is the classic bug):
+    component index ``3*i + m`` holds ``J[i, m] = d u_i / d x_m``.  Vortex
+    stretching is therefore ``d(gamma_i)/dt = J[i, m] gamma[m]``, i.e. contract
+    over the SECOND index (``einsum("nim,nm->ni", J, gamma)``).  This is
+    equivalent to ``rvpm_transport.py``'s ``einsum("nji,nj->ni", ...)`` because
+    that module stores the transpose; ``src/fluxvortex/particles.py:149`` stores
+    this convention but contracts the wrong index, which a prior audit flagged.
+
+    Same source loop and far-field early-out as ``_pfield_bs_partials``, but it
+    accumulates the 9 components as well.  With ``u_i = w A_i``,
+    ``A = d x gamma``, ``w = -G/(4 pi r^3)`` and
+    ``G(rho) = erf(rho/sqrt2) - sqrt(2/pi) rho exp(-rho^2/2)``:
+
+        J_im = wbr (d_m/r) A_i + w (e_m x gamma)_i,
+        wbr  = (3 G/r - G'/sigma) / (4 pi r^3),   G' = sqrt(2/pi) rho^2 exp(-rho^2/2)
+
+    Written with ``wbr`` rather than ``G'/G`` because ``G ~ rho^3`` at small rho,
+    so a ``G'/G`` form would be a 0/0 cancellation.  The trace vanishes
+    identically (``d . (d x gamma) = 0`` and the antisymmetric term is
+    trace-free), which the contract test uses as a kernel-level check.
+    """
+
+    t, b = wp.tid()
+    n_s = int(source_sigma.shape[0])
+    start = b * block_size
+    stop = wp.min(start + block_size, n_s)
+    c_half = wp.float64(0.5)
+    c_inv_sqrt2 = wp.float64(0.7071067811865476)
+    c_sqrt2_over_pi = wp.float64(0.7978845608028654)
+    c_inv_4pi = wp.float64(-0.07957747154594767)
+    zero = wp.float64(0.0)
+    j00 = zero
+    j01 = zero
+    j02 = zero
+    j10 = zero
+    j11 = zero
+    j12 = zero
+    j20 = zero
+    j21 = zero
+    j22 = zero
+    tx = targets[t, 0]
+    ty = targets[t, 1]
+    tz = targets[t, 2]
+    for s in range(start, stop):
+        dx = tx - source_pos[s, 0]
+        dy = ty - source_pos[s, 1]
+        dz = tz - source_pos[s, 2]
+        r2 = dx * dx + dy * dy + dz * dz
+        if r2 > zero:
+            r = wp.sqrt(r2)
+            sigma = source_sigma[s]
+            rho = r / sigma
+            # warp scoping: a variable first assigned inside an if/else is
+            # branch-local, so both must be declared before the branch (this
+            # silently produced an all-zero Jacobian until it was caught).
+            g_reg = zero
+            g_prime = zero
+            if rho > 12.0:
+                g_reg = wp.float64(1.0)
+                g_prime = zero
+            else:
+                e = wp.exp(-c_half * rho * rho)
+                g_reg = wp.erf(rho * c_inv_sqrt2) - c_sqrt2_over_pi * rho * e
+                g_prime = c_sqrt2_over_pi * rho * rho * e
+            w = c_inv_4pi * g_reg / (r2 * r)
+            # d/dx_m w = (d_m/r) * (1/(4 pi r^3)) (3G/r - G'/sigma); note the
+            # PLUS sign (c_inv_4pi is -1/(4 pi), so negate it here).
+            wbr = -c_inv_4pi * (
+                wp.float64(3.0) * g_reg / r - g_prime / sigma
+            ) / (r2 * r)
+            gx = source_gamma[s, 0]
+            gy = source_gamma[s, 1]
+            gz = source_gamma[s, 2]
+            ax = dy * gz - dz * gy
+            ay = dz * gx - dx * gz
+            az = dx * gy - dy * gx
+            fac = wbr / r
+            # wbr (d_m/r) A_i
+            j00 += fac * dx * ax
+            j01 += fac * dy * ax
+            j02 += fac * dz * ax
+            j10 += fac * dx * ay
+            j11 += fac * dy * ay
+            j12 += fac * dz * ay
+            j20 += fac * dx * az
+            j21 += fac * dy * az
+            j22 += fac * dz * az
+            # w (e_m x gamma)_i = w * eps_imk gamma_k  (index 3*i+m)
+            j01 += w * gz
+            j02 += w * (-gy)
+            j10 += w * (-gz)
+            j12 += w * gx
+            j20 += w * gy
+            j21 += w * (-gx)
+    partials[t, b, 0] = j00
+    partials[t, b, 1] = j01
+    partials[t, b, 2] = j02
+    partials[t, b, 3] = j10
+    partials[t, b, 4] = j11
+    partials[t, b, 5] = j12
+    partials[t, b, 6] = j20
+    partials[t, b, 7] = j21
+    partials[t, b, 8] = j22
+
+
 TYPE_FREE = 1.0
 TYPE_FRESH_SHED = 1.1
 TYPE_BOUND = 5.0
@@ -410,6 +526,64 @@ class CudaParticleField:
 
     def velocity_self_cuda(self) -> torch.Tensor:
         return self.velocity_at_cuda(self.pos[: self.n])
+
+    def velocity_and_jacobian_self_cuda(
+        self, targets: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Velocity and analytic Jacobian ``J[i,m] = du_i/dx_m`` at ``targets``.
+
+        ``targets`` defaults to the live source positions (self-evaluation, which
+        is what vortex stretching needs).  Returns ``(m,3)`` and ``(m,3,3)`` as a
+        single fused warp launch, mirroring ``velocity_at_cuda``'s block/partials
+        structure so the two kernels cannot drift apart.
+        """
+
+        if targets is None:
+            targets = self.pos[: self.n]
+        targets = _require_tensor(
+            "targets",
+            targets,
+            device=self.device,
+            shape_tail=(3,),
+            check_finite=False,
+        )
+        if targets.ndim != 2:
+            raise ValueError("particle jacobian targets must have shape (m,3)")
+        count = targets.shape[0]
+        velocity = torch.zeros_like(targets)
+        jacobian = torch.zeros(
+            (count, 3, 3), device=self.device, dtype=torch.float64
+        )
+        wp.init()
+        if self.n == 0 or count == 0:
+            return velocity, jacobian
+        n_blocks = (self.n + BS_BLOCK_SIZE - 1) // BS_BLOCK_SIZE
+        source_pos = self.pos[: self.n]
+        source_gamma = self.gamma[: self.n]
+        source_sigma = self.sigma[: self.n]
+        partials = torch.zeros(
+            (count, n_blocks, 9), device=self.device, dtype=torch.float64
+        )
+        wp.launch(
+            _pfield_jacobian_partials,
+            dim=(count, n_blocks),
+            inputs=[
+                wp.from_torch(targets.contiguous(), dtype=wp.float64),
+                wp.from_torch(source_pos.contiguous(), dtype=wp.float64),
+                wp.from_torch(source_gamma.contiguous(), dtype=wp.float64),
+                wp.from_torch(source_sigma.contiguous(), dtype=wp.float64),
+                BS_BLOCK_SIZE,
+            ],
+            outputs=[wp.from_torch(partials, dtype=wp.float64)],
+            device="cuda:0",
+        )
+        self.kernel_calls += 1
+        reduced = torch.sum(partials, dim=1)
+        jacobian.copy_(reduced.reshape(count, 3, 3))
+        # The velocity is the same kernel's first-order part; reuse the fused
+        # velocity launch so both quantities come from the identical source loop.
+        velocity.copy_(self.velocity_at_cuda(targets))
+        return velocity, jacobian
 
     def advance_wrk3(
         self,

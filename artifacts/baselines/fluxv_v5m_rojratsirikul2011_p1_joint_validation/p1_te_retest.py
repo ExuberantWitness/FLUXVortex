@@ -97,6 +97,7 @@ def run(
     le_open_drop_tev: bool = False,
     sigma_chord: float | None = None,
     spacing_chord: float | None = None,
+    ramp_steps: int = 0,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -155,9 +156,39 @@ def run(
     geom: dict = {}
     worst_gap = 0.0
     worst_cosine = -2.0
+    ramp_factor_series: list[float] = []
     for step in range(1, steps + 1):
+        # FROZEN Roj startup protocol: half-cosine 0 -> U0 over t* in [0,1]
+        # (rojratsirikul2011_q16.py:174-182, tagged "numerical_protocol").  The
+        # production runner applies it every step via apply_freestream, which sets
+        # BOTH solver.v_inf and settings.freestream; the deposit reads the latter.
+        # ramp_steps=0 keeps the historical impulsive start.
+        if ramp_steps > 0:
+            time_star = step * DT_STAR
+            startup = ramp_steps * DT_STAR
+            factor = (
+                1.0
+                if time_star >= startup
+                else 0.5 * (1.0 - math.cos(math.pi * time_star / startup))
+            )
+        else:
+            factor = 1.0
+        ramp_factor_series.append(factor)
+        speed = FREESTREAM * factor
+        solver.v_inf = torch.tensor(
+            [speed, 0.0, 0.0], device=DEVICE, dtype=torch.float64
+        )
+        object.__setattr__(solver.settings, "freestream", speed)
         proposal = stepper.propose(owner, (kin.evaluate(step * DT),), DT)
-        cn_series.append(float(torch.dot(proposal.load.total_force, normal).item()) / Q_AREA)
+        # ramp_steps == 0 must reproduce the historical normalisation bit for bit,
+        # so use the module constant outright instead of re-deriving it.
+        if ramp_steps > 0:
+            q_live = max(
+                0.5 * 1.208 * speed * speed * CHORD_M * SPAN_M, 1.0e-300
+            )
+        else:
+            q_live = Q_AREA
+        cn_series.append(float(torch.dot(proposal.load.total_force, normal).item()) / q_live)
         stepper.commit(owner, proposal)
         diag = owner.state.diagnostics[-1]
         lev_total += int(diag["lev_release_count"])
@@ -220,6 +251,7 @@ def run(
         "te_leg_delta_cn_series": te_leg_delta_cn_series,
         "cull_count_series": cull_count_series,
         "cull_circulation_series": cull_circulation_series,
+        "ramp_factor_series": ramp_factor_series,
         "newborn_area_over_analytic": (
             geom.get("newborn_area_max_m2", float("nan")) / ANALYTIC_NEWBORN_AREA
             if geom
@@ -289,6 +321,15 @@ def main() -> int:
         default=None,
         help="EXPERIMENT ONLY (route A): dvm_target_spacing_chord; must stay sigma/2.125",
     )
+    parser.add_argument(
+        "--ramp-steps",
+        type=int,
+        default=0,
+        help="Frozen Roj startup ramp: half-cosine 0->U0 over the first N steps "
+        "(t* = N*0.01). The project value is t*=1 => 100 steps, tagged "
+        "numerical_protocol and excluded from statistics. 0 keeps the historical "
+        "impulsive start (the +43..+73 first-step cn artefact).",
+    )
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("GPU-only")
@@ -309,6 +350,7 @@ def main() -> int:
             le_open_drop_tev=le_open_drop_tev,
             sigma_chord=args.sigma,
             spacing_chord=args.spacing,
+            ramp_steps=int(args.ramp_steps),
         )
         for a in angles
     ]
@@ -322,9 +364,12 @@ def main() -> int:
         "le_open_deposit_drop_tev_compensation": le_open_drop_tev,
         "dvm_smoothing_radius_chord": args.sigma,
         "dvm_target_spacing_chord": args.spacing,
+        "ramp_steps": int(args.ramp_steps),
+        "ramp_protocol": "frozen half-cosine 0->U0 over t* in [0,1]; 0 = impulsive start",
         "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
         "streamwise_segment_m": FREESTREAM * DT,
         "results": results,
+        "ramp_factor_series": results[0].get("ramp_factor_series"),
     }
     with open(args.out, "w") as handle:
         json.dump(payload, handle, indent=1)
