@@ -201,6 +201,12 @@ class NativeV5MConfig:
     # the wake row actually inserted (gamma_tev = Gamma_TE + gamma_lev).
     # Measurement only -- no production path reads the result.  Default OFF.
     te_leg_candidate_diagnostic: bool = False
+    # E1-FLUX (experimental, default OFF): prescribe the shed leading-edge
+    # circulation from the sharp-edge vorticity-flux law
+    # dGamma = 0.5*U_s^2*dt instead of solving it from the LE
+    # no-penetration closure.  Makes Gamma_shed proportional to dt (bounded);
+    # see the L2-1 oracle finding (ratio 22.9 -> 48.5 when dt halves).
+    flux_consistent_shedding: bool = False
     # P1 joint separation solve (experimental, default OFF). Uses the real
     # deposited ribbon basis and an independent deposited-flow gate. A
     # small instantaneous residual does not certify sustained separation;
@@ -221,6 +227,8 @@ class NativeV5MConfig:
             raise TypeError("load_derivative_active_set must be an exact bool")
         if type(self.te_leg_candidate_diagnostic) is not bool:
             raise TypeError("te_leg_candidate_diagnostic must be an exact bool")
+        if type(self.flux_consistent_shedding) is not bool:
+            raise TypeError("flux_consistent_shedding must be an exact bool")
         if self.wake_history_mode not in LOAD_HISTORY_MODELS:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
@@ -1141,6 +1149,10 @@ class Q16NativeV5MSolver:
         active_indices = le_indices[pin_active]
         lesp_pre = -gamma_pre[:ns] / scale
         gamma_lev_newborn = torch.zeros(ns, device=self.device, dtype=torch.float64)
+        # E1-FLUX diagnostics must exist on every path (attached / legacy /
+        # joint), otherwise the diagnostics dict raises UnboundLocalError.
+        flux_shed_max = 0.0
+        le_flux_residual = torch.zeros((), device=self.device, dtype=torch.float64)
         joint_solve = bool(getattr(self.settings, "joint_separation_solve", False))
         # B1: the load derivative operators (Mf1 and the substep Mf2_1) must
         # linearize the SAME bound system that produced gamma.  The assembler
@@ -1219,26 +1231,99 @@ class Q16NativeV5MSolver:
             # Linearity of the pinned solve: Gamma(gamma) = Gamma_0 +
             # sum_j gamma_j Gamma_j with Gamma_j = solve(pin, -b_j).
             gamma_0 = torch.linalg.solve(pinned_aic, pinned_rhs0)
+            # ------------------------------------------------------------------
+            # E1-FLUX (experimental, default OFF): prescribe the shed
+            # circulation from the sharp-edge vorticity-flux law instead of
+            # solving it from the LE no-penetration closure.
+            #
+            #     dGamma_shed = 0.5 * U_s^2 * dt     (Kaden/Didden slug model)
+            #
+            # Why: the L2-1 oracle showed the solved circulation is O(20-50)x
+            # the flux estimate AND dt-independent (ratio doubles when dt
+            # halves), so gamma_recon = Gamma/ds ~ 1/dt -- refining the time
+            # step amplifies the near-LE sheet instead of resolving it.  The
+            # flux law makes Gamma_shed proportional to dt and to U_s^2, hence
+            # bounded by construction and the self-induction loop cannot close.
+            #
+            # U_s is taken from the UNCONSTRAINED pre-solve bound solution
+            # (gamma_pre, LE row) divided by the first-cell chord: for a vortex
+            # sheet the tangential velocity jump equals its strength, so this is
+            # the discrete slip at separation, available without circularity.
+            #
+            # Consequence, recorded honestly: the LE no-penetration row is NOT
+            # satisfied exactly in this mode (the sheet strength is prescribed,
+            # not solved).  The residual is recorded as a diagnostic and the
+            # strict deposited-flow gate is downgraded to finite checks here.
+            # This is a different discrete shedding MODEL, not a relaxed gate
+            # on the old model.
+            flux_mode = bool(getattr(self.settings, "flux_consistent_shedding", False))
+            le_flux_residual = torch.zeros((), device=self.device, dtype=torch.float64)
+            if flux_mode:
+                dx_le = 0.5 * (
+                    torch.linalg.vector_norm(
+                        geometry.rings[:ns, 3] - geometry.rings[:ns, 0], dim=1
+                    )
+                    + torch.linalg.vector_norm(
+                        geometry.rings[:ns, 2] - geometry.rings[:ns, 1], dim=1
+                    )
+                )
+                slip = torch.abs(gamma_pre[:ns]) / torch.clamp(dx_le, min=1e-30)
+                shed_flux = 0.5 * slip**2 * self.settings.aerodynamic_dt
+                newborn = (
+                    torch.sign(lesp_pre[active_indices])
+                    * shed_flux[active_indices]
+                )
+                # The prescribed sheet also induces at every collocation point,
+                # so the bound circulation must be re-solved with that induction
+                # moved to the RHS.  Non-LE rows then close EXACTLY, while the
+                # LE rows stay pinned at the critical LESP and their residual
+                # (the part this model does not enforce) is recorded.
+                pinned_rhs_flux = pinned_rhs0.clone()
+                non_le_rows = torch.ones(
+                    panel_count, device=self.device, dtype=torch.bool
+                )
+                non_le_rows[active_indices] = False
+                sheet_induction = ribbon_basis @ newborn
+                pinned_rhs_flux = pinned_rhs_flux - (
+                    non_le_rows.to(torch.float64) * sheet_induction
+                )
+                gamma = torch.linalg.solve(pinned_aic, pinned_rhs_flux)
+                gamma_lev_newborn[active_indices] = newborn
+                le_flux_residual = torch.max(
+                    torch.abs(
+                        aic[active_indices] @ gamma
+                        + ribbon_basis[active_indices, :] @ newborn
+                        - rhs[active_indices]
+                    )
+                )
+                flux_shed_max = float(torch.max(torch.abs(newborn)).item())
+                if not bool(torch.isfinite(newborn).all().item()):
+                    raise FloatingPointError(
+                        "E1-FLUX prescribed a non-finite shed circulation"
+                    )
+            else:
+                flux_shed_max = 0.0
             basis_rhs = -ribbon_basis  # (P, k)
             # The pin constrains the ABSOLUTE bound value (carried by
             # gamma_0); basis responses must keep the pinned rows at zero.
             basis_rhs[active_indices, :] = 0.0
-            pinned_batch = pinned_aic[None, :, :].expand(k, -1, -1).contiguous()
-            gammas_j = torch.linalg.solve(
-                pinned_batch, basis_rhs.T.contiguous()[:, :, None]
-            ).squeeze(-1)  # (k, P): row j = Gamma_j
-            # LE-row closure with the REAL ribbon operator: for each active
-            # strip s: aic[le_s].Gamma(gamma) + sum_j b[le_s, j] gamma_j
-            # = rhs[le_s].  (The pinned rows themselves do not enforce the
-            # LE no-penetration; the newborn sheet does, exactly.)
-            le_rows = aic[active_indices]  # (k, P)
-            closure_matrix = (
-                le_rows @ gammas_j.T + ribbon_basis[active_indices, :]
-            )  # (k, k)
-            closure_rhs = rhs[active_indices] - le_rows @ gamma_0
-            newborn = torch.linalg.solve(closure_matrix, closure_rhs)
-            gamma = gamma_0 + newborn @ gammas_j
-            gamma_lev_newborn[active_indices] = newborn
+            if not flux_mode:
+                pinned_batch = pinned_aic[None, :, :].expand(k, -1, -1).contiguous()
+                gammas_j = torch.linalg.solve(
+                    pinned_batch, basis_rhs.T.contiguous()[:, :, None]
+                ).squeeze(-1)  # (k, P): row j = Gamma_j
+                # LE-row closure with the REAL ribbon operator: for each active
+                # strip s: aic[le_s].Gamma(gamma) + sum_j b[le_s, j] gamma_j
+                # = rhs[le_s].  (The pinned rows themselves do not enforce the
+                # LE no-penetration; the newborn sheet does, exactly.)
+                le_rows = aic[active_indices]  # (k, P)
+                closure_matrix = (
+                    le_rows @ gammas_j.T + ribbon_basis[active_indices, :]
+                )  # (k, k)
+                closure_rhs = rhs[active_indices] - le_rows @ gamma_0
+                newborn = torch.linalg.solve(closure_matrix, closure_rhs)
+                gamma = gamma_0 + newborn @ gammas_j
+                gamma_lev_newborn[active_indices] = newborn
             if use_active_set:
                 # Pinned operator: exact for the bound block (the pin RHS is
                 # velocity-independent), but it omits the newborn-coupling
@@ -1274,7 +1359,21 @@ class Q16NativeV5MSolver:
         if joint_solve:
             residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
             residual_max = torch.max(torch.abs(total_residual))
-            if bool((residual_max > self.settings.gate_rtol * residual_scale).item()):
+            if bool(getattr(self.settings, "flux_consistent_shedding", False)) and active_indices.numel():
+                # E1-FLUX prescribes the shed strength, so the LE rows are not
+                # equations of this model.  Every other row must still close
+                # exactly; the LE residual lives in the diagnostics.
+                non_le = torch.ones_like(total_residual, dtype=torch.bool)
+                non_le[active_indices] = False
+                non_le_max = torch.max(torch.abs(total_residual[non_le]))
+                if bool(
+                    (non_le_max > self.settings.gate_rtol * residual_scale).item()
+                ):
+                    raise RuntimeError(
+                        "native V5M E1-FLUX: non-LE Neumann rows failed: "
+                        f"{float(non_le_max.item()):.9e} m/s"
+                    )
+            elif bool((residual_max > self.settings.gate_rtol * residual_scale).item()):
                 raise RuntimeError("native V5M full-surface Neumann rows failed")
         else:
             retained = torch.ones_like(rhs, dtype=torch.bool)
@@ -1358,7 +1457,31 @@ class Q16NativeV5MSolver:
             )
             residual_max = torch.max(torch.abs(deposited_residual))
             residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
-            if not bool(torch.isfinite(deposited_residual).all().item()) or bool(
+            if not bool(torch.isfinite(deposited_residual).all().item()):
+                raise FloatingPointError(
+                    "native V5M joint deposited-flow Neumann residual is non-finite"
+                )
+            if bool(getattr(self.settings, "flux_consistent_shedding", False)):
+                # E1-FLUX prescribes the shed strength, so the LE rows are not
+                # equations of this model and are not required to close; every
+                # other row must.  The LE residual is recorded in the
+                # diagnostics (flux_le_no_penetration_residual), and this is a
+                # DIFFERENT discrete model, not a relaxed gate on the old one.
+                non_le_mask = torch.ones_like(
+                    deposited_residual, dtype=torch.bool
+                )
+                non_le_mask[active_indices] = False
+                non_le_deposited = torch.max(
+                    torch.abs(deposited_residual[non_le_mask])
+                )
+                if bool(
+                    (non_le_deposited > self.settings.gate_rtol * residual_scale).item()
+                ):
+                    raise RuntimeError(
+                        "native V5M E1-FLUX: non-LE deposited-flow rows failed: "
+                        f"{float(non_le_deposited.item()):.9e} m/s"
+                    )
+            elif bool(
                 (residual_max > self.settings.gate_rtol * residual_scale).item()
             ):
                 raise RuntimeError(
@@ -1684,6 +1807,11 @@ class Q16NativeV5MSolver:
                     "synchronous_rk3" if joint_solve else "legacy_split_frozen_ring_sources"
                 ),
                 "load_derivative_scope": load_derivative_scope,
+                "flux_consistent_shedding": bool(
+                    getattr(self.settings, "flux_consistent_shedding", False)
+                ),
+                "flux_shed_max": float(flux_shed_max),
+                "flux_le_no_penetration_residual": float(le_flux_residual.item()),
                 "te_leg_candidate": te_leg_candidate,
                 "lev_strip_last_release_max_abs": float(
                     torch.max(

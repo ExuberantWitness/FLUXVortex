@@ -90,6 +90,7 @@ def run(
     joint: bool,
     particle_age: int = 100,
     particle_capacity: int = 32768,
+    flux: bool = False,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -118,6 +119,7 @@ def run(
         dvm_target_spacing_chord=0.018,
         device=DEVICE,
         joint_separation_solve=joint,
+        flux_consistent_shedding=flux,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -208,6 +210,11 @@ def main() -> int:
     parser.add_argument("--angles", default="0,5,15,19")
     parser.add_argument("--legacy", action="store_true", help="run with joint flag OFF")
     parser.add_argument(
+        "--flux",
+        action="store_true",
+        help="E1-FLUX: prescribe the shed circulation as 0.5*U_s^2*dt",
+    )
+    parser.add_argument(
         "--particle-age",
         type=int,
         default=100,
@@ -230,6 +237,7 @@ def main() -> int:
             joint=not args.legacy,
             particle_age=args.particle_age,
             particle_capacity=args.particle_capacity,
+            flux=args.flux,
         )
         for a in angles
     ]
