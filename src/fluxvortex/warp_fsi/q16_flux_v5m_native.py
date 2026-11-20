@@ -188,6 +188,14 @@ class NativeV5MConfig:
     dvm_smoothing_radius_chord: float = 0.04
     dvm_target_spacing_chord: float = 0.04 / 2.125
     gate_rtol: float = 1.0e-8
+    # B1 (U4): linearize the LOAD operators (Mf1, Mf2_1) on the SAME bound
+    # constraint set that produced gamma, instead of the all-Neumann AIC.
+    # Exact for the legacy pinned/separated system (the pin target is
+    # velocity- and acceleration-independent); on the joint path it uses the
+    # pinned operator and omits the newborn-coupling Schur term, which is
+    # recorded in the diagnostics as 'pinned_ignores_newborn_coupling'.
+    # Default OFF: the production path keeps the historical operator.
+    load_derivative_active_set: bool = False
     # P1 joint separation solve (experimental, default OFF). Uses the real
     # deposited ribbon basis and an independent deposited-flow gate. A
     # small instantaneous residual does not certify sustained separation;
@@ -204,6 +212,8 @@ class NativeV5MConfig:
             raise ValueError("particle_max_age_steps must be a non-negative exact int")
         if type(self.joint_separation_solve) is not bool:
             raise TypeError("joint_separation_solve must be an exact bool")
+        if type(self.load_derivative_active_set) is not bool:
+            raise TypeError("load_derivative_active_set must be an exact bool")
         if self.wake_history_mode not in LOAD_HISTORY_MODELS:
             raise ValueError("wake_history_mode must be 'material' or 'bound_rate'")
         if type(self.wake_free_rows) is not int or self.wake_free_rows < 0:
@@ -1080,6 +1090,16 @@ class Q16NativeV5MSolver:
         lesp_pre = -gamma_pre[:ns] / scale
         gamma_lev_newborn = torch.zeros(ns, device=self.device, dtype=torch.float64)
         joint_solve = bool(getattr(self.settings, "joint_separation_solve", False))
+        # B1: the load derivative operators (Mf1 and the substep Mf2_1) must
+        # linearize the SAME bound system that produced gamma.  The assembler
+        # receives `aic` and stores it for velocity_force(), so this is the
+        # single place to redirect them.  Off by default: the production path
+        # keeps the historical unconstrained operator bit-for-bit.
+        load_derivative_aic = aic
+        load_derivative_scope = "unconstrained"
+        use_active_set = bool(
+            getattr(self.settings, "load_derivative_active_set", False)
+        )
         if joint_solve and active_indices.numel():
             # P1-2 REAL-operator joint solve: the newborn-LEV basis is the
             # induction of the material vortex-sheet ribbon that will
@@ -1167,6 +1187,13 @@ class Q16NativeV5MSolver:
             newborn = torch.linalg.solve(closure_matrix, closure_rhs)
             gamma = gamma_0 + newborn @ gammas_j
             gamma_lev_newborn[active_indices] = newborn
+            if use_active_set:
+                # Pinned operator: exact for the bound block (the pin RHS is
+                # velocity-independent), but it omits the newborn-coupling
+                # term B (E A^-1 B)^-1 E A^-1 of the augmented Schur
+                # complement.  Declared, not hidden.
+                load_derivative_aic = pinned_aic
+                load_derivative_scope = "pinned_ignores_newborn_coupling"
         elif active_indices.numel():
             # legacy production path: pin row replaces the LE no-penetration
             separated_aic = aic.clone()
@@ -1176,6 +1203,12 @@ class Q16NativeV5MSolver:
             separated_aic[active_indices, active_indices] = 1.0
             separated_rhs[active_indices] = (-source_a0 * scale)[pin_active]
             gamma = torch.linalg.solve(separated_aic, separated_rhs)
+            if use_active_set:
+                # Exact: d(gamma)/d(rhs) = separated_aic^-1 because the pin
+                # target sign*crit*scale does not depend on velocity or
+                # acceleration.
+                load_derivative_aic = separated_aic
+                load_derivative_scope = "separated_pinned_exact"
         else:
             gamma = torch.linalg.solve(aic, rhs)
         # Acceptance: joint path checks the FULL surface (LE included);
@@ -1378,7 +1411,7 @@ class Q16NativeV5MSolver:
         author_load = self.author_load_assembler.assemble(
             structural_state=structural_state,
             geometry=geometry,
-            aic=aic,
+            aic=load_derivative_aic,
             gamma=gamma,
             external_flow=external_flow,
             gamma_gradient=gradient,
@@ -1562,6 +1595,7 @@ class Q16NativeV5MSolver:
                 "material_convection_scheme": (
                     "synchronous_rk3" if joint_solve else "legacy_split_frozen_ring_sources"
                 ),
+                "load_derivative_scope": load_derivative_scope,
                 "newborn_lev_circulation_max_abs": float(
                     torch.max(torch.abs(gamma_lev_newborn)).item()
                 ) if gamma_lev_newborn.numel() else 0.0,
