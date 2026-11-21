@@ -527,6 +527,32 @@ def assemble_native_ring_geometry(
 
 
 
+def _read_device_scalars(
+    floats: tuple[torch.Tensor, ...], ints: tuple[torch.Tensor, ...]
+) -> tuple[list[float], list[int]]:
+    """Read a batch of 0-dim device tensors with ONE host sync per dtype.
+
+    The step diagnostics used to call ``.item()`` ~14 times per proposal; each call
+    is a full stream synchronisation (measured 1,524 items and 1,270 syncs per
+    aerodynamic step in the A16 profile).  Stacking the reductions and copying once
+    transfers the SAME values, so every diagnostics number stays bit-identical --
+    that is what makes this a lossless change rather than a numerics change.
+    Ints are kept in their own stack so no dtype cast is involved either.
+    """
+
+    float_values = (
+        torch.stack([value.reshape(()) for value in floats]).cpu().tolist()
+        if floats
+        else []
+    )
+    int_values = (
+        [int(item) for item in torch.stack([value.reshape(()) for value in ints]).cpu().tolist()]
+        if ints
+        else []
+    )
+    return float_values, int_values
+
+
 def native_aic(geometry: NativeV5MGeometry, *, chordwise_panels: int) -> torch.Tensor:
     expanded = native_ring_velocity_expanded(
         geometry.collocation,
@@ -1967,12 +1993,49 @@ class Q16NativeV5MSolver:
         trial.gamma_bound = gamma.clone()
         trial.separated_previous = surface_separated.clone()
         trial.step += 1
+        # One device->host read for the whole diagnostics block: 14 independent
+        # .item() calls collapsed to 2 (one float64 stack, one int64 stack).
+        released_total = trial.lev_strip_released_total
+        batch, batch_ints = _read_device_scalars(
+            (
+                torch.max(torch.abs(lesp_pre_3d)),
+                pin_error,
+                kelvin,
+                torch.sum(trial.gamma_bound),
+                torch.sum(released_total) if released_total is not None else torch.zeros((), device=self.device, dtype=torch.float64),
+                torch.max(torch.abs(released_total)) if released_total is not None else torch.zeros((), device=self.device, dtype=torch.float64),
+                residual_max,
+                algebraic_neumann_max,
+                le_flux_residual,
+                torch.max(torch.abs(trial.lev_strip_last_release)) if trial.lev_strip_last_release is not None else torch.zeros((), device=self.device, dtype=torch.float64),
+                torch.max(torch.abs(gamma_lev_newborn)) if gamma_lev_newborn.numel() else torch.zeros((), device=self.device, dtype=torch.float64),
+            ),
+            (
+                torch.count_nonzero(released),
+                torch.count_nonzero(pin_active),
+                torch.count_nonzero(release_owner_conflicts),
+            ),
+        )
+        (
+            lesp_pre_max_abs_host,
+            pin_error_host,
+            kelvin_host,
+            bound_circulation_host,
+            lev_released_host,
+            lev_released_max_host,
+            residual_max_host,
+            algebraic_neumann_host,
+            le_flux_residual_host,
+            lev_strip_last_release_host,
+            newborn_host,
+        ) = batch
+        lev_release_count_host, separated_strip_host, owner_conflicts_host = batch_ints
         trial.diagnostics = trial.diagnostics + (
             {
                 "step": trial.step,
-                "lev_release_count": int(torch.count_nonzero(released).item()),
-                "separated_strip_count": int(torch.count_nonzero(pin_active).item()),
-                "release_owner_conflicts": int(torch.count_nonzero(release_owner_conflicts).item()),
+                "lev_release_count": lev_release_count_host,
+                "separated_strip_count": separated_strip_host,
+                "release_owner_conflicts": owner_conflicts_host,
                 "release_gate_overrides": release_gate_overrides,
                 # Release-flow decomposition (audit R3)
                 "release_3d_only_count": release_3d_only_count,
@@ -1982,8 +2045,8 @@ class Q16NativeV5MSolver:
                 "strips_with_existing_lev_circulation": (
                     strips_with_existing_lev_circulation
                 ),
-                "lesp_pre_max_abs": float(torch.max(torch.abs(lesp_pre_3d)).item()),
-                "lesp_pin_max_abs": float(pin_error.item()),
+                "lesp_pre_max_abs": lesp_pre_max_abs_host,
+                "lesp_pin_max_abs": pin_error_host,
                 # L2-5: this is an ALGEBRAIC IDENTITY, not evidence.
                 # gamma_tev is assembled as Gamma_TE + gamma_lev and then
                 # subtracted from itself, so the residual is zero by
@@ -1991,17 +2054,13 @@ class Q16NativeV5MSolver:
                 # be reported as "kelvin_max_abs", which reads like a conservation
                 # check and was cited as one.  Renamed to say what it is, and the
                 # real cross-time ledger below is what should be quoted instead.
-                "kelvin_identity_residual": float(kelvin.item()),
-                "bound_circulation_total": float(
-                    torch.sum(trial.gamma_bound).item()
-                ),
+                "kelvin_identity_residual": kelvin_host,
+                "bound_circulation_total": bound_circulation_host,
                 "lev_released_total": (
-                    float(torch.sum(trial.lev_strip_released_total).item())
-                    if trial.lev_strip_released_total is not None
-                    else 0.0
+                    lev_released_host if released_total is not None else 0.0
                 ),
-                "full_surface_neumann_max_abs": float(residual_max.item()),
-                "algebraic_neumann_max_abs": float(algebraic_neumann_max.item()),
+                "full_surface_neumann_max_abs": residual_max_host,
+                "algebraic_neumann_max_abs": algebraic_neumann_host,
                 "neumann_acceptance_scope": (
                     "deposited_flow_all_rows" if joint_solve else "legacy_retained_rows"
                 ),
@@ -2015,23 +2074,18 @@ class Q16NativeV5MSolver:
                 "flux_shed_max": float(flux_shed_max),
                 "le_constraint_window_steps": int(le_window_steps),
                 "le_window_old_particle_fraction": float(le_window_fraction),
-                "flux_le_no_penetration_residual": float(le_flux_residual.item()),
+                "flux_le_no_penetration_residual": le_flux_residual_host,
                 "te_leg_candidate": te_leg_candidate,
-                "lev_strip_last_release_max_abs": float(
-                    torch.max(
-                        torch.abs(trial.lev_strip_last_release)
-                    ).item()
-                )
-                if trial.lev_strip_last_release is not None
-                else 0.0,
-                "lev_strip_released_total_sum": float(
-                    trial.lev_strip_released_total.sum().item()
-                )
-                if trial.lev_strip_released_total is not None
-                else 0.0,
-                "newborn_lev_circulation_max_abs": float(
-                    torch.max(torch.abs(gamma_lev_newborn)).item()
-                ) if gamma_lev_newborn.numel() else 0.0,
+                "lev_strip_last_release_max_abs": (
+                    lev_strip_last_release_host
+                    if trial.lev_strip_last_release is not None
+                    else 0.0
+                ),
+                "lev_strip_released_total_sum": (
+                    lev_released_host if released_total is not None else 0.0
+                ),
+                "lev_strip_released_total_abs_max": lev_released_max_host,
+                "newborn_lev_circulation_max_abs": newborn_host,
                 "wake_ring_count": int(trial.wake_gamma.numel()),
                 "particle_count": int(trial.particle_field.n),
                 "cuda_float64": True,
