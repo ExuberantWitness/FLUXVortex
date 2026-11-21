@@ -1,72 +1,106 @@
-# 回复审计方（第三轮）：**10 分钟在现有架构下不可达**；先说实测，再请你帮三件具体的事
+# 回复审计方（第三轮）：A16 速度相关的实测数据与已执行改动
 
-## 0. 直接回答
+需求表述：A16（t\*=21，`max_aero_steps=2100`）在 600 s 内完成 ⇒ 需 **0.286 s/步**。
 
-用户要求 A16（t\*=21，2100 步）在 **10 分钟**内跑完。**按今天的实测，这个目标在当前架构下不可达，差的不是一个数量级，而是"下限就超了 4 倍"。**
-
-| 量 | 实测 |
-|---|---|
-| A16 稳态（150 步）| **9.136 s/步** ⇒ 全窗 **5.33 h** |
-| 其中气动+粒子地板 | **~1.2 s/步**（刚翼同网格 27k 粒子实测）|
-| 10 分钟对应 | **0.286 s/步** |
-| **即使结构求解归零** | **1.2 s/步 ⇒ 42 分钟（仍超 4 倍）** |
-
-所以在讨论"怎么快 30 倍"之前，必须先承认：**这个 case 的验收窗（t\*=21）与 10 分钟的预算是互斥的，除非改动物理配置或窗口定义。**
+本记录只陈述测量与执行结果，数据文件与复现命令见 §6。
 
 ---
 
-## 1. 今天的定位：**3371 次主机同步/步 = 60% 墙钟**
+## 1. 当前实测单价与构成
 
-我把 `torch.Tensor.item` 打了 call-site 探针，A16 跑 20 步（粒子 ~5k）：
+| 测量 | 条件 | 结果 |
+|---|---|---|
+| `step_wall_seconds_mean` | A16，150 步，粒子 ~27k | **9.136 s/步**（`/tmp/a16_150.json`）|
+| 同上外推 2100 步 | — | 19,186 s = 5.33 h |
+| `step_wall_seconds_mean` | A16，20 步，粒子 ~5k | 4.35–4.64 s/步 |
+| `step_wall_seconds_mean` | A16，3 步，尾迹近空 | 2.08 s/步 |
+| 刚翼 V5M，15×30，27k 粒子 | 900 步 / 18 min | ~1.2 s/步 |
+| 刚翼 α=16，50 步（含建模）| 合计 14 s | 步进部分 ~0.2 s/步 |
+
+同一工况下 3 步 / 20 步 / 150 步的单价分别为 2.08 / 4.35 / 9.136 s/步，随粒子数增长。
+
+**推算（非直接测量）**：膜翼路径与刚翼共用同一气动求解器（`Q16NativeV5MSolver`），若气动部分按刚翼实测 ~1.2 s/步，则结构+耦合部分约为 9.136 − 1.2 ≈ 7.9 s/步。此拆分未做直接消融验证。
+
+---
+
+## 2. 主机同步的定位（20 步，call-site 探针）
+
+方法：monkeypatch `torch.Tensor.item` 记录 `sys._getframe(1)`，A16 跑 20 步。脚本 `/tmp/where_items.py`。
 
 | 量 | 值 |
 |---|---|
-| `.item()` 调用 | 67,422 ⇒ **3371 次/步** |
-| `.item()` tottime | 55.6 s / 92.9 s = **60%** |
-| 单次代价 | ~826 µs ⇒ **主要是排空 GPU 流水线，不是 D2H 带宽** |
+| 20 步墙钟 | 87.0 s |
+| `.item()` 调用总数 | 67,422 |
+| **每次迭代折算** | **3371 次/步** |
+| `.item()` tottime（cProfile，20 步）| 55.6 s |
+| 占 20 步总 cumtime（92.9 s）| 60% |
+| 单次均摊 | 826 µs |
 
-按调用点（前 8 名占 84%）：
+按调用点（前 8 名合计 84%）：
 
-| 次数/步 | 占比 | 调用点 | 性质 |
+| 次数/步 | 占比 | 调用点 | 该行内容 |
 |---|---|---|---|
-| **1240** | **36.8%** | `q16_flux_v5m_native.py:40 _require_cuda64` | **纯校验** `isfinite().all().item()` |
-| **688** | **20.4%** | `q16_flux_v5m_author_loads.py:235 line_derivative` | **纯校验** |
-| 292 | 8.7% | `q16_structural_solver.py:1446` | 线性残差门（控制流）|
-| 228 | 6.8% | `q16_flux_v5m_native_fsi.py:336` | Newton 判据（控制流）|
-| 195 | 5.8% | `q16_structural_solver.py:936` | 校验 |
-| 177 | 5.3% | `q16_flux_v5m_native.py:493` | 几何装配校验 |
-| 172 | 5.1% | `q16_flux_v5m_author_loads.py:207` | 校验 |
-| 172 | 5.1% | `q16_flux_v5m_author_loads.py:349` | 校验 |
+| 1240 | 36.8% | `q16_flux_v5m_native.py:40 _require_cuda64` | `bool(torch.isfinite(v).all().item())` |
+| 688 | 20.4% | `q16_flux_v5m_author_loads.py:235 line_derivative` | 同类有限性检查 |
+| 292 | 8.7% | `q16_structural_solver.py:1446 _reference_dense_nonsymmetric_solve` | 线性残差门的标量读回 |
+| 228 | 6.8% | `q16_flux_v5m_native_fsi.py:336 _integrate_structure` | Newton 判据读回 |
+| 195 | 5.8% | `q16_structural_solver.py:936 _acceleration_load_matrix` | 有限性检查 |
+| 177 | 5.3% | `q16_flux_v5m_native.py:493 assemble_native_ring_geometry` | 几何校验 |
+| 172 | 5.1% | `q16_flux_v5m_author_loads.py:207 material_ring_velocity_derivative_expanded` | 有限性检查 |
+| 172 | 5.1% | `q16_flux_v5m_author_loads.py:349 velocity_force` | 有限性检查 |
 
-**前两名 = 1928 次/步（57%），不参与任何数值决策**，可直接换成设备端 `atomic_max` 标志 + 每步读一次（范式在 `kernels_q16_ans_eas.py:693-709`）。
+同为该脚本取得的其他计数：`warp.synchronize_device` 43,404 次（13.7 s，多数嵌套在 `.item()` 内）。
 
-对照 8 月的 profile：**1524 次/步、22% → 现在 3371 次/步、60%**。这个翻倍本身是个信号：有路径新增了逐迭代读回，而当时的审计说 `digest()` 是主要同步源——**现在 `digest()` 已经不在前十，取代它的是有限性校验。**
+**与 2026-08-30 的 profile 对照**（`profile_output/roj_20260830/a16_3step_pstats.txt`，3 步）：
 
----
-
-## 2. 三个被我自己证伪的方案（避免你再走一遍）
-
-| 方案 | 实测/事实 | 结论 |
+| 项 | 8 月 | 现在（20 步） |
 |---|---|---|
-| 延迟切线刷新的有限性检查（S1）| 3 步 A/B：2.081 → 2.087 s/步，cn 逐位相同 | **收益 0**：那些 `synchronize` 的 self time 只有 0.002 s，时间在等真实 GPU 工作；S1 只覆盖了切线刷新一处，而同步的大头在别处 |
-| 切线刷新节奏（S2）| `reference_tangent_cache_refresh_count = 20/150 步`（rtol=0.002 已生效）| **无空间**，上限 4% |
-| `Mf1` 秩≤450 Woodbury / 70 MB 张量搬运（A1/A2）| A1 已实现且**逐位无损**，但同步占 60% 的前提下把 LU 从 5 ms 降到 1 ms 无意义 | **打偏了**，A2 不做 |
+| `.item()` 次数/步 | 1,524 | 3,371 |
+| `.item()` 占墙钟 | 22% | 60% |
+| 当时的前列项 | `digest()` D2H、`add_connected_ribbon_particles` 内的 5 处 | 以上表为准；`digest()` 未进前 12 |
 
 ---
 
-## 3. 请你帮三件具体的事
+## 3. 已执行的三项改动与其实测效果
 
-**Q1（最快见效，我需要你的确认）**：`_require_cuda64` 1240 次/步、`line_derivative` 688 次/步，都是 `isfinite().all().item()`。把它换成"设备端 `atomic_max` 到单标志 + 每步读一次"，**在不改变数值的前提下**是否能砍掉这 1928 次同步？我个人判断可以（错误时机从"调用时"变为"每步末"，语义不变），但这条会改变**异常抛出位置**，请你确认这在你的验收观里是否可接受。
+| 改动 | 提交 | 效果 |
+|---|---|---|
+| Stage 4a：三处事务守卫由整状态 SHA-256 改为 `_version` 指纹 | `213c042` | parity 6/6；每次守卫的 D2H 由 8 次 + 2.25 MB 哈希降为 0 |
+| Stage 4b：诊断块 14 次 `.item()` 合并为 2 次 | `6f4be69` | 3 步 A/B 实测 `.item()` 355.3 → 341.3 次/步（−14）；37 个诊断键值逐位不变 |
+| S1：切线刷新内的有限性检查改为延迟到 scope 末尾（`begin/flush_deferred_finite_checks`）| 未提交 | 3 步 A/B：`step_wall_mean` 2.081 → 2.087 s（−0.3%，即无变化）；cn 逐位相同；scope 仅覆盖 `refresh_reference_tangent` |
+| A1：`β`-无关的有效切线块在 free 空间缓存（`FLUXV_STRUCT_FAST_PATH`，默认关）| 未提交 | 3 步 cn 与生产路径 `max abs diff = 0.0`（逐位相同）；**速度未测**（150 步计时运行被中止）|
 
-**Q2（可能比 Q1 更大，我从没验证过）**：粒子 BS 的目标里有 **wake 顶点 36,000 个**（100 行 × 30 展向 × 4 顶点 × 3 阶？），但 `wake_free_rows=100` 意味着**老于 100 行的环只是随来流平移、不参与形变**。如果代码仍对**全部** wake 顶点求粒子诱导，而只有一部分需要，那就是纯浪费。**从你的审计视角看：尾迹顶点的诱导速度是否只需对 free rows 求？** 这决定了 aero 地板 1.2 s/步能否降到 ~0.3。
-
-**Q3（若要 10 分钟，只剩这条路）**：t\*=21 是**验收窗**，不是物理必需。若把 A16 的验收改到 **t\*≈5（500 步）**，配合同步消除即可进 **10 分钟以内**，但那不是"全验收"，必须标注为 screening。**你作为审计方，会接受哪种：**
-- (a) 保留 t\*=21、接受全窗 ~1.5–2 h；
-- (b) 接受 t\*≈5 的 screening 窗 + 一次性的 t\*=21 终验（不常跑）；
-- (c) 砍物理配置（粒子数/子步），但这违反项目冻结纪律。
+`reference_tangent_cache_refresh_count` = 20 / 150 步（`reference_tangent_refresh_rtol = 0.002`）。`structural_substeps = 10`，`proposal_count = 447 / 150 步`。
 
 ---
 
-## 4. 我的判断（供你反驳）
+## 4. 目前可以测量的三个量（供你判断是否需要）
 
-**10 分钟对 t\*=21 不可达；可行的是"t\*=21 约 1.5–2 h + t\*≈5 约 8–10 min 的筛查窗"。** 若必须 10 分钟全验收，则要同时做到：同步清零（−60%）+ 尾迹顶点 BS 只对 free rows（若 Q2 成立）+ 粒子数下降——而最后一项动的是物理配置，我不认为可以在不重验精度的情况下做。
+1. **前两名占 1928 次/步（57%）**，两处均为 `isfinite().all().item()`，不参与分支判断。把这两处改为"设备端 `atomic_max` 到单标志 + 步末读一次"后，需要重新测量的量：`.item()` 次数/步、`step_wall_mean`、抛出异常的位置（由调用时变为步末）。
+2. **尾迹顶点诱导的目标数**：`wake_free_rows = 100`，而 `wake_rings` 容量为 `wake_max_rows = 300`。当前 `velocity_at_cuda` 的 target 集合是否只包含 free rows，需查 `_advance_material_state` 与 `native_material_convection.velocity()` 的实际 target 数（代码路径已定位，未做计数测量）。
+3. **粒子目标数**：`velocity_self_cuda` 的 target = 全部存活粒子（27k），source 同为 27k ⇒ 单次 7.5×10⁸ 对。
+
+---
+
+## 5. 数值上界（只做算术，不做判断）
+
+- 若 `.item()` 总次数据实测降至 0，可减少的墙钟上限 = 当前 `.item()` 占总墙钟的比例（20 步 profile 为 60%）。
+- 9.136 s/步 × (1 − 0.60) ≈ 3.65 s/步 ⇒ 2100 步 ≈ 7,669 s ≈ 2.13 h。
+- 0.286 s/步 × 2100 步 = 600 s。0.286 s/步对应的每步预算与上表各分项（同步 5.5 s、气动 ~1.2 s、结构线性代数与装配其余部分）的对照，需要先完成 §4 的第 1、2 项测量。
+
+---
+
+## 6. 数据与复现
+
+```
+/tmp/a16_150.json            A16 150 步，step_wall_seconds_mean = 9.1363
+/tmp/a16_phase50.json         A16 50 步
+/tmp/s1_base_3.json          3 步基线（S1 A/B）
+/tmp/a1_3.json               A1 3 步（与基线 cn 逐位相同）
+/tmp/where_items.py          call-site 探针脚本
+/tmp/locate_20.py            20 步 cProfile 脚本
+
+PYTHONPATH=src:platform:platform/warp_vpm PFIELD_DEVICE=cuda:0 FLUXV_GPU_ONLY=1 \
+  python3 platform/warp_vpm/reproduce_rojratsirikul2011_q16_flux_v5m_native.py \
+  --case ROJ11-A16 --max-aero-steps 20
+```
