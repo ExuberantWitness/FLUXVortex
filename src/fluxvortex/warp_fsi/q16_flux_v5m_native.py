@@ -1949,7 +1949,22 @@ class Q16NativeV5MSolver:
                 ),
                 "lesp_pre_max_abs": float(torch.max(torch.abs(lesp_pre_3d)).item()),
                 "lesp_pin_max_abs": float(pin_error.item()),
-                "kelvin_max_abs": float(kelvin.item()),
+                # L2-5: this is an ALGEBRAIC IDENTITY, not evidence.
+                # gamma_tev is assembled as Gamma_TE + gamma_lev and then
+                # subtracted from itself, so the residual is zero by
+                # construction (measured: exactly 0.0 every step).  It used to
+                # be reported as "kelvin_max_abs", which reads like a conservation
+                # check and was cited as one.  Renamed to say what it is, and the
+                # real cross-time ledger below is what should be quoted instead.
+                "kelvin_identity_residual": float(kelvin.item()),
+                "bound_circulation_total": float(
+                    torch.sum(trial.gamma_bound).item()
+                ),
+                "lev_released_total": (
+                    float(torch.sum(trial.lev_strip_released_total).item())
+                    if trial.lev_strip_released_total is not None
+                    else 0.0
+                ),
                 "full_surface_neumann_max_abs": float(residual_max.item()),
                 "algebraic_neumann_max_abs": float(algebraic_neumann_max.item()),
                 "neumann_acceptance_scope": (

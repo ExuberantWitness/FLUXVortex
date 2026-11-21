@@ -32,7 +32,7 @@ def run(alpha, steps=150):
         lev_total += int(d["lev_release_count"]); particles = int(d["particle_count"])
         full_res = max(full_res, float(d.get("full_surface_neumann_max_abs",0.0)))
         newborn = max(newborn, abs(float(d.get("newborn_lev_circulation_max_abs",0.0))))
-        kelvin = max(kelvin, float(d["kelvin_max_abs"]))
+        kelvin = max(kelvin, float(d.get("kelvin_identity_residual", d.get("kelvin_max_abs", 0.0))))
     return dict(alpha=alpha, cn_last=cn_last, lev_release_total=lev_total, particles=particles,
                 full_surface_neumann_max=full_res, newborn_lev_max=newborn, kelvin_max=kelvin)
 out = [run(a) for a in (5.0,15.0,19.0)]

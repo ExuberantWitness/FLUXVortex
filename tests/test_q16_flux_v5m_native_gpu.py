@@ -207,13 +207,18 @@ class Q16NativeV5MGpuTest(unittest.TestCase):
         self.assertEqual(diag["separated_strip_count"], 10)
         self.assertGreater(proposal.trial_state.particle_field.n, 0)
         self.assertLessEqual(diag["lesp_pin_max_abs"], 1.0e-6)
-        # P1 joint solve: the TEV identity check uses the runtime relative
-        # tolerance (gate_rtol); fp reassociation can leave ~1e-16 where the
-        # old pinned-to-bank path happened to cancel exactly.
-        self.assertLessEqual(
-            diag["kelvin_max_abs"],
-            1.0e-8,
-        )
+        # L2-5: gamma_tev is assembled as Gamma_TE + gamma_lev and then
+        # subtracted from itself, so this residual is an ALGEBRAIC IDENTITY and
+        # was previously reported as "kelvin_max_abs", which reads like a
+        # conservation check.  It is renamed to say what it is; the assertion
+        # stays (it guards the assembly arithmetic, fp reassociation leaving
+        # ~1e-16) but it is NOT evidence of circulation conservation.
+        self.assertNotIn("kelvin_max_abs", diag)
+        self.assertLessEqual(diag["kelvin_identity_residual"], 1.0e-8)
+        # The real cross-time ledger that should be quoted instead.
+        self.assertIn("bound_circulation_total", diag)
+        self.assertIn("lev_released_total", diag)
+        self.assertGreater(abs(diag["bound_circulation_total"]), 0.0)
 
     def test_direct_q16_load_transfer_closes_force_moment_and_work(self) -> None:
         generator = torch.Generator(device="cuda:0")

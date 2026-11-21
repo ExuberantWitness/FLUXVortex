@@ -1482,9 +1482,18 @@ class RojratsirikulCaseRunner:
                 ),
                 default=None,
             ),
+            # L2-5: the solver now reports this as "kelvin_identity_residual",
+            # because it is an algebraic identity (gamma_tev is assembled as
+            # Gamma_TE + gamma_lev and then subtracted from itself), not a
+            # conservation check.  Archived records still carry the old key, so
+            # both names are accepted; the previous bare subscript raised
+            # KeyError on every new step record.
             "max_abs_kelvin_residual": max(
                 (
-                    record["aerodynamic"]["kelvin_max_abs"]
+                    record["aerodynamic"].get(
+                        "kelvin_identity_residual",
+                        record["aerodynamic"].get("kelvin_max_abs", 0.0),
+                    )
                     for record in records
                 ),
                 default=None,

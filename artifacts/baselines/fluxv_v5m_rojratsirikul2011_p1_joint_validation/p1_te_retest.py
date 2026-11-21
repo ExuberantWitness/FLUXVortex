@@ -229,7 +229,7 @@ def run(
         cull_circulation_series.append(
             float(diag.get("particle_cull_circulation", 0.0))
         )
-        kelvin = max(kelvin, float(diag["kelvin_max_abs"]))
+        kelvin = max(kelvin, float(diag.get("kelvin_identity_residual", diag.get("kelvin_max_abs", 0.0))))
         if step >= 2:
             geometry = solver.surface.evaluate(None, None)
             te_ring = geometry.rings.reshape(NC, NS, 4, 3)[-1, :, [3, 2]]
