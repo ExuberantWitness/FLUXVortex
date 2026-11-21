@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import os
 import time
 from typing import Any, Callable
 
@@ -24,6 +25,30 @@ from .q16_structural_solver import Q16CudaNewmarkStepper, Q16StructuralStepResul
 
 NATIVE_Q16_FSI_CONTRACT = "q16-flux-v5m-native-strong-pc-cuda-v1"
 ProgressCallback = Callable[[dict[str, Any]], None]
+
+# DIAGNOSTIC ONLY (D1 degeneracy probe, 2026-11-21): uniformly scale the added-mass
+# operator Mf1 = rho P A^-1 N by a constant.  This exists to ask a purely numerical
+# question -- how much of the membrane-wing load error is attributable to the Mf1
+# double count, holding everything else fixed -- by finite-differencing the map
+# (Mf1 scale, E) -> (Cn, zmax/c).  It is NOT a calibration knob: reading it from the
+# environment means every run states its value in its command line, and 1.0 returns
+# the matrix object unchanged so the production path is bitwise untouched.
+_MF1_SCALE = float(os.environ.get("FLUXV_MF1_SCALE", "1.0"))
+if not math.isfinite(_MF1_SCALE) or _MF1_SCALE <= 0.0:
+    raise ValueError(f"FLUXV_MF1_SCALE must be finite and positive, got {_MF1_SCALE}")
+
+
+def _scale_added_mass(matrix: torch.Tensor) -> torch.Tensor:
+    """Apply :data:`_MF1_SCALE`, returning the SAME object when it is 1.0.
+
+    Returning the same object matters beyond tidiness: the M1b memo and the M1 LU
+    cache key on ``id()``/``_version`` of this matrix, and an identity copy would
+    silently double the 71 MB matrix traffic per outer step.
+    """
+
+    if _MF1_SCALE == 1.0:
+        return matrix
+    return matrix * _MF1_SCALE
 
 
 def _clone(value: wp.array) -> wp.array:
@@ -368,14 +393,16 @@ class Q16NativeV5MFSIStepper:
         previous_load = owner.previous_aerodynamic_load
         # Hoist the substep-constant pieces out of the loop: re-differencing
         # the 71 MB Mf1 matrix on every substep is pure launch overhead.
-        anchor_am_matrix = owner.aerodynamic_load.added_mass.generalized_matrix
+        anchor_am_matrix = _scale_added_mass(
+            owner.aerodynamic_load.added_mass.generalized_matrix
+        )
         if previous_load is not None:
             am_slope = (
                 anchor_am_matrix
-                - previous_load.added_mass.generalized_matrix
+                - _scale_added_mass(previous_load.added_mass.generalized_matrix)
             )
         else:
-            endpoint_am_matrix = (
+            endpoint_am_matrix = _scale_added_mass(
                 aerodynamic_load_end.added_mass.generalized_matrix
             )
         for index, prescribed in enumerate(prescribed_forces):
@@ -411,7 +438,9 @@ class Q16NativeV5MFSIStepper:
                 )
                 if self.three_slot_mf1_cancel:
                     previous_constant = previous_constant - (
-                        previous_load.added_mass.generalized_matrix
+                        _scale_added_mass(
+                            previous_load.added_mass.generalized_matrix
+                        )
                         @ acceleration_anchor
                     ).unsqueeze(0)
                 constant_t = anchor_constant + beta * (
@@ -423,7 +452,9 @@ class Q16NativeV5MFSIStepper:
                 )
                 if self.three_slot_mf1_cancel:
                     endpoint_constant = endpoint_constant - (
-                        aerodynamic_load_end.added_mass.generalized_matrix
+                        _scale_added_mass(
+                            aerodynamic_load_end.added_mass.generalized_matrix
+                        )
                         @ acceleration_anchor
                     ).unsqueeze(0)
                 constant_t = anchor_constant + beta * (

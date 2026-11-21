@@ -156,6 +156,21 @@ def _bound_rate_author_weak_choice() -> bool:
     return raw == "1"
 
 
+def _diagnostic_mf1_scale() -> float:
+    """The added-mass operator scale used by this run (1.0 on every production path).
+
+    Recorded into the payload rather than only read by the solver: a payload whose
+    Mf1 operator is scaled is a DIAGNOSTIC branch, and without this field the only
+    way to tell it from a production result would be the command line.
+    """
+
+    raw = os.environ.get("FLUXV_MF1_SCALE", "1.0").strip()
+    value = float(raw)
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f"FLUXV_MF1_SCALE must be finite and positive, got {raw!r}")
+    return value
+
+
 def _q16_nonsymmetric_solver_choice() -> str:
     """Q16 linear-solver selection, with a default-preserving experiment hook.
 
@@ -1459,6 +1474,12 @@ class RojratsirikulCaseRunner:
             "damping_evidence_role": self.spec.damping_evidence_role,
             "dt_star": case.aerodynamic_dt_star,
             "structural_substeps": substeps,
+            # DIAGNOSTIC BRANCH RECORD (D1 degeneracy probe, 2026-11-21): the
+            # added-mass operator can be uniformly scaled through FLUXV_MF1_SCALE.
+            # Recorded so a probe payload can never be mistaken for a production
+            # result -- the value is 1.0 on every production path.
+            "diagnostic_mf1_scale": _diagnostic_mf1_scale(),
+            "is_diagnostic_branch": _diagnostic_mf1_scale() != 1.0,
             "startup_window_time_star": case.startup_time_star,
             "statistics_min_time_star": case.statistics_min_time_star,
             "startup_ramp": (
