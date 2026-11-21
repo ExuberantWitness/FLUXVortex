@@ -724,7 +724,66 @@ def _require_state(name: str, value: Any, *, device: str, element_count: int) ->
         )
 
 
+# ---------------------------------------------------------------------------
+# Deferred finite-check scope (S1, 2026-11-21).
+#
+# Each _assert_finiteN call allocates a flag, launches, calls
+# wp.synchronize_device and reads one int back.  The tangent refresh issues 47 of
+# these per outer step and the substep loop more, i.e. ~100 blocking synchronisations
+# whose only content is "did anything become NaN".  Inside a scope they write into a
+# per-device shared flag (the kernels already atomic-max into it) and ONE host read
+# happens at flush.  The check is not weakened: the same kernels run over the same
+# values; only the number and position of the host round-trips changes.
+# ---------------------------------------------------------------------------
+_DEFERRED_FLAGS: dict[str, wp.array] = {}
+_DEFERRED_LABELS: dict[str, list[str]] = {}
+_DEFERRED_DEPTH: dict[str, int] = {}
+
+
+def begin_deferred_finite_checks(device: str) -> None:
+    depth = _DEFERRED_DEPTH.get(device, 0)
+    if depth == 0:
+        _DEFERRED_FLAGS[device] = wp.zeros(1, dtype=wp.int32, device=device)
+        _DEFERRED_LABELS[device] = []
+    _DEFERRED_DEPTH[device] = depth + 1
+
+
+def flush_deferred_finite_checks(device: str) -> None:
+    depth = _DEFERRED_DEPTH.get(device, 0)
+    if depth <= 0:
+        raise RuntimeError("deferred finite-check flush without a matching begin")
+    _DEFERRED_DEPTH[device] = depth - 1
+    if _DEFERRED_DEPTH[device] > 0:
+        return
+    flag = _DEFERRED_FLAGS.pop(device)
+    labels = _DEFERRED_LABELS.pop(device)
+    wp.synchronize_device(device)
+    if int(flag.numpy()[0]) != 0:
+        raise FloatingPointError(
+            "non-finite values inside a deferred finite-check scope; checked: "
+            + ", ".join(labels)
+        )
+
+
+def _deferred(device: str) -> wp.array | None:
+    if _DEFERRED_DEPTH.get(device, 0) > 0:
+        return _DEFERRED_FLAGS[device]
+    return None
+
+
 def _assert_finite3(name: str, value: wp.array, *, device: str) -> None:
+    shared = _deferred(device)
+    if shared is not None:
+        # Inside a scope: accumulate on device, no host round-trip.
+        wp.launch(
+            _nonfinite3_kernel,
+            dim=value.shape,
+            inputs=[value],
+            outputs=[shared],
+            device=device,
+        )
+        _DEFERRED_LABELS[device].append(name)
+        return
     flag = wp.zeros(1, dtype=wp.int32, device=device)
     wp.launch(
         _nonfinite3_kernel,
@@ -739,6 +798,18 @@ def _assert_finite3(name: str, value: wp.array, *, device: str) -> None:
 
 
 def _assert_finite2(name: str, value: wp.array, *, device: str) -> None:
+    shared = _deferred(device)
+    if shared is not None:
+        # Inside a scope: accumulate on device, no host round-trip.
+        wp.launch(
+            _nonfinite2_kernel,
+            dim=value.shape,
+            inputs=[value],
+            outputs=[shared],
+            device=device,
+        )
+        _DEFERRED_LABELS[device].append(name)
+        return
     flag = wp.zeros(1, dtype=wp.int32, device=device)
     wp.launch(
         _nonfinite2_kernel,
