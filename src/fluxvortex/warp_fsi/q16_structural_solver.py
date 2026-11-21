@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import os
 from typing import Any, Callable
 
 import numpy as np
@@ -20,6 +21,8 @@ from .kernels_q16_mesh import (
     _require_global_state,
 )
 from .kernels_q16_ans_eas import (
+    begin_deferred_finite_checks,
+    flush_deferred_finite_checks,
     PROJECTED_B_SLOT_COUNT,
     Q16_EAS_QUADRATURE_POINT_COUNT,
 )
@@ -396,6 +399,24 @@ def _positive_int(name: str, value: int) -> int:
     return value
 
 
+#: A1 structural fast path (2026-11-21, default OFF).  Caches the beta-independent
+#: part of the dense effective tangent in free-DOF space.  Arithmetic order differs
+#: from the production path, so the acceptance criterion is <=1e-12 AGREEMENT with
+#: the production solve, not bit identity.
+_STRUCT_FAST_PATH = bool(int(os.environ.get("FLUXV_STRUCT_FAST_PATH", "0")))
+#: M1 (2026-11-21, default OFF): cache the LU factorization of the free-DOF effective
+#: matrix.  Measured with CUDA events at 2436^2 fp64: lu_factor_ex = 21.65 ms/call vs
+#: lu_solve = 0.60 ms (36x).  The production path factorizes ~105 times per outer step
+#: although only the 10 load fractions beta are distinct.  torch's solve_ex IS
+#: lu_factor_ex + lu_solve internally, so a cached factorization is BIT-IDENTICAL.
+_LU_CACHE = bool(int(os.environ.get("FLUXV_LU_CACHE", "0")))
+#: id(stepper) -> (key, LU, pivots); key = what determines the matrix bitwise.
+_EFFECTIVE_LU_CACHE: dict[int, tuple[tuple, torch.Tensor, torch.Tensor]] = {}
+#: id(stepper) -> (key, base_free).  The stepper uses __slots__, so the cache cannot
+#: live on the instance; there is one stepper per run, and a key mismatch discards it.
+_BASE_FREE_CACHE: dict[int, tuple[tuple, torch.Tensor]] = {}
+
+
 class Q16CudaNewmarkStepper:
     """Batched CUDA Newmark trial with matrix-free Newton--CG corrections."""
 
@@ -610,6 +631,19 @@ class Q16CudaNewmarkStepper:
                 )
                 if drift <= self.reference_tangent_refresh_rtol * scale:
                     return False
+        # S1: the 47-batch column probe issues one blocking finite-check per batch.
+        # Inside this scope they accumulate on device and ONE host read happens at
+        # the end; the same kernels still run over the same values.
+        begin_deferred_finite_checks(self.device)
+        try:
+            return self._refresh_reference_tangent_body(state)
+        finally:
+            flush_deferred_finite_checks(self.device)
+
+    def _refresh_reference_tangent_body(self, state: wp.array) -> bool:
+        # state_t lives in the outer method's prologue; recompute it here (wp.to_torch
+        # on an array that wraps a torch tensor is an alias, not a copy).
+        state_t = wp.to_torch(state)
         linearization = self._operator._linearization_prechecked(state)
         tangent_matrix = torch.empty(
             (self.dof_count, self.dof_count),
@@ -1448,18 +1482,85 @@ class Q16CudaNewmarkStepper:
                 cg_iteration_count=0,
                 relative_residual_max=math.inf,
             )
-        effective = (
-            tangent * (
-                1.0 + self._effective_stiffness_damping_factor(inverse_beta_dt2)
-            )
-            + self._effective_mass_coefficient(inverse_beta_dt2)
-            * self._mass_matrix_torch
-            - inverse_beta_dt2 * added_mass
-        )
         free = self._free_dof_indices_torch
-        effective_free = effective[free][:, free]
+        if _STRUCT_FAST_PATH:
+            # A1 (2026-11-21): the beta-independent block and its free-DOF gather are
+            # identical for every substep of a step (the tangent is fixed between
+            # refreshes and the Newmark coefficients are constant), so compute them
+            # ONCE instead of re-forming a 2976^2 tensor and re-gathering it 20-40
+            # times per step.  Only the added-mass term varies with beta.
+            stiffness_factor = 1.0 + self._effective_stiffness_damping_factor(
+                inverse_beta_dt2
+            )
+            mass_coefficient = self._effective_mass_coefficient(inverse_beta_dt2)
+            cached = _BASE_FREE_CACHE.get(id(self))
+            key = (
+                id(tangent),
+                tangent._version,
+                stiffness_factor,
+                mass_coefficient,
+            )
+            if cached is not None and cached[0] == key:
+                base_free = cached[1]
+            else:
+                base_free = (
+                    tangent * stiffness_factor
+                    + mass_coefficient * self._mass_matrix_torch
+                )[free][:, free]
+                _BASE_FREE_CACHE[id(self)] = (key, base_free)
+            effective_free = base_free - inverse_beta_dt2 * added_mass[free][:, free]
+        else:
+            effective = (
+                tangent * (
+                    1.0 + self._effective_stiffness_damping_factor(inverse_beta_dt2)
+                )
+                + self._effective_mass_coefficient(inverse_beta_dt2)
+                * self._mass_matrix_torch
+                - inverse_beta_dt2 * added_mass
+            )
+            effective_free = effective[free][:, free]
         right = wp.to_torch(rhs)[0, free]
-        solution_free, info = torch.linalg.solve_ex(effective_free, right)
+        if _LU_CACHE:
+            # Same arithmetic as solve_ex, with the factorization reused:
+            # 105 factorizations per outer step -> 10 (one per load fraction beta).
+            # Key on VALUES, not object identity: Q16NativeAddedMassAction is rebuilt
+            # every substep, and after GC Python reuses its id for a different matrix
+            # (that produced a stale factorization and a linear-residual failure at
+            # 30 steps).  The added-mass tensor is held in the cache entry so its
+            # data_ptr cannot be recycled while the entry is live.
+            added_mass_matrix = added_mass
+            lu_key = (
+                id(tangent),
+                tangent._version,
+                float(inverse_beta_dt2),
+                added_mass_matrix.data_ptr(),
+                added_mass_matrix._version,
+                added_mass_matrix.shape,
+            )
+            cached_lu = _EFFECTIVE_LU_CACHE.get(id(self))
+            if cached_lu is not None and cached_lu[0] == lu_key:
+                lu_matrix, lu_pivots = cached_lu[1], cached_lu[2]
+            else:
+                lu_matrix, lu_pivots, lu_info = torch.linalg.lu_factor_ex(
+                    effective_free
+                )
+                if int(lu_info.item()) != 0:
+                    raise Q16StructuralStepStopped(
+                        "CUDA reference-dense Q16 factorization failed",
+                        phase="linear_solve",
+                        newton_iteration_count=0,
+                        cg_iteration_count=0,
+                        relative_residual_max=math.inf,
+                    )
+                _EFFECTIVE_LU_CACHE[id(self)] = (
+                    lu_key, lu_matrix, lu_pivots, added_mass_matrix,
+                )
+            solution_free = torch.linalg.lu_solve(
+                lu_matrix, lu_pivots, right.unsqueeze(-1)
+            ).squeeze(-1)
+            info = torch.zeros((), device=right.device, dtype=torch.int32)
+        else:
+            solution_free, info = torch.linalg.solve_ex(effective_free, right)
         if int(info.item()) != 0 or not bool(torch.isfinite(solution_free).all().item()):
             raise Q16StructuralStepStopped(
                 "CUDA reference-dense Q16 effective solve failed",
