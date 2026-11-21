@@ -623,6 +623,39 @@ class NativeV5MState:
         digest.update(str(self.source_bank.nt).encode("ascii"))
         return digest.hexdigest()
 
+    def mutation_fingerprint(self) -> tuple:
+        """Cheap "was anything written in place?" token; NO device sync.
+
+        The three transaction guards below only need to know whether a state was
+        mutated, which is exactly what a full-state ``digest()`` was being used
+        for -- at the cost of 8 blocking D2H copies and a CPU SHA-256 over ~2.25 MB
+        per call, several times per aerodynamic step.  Every in-place torch op
+        bumps ``Tensor._version``, and a rebind or a changed live count changes
+        ``data_ptr``/``shape``, so this catches the same events on the host.
+
+        ``digest()`` is unchanged and remains the value recorded in the ledger.
+        """
+
+        tensors = (
+            self.gamma_bound,
+            self.gamma_previous,
+            self.wake_rings,
+            self.wake_gamma,
+            self.particle_field.positions_cuda,
+            self.particle_field.gammas_cuda,
+            self.frontier_nodes,
+            self.frontier_active,
+        )
+        return (
+            self.step,
+            int(self.source_bank.it),
+            int(self.source_bank.nt),
+            tuple(
+                (value.data_ptr(), value._version, tuple(value.shape))
+                for value in tensors
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class NativeV5MLoad:
@@ -640,6 +673,7 @@ class NativeV5MLoad:
 @dataclass(frozen=True, slots=True)
 class NativeV5MProposal:
     parent_digest: str
+    parent_fingerprint: tuple
     trial_state: NativeV5MState
     load: NativeV5MLoad
     generalized_force: wp.array
@@ -1071,6 +1105,7 @@ class Q16NativeV5MSolver:
         structural_velocity: wp.array,
     ) -> NativeV5MProposal:
         parent_digest = committed.digest()
+        parent_fingerprint = committed.mutation_fingerprint()
         trial = committed.clone()
         geometry = self.surface.evaluate(structural_state, structural_velocity)
         # This step's release is not known yet: clear the per-step record so a
@@ -2003,10 +2038,11 @@ class Q16NativeV5MSolver:
                 **retention,
             },
         )
-        if committed.digest() != parent_digest:
+        if committed.mutation_fingerprint() != parent_fingerprint:
             raise RuntimeError("native V5M trial mutated its committed parent")
         return NativeV5MProposal(
             parent_digest=parent_digest,
+            parent_fingerprint=parent_fingerprint,
             trial_state=trial,
             load=load,
             generalized_force=generalized,
@@ -2027,7 +2063,7 @@ class Q16NativeV5MOwner:
         return solver.propose(self.state, structural_state, structural_velocity)
 
     def commit(self, proposal: NativeV5MProposal) -> None:
-        if proposal.parent_digest != self.state.digest():
+        if proposal.parent_fingerprint != self.state.mutation_fingerprint():
             raise RuntimeError("native V5M proposal parent drift")
         if proposal.trial_state.step != self.state.step + 1:
             raise RuntimeError("native V5M commit must advance exactly one step")

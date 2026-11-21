@@ -553,6 +553,7 @@ class Q16NativeV5MFSIStepper:
             raise ValueError("checkpoint_substep is outside the structural schedule")
         generation = owner.generation
         parent_digest = owner.aerodynamic.state.digest()
+        parent_fingerprint = owner.aerodynamic.state.mutation_fingerprint()
         committed_q = _clone(owner.state)
         committed_v = _clone(owner.velocity)
         committed_a = _clone(owner.acceleration)
@@ -679,7 +680,10 @@ class Q16NativeV5MFSIStepper:
                 if formal_residual <= self.coupling_tolerance:
                     if owner.generation != generation:
                         raise RuntimeError("native Q16 FSI owner generation drift")
-                    if owner.aerodynamic.state.digest() != parent_digest:
+                    if (
+                        owner.aerodynamic.state.mutation_fingerprint()
+                        != parent_fingerprint
+                    ):
                         raise RuntimeError("native V5M committed state drift")
                     prepared_q = _clone(formal_structural.state)
                     prepared_v = _clone(formal_structural.velocity)
