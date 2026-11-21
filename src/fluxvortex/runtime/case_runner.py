@@ -1117,6 +1117,18 @@ class RojratsirikulCaseRunner:
                 "work_pointwise_relative_error": _summary(
                     "work_pointwise_relative_error"
                 ),
+                # ⑬ decision quantity: does the packet's full generalized force
+                # equal the legacy three-term sum?  The recorded
+                # projection_quadrature_discrepancy compares against the CONSTANT
+                # term only and therefore cannot answer it.
+                "packet_full_vs_legacy_three_term_relative": _summary(
+                    "packet_full_vs_legacy_three_term_relative"
+                ),
+                "constant_only_vs_packet_relative": _summary(
+                    "constant_only_vs_packet_relative"
+                ),
+                "packet_generalized_norm": _summary("packet_generalized_norm"),
+                "legacy_three_term_norm": _summary("legacy_three_term_norm"),
                 "legacy_decomposition_norms": {
                     key: _summary(key)
                     for key in (

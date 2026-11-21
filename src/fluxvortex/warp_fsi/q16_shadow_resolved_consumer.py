@@ -105,8 +105,32 @@ class ShadowResolvedConsumer:
             )
             if structural_acceleration is not None:
                 qddot = wp.to_torch(structural_acceleration)[0]
-                ledger["legacy_mf1_action_norm"] = float(
-                    (am @ qddot).norm().item()
+                mf1_action = am @ qddot
+                ledger["legacy_mf1_action_norm"] = float(mf1_action.norm().item())
+                # ⑬ decision quantity: is the packet's full generalized force
+                # just the legacy THREE-term sum (constant + velocity + Mf1)?
+                # The recorded "projection_quadrature_discrepancy" compares the
+                # full packet against the CONSTANT term alone, so it cannot
+                # answer that.  Measured on A16 at t*=0.03: the discrepancy is
+                # 0.3130 while |Mf1|/|constant| is 0.3236 and
+                # |velocity|/|constant| is 2.7e-5, i.e. the "discrepancy" is
+                # about the size of the term the comparison omits.  If this
+                # residual is small, the two tracks already agree and the
+                # migration is unnecessary.
+                legacy_sum = constant + velocity_q + mf1_action
+                ledger["packet_generalized_norm"] = float(
+                    shadow.norm().item()
+                )
+                ledger["legacy_three_term_norm"] = float(
+                    legacy_sum.norm().item()
+                )
+                ledger["constant_only_vs_packet_relative"] = float(
+                    (shadow - constant).norm().item()
+                    / max(float(shadow.norm().item()), 1.0e-30)
+                )
+                ledger["packet_full_vs_legacy_three_term_relative"] = float(
+                    (shadow - legacy_sum).norm().item()
+                    / max(float(shadow.norm().item()), 1.0e-30)
                 )
             legacy_reference = constant
         else:
