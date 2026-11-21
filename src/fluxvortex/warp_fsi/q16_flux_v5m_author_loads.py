@@ -372,6 +372,17 @@ class Q16NativeAuthorEndpointLoad:
         lift2_pressure = -self.density * torch.sum(
             live.collocation_velocity * self.gamma_gradient, dim=1
         )
+        if not include_mf21:
+            # M2 (2026-11-21): skip the whole Mf2_1 block.  It used to run
+            # material_ring_velocity_derivative_expanded (688 line_derivative host
+            # syncs per step) and one aic lu_solve, and then the result was discarded
+            # two lines below.  The returned value is identical either way.
+            generalized = lift2_pressure @ self.pressure_to_generalized.T
+            if not CAPTURING and not bool(torch.isfinite(generalized).all().item()):
+                raise FloatingPointError("native lift2 force is non-finite")
+            return wp.from_torch(
+                generalized.unsqueeze(0), dtype=config.DTYPE, requires_grad=False
+            )
         diagonal_31 = self.geometry.rings[:, 3] - self.geometry.rings[:, 1]
         diagonal_24 = self.geometry.rings[:, 2] - self.geometry.rings[:, 0]
         diagonal_31_rate = live.ring_velocity[:, 3] - live.ring_velocity[:, 1]
@@ -407,7 +418,7 @@ class Q16NativeAuthorEndpointLoad:
         mf21_pressure = self.density * torch.linalg.lu_solve(
             lu[0], lu[1], mf21_rhs.unsqueeze(1)
         ).squeeze(1)
-        pressure = lift2_pressure + mf21_pressure if include_mf21 else lift2_pressure
+        pressure = lift2_pressure + mf21_pressure
         generalized = pressure @ self.pressure_to_generalized.T
         if not CAPTURING and not bool(torch.isfinite(generalized).all().item()):
             raise FloatingPointError("native lift2/Mf2_1 force is non-finite")
