@@ -102,6 +102,7 @@ def run(
     stretching: bool = False,
     core_spreading: bool = False,
     stretching_rvpm: bool = False,
+    stretching_classic: bool = False,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -139,6 +140,7 @@ def run(
         particle_stretching=stretching,
         particle_core_spreading=core_spreading,
         particle_stretching_rvpm=stretching_rvpm,
+        particle_stretching_transposed=not stretching_classic,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -344,6 +346,13 @@ def main() -> int:
         help="Stage 2: 3-D vortex stretching d(gamma)/dt = J . gamma on the particles",
     )
     parser.add_argument(
+        "--stretching-classic",
+        action="store_true",
+        help="use the CLASSIC Helmholtz contraction S_i = J[i,m] gamma_m instead of "
+        "FLOWVPM's transposed scheme (default). Only the transposed form conserves "
+        "sum(gamma) pairwise, so classic is for A/B attribution only.",
+    )
+    parser.add_argument(
         "--stretching-rvpm",
         action="store_true",
         help="use the frozen rVPM stretching form dgamma/dt = S - 3 Z gamma "
@@ -389,6 +398,7 @@ def main() -> int:
             ),
             core_spreading=bool(args.core_spreading),
             stretching_rvpm=bool(args.stretching_rvpm),
+            stretching_classic=bool(args.stretching_classic),
         )
         for a in angles
     ]
@@ -406,6 +416,7 @@ def main() -> int:
         "particle_stretching": bool(args.stretching or args.core_spreading),
         "particle_core_spreading": bool(args.core_spreading),
         "particle_stretching_rvpm": bool(args.stretching_rvpm),
+        "particle_stretching_transposed": not bool(args.stretching_classic),
         "ramp_protocol": "frozen half-cosine 0->U0 over t* in [0,1]; 0 = impulsive start",
         "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
         "streamwise_segment_m": FREESTREAM * DT,

@@ -147,7 +147,11 @@ class VortexParticleField:
                 # Jacobian for stretching
                 J = jacobian_from_particles(pos, gamma, pos, gamma, sigma, kernel=self.kernel)
 
-                # Stretching: S = J^T · Gamma
+                # Stretching, CLASSIC scheme: S = J · Gamma with J[t,i,j]=du_i/dx_j.
+                # The comment here used to say "S = J^T · Gamma", which the code
+                # does not compute; FLOWVPM's transposed scheme (default upstream)
+                # would be einsum('tji,tj->ti', J, gamma).  Left as classic on
+                # purpose -- this legacy path is not the rVPM one.
                 S = np.einsum('tij,tj->ti', J, gamma)
 
                 # rVPM reformulation: Z = g * (S · Gamma) / |Gamma|^2

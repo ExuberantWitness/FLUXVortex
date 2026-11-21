@@ -98,7 +98,10 @@ def test_axisymmetric_strain_matches_analytic_growth():
     original = field.gamma[: field.n].clone()
     _, jacobian = field.velocity_and_jacobian_self_cuda()
     expected = original + dt * torch.einsum("nim,nm->ni", jacobian, original)
-    field.apply_vortex_stretching(dt, core_spreading=False)
+    # CLASSIC-scheme gate: this test pins dgamma/dt = S with S_i = J[i,m]gamma_m.
+    # The default is now the transposed scheme (FLOWVPM / frozen V4), so the
+    # scheme is requested explicitly here rather than relying on the default.
+    field.apply_vortex_stretching(dt, core_spreading=False, transposed=False)
     update = field.gamma[: field.n]
     error = (update - expected).abs().max()
     scale = expected.abs().max()
@@ -161,8 +164,8 @@ def test_rvpm_form_scales_the_along_gamma_growth_to_two_fifths():
     stretch = torch.einsum("nim,nm->ni", jacobian, gammas)
     along = torch.sum(stretch * gammas, dim=1)
 
-    raw.apply_vortex_stretching(dt, rvpm=False)
-    rvpm.apply_vortex_stretching(dt, rvpm=True)
+    raw.apply_vortex_stretching(dt, rvpm=False, transposed=False)
+    rvpm.apply_vortex_stretching(dt, rvpm=True, transposed=False)
 
     delta_raw = raw.gamma[: raw.n] - gammas
     delta_rvpm = rvpm.gamma[: rvpm.n] - gammas
@@ -204,3 +207,42 @@ def test_rvpm_form_still_conserves_magnitude_under_pure_rotation():
     assert summary["stretching_form"] == "rvpm"
     relative = (after - before).abs() / torch.clamp(before, min=1.0e-300)
     assert float(relative.max().item()) < 1.0e-3
+
+
+def test_the_two_fifths_gate_is_blind_to_the_scheme_on_purpose():
+    """Documented blindness: gamma.(A gamma) == gamma.(A^T gamma) identically.
+
+    This is why the axial 2/5 identity could not catch a wrong contraction -- an
+    external audit was right about that.  The pairwise-conservation test in
+    tests/test_pfield_stretching_conservation_gpu.py is the gate that CAN.
+    """
+
+    positions, gammas, sigma = _blobs(7)
+    dt = 3.0e-8
+    classic = _field(positions, gammas, sigma)
+    transposed = _field(positions, gammas, sigma)
+    classic.apply_vortex_stretching(dt, rvpm=True, transposed=False)
+    transposed.apply_vortex_stretching(dt, rvpm=True, transposed=True)
+
+    delta_classic = classic.gamma[: classic.n] - gammas
+    delta_transposed = transposed.gamma[: transposed.n] - gammas
+    projected_classic = torch.sum(delta_classic * gammas, dim=1)
+    projected_transposed = torch.sum(delta_transposed * gammas, dim=1)
+    # The projection difference is a CANCELLATION, so the tolerance must be
+    # scaled by the natural magnitude of the terms entering it (|gamma| |S|),
+    # not by the cancelled result -- sizing it by the result makes the gate
+    # tighter than fp64 round-off.
+    _, jacobian = classic.velocity_and_jacobian_self_cuda()
+    stretch_magnitude = torch.linalg.vector_norm(
+        torch.einsum("nim,nm->ni", jacobian, gammas), dim=1
+    )
+    scale = max(
+        float((torch.linalg.vector_norm(gammas, dim=1) * stretch_magnitude).max().item()),
+        1.0e-30,
+    )
+    # Same projection to round-off ...
+    assert float((projected_classic - projected_transposed).abs().max().item()) <= (
+        1.0e-12 * scale
+    )
+    # ... while the updates themselves genuinely differ.
+    assert float((delta_classic - delta_transposed).abs().max().item()) > 0.0

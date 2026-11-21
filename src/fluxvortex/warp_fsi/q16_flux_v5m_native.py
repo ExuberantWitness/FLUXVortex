@@ -240,7 +240,9 @@ class NativeV5MConfig:
     # variant is right is decided by measurement, not by assertion.
     le_open_deposit_drop_tev_compensation: bool = False
     # Stage 2 experiment (default OFF): 3-D vortex stretching of the particle
-    # strengths, d(gamma)/dt = J . gamma, plus the rVPM core-radius evolution
+    # strengths, d(gamma)/dt = S (- 3 Z gamma in the rVPM form), where the
+    # SCHEME for S is ``particle_stretching_transposed`` below, plus the rVPM
+    # core-radius evolution
     # d(sigma)/dt = -sigma Z when ``particle_core_spreading`` is also set.
     # Nothing else in the pipeline updates a particle's strength after birth, so
     # the LEV's circulation accumulates without bound (L2-4: 82 x cU by step 300
@@ -255,6 +257,13 @@ class NativeV5MConfig:
     # redistribution term -3 Z gamma that bounds a stretched element instead of
     # letting |gamma| accumulate without limit.
     particle_stretching_rvpm: bool = False
+    # Stretching scheme.  True (default) = FLOWVPM ``transposed=true`` /
+    # research_rvpm_arch.md V4: S_i = J[m,i] gamma_m.  False = the classic
+    # pointwise Helmholtz term S_i = J[i,m] gamma_m.  The two differ by the sign
+    # of the local omega x gamma reorientation and only the transposed one
+    # cancels pairwise for equal-core particles; exposing both keeps the classic
+    # implementation reachable for A/B attribution instead of silently flipping.
+    particle_stretching_transposed: bool = True
     device: str = "cuda:0"
 
     def __post_init__(self) -> None:
@@ -290,6 +299,8 @@ class NativeV5MConfig:
             raise ValueError(
                 "particle_stretching_rvpm requires particle_stretching"
             )
+        if type(self.particle_stretching_transposed) is not bool:
+            raise TypeError("particle_stretching_transposed must be an exact bool")
         if self.le_open_deposit and not self.joint_separation_solve:
             raise ValueError(
                 "le_open_deposit requires joint_separation_solve "
@@ -1169,6 +1180,9 @@ class Q16NativeV5MSolver:
                     getattr(self.settings, "particle_core_spreading", False)
                 ),
                 rvpm=bool(getattr(self.settings, "particle_stretching_rvpm", False)),
+                transposed=bool(
+                    getattr(self.settings, "particle_stretching_transposed", True)
+                ),
             )
             retention["particle_stretching"] = stretching
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)

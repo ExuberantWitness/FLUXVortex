@@ -77,13 +77,24 @@ def _pfield_jacobian_partials(
 ):
     """Analytic velocity-gradient Jacobian of the Gaussian blob field.
 
-    STORAGE CONVENTION (documented once, because mixing it up is the classic bug):
-    component index ``3*i + m`` holds ``J[i, m] = d u_i / d x_m``.  Vortex
-    stretching is therefore ``d(gamma_i)/dt = J[i, m] gamma[m]``, i.e. contract
-    over the SECOND index (``einsum("nim,nm->ni", J, gamma)``).  This is
-    equivalent to ``rvpm_transport.py``'s ``einsum("nji,nj->ni", ...)`` because
-    that module stores the transpose; ``src/fluxvortex/particles.py:149`` stores
-    this convention but contracts the wrong index, which a prior audit flagged.
+    STORAGE CONVENTION: component index ``3*i + m`` holds ``J[i, m] = du_i/dx_m``
+    (verified empirically against central differences of the velocity kernel by
+    ``tests/test_pfield_jacobian_gpu.py``, independent of this docstring).
+
+    CONTRACTION IS A SCHEME CHOICE, NOT A CONVENTION DETAIL.  Every rVPM module in
+    this repo (``rvpm_transport.py:131``, ``platform/rvpm3d.py:133``,
+    ``warp_vpm_rvpm.py:31``, all ``rvpm_ir_wrk3*``) stores the SAME layout and
+    contracts the FIRST index, ``S_i = J[m,i] gamma_m`` (FLOWVPM
+    ``transposed=true``).  The classic pointwise Helmholtz term contracts the
+    second, ``S_i = J[i,m] gamma_m``.  The two differ by the sign of the local
+    ``omega x gamma`` term and only the transposed one cancels pairwise for
+    equal-core particles.  ``apply_vortex_stretching`` therefore exposes BOTH via
+    ``transposed``; neither is "the" convention.
+
+    (An earlier version of this docstring claimed the difference was explained by
+    ``rvpm_transport`` storing the transpose and that ``particles.py`` contracted
+    the wrong index.  Both statements were false -- nothing in the tree stores the
+    transpose -- and they made an external audit's case look airtight.)
 
     Same source loop and far-field early-out as ``_pfield_bs_partials``, but it
     accumulates the 9 components as well.  With ``u_i = w A_i``,
@@ -984,6 +995,7 @@ class CudaParticleField:
         *,
         core_spreading: bool = False,
         rvpm: bool = False,
+        transposed: bool = True,
     ) -> dict[str, float]:
         """One Euler step of 3-D vortex stretching on the live particles.
 
@@ -1017,6 +1029,7 @@ class CudaParticleField:
         summary = {
             "particle_count": int(self.n),
             "stretching_form": "rvpm" if rvpm else "raw",
+            "stretching_scheme": "transposed" if transposed else "classic",
             "stretching_growth_max": 1.0,
             "stretching_shrink_max": 1.0,
             "stretching_redistribution_max": 0.0,
@@ -1030,8 +1043,25 @@ class CudaParticleField:
 
         _, jacobian = self.velocity_and_jacobian_self_cuda(self.pos[: self.n])
         gamma = self.gamma[: self.n]
-        stretch_rate = torch.einsum("nim,nm->ni", jacobian, gamma)
-        dot = torch.sum(stretch_rate * gamma, dim=1)
+        # TWO SCHEMES, exactly as FLOWVPM exposes them (``transposed`` field,
+        # default true = "recommended for stability"):
+        #   transposed=True  -> S = J^T gamma = sum_m J[m,i] gamma_m  (rVPM / V4)
+        #   transposed=False -> S = J   gamma = sum_m J[i,m] gamma_m  (classic
+        #                       Helmholtz, the pointwise (Gamma.grad)u term)
+        # Both are legitimate operators; they differ by the SIGN of the local
+        # omega x gamma reorientation term (J^T G = sym(J)G - omega x G/2 while
+        # J G = sym(J)G + omega x G/2), so this is a scheme choice, not a typo.
+        # Only the transposed form cancels pairwise for equal-core particles, so
+        # sum(gamma) of a dipole cloud is preserved exactly -- see
+        # tests/test_pfield_stretching_conservation_gpu.py.
+        if transposed:
+            stretch_rate = torch.einsum("nmi,nm->ni", jacobian, gamma)
+        else:
+            stretch_rate = torch.einsum("nim,nm->ni", jacobian, gamma)
+        # gamma^T J gamma == gamma^T J^T gamma, so Z is scheme-independent BY
+        # CONSTRUCTION here (one contraction, not derived from stretch_rate).
+        # That isolates any A/B difference to the S term alone.
+        dot = torch.einsum("ni,nim,nm->n", gamma, jacobian, gamma)
         norm_sq = torch.clamp(torch.sum(gamma * gamma, dim=1), min=1.0e-300)
         # (f+g)/(1+3f) with f=0, g=1/5 == 1/5 (frozen V4 note).
         weight = RVPM_Z_WEIGHT if rvpm else 1.0
