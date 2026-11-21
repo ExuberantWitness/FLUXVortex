@@ -389,10 +389,31 @@ class Q16NativeV5MFSIStepper:
             anchor_constant = wp.to_torch(
                 owner.aerodynamic_load.constant_generalized_force
             )
+            if self.three_slot_mf1_cancel:
+                # M4 (2026-11-21): subtract ONE Mf1 qddot at the OUTER-STEP
+                # ENDPOINTS, before the beta interpolation/extrapolation.  The
+                # previous version subtracted after interpolation and used the
+                # substep-initial acceleration (not beta-scaled on the first step),
+                # so the subtracted term carried substep-lag noise and was
+                # over-subtracted on substep 1.
+                #
+                # Deviation from the auditor's formula, stated rather than hidden:
+                # the owner retains only previous_aerodynamic_load (no
+                # previous_acceleration), so the ANCHOR acceleration is used for
+                # every endpoint rather than each endpoint's own acceleration.
+                acceleration_anchor = wp.to_torch(acceleration)[0]
+                anchor_constant = anchor_constant - (
+                    anchor_am_matrix @ acceleration_anchor
+                ).unsqueeze(0)
             if previous_load is not None:
                 previous_constant = wp.to_torch(
                     previous_load.constant_generalized_force
                 )
+                if self.three_slot_mf1_cancel:
+                    previous_constant = previous_constant - (
+                        previous_load.added_mass.generalized_matrix
+                        @ acceleration_anchor
+                    ).unsqueeze(0)
                 constant_t = anchor_constant + beta * (
                     anchor_constant - previous_constant
                 )
@@ -400,20 +421,14 @@ class Q16NativeV5MFSIStepper:
                 endpoint_constant = wp.to_torch(
                     aerodynamic_load_end.constant_generalized_force
                 )
+                if self.three_slot_mf1_cancel:
+                    endpoint_constant = endpoint_constant - (
+                        aerodynamic_load_end.added_mass.generalized_matrix
+                        @ acceleration_anchor
+                    ).unsqueeze(0)
                 constant_t = anchor_constant + beta * (
                     endpoint_constant - anchor_constant
                 )
-            if self.three_slot_mf1_cancel:
-                # Slot 1 correction: the bound_rate constant already contains the
-                # acceleration content of rho dGamma/dt, so remove exactly ONE
-                # Mf1 qddot from the load.  Mf1 stays in the effective tangent
-                # (passed below as acceleration_load_action), which is what keeps
-                # Newton stable -- that is the whole difference from
-                # bound_rate_author_weak, which zeroed the action too.
-                acceleration_now = wp.to_torch(acceleration)[0]
-                constant_t = constant_t - (
-                    anchor_am_matrix @ acceleration_now
-                ).unsqueeze(0)
             constant = wp.from_torch(
                 constant_t, dtype=config.DTYPE, requires_grad=False
             )
