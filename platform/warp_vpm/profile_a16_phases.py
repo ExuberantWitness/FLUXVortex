@@ -103,7 +103,6 @@ TARGETS = (
         "tangent_refresh",
     ),
     ("pfield_torch_gpu", "CudaParticleField", "velocity_at_cuda", "particle_BS"),
-    ("pfield_torch_gpu", "CudaParticleField", "velocity_self_cuda", "particle_self_BS"),
     (
         "pfield_torch_gpu",
         "CudaParticleField",
@@ -118,16 +117,32 @@ TARGET_ALIASES = {"fluxvortex.warp_fsi.q16_author_loads": (
     "fluxvortex.warp_fsi.q16_flux_v5m_author_loads",
 )}
 
-#: Inclusive parent -> children, used to derive exclusive buckets.
+#: Inclusive parent -> DIRECT children, used to derive exclusive buckets.  The tree is
+#: only as fine as the labels actually nest:
+#:   * ``velocity_self_cuda`` is NOT labelled separately -- its body is literally
+#:     ``velocity_at_cuda(self.pos[:n])``, so a separate label measured the same GPU span
+#:     twice (that made a child sum exceed its parent).
+#:   * ``advance_wrk3`` is NOT a child of ``particle_BS``: its three RK3 stages call
+#:     ``velocity_self_cuda`` (hence ``particle_BS``) but also do position copies and
+#:     ring influences that ``particle_BS`` does not cover.  They partially OVERLAP, so
+#:     neither can be subtracted from the other; both are reported as inclusive.
+#:   * ``accel_matrix_validate`` is called from inside ``dense_solve`` (and a few times
+#:     from the structural step), so it is a child of ``dense_solve``.
 CHILDREN = {
-    "propose": ("ring_BS", "particle_BS", "particle_self_BS", "jacobian_BS",
-                "advance_wrk3", "surface_evaluate"),
-    "integrate_structure": ("velocity_force", "struct_step", "load_assemble",
-                            "dense_solve", "accel_matrix_validate"),
-    "struct_step": ("dense_solve", "accel_matrix_validate"),
+    "propose": ("ring_BS", "particle_BS", "surface_evaluate"),
+    "integrate_structure": ("velocity_force", "struct_step"),
+    "struct_step": ("dense_solve",),
     "dense_solve": ("accel_matrix_validate",),
-    "advance_wrk3": ("particle_self_BS",),
 }
+
+#: Labels that OVERLAP other labels by construction; their "exclusive" column is not
+#: meaningful and is suppressed in the printout.
+OVERLAPPING = ("advance_wrk3", "particle_BS", "ring_BS", "accel_matrix_validate")
+
+#: Labels whose completion drains the event bucket.  They are the outermost phases and
+#: never nest inside one another, so draining here bounds the number of live CUDA events
+#: and keeps ``elapsed_time`` reads correct without a sync per call.
+DRAIN_LABELS = ("propose", "integrate_structure", "tangent_refresh")
 
 
 class PhaseClock:
@@ -158,6 +173,8 @@ class PhaseClock:
             finally:
                 end.record()
                 clock._bucket[label].append((start, end))
+                if label in DRAIN_LABELS:
+                    clock.flush_step()
 
         setattr(owner, name, wrapped)
         self._installed.append(label)
@@ -311,21 +328,28 @@ def main() -> int:
         print(f"\n{'phase':28s} {'calls/step':>10s} {'ms/step':>10s} {'exclusive ms/step':>18s}")
         for label, value in sorted(clock.inclusive.items(),
                                    key=lambda item: -item[1]):
+            cell = (
+                "    (overlaps)"
+                if label in OVERLAPPING
+                else f"{exclusive.get(label, 0.0) / steps:18.1f}"
+            )
             print(f"{label:28s} {clock.calls[label] / steps:10.2f} "
-                  f"{value / steps:10.1f} {exclusive.get(label, 0.0) / steps:18.1f}")
+                  f"{value / steps:10.1f} {cell}")
 
         print(f"\n{'sync family':28s} {'calls/step':>10s} {'wall ms/step':>14s}")
         for family in ("tensor_item", "warp_synchronize_device"):
             print(f"{family:28s} {syncs.counts[family] / steps:10.2f} "
                   f"{1000.0 * syncs.wall[family] / steps:14.1f}")
-        sync_wall = sum(syncs.wall.values())
+        print("  NOTE: sync wall is INCLUSIVE of the GPU work it waits for, so it is a"
+              "\n        decomposition of the phase times above, never an addition to them.")
 
-        # Closure: top-level phases + syncs must account for the uninstrumented wall.
+        # Closure: the three outermost phases must cover the run's wall clock.
         top = sum(clock.inclusive.get(label, 0.0) / 1000.0
-                  for label in ("propose", "integrate_structure", "tangent_refresh"))
-        covered = top + sync_wall
-        print(f"\nclosure: propose+integrate+tangent+syncs = {covered:.1f} s "
-              f"of {wall:.1f} s wall ({100.0 * covered / wall:.1f}%)")
+                  for label in DRAIN_LABELS)
+        print(f"\nclosure: propose+integrate_structure+tangent_refresh = {top:.1f} s "
+              f"of {wall:.1f} s wall ({100.0 * top / wall:.1f}%)")
+        print(f"  (instrumented wall; compare with the --count-only run on the same "
+              f"window to size the observer cost)")
 
     print(f"\nLU/factorization accounting (measured, not inferred):")
     for name, value in sorted(stats.items()):
