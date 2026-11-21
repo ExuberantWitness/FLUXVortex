@@ -346,7 +346,24 @@ class Q16NativeAuthorEndpointLoad:
     # Lazy LU of the fixed aic; the same aic is solved ~80x per outer step.
     _aic_lu: Any = None
 
-    def velocity_force(self, structural_velocity: wp.array) -> wp.array:
+    def velocity_force(
+        self,
+        structural_velocity: wp.array,
+        *,
+        include_mf21: bool = True,
+    ) -> wp.array:
+        """Author velocity slot: lift2 + Mf2_1.
+
+        ``include_mf21=False`` drops the Mf2_1 term and keeps lift2.  That is what
+        the author's WEAK scheme does (``calc_fluid_force_weak.m:96-131`` sets
+        Mf1 = Mf2_1 = 0 because its constant slot already carries the full
+        ``dp_add = rho (Gamma_n - Gamma_{n-1})/dt``, which contains the
+        acceleration content).  Under ``wake_history_mode="bound_rate"`` this
+        solver's constant slot IS that weak dp_add, so adding Mf2_1 and Mf1 on top
+        double-subtracts; the switch exists so the two contracts can be A/B'd
+        without editing code.
+        """
+
         live = self.surface.evaluate(self.structural_state, structural_velocity)
         # Both velocity-part pressures carry rho (the reference frozen paths
         # bake rho into dp_lift2_w and multiply the Mf2_1 solve by rho): a
@@ -390,7 +407,7 @@ class Q16NativeAuthorEndpointLoad:
         mf21_pressure = self.density * torch.linalg.lu_solve(
             lu[0], lu[1], mf21_rhs.unsqueeze(1)
         ).squeeze(1)
-        pressure = lift2_pressure + mf21_pressure
+        pressure = lift2_pressure + mf21_pressure if include_mf21 else lift2_pressure
         generalized = pressure @ self.pressure_to_generalized.T
         if not CAPTURING and not bool(torch.isfinite(generalized).all().item()):
             raise FloatingPointError("native lift2/Mf2_1 force is non-finite")

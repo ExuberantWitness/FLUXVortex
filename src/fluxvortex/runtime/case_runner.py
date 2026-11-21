@@ -104,6 +104,42 @@ TRANSFER_ERROR_TOLERANCE = 1.0e-9
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 
+def _wake_history_mode_choice() -> str:
+    """Stage 2 contract knob, default-preserving.
+
+    The production Roj membrane path hard-codes ``bound_rate`` (the author's WEAK
+    constant slot) while the FSI stepper unconditionally adds the author's STRONG
+    velocity and Mf1 blocks.  The author never forms that combination.  This hook
+    lets the three contracts be measured without editing code; the default is the
+    historical value, so the parity suite stays bit-identical.
+    """
+
+    allowed = {"bound_rate", "material"}
+    choice = os.environ.get("FLUXV_WAKE_HISTORY_MODE", "bound_rate").strip()
+    if choice not in allowed:
+        raise ValueError(
+            f"FLUXV_WAKE_HISTORY_MODE must be one of {sorted(allowed)}, got {choice!r}"
+        )
+    return choice
+
+
+def _bound_rate_author_weak_choice() -> bool:
+    """Stage 2: drop Mf2_1 and the Mf1 action under ``bound_rate`` (author weak scheme).
+
+    The author's ``calc_fluid_force_weak.m:96-131`` sets ``Mf1 = Mf2_1 = 0`` because
+    its constant slot already carries ``dp_add = rho (Gamma_n - Gamma_{n-1})/dt``,
+    whose acceleration content is exactly what those blocks represent.  Default
+    False keeps the production path bit-identical.
+    """
+
+    raw = os.environ.get("FLUXV_BOUND_RATE_AUTHOR_WEAK", "0").strip()
+    if raw not in {"0", "1"}:
+        raise ValueError(
+            f"FLUXV_BOUND_RATE_AUTHOR_WEAK must be '0' or '1', got {raw!r}"
+        )
+    return raw == "1"
+
+
 def _q16_nonsymmetric_solver_choice() -> str:
     """Q16 linear-solver selection, with a default-preserving experiment hook.
 
@@ -408,7 +444,7 @@ class RojratsirikulCaseRunner:
                 wake_max_rows=WAKE_MAX_ROWS,
                 particle_capacity=PARTICLE_CAPACITY,
                 particle_max_age_steps=PARTICLE_MAX_AGE_STEPS,
-                wake_history_mode="bound_rate",
+                wake_history_mode=_wake_history_mode_choice(),
                 wake_free_rows=WAKE_FREE_ROWS,
                 dvm_target_spacing_chord=DVM_TARGET_SPACING_CHORD,
                 device=self.device,
@@ -481,6 +517,7 @@ class RojratsirikulCaseRunner:
             relaxation=RELAXATION,
             persistent_relaxation=True,
             coupling_accelerator="aitken",
+            bound_rate_author_weak=_bound_rate_author_weak_choice(),
         )
         self.coupling = PartitionedStrongFSI(production_coupling)
         self.transaction = GlobalTransaction()

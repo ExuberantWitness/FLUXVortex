@@ -257,6 +257,7 @@ class Q16NativeV5MFSIStepper:
         relaxation: float = 0.7,
         persistent_relaxation: bool = False,
         coupling_accelerator: str = "aitken",
+        bound_rate_author_weak: bool = False,
     ) -> None:
         if type(structural_solver) is not Q16CudaNewmarkStepper:
             raise TypeError("structural_solver must be the production Q16 CUDA stepper")
@@ -284,6 +285,28 @@ class Q16NativeV5MFSIStepper:
         if coupling_accelerator not in {"aitken", "iqn_ils"}:
             raise ValueError("coupling_accelerator must be 'aitken' or 'iqn_ils'")
         self.coupling_accelerator = coupling_accelerator
+        # Stage 2 (2026-11-21, default OFF): reproduce the AUTHOR'S WEAK scheme
+        # exactly.  Under wake_history_mode="bound_rate" the constant slot already
+        # carries dp_add = rho (Gamma_n - Gamma_{n-1})/dt, i.e. the full one-step
+        # unsteady circulation derivative, whose acceleration content is exactly
+        # what Mf1/Mf2_1 represent; the author's weak scheme therefore sets
+        # Mf1 = Mf2_1 = 0 (calc_fluid_force_weak.m:96-131).  This stepper has no
+        # mode branch and adds both unconditionally, so on the bound_rate path the
+        # acceleration term is applied twice.  Recorded as unresolved in-tree:
+        # diagnostics/README.md:27-33, RESEARCH_BRIEF.md M3, REPAIR...:70 (U3),
+        # P1_SHARED_EDGE...:171-175.  Default False keeps the production path
+        # bit-identical; the flag only exists so the two contracts can be measured
+        # against external ground truth before anyone changes a default.
+        if type(bound_rate_author_weak) is not bool:
+            raise TypeError("bound_rate_author_weak must be an exact bool")
+        self.bound_rate_author_weak = bool(bound_rate_author_weak)
+        if self.bound_rate_author_weak and (
+            aerodynamic_solver.settings.wake_history_mode != "bound_rate"
+        ):
+            raise ValueError(
+                "bound_rate_author_weak only applies to wake_history_mode='bound_rate'"
+            )
+        self._zero_added_mass: Q16NativeAddedMassAction | None = None
 
     def _integrate_structure(
         self,
@@ -357,8 +380,13 @@ class Q16NativeV5MFSIStepper:
             constant = wp.from_torch(
                 constant_t, dtype=config.DTYPE, requires_grad=False
             )
-            anchor_velocity_force = owner.aerodynamic_load.velocity_force(velocity)
-            endpoint_velocity_force = aerodynamic_load_end.velocity_force(velocity)
+            include_mf21 = not self.bound_rate_author_weak
+            anchor_velocity_force = owner.aerodynamic_load.velocity_force(
+                velocity, include_mf21=include_mf21
+            )
+            endpoint_velocity_force = aerodynamic_load_end.velocity_force(
+                velocity, include_mf21=include_mf21
+            )
             velocity_force = _interpolate(
                 anchor_velocity_force, endpoint_velocity_force, beta
             )
@@ -374,6 +402,14 @@ class Q16NativeV5MFSIStepper:
                 added_mass = Q16NativeAddedMassAction(
                     torch.lerp(anchor_am_matrix, endpoint_am_matrix, beta)
                 )
+            if self.bound_rate_author_weak:
+                # Author weak scheme: Mf1 == 0.  Reuse one zero matrix instead of
+                # allocating 71 MB per substep.
+                if self._zero_added_mass is None:
+                    self._zero_added_mass = Q16NativeAddedMassAction(
+                        torch.zeros_like(added_mass.generalized_matrix)
+                    )
+                added_mass = self._zero_added_mass
             predictor = self.structural_solver.step(
                 state,
                 velocity,
@@ -389,10 +425,10 @@ class Q16NativeV5MFSIStepper:
                 average_velocity_t, dtype=config.DTYPE, requires_grad=False
             )
             anchor_velocity_force = owner.aerodynamic_load.velocity_force(
-                average_velocity
+                average_velocity, include_mf21=not self.bound_rate_author_weak
             )
             endpoint_velocity_force = aerodynamic_load_end.velocity_force(
-                average_velocity
+                average_velocity, include_mf21=not self.bound_rate_author_weak
             )
             velocity_force = _interpolate(
                 anchor_velocity_force, endpoint_velocity_force, beta
@@ -433,8 +469,12 @@ class Q16NativeV5MFSIStepper:
                     dtype=config.DTYPE,
                     requires_grad=False,
                 )
-                vf_acc_anchor = owner.aerodynamic_load.velocity_force(v_avg_acc)
-                vf_acc_end = aerodynamic_load_end.velocity_force(v_avg_acc)
+                vf_acc_anchor = owner.aerodynamic_load.velocity_force(
+                    v_avg_acc, include_mf21=not self.bound_rate_author_weak
+                )
+                vf_acc_end = aerodynamic_load_end.velocity_force(
+                    v_avg_acc, include_mf21=not self.bound_rate_author_weak
+                )
                 vf_acc_t = wp.to_torch(
                     _interpolate(vf_acc_anchor, vf_acc_end, beta)
                 )[0]

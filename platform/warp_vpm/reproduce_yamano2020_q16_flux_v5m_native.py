@@ -9,6 +9,19 @@ import sys
 import time
 from typing import Any
 
+# Stage 2 (2026-11-21) contract knobs.  The author's WEAK scheme zeroes Mf1 and
+# Mf2_1 because its constant slot already carries the full
+# dp_add = rho (Gamma_n - Gamma_{n-1})/dt (whose acceleration content is exactly
+# what those blocks represent); the author's STRONG scheme uses the material wake
+# history WITH both blocks.  The production Roj membrane path mixes them
+# (bound_rate constant + strong velocity/Mf1), which is the suspected double
+# count logged as unresolved in RESEARCH_BRIEF M3 / REPAIR U3 / P1_SHARED_EDGE.
+# These knobs measure the three contracts against Yamano's published tip
+# displacement without editing code, and both default to the historical
+# behaviour so an unflagged run is bit-identical.
+AUTHOR_WEAK = bool(int(os.environ.get("FLUXV_BOUND_RATE_AUTHOR_WEAK", "0")))
+WANTED_WAKE_HISTORY = os.environ.get("FLUXV_WAKE_HISTORY_MODE", "").strip() or None
+
 import numpy as np
 import torch
 import warp as wp
@@ -142,6 +155,11 @@ def run_case(*, outer_steps: int, output: Path | None = None,
             aerodynamic_dt=case.aerodynamic_dt_s,
             lesp_crit=0.11,
             device=config.DEVICE,
+            **(
+                {}
+                if WANTED_WAKE_HISTORY is None
+                else {"wake_history_mode": WANTED_WAKE_HISTORY}
+            ),
         ),
     )
     state = wp.array(
@@ -160,6 +178,7 @@ def run_case(*, outer_steps: int, output: Path | None = None,
         coupling_tolerance=5.0e-7,
         max_coupling_iterations=20,
         relaxation=0.7,
+        bound_rate_author_weak=AUTHOR_WEAK,
     )
     pulse = Yamano2020Q16CudaPulse(model, case=case, device=config.DEVICE)
     reference = torch.as_tensor(
