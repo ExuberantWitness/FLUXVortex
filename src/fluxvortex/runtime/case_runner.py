@@ -123,6 +123,22 @@ def _wake_history_mode_choice() -> str:
     return choice
 
 
+def _three_slot_mf1_cancel_choice() -> bool:
+    """Stage 2b: keep Mf1 in the effective tangent, subtract one Mf1 qddot from the load.
+
+    Different from ``_bound_rate_author_weak_choice``: that one zeroes the action too,
+    which removes the stabilising term from the tangent (measured unstable).  Default
+    False keeps the production path bit-identical.
+    """
+
+    raw = os.environ.get("FLUXV_THREE_SLOT_MF1_CANCEL", "0").strip()
+    if raw not in {"0", "1"}:
+        raise ValueError(
+            f"FLUXV_THREE_SLOT_MF1_CANCEL must be '0' or '1', got {raw!r}"
+        )
+    return raw == "1"
+
+
 def _bound_rate_author_weak_choice() -> bool:
     """Stage 2: drop Mf2_1 and the Mf1 action under ``bound_rate`` (author weak scheme).
 
@@ -518,6 +534,7 @@ class RojratsirikulCaseRunner:
             persistent_relaxation=True,
             coupling_accelerator="aitken",
             bound_rate_author_weak=_bound_rate_author_weak_choice(),
+            three_slot_mf1_cancel=_three_slot_mf1_cancel_choice(),
         )
         self.coupling = PartitionedStrongFSI(production_coupling)
         self.transaction = GlobalTransaction()

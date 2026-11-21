@@ -20,6 +20,8 @@ from typing import Any
 # displacement without editing code, and both default to the historical
 # behaviour so an unflagged run is bit-identical.
 AUTHOR_WEAK = bool(int(os.environ.get("FLUXV_BOUND_RATE_AUTHOR_WEAK", "0")))
+#: Stage 2b: keep Mf1 in the tangent but subtract one Mf1 qddot from the load.
+THREE_SLOT = bool(int(os.environ.get("FLUXV_THREE_SLOT_MF1_CANCEL", "0")))
 WANTED_WAKE_HISTORY = os.environ.get("FLUXV_WAKE_HISTORY_MODE", "").strip() or None
 
 import numpy as np
@@ -179,6 +181,7 @@ def run_case(*, outer_steps: int, output: Path | None = None,
         max_coupling_iterations=20,
         relaxation=0.7,
         bound_rate_author_weak=AUTHOR_WEAK,
+        three_slot_mf1_cancel=THREE_SLOT,
     )
     pulse = Yamano2020Q16CudaPulse(model, case=case, device=config.DEVICE)
     reference = torch.as_tensor(

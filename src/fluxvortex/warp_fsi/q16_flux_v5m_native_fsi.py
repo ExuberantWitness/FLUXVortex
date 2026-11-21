@@ -258,6 +258,7 @@ class Q16NativeV5MFSIStepper:
         persistent_relaxation: bool = False,
         coupling_accelerator: str = "aitken",
         bound_rate_author_weak: bool = False,
+        three_slot_mf1_cancel: bool = False,
     ) -> None:
         if type(structural_solver) is not Q16CudaNewmarkStepper:
             raise TypeError("structural_solver must be the production Q16 CUDA stepper")
@@ -307,6 +308,30 @@ class Q16NativeV5MFSIStepper:
                 "bound_rate_author_weak only applies to wake_history_mode='bound_rate'"
             )
         self._zero_added_mass: Q16NativeAddedMassAction | None = None
+        # Stage 2b (2026-11-21, default OFF): the THREE-SLOT form.  Under
+        # bound_rate the constant slot carries dp_add = rho dGamma/dt, whose
+        # acceleration content IS Mf1 qddot; the stepper then also adds Mf1
+        # implicitly.  Rather than deleting Mf1 (which removes the stabilising
+        # term from the effective tangent and goes unstable -- measured: 0.17%
+        # step-1 error growing 1.34 -> 6.62 -> 10.52% and then a Newton line
+        # search failure), SUBTRACT Mf1 qddot from the load and KEEP Mf1 in the
+        # tangent.  At convergence the two cancel in the load while Newton keeps
+        # the added mass, which is the author's strong-scheme structure and the
+        # external audit's "three-slot" prescription.
+        if type(three_slot_mf1_cancel) is not bool:
+            raise TypeError("three_slot_mf1_cancel must be an exact bool")
+        self.three_slot_mf1_cancel = bool(three_slot_mf1_cancel)
+        if self.three_slot_mf1_cancel and self.bound_rate_author_weak:
+            raise ValueError(
+                "three_slot_mf1_cancel and bound_rate_author_weak are different "
+                "contracts and must not be combined"
+            )
+        if self.three_slot_mf1_cancel and (
+            aerodynamic_solver.settings.wake_history_mode != "bound_rate"
+        ):
+            raise ValueError(
+                "three_slot_mf1_cancel only applies to wake_history_mode='bound_rate'"
+            )
 
     def _integrate_structure(
         self,
@@ -377,6 +402,17 @@ class Q16NativeV5MFSIStepper:
                 constant_t = anchor_constant + beta * (
                     endpoint_constant - anchor_constant
                 )
+            if self.three_slot_mf1_cancel:
+                # Slot 1 correction: the bound_rate constant already contains the
+                # acceleration content of rho dGamma/dt, so remove exactly ONE
+                # Mf1 qddot from the load.  Mf1 stays in the effective tangent
+                # (passed below as acceleration_load_action), which is what keeps
+                # Newton stable -- that is the whole difference from
+                # bound_rate_author_weak, which zeroed the action too.
+                acceleration_now = wp.to_torch(acceleration)[0]
+                constant_t = constant_t - (
+                    anchor_am_matrix @ acceleration_now
+                ).unsqueeze(0)
             constant = wp.from_torch(
                 constant_t, dtype=config.DTYPE, requires_grad=False
             )
