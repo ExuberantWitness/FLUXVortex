@@ -996,7 +996,17 @@ class RojratsirikulCaseRunner:
             structural_state=result.structural.state,
             structural_velocity=result.structural.velocity,
             structural_acceleration=result.structural.acceleration,
-            committed_aerodynamic_load=self.owner.aerodynamic_load,
+            # SAME-STEP comparison: the proposal carries its own author load.
+            # Passing the committed (previous-step) load instead put a one-step
+            # offset into the legacy side of the comparison, which is invisible on
+            # a steady rigid case (measured A/B = 1.0001 at alpha=5) but large on a
+            # moving membrane -- that is the likely origin of the recorded 0.28-0.52
+            # "projection_quadrature_discrepancy".
+            committed_aerodynamic_load=(
+                result.aerodynamic.author_load
+                if getattr(result.aerodynamic, "author_load", None) is not None
+                else self.owner.aerodynamic_load
+            ),
             time_star=self.owner.aerodynamic.state.step * self.spec_shared("aerodynamic_dt_star"),
         )
         evidence["aero_step"] = int(self.owner.aerodynamic.state.step)
