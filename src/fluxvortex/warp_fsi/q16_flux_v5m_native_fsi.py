@@ -308,6 +308,7 @@ class Q16NativeV5MFSIStepper:
                 "bound_rate_author_weak only applies to wake_history_mode='bound_rate'"
             )
         self._zero_added_mass: Q16NativeAddedMassAction | None = None
+        self._added_mass_memo: tuple | None = None
         # Stage 2b (2026-11-21, default OFF): the THREE-SLOT form.  Under
         # bound_rate the constant slot carries dp_add = rho dGamma/dt, whose
         # acceleration content IS Mf1 qddot; the stepper then also adds Mf1
@@ -428,16 +429,48 @@ class Q16NativeV5MFSIStepper:
             )
             aerodynamic = _combine(constant, velocity_force)
             total = aerodynamic if prescribed is None else _combine(aerodynamic, prescribed)
-            if previous_load is not None:
-                # Extrapolate the added-mass matrix with the same committed
-                # slope: Mf1(t) = Mf1_a + beta × (Mf1_a - Mf1_old)
-                added_mass = Q16NativeAddedMassAction(
-                    anchor_am_matrix + beta * am_slope
+            # M1b (2026-11-21): memoize the added-mass action per load fraction beta
+            # so every call at the same beta shares ONE matrix object.  The LU cache in
+            # the structural solver keys on that matrix, so this is what turns ~58
+            # factorizations per outer step into ~10 (M0 measured 21.65 ms per
+            # factorization vs 0.60 ms per solve).
+            memo = self._added_mass_memo
+            # Every matrix the action is built from must be in the key: on the FIRST
+            # outer step the action is torch.lerp(anchor, endpoint, beta) and
+            # endpoint_am_matrix changes per coupling iteration, so omitting it
+            # reused a stale action (caught by the bitwise check, 3 steps).
+            used_slope = am_slope if previous_load is not None else None
+            used_endpoint = endpoint_am_matrix if previous_load is None else None
+            anchor_pair = (
+                id(anchor_am_matrix),
+                id(used_slope) if used_slope is not None else None,
+                id(used_endpoint) if used_endpoint is not None else None,
+            )
+            if memo is None or memo[0] != anchor_pair:
+                # Hold the matrices themselves so their ids cannot be recycled while
+                # the memo is live (the same hazard that broke M1's first version).
+                memo = (
+                    anchor_pair,
+                    anchor_am_matrix,
+                    used_slope,
+                    used_endpoint,
+                    {},
                 )
-            else:
-                added_mass = Q16NativeAddedMassAction(
-                    torch.lerp(anchor_am_matrix, endpoint_am_matrix, beta)
-                )
+                self._added_mass_memo = memo
+            by_beta = memo[4]
+            added_mass = by_beta.get(beta)
+            if added_mass is None:
+                if previous_load is not None:
+                    # Extrapolate the added-mass matrix with the same committed
+                    # slope: Mf1(t) = Mf1_a + beta × (Mf1_a - Mf1_old)
+                    added_mass = Q16NativeAddedMassAction(
+                        anchor_am_matrix + beta * am_slope
+                    )
+                else:
+                    added_mass = Q16NativeAddedMassAction(
+                        torch.lerp(anchor_am_matrix, endpoint_am_matrix, beta)
+                    )
+                by_beta[beta] = added_mass
             if self.bound_rate_author_weak:
                 # Author weak scheme: Mf1 == 0.  Reuse one zero matrix instead of
                 # allocating 71 MB per substep.
