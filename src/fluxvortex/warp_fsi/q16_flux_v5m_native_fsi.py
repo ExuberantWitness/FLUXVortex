@@ -334,6 +334,9 @@ class Q16NativeV5MFSIStepper:
             )
         self._zero_added_mass: Q16NativeAddedMassAction | None = None
         self._added_mass_memo: tuple | None = None
+        #: S1 (2026-11-22): (id(anchor), id(previous)) -> the committed added-mass
+        #: slope.  Memoized so the M1b action memo and the LU cache see stable ids.
+        self._am_slope_memo: tuple | None = None
         # Stage 2b (2026-11-21, default OFF): the THREE-SLOT form.  Under
         # bound_rate the constant slot carries dp_add = rho dGamma/dt, whose
         # acceleration content IS Mf1 qddot; the stepper then also adds Mf1
@@ -397,10 +400,30 @@ class Q16NativeV5MFSIStepper:
             owner.aerodynamic_load.added_mass.generalized_matrix
         )
         if previous_load is not None:
-            am_slope = (
-                anchor_am_matrix
-                - _scale_added_mass(previous_load.added_mass.generalized_matrix)
+            previous_am_matrix = _scale_added_mass(
+                previous_load.added_mass.generalized_matrix
             )
+            # S1 (2026-11-22): the slope must be a STABLE OBJECT, not a fresh tensor
+            # per call.  `_integrate_structure` runs once per coupling iteration plus
+            # once for the formal replay, all with the same committed anchor and
+            # previous loads; when the slope was re-differenced every call its id()
+            # changed, which invalidated the M1b added-mass memo (keyed on id(slope)),
+            # which rebuilt ten actions with ten new data_ptrs, which made the LU
+            # cache miss on every pass.  Measured consequence: 29.00 factorizations
+            # per step (= 2.9 passes x 10 betas) instead of 10.
+            slope_key = (id(anchor_am_matrix), id(previous_am_matrix))
+            memo_slope = self._am_slope_memo
+            if memo_slope is not None and memo_slope[0] == slope_key:
+                am_slope = memo_slope[1]
+            else:
+                am_slope = anchor_am_matrix - previous_am_matrix
+                # Hold both operands so their ids cannot be recycled while memoized.
+                self._am_slope_memo = (
+                    slope_key,
+                    am_slope,
+                    anchor_am_matrix,
+                    previous_am_matrix,
+                )
         else:
             endpoint_am_matrix = _scale_added_mass(
                 aerodynamic_load_end.added_mass.generalized_matrix
@@ -477,9 +500,11 @@ class Q16NativeV5MFSIStepper:
             total = aerodynamic if prescribed is None else _combine(aerodynamic, prescribed)
             # M1b (2026-11-21): memoize the added-mass action per load fraction beta
             # so every call at the same beta shares ONE matrix object.  The LU cache in
-            # the structural solver keys on that matrix, so this is what turns ~58
-            # factorizations per outer step into ~10 (M0 measured 21.65 ms per
-            # factorization vs 0.60 ms per solve).
+            # the structural solver keys on that matrix.  MEASURED (S1, 2026-11-22):
+            # with this memo but the solver's OLD single-slot cache, the 30-step A16
+            # window still factorized 29.00 times per step (870/30) although only 10
+            # load fractions exist -- the single slot was evicted on every wrap of the
+            # beta loop.  With the per-beta bucket it is 10.
             memo = self._added_mass_memo
             # Every matrix the action is built from must be in the key: on the FIRST
             # outer step the action is torch.lerp(anchor, endpoint, beta) and

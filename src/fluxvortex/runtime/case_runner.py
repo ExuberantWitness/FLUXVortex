@@ -71,7 +71,7 @@ from ..warp_fsi.q16_flux_v5m_native_fsi import (
     Q16NativeV5MFSIOwner,
     Q16NativeV5MFSIStepper,
 )
-from ..warp_fsi.q16_structural_solver import Q16CudaNewmarkStepper
+from ..warp_fsi.q16_structural_solver import Q16CudaNewmarkStepper, lu_cache_stats
 from .result_schema import ResultStatus
 
 
@@ -1505,6 +1505,10 @@ class RojratsirikulCaseRunner:
             "reference_tangent_cache_refresh_count": (
                 self.structural.reference_tangent_cache_refresh_count
             ),
+            # S1 (2026-11-22): measured factorization accounting.  The M1 commit
+            # claimed "105 -> 10" without a counter; these numbers replace that
+            # inference with a measurement.
+            "lu_cache_stats": lu_cache_stats(),
             "dvm_target_spacing_chord": DVM_TARGET_SPACING_CHORD,
             "perimeter_audit": self.perimeter_audit,
             "assumption_ledger": platform.assumption_ledger(case),
