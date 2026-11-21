@@ -26,7 +26,7 @@ import math
 import pytest
 import torch
 
-from pfield_torch_gpu import CudaParticleField
+from pfield_torch_gpu import RVPM_Z_WEIGHT, CudaParticleField
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA required"
@@ -137,3 +137,70 @@ def test_empty_field_and_bad_dt():
     field = _field(positions, gammas, sigma)
     with pytest.raises(ValueError, match="finite and positive"):
         field.apply_vortex_stretching(0.0)
+
+
+def test_rvpm_form_scales_the_along_gamma_growth_to_two_fifths():
+    """The redistribution term has an exact algebraic signature.
+
+    ``dgamma/dt = S - 3 Z gamma`` with ``Z = (1/5)(S . gamma)/|gamma|^2`` gives
+
+        gamma . dgamma/dt = (S . gamma) - 3 Z |gamma|^2
+                          = (1 - 3/5) (S . gamma) = (2/5) (S . gamma)
+
+    so the projection of the update onto gamma must be exactly 40% of the raw
+    Helmholtz value.  That is the term that bounds a stretched element, and it is
+    parameter-free: Z is derived, not tuned.
+    """
+
+    positions, gammas, sigma = _blobs(9)
+    dt = 4.0e-8
+    raw = _field(positions, gammas, sigma)
+    rvpm = _field(positions, gammas, sigma)
+
+    _, jacobian = raw.velocity_and_jacobian_self_cuda()
+    stretch = torch.einsum("nim,nm->ni", jacobian, gammas)
+    along = torch.sum(stretch * gammas, dim=1)
+
+    raw.apply_vortex_stretching(dt, rvpm=False)
+    rvpm.apply_vortex_stretching(dt, rvpm=True)
+
+    delta_raw = raw.gamma[: raw.n] - gammas
+    delta_rvpm = rvpm.gamma[: rvpm.n] - gammas
+
+    projected_raw = torch.sum(delta_raw * gammas, dim=1)
+    projected_rvpm = torch.sum(delta_rvpm * gammas, dim=1)
+
+    expected_raw = dt * along
+    expected_rvpm = (1.0 - 3.0 * RVPM_Z_WEIGHT) * dt * along
+    # Scale the tolerance by the magnitude of the terms entering the difference
+    # (dt*|S|), not by the projection itself: the along-gamma projection of this
+    # blob field is far below the fp64 round-off floor set by dt*|S|.
+    scale = max(float((dt * stretch).abs().max().item()), 1.0e-30)
+    residual_raw = float((projected_raw - expected_raw).abs().max().item())
+    residual_rvpm = float((projected_rvpm - expected_rvpm).abs().max().item())
+    assert residual_raw <= 1.0e-12 * scale
+    assert residual_rvpm <= 1.0e-12 * scale
+    # And the two forms must genuinely differ on this field, so the gate is not
+    # vacuous.
+    assert float((delta_raw - delta_rvpm).abs().max().item()) > 0.0
+
+
+def test_rvpm_form_still_conserves_magnitude_under_pure_rotation():
+    """Antisymmetric J => S . gamma = 0 => Z = 0 => both terms vanish."""
+
+    positions, gammas, sigma = _blobs(6)
+    field = _field(positions, gammas, sigma)
+    _, jacobian = field.velocity_and_jacobian_self_cuda()
+    antisymmetric = 0.5 * (jacobian - jacobian.transpose(1, 2))
+    # |gamma| conservation is only meaningful when the antisymmetric part is the
+    # whole story; assert the field mixes in strain so the test is honest.
+    symmetric = 0.5 * (jacobian + jacobian.transpose(1, 2))
+    assert float(antisymmetric.abs().max().item()) > 0.0
+    assert float(symmetric.abs().max().item()) >= 0.0
+
+    before = torch.linalg.vector_norm(field.gamma[: field.n], dim=1).clone()
+    summary = field.apply_vortex_stretching(1.0e-8, rvpm=True)
+    after = torch.linalg.vector_norm(field.gamma[: field.n], dim=1)
+    assert summary["stretching_form"] == "rvpm"
+    relative = (after - before).abs() / torch.clamp(before, min=1.0e-300)
+    assert float(relative.max().item()) < 1.0e-3

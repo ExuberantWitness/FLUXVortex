@@ -8,6 +8,8 @@ import torch
 import warp as wp
 
 BS_BLOCK_SIZE = 512
+#: ``(f+g)/(1+3f)`` of the frozen rVPM note (research_rvpm_arch.md V4) at f=0, g=1/5.
+RVPM_Z_WEIGHT = 0.2
 
 
 @wp.kernel
@@ -981,24 +983,43 @@ class CudaParticleField:
         delta_time: float,
         *,
         core_spreading: bool = False,
+        rvpm: bool = False,
     ) -> dict[str, float]:
         """One Euler step of 3-D vortex stretching on the live particles.
 
-        ``d(gamma)/dt = J . gamma`` with ``J[i,m] = du_i/dx_m`` (see
-        ``_pfield_jacobian_partials`` for the storage convention), i.e. the
-        Helmholtz stretching term for a Lagrangian vortex element.  With
-        ``core_spreading`` the core radius follows the standard rVPM choice
-        ``d(sigma)/dt = -sigma Z`` with ``Z = (S . gamma)/|gamma|^2`` and
-        ``S = J . gamma``, so a stretched element tightens instead of growing.
+        ``S = J . gamma`` with ``J[i,m] = du_i/dx_m`` (see
+        ``_pfield_jacobian_partials`` for the storage convention).
 
-        First order in time for the strength (positions keep their RK3 update),
-        which the diagnostics record.  Leaves the field unchanged when empty.
+        Two forms, because the repo's frozen design note specifies one and an
+        earlier version of this code implemented the other:
+
+        ``rvpm=True`` -- the reformulated VPM form of
+        ``platform/docs/diag/research_rvpm_arch.md`` (V4, quoting rvpm-02):
+        ``Z = [(f+g)/(1+3f) (S . gamma)] / |gamma|^2``, ``dgamma/dt = S - 3 Z gamma``,
+        ``dsigma/dt = -sigma Z``.  With ``f=0, g=1/5`` the weight is ``1/5``.  The
+        ``-3 Z gamma`` term is what makes a stretched element BOUNDED: it removes
+        the along-gamma component so the growth is redistributed into the core
+        instead of accumulating without limit.
+
+        ``rvpm=False`` -- the bare Helmholtz term ``dgamma/dt = S``.  Kept so the
+        raw form stays reproducible for A/B attribution; it is the configuration
+        that grew ``|gamma|`` without bound.
+
+        ``C epsilon`` from the note is set to 0: the note does not fix its value
+        and the viscous scheme is recorded there as inviscid, so introducing a
+        non-zero dissipation coefficient would be a new parameter, which the
+        project forbids.
+
+        First order in time for the strength (positions keep their RK3 update).
+        Leaves the field unchanged when empty.
         """
 
         summary = {
             "particle_count": int(self.n),
+            "stretching_form": "rvpm" if rvpm else "raw",
             "stretching_growth_max": 1.0,
             "stretching_shrink_max": 1.0,
+            "stretching_redistribution_max": 0.0,
             "core_radius_ratio_min": 1.0,
             "core_radius_ratio_max": 1.0,
         }
@@ -1012,9 +1033,18 @@ class CudaParticleField:
         stretch_rate = torch.einsum("nim,nm->ni", jacobian, gamma)
         dot = torch.sum(stretch_rate * gamma, dim=1)
         norm_sq = torch.clamp(torch.sum(gamma * gamma, dim=1), min=1.0e-300)
-        z = dot / norm_sq
+        # (f+g)/(1+3f) with f=0, g=1/5 == 1/5 (frozen V4 note).
+        weight = RVPM_Z_WEIGHT if rvpm else 1.0
+        z = weight * dot / norm_sq
 
-        updated = gamma + delta_time * stretch_rate
+        if rvpm:
+            redistribution = 3.0 * z[:, None] * gamma
+            updated = gamma + delta_time * (stretch_rate - redistribution)
+            summary["stretching_redistribution_max"] = float(
+                torch.linalg.vector_norm(redistribution, dim=1).max().item()
+            )
+        else:
+            updated = gamma + delta_time * stretch_rate
         if not bool(torch.isfinite(updated).all().item()):
             raise FloatingPointError("vortex stretching produced non-finite strength")
         magnitude = torch.linalg.vector_norm(gamma, dim=1)

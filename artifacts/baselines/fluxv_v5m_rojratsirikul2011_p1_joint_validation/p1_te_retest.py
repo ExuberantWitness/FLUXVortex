@@ -101,6 +101,7 @@ def run(
     ramp_steps: int = 0,
     stretching: bool = False,
     core_spreading: bool = False,
+    stretching_rvpm: bool = False,
 ) -> dict:
     reference = build_izra_reference_grid(
         chordwise_panels=NC,
@@ -137,6 +138,7 @@ def run(
         le_open_deposit_drop_tev_compensation=le_open_drop_tev,
         particle_stretching=stretching,
         particle_core_spreading=core_spreading,
+        particle_stretching_rvpm=stretching_rvpm,
     )
     solver = RigidNativeV5MSolver(surface, settings)
     stepper = RigidV5MStepper(solver, device=DEVICE)
@@ -342,6 +344,12 @@ def main() -> int:
         help="Stage 2: 3-D vortex stretching d(gamma)/dt = J . gamma on the particles",
     )
     parser.add_argument(
+        "--stretching-rvpm",
+        action="store_true",
+        help="use the frozen rVPM stretching form dgamma/dt = S - 3 Z gamma "
+        "(research_rvpm_arch.md V4) instead of the bare dgamma/dt = S",
+    )
+    parser.add_argument(
         "--core-spreading",
         action="store_true",
         help="Stage 2: also evolve the core radius d(sigma)/dt = -sigma Z (needs --stretching)",
@@ -376,8 +384,11 @@ def main() -> int:
             sigma_chord=args.sigma,
             spacing_chord=args.spacing,
             ramp_steps=int(args.ramp_steps),
-            stretching=bool(args.stretching or args.core_spreading),
+            stretching=bool(
+                args.stretching or args.core_spreading or args.stretching_rvpm
+            ),
             core_spreading=bool(args.core_spreading),
+            stretching_rvpm=bool(args.stretching_rvpm),
         )
         for a in angles
     ]
@@ -394,6 +405,7 @@ def main() -> int:
         "ramp_steps": int(args.ramp_steps),
         "particle_stretching": bool(args.stretching or args.core_spreading),
         "particle_core_spreading": bool(args.core_spreading),
+        "particle_stretching_rvpm": bool(args.stretching_rvpm),
         "ramp_protocol": "frozen half-cosine 0->U0 over t* in [0,1]; 0 = impulsive start",
         "analytic_newborn_area_m2": ANALYTIC_NEWBORN_AREA,
         "streamwise_segment_m": FREESTREAM * DT,

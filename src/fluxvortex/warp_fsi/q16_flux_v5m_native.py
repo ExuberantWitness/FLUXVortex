@@ -249,6 +249,12 @@ class NativeV5MConfig:
     # physical saturation mechanism, so it is measured, not asserted.
     particle_stretching: bool = False
     particle_core_spreading: bool = False
+    # Which stretching form the flag above uses.  False = bare Helmholtz
+    # dgamma/dt = S (the version measured first, kept for A/B attribution);
+    # True = the frozen rVPM form of research_rvpm_arch.md V4, which adds the
+    # redistribution term -3 Z gamma that bounds a stretched element instead of
+    # letting |gamma| accumulate without limit.
+    particle_stretching_rvpm: bool = False
     device: str = "cuda:0"
 
     def __post_init__(self) -> None:
@@ -277,6 +283,12 @@ class NativeV5MConfig:
         if self.particle_core_spreading and not self.particle_stretching:
             raise ValueError(
                 "particle_core_spreading requires particle_stretching"
+            )
+        if type(self.particle_stretching_rvpm) is not bool:
+            raise TypeError("particle_stretching_rvpm must be an exact bool")
+        if self.particle_stretching_rvpm and not self.particle_stretching:
+            raise ValueError(
+                "particle_stretching_rvpm requires particle_stretching"
             )
         if self.le_open_deposit and not self.joint_separation_solve:
             raise ValueError(
@@ -1156,6 +1168,7 @@ class Q16NativeV5MSolver:
                 core_spreading=bool(
                     getattr(self.settings, "particle_core_spreading", False)
                 ),
+                rvpm=bool(getattr(self.settings, "particle_stretching_rvpm", False)),
             )
             retention["particle_stretching"] = stretching
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
