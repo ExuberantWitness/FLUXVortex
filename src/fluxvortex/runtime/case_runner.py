@@ -156,6 +156,23 @@ def _bound_rate_author_weak_choice() -> bool:
     return raw == "1"
 
 
+def _reuse_convected_field_choice() -> bool:
+    """S4a: reuse the trial proposal's convected field for the formal replay.
+
+    Default False keeps the production path bit-identical.  When on, the replay's free
+    wake and particles are the ones convected for the last trial proposal at
+    ``(q_guess, v_guess)``, i.e. lagged by the coupling residual (<= 5e-7 relative), so
+    the comparison against the default path is a tolerance on the loads, not equality.
+    """
+
+    raw = os.environ.get("FLUXV_REUSE_CONVECTED_FIELD", "0").strip()
+    if raw not in {"0", "1"}:
+        raise ValueError(
+            f"FLUXV_REUSE_CONVECTED_FIELD must be '0' or '1', got {raw!r}"
+        )
+    return raw == "1"
+
+
 def _diagnostic_mf1_scale() -> float:
     """The added-mass operator scale used by this run (1.0 on every production path).
 
@@ -550,6 +567,7 @@ class RojratsirikulCaseRunner:
             coupling_accelerator="aitken",
             bound_rate_author_weak=_bound_rate_author_weak_choice(),
             three_slot_mf1_cancel=_three_slot_mf1_cancel_choice(),
+            reuse_convected_field=_reuse_convected_field_choice(),
         )
         self.coupling = PartitionedStrongFSI(production_coupling)
         self.transaction = GlobalTransaction()

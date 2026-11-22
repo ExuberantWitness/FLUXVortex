@@ -284,6 +284,7 @@ class Q16NativeV5MFSIStepper:
         coupling_accelerator: str = "aitken",
         bound_rate_author_weak: bool = False,
         three_slot_mf1_cancel: bool = False,
+        reuse_convected_field: bool = False,
     ) -> None:
         if type(structural_solver) is not Q16CudaNewmarkStepper:
             raise TypeError("structural_solver must be the production Q16 CUDA stepper")
@@ -311,6 +312,13 @@ class Q16NativeV5MFSIStepper:
         if coupling_accelerator not in {"aitken", "iqn_ils"}:
             raise ValueError("coupling_accelerator must be 'aitken' or 'iqn_ils'")
         self.coupling_accelerator = coupling_accelerator
+        # S4a (2026-11-22, default OFF): reuse the free-wake/particle state that the last
+        # trial proposal already convected when building the FORMAL REPLAY proposal.
+        # The replay runs at `structural.state/velocity`, which differs from the trial's
+        # `(q_guess, v_guess)` by at most the coupling residual (<= 5e-7 relative), so
+        # the reused field is lagged by exactly that much -- the acceptance is a
+        # tolerance on the loads, never bitwise equality.
+        self.reuse_convected_field = bool(reuse_convected_field)
         # Stage 2 (2026-11-21, default OFF): reproduce the AUTHOR'S WEAK scheme
         # exactly.  Under wake_history_mode="bound_rate" the constant slot already
         # carries dp_add = rho (Gamma_n - Gamma_{n-1})/dt, i.e. the full one-step
@@ -768,7 +776,10 @@ class Q16NativeV5MFSIStepper:
         for iteration in range(1, self.max_coupling_iterations + 1):
             proposal_started = time.perf_counter()
             proposal = owner.aerodynamic.propose(
-                self.aerodynamic_solver, q_guess, v_guess
+                self.aerodynamic_solver,
+                q_guess,
+                v_guess,
+                capture_preconvected=self.reuse_convected_field,
             )
             evaluations += 1
             if progress_callback is not None:
@@ -814,7 +825,13 @@ class Q16NativeV5MFSIStepper:
             if residual <= self.coupling_tolerance:
                 proposal_started = time.perf_counter()
                 formal_proposal = owner.aerodynamic.propose(
-                    self.aerodynamic_solver, structural.state, structural.velocity
+                    self.aerodynamic_solver,
+                    structural.state,
+                    structural.velocity,
+                    # The PRE-DEPOSIT snapshot, not the trial state: the trial already
+                    # carries this step's deposit, and re-depositing it would double the
+                    # particle count (measured: capacity overflow at 32,689 + 270).
+                    preconvected=proposal.preconvected_state,
                 )
                 evaluations += 1
                 if progress_callback is not None:

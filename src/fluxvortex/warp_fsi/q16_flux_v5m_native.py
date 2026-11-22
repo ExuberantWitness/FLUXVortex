@@ -727,6 +727,10 @@ class NativeV5MProposal:
     load: NativeV5MLoad
     generalized_force: wp.array
     author_load: Any
+    #: S4a: the state right AFTER the material convection and BEFORE the deposit, so a
+    #: later propose() can reuse the convected free wake/particles without inheriting
+    #: this proposal's deposit (re-depositing would double the particle count).
+    preconvected_state: "NativeV5MState | None" = None
 
 
 class Q16NativePanelLoadTransfer:
@@ -1152,10 +1156,33 @@ class Q16NativeV5MSolver:
         committed: NativeV5MState,
         structural_state: wp.array,
         structural_velocity: wp.array,
+        preconvected: "NativeV5MState | None" = None,
+        capture_preconvected: bool = False,
     ) -> NativeV5MProposal:
         parent_digest = committed.digest()
         parent_fingerprint = committed.mutation_fingerprint()
-        trial = committed.clone()
+        if preconvected is None:
+            trial = committed.clone()
+        else:
+            # S4a (2026-11-22, flag-gated diagnostic branch): start from a state whose
+            # free wake and particles were already convected this outer step instead of
+            # convecting ``committed`` again.  The caller passes the trial state of a
+            # proposal made at a structural state that differs only by the coupling
+            # residual, so this is a LAGGED convection, not a repeated identical
+            # computation -- the acceptance is therefore a tolerance on the loads, never
+            # bitwise equality.
+            #
+            # The preconvected state is CLONED: `propose` writes into `trial`
+            # (lev_strip_last_release, the deposit, gamma_bound, ...) and the caller
+            # still owns the proposal this state came from.
+            trial = preconvected.clone()
+            # The source state was itself produced by a propose(), so it already carries
+            # step = committed.step + 1 and `propose` increments the step at the end.  Reset
+            # it to the committed step so that (a) the commit guard still sees exactly one
+            # advance and (b) every in-propose use of `trial.step` (particle birth labels,
+            # the LE window cutoff, the age horizon) means the same thing it does on the
+            # default path.
+            trial.step = committed.step
         geometry = self.surface.evaluate(structural_state, structural_velocity)
         # This step's release is not known yet: clear the per-step record so a
         # non-releasing step cannot inherit the previous step's strength.
@@ -1164,7 +1191,18 @@ class Q16NativeV5MSolver:
             device=self.device,
             dtype=torch.float64,
         )
-        retention = self._advance_material_state(geometry, trial)
+        if preconvected is None:
+            retention = self._advance_material_state(geometry, trial)
+        else:
+            # Same record shape as `_advance_material_state`, with the cull entries at
+            # zero because the age cull already ran in the proposal this state came
+            # from; `convected_reuse` makes the branch visible in the payload.
+            retention = {
+                "particle_cull_count": 0,
+                "particle_cull_circulation": 0.0,
+                "particle_cull_linear_impulse": [0.0, 0.0, 0.0],
+                "convected_reuse": 1,
+            }
         # Stage 2 (experimental, default OFF): 3-D vortex stretching on the live
         # particles.  Applied right after the material convection so the strength
         # is updated from the same positions the next stage will see; first order
@@ -1185,6 +1223,11 @@ class Q16NativeV5MSolver:
                 ),
             )
             retention["particle_stretching"] = stretching
+        # S4a: snapshot here -- after the free wake/particles are convected and stretched,
+        # but BEFORE any deposit or wake truncation.  Handing this to a later propose()
+        # lets it skip the O(N^2) convection while still doing its own deposit and its own
+        # truncation, which is what keeps the particle count and the ledger identical.
+        preconvected_state = trial.clone() if capture_preconvected else None
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
         wake_velocity = self._ring_velocity(
             geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False
@@ -2128,6 +2171,7 @@ class Q16NativeV5MSolver:
             load=load,
             generalized_force=generalized,
             author_load=author_load,
+            preconvected_state=preconvected_state,
         )
 
 
@@ -2140,8 +2184,16 @@ class Q16NativeV5MOwner:
         solver: Q16NativeV5MSolver,
         structural_state: wp.array,
         structural_velocity: wp.array,
+        preconvected: "NativeV5MState | None" = None,
+        capture_preconvected: bool = False,
     ) -> NativeV5MProposal:
-        return solver.propose(self.state, structural_state, structural_velocity)
+        return solver.propose(
+            self.state,
+            structural_state,
+            structural_velocity,
+            preconvected,
+            capture_preconvected,
+        )
 
     def commit(self, proposal: NativeV5MProposal) -> None:
         if proposal.parent_fingerprint != self.state.mutation_fingerprint():
