@@ -429,6 +429,16 @@ _LU_CACHE_CAPACITY = 16
 _TANGENT_LINEARIZATION_REUSE = bool(
     int(os.environ.get("FLUXV_TANGENT_LINEARIZATION_REUSE", "1"))
 )
+#: S3c (2026-11-22, default ON): in the Newton line search, compute only what the TRIAL
+#: linearization is used for -- its exceptions -- instead of the full linearization.
+#: On the common path the trial linearization is discarded (`accepted_trial = trial;
+#: break`); only the rare `globalize_newton` branch consumes the value.  Measured split of
+#: a linearization: `_projected_b` 75%, `_sample_fields` 13%, `_alpha` 7%, `_strain` 3%;
+#: `_projected_b` raises nothing, so dropping it leaves the raise surface identical and the
+#: accepted-trial sequence bit-identical.
+_VALIDITY_ONLY_TRIAL_LINEARIZATION = bool(
+    int(os.environ.get("FLUXV_TRIAL_LINEARIZATION_VALIDITY_ONLY", "1"))
+)
 #: id(stepper) -> (key, base_free).  The stepper uses __slots__, so the cache cannot
 #: live on the instance; there is one stepper per run, and a key mismatch discards it.
 _BASE_FREE_CACHE: dict[int, tuple[tuple, torch.Tensor]] = {}
@@ -2211,9 +2221,18 @@ class Q16CudaNewmarkStepper:
                 )
                 trial = self._boundary_operator._enforce_state_prechecked(trial)
                 try:
-                    trial_linearization = self._operator._linearization_prechecked(
-                        trial
-                    )
+                    if (
+                        _VALIDITY_ONLY_TRIAL_LINEARIZATION
+                        and not globalize_newton
+                    ):
+                        # The value is discarded on this path (see the flag comment);
+                        # `globalize_newton` is the only consumer and it is False here.
+                        self._operator.validity_only_prechecked(trial)
+                        trial_linearization = None
+                    else:
+                        trial_linearization = self._operator._linearization_prechecked(
+                            trial
+                        )
                 except FloatingPointError as error:
                     if (
                         str(error)

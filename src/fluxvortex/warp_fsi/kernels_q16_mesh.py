@@ -335,6 +335,12 @@ class Q16CudaMITC16EASMeshOperator:
         local_state = self._gather_prechecked(global_state)
         return self._element_operator._linearization_prechecked(local_state)
 
+    def validity_only_prechecked(self, global_state: wp.array) -> None:
+        """Delegate the S3c validity-only path (same raises, no ``projected_b``=75%)."""
+
+        local_state = self._gather_prechecked(global_state)
+        self._element_operator.validity_only_prechecked(local_state)
+
     def _internal_force_linearized_prechecked(self, linearization) -> wp.array:
         local_force = self._element_operator._internal_force_linearized_prechecked(
             linearization

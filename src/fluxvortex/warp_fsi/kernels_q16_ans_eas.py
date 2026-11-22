@@ -1067,6 +1067,28 @@ class Q16CudaMITC16EASOperator:
 
         return self._current_fields(state)
 
+    def validity_only_prechecked(self, state: wp.array) -> None:
+        """Everything ``_linearization_prechecked`` can RAISE, without ``projected_b``.
+
+        The Newton line search computes the trial linearization only to ask whether the
+        trial geometry is admissible: on the common path it breaks out with the trial and
+        never reads the value (the ``globalize_newton`` branch is the only consumer).
+        ``_current_fields`` can raise from exactly two places -- the geometry gate inside
+        ``_strain`` and the non-finite check inside ``_alpha`` -- and ``_projected_b``
+        raises nothing.  So this runs the same three calls minus ``_projected_b``, which
+        is the whole point: measured on the A16 mesh, ``_projected_b`` is 75% of the
+        linearization cost (546.1 of 724.4 ms/step) because it materialises a
+        (1, elements, quadrature, 576) tensor on every call.
+
+        The raise surface is therefore identical by construction, which is what makes the
+        skip bit-identical: the same trials are accepted and the same factor halvings
+        happen.
+        """
+
+        first, second, third, measure = self._sample_fields(state)
+        strain = self._strain(measure, state)
+        self._alpha(strain, state.shape[0])
+
     def enhanced_parameter(self, state: Any):
         self._validate("state", state)
         _, _, _, measure = self._sample_fields(state)

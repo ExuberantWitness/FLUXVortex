@@ -172,6 +172,31 @@ TARGETS = (
         "interpolate",
         "surface_interpolate",
     ),
+    # -- what the linearization actually spends --
+    (
+        "fluxvortex.warp_fsi.kernels_q16_ans_eas",
+        "Q16CudaMITC16EASOperator",
+        "_projected_b",
+        "lin_projected_b",
+    ),
+    (
+        "fluxvortex.warp_fsi.kernels_q16_ans_eas",
+        "Q16CudaMITC16EASOperator",
+        "_strain",
+        "lin_strain",
+    ),
+    (
+        "fluxvortex.warp_fsi.kernels_q16_ans_eas",
+        "Q16CudaMITC16EASOperator",
+        "_sample_fields",
+        "lin_sample_fields",
+    ),
+    (
+        "fluxvortex.warp_fsi.kernels_q16_ans_eas",
+        "Q16CudaMITC16EASOperator",
+        "_alpha",
+        "lin_alpha",
+    ),
     (
         "fluxvortex.warp_fsi.q16_flux_v5m_native",
         None,
