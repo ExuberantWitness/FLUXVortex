@@ -33,10 +33,38 @@ meaningful.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import torch
 
-__all__ = ["flexibility_energy_norm", "relative_flexibility_gap"]
+from .q16_rigid_body_wrench import aero_generalized_wrench
+
+
+def wrench_components(
+    generalized_load: torch.Tensor,
+    structural_state: torch.Tensor,
+    reference_rows: torch.Tensor,
+    *,
+    origin: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """6-DOF rigid resultant (force, moment) of a generalized aerodynamic load.
+
+    Re-exported here because a load-track comparison needs BOTH a
+    stiffness-weighted scalar (how much the disagreement would move the structure) and
+    the rigid resultant (whether the two tracks even push the wing the same way).  The
+    module docstring promised this name before it existed; A3 makes it real instead of
+    leaving a documented-but-missing API.
+    """
+
+    return aero_generalized_wrench(
+        generalized_load, structural_state, reference_rows=reference_rows, origin=origin
+    )
+
+__all__ = [
+    "flexibility_energy_norm",
+    "relative_flexibility_gap",
+    "wrench_components",
+]
 
 
 def flexibility_energy_norm(

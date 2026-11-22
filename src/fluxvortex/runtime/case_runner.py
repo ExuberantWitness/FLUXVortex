@@ -1083,6 +1083,12 @@ class RojratsirikulCaseRunner:
                 chordwise_panels=nc,
                 spanwise_panels=ns,
                 device=self.device,
+                # A3: weight the load-track comparison by the structural stiffness and
+                # report the rigid resultant, instead of a mixed-unit R^dof norm.
+                stiffness_reference=lambda: getattr(
+                    self.structural, "_reference_tangent_matrix_torch", None
+                ),
+                reference_rows=lambda: self._reference_rows_gpu,
             )
         evidence = self._shadow_resolved_consumer.evaluate(
             proposal=result.aerodynamic,
@@ -1230,6 +1236,19 @@ class RojratsirikulCaseRunner:
                 "constant_only_vs_packet_relative": _summary(
                     "constant_only_vs_packet_relative"
                 ),
+                # A3: units-consistent gap + rigid resultant of the two tracks.
+                "flexibility_gap_vs_legacy_three_term": _summary(
+                    "flexibility_gap_vs_legacy_three_term"
+                ),
+                "flexibility_gap_vs_legacy_constant": _summary(
+                    "flexibility_gap_vs_legacy_constant"
+                ),
+                "shadow_flexibility_norm": _summary("shadow_flexibility_norm"),
+                "legacy_flexibility_norm": _summary("legacy_flexibility_norm"),
+                "wrench_shadow_force_norm": _summary("wrench_shadow_force_norm"),
+                "wrench_shadow_moment_norm": _summary("wrench_shadow_moment_norm"),
+                "wrench_legacy_force_norm": _summary("wrench_legacy_force_norm"),
+                "wrench_legacy_moment_norm": _summary("wrench_legacy_moment_norm"),
                 "packet_generalized_norm": _summary("packet_generalized_norm"),
                 "legacy_three_term_norm": _summary("legacy_three_term_norm"),
                 "legacy_decomposition_norms": {

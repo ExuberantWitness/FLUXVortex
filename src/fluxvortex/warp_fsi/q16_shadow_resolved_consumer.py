@@ -21,6 +21,11 @@ import warp as wp
 
 from . import config as warp_config
 from .q16_aero_load_packet import Q16CudaAerodynamicLoadPacket
+from .q16_load_metrics import (
+    flexibility_energy_norm,
+    relative_flexibility_gap,
+    wrench_components,
+)
 from .q16_ptera_resolved_transfer import Q16CudaPteraResolvedLoadTransfer
 
 
@@ -47,7 +52,16 @@ def unified_to_ptera_packet(packet) -> Q16CudaAerodynamicLoadPacket:
 class ShadowResolvedConsumer:
     """Builds and audits the shadow transfer; never applies loads."""
 
-    def __init__(self, vertex_map, *, chordwise_panels: int, spanwise_panels: int, device: str):
+    def __init__(
+        self,
+        vertex_map,
+        *,
+        chordwise_panels: int,
+        spanwise_panels: int,
+        device: str,
+        stiffness_reference: Any = None,
+        reference_rows: Any = None,
+    ):
         self.transfer = Q16CudaPteraResolvedLoadTransfer(
             vertex_map,
             chordwise_panel_count=chordwise_panels,
@@ -55,6 +69,15 @@ class ShadowResolvedConsumer:
             device=device,
         )
         self.device = device
+        #: A3: zero-argument callable returning the structural stiffness to weight the
+        #: load-track comparison with, or None.  A plain Euclidean norm of a generalized
+        #: Q16 load vector mixes N, N.m and N.m^2 and is dominated by whichever block has
+        #: the largest raw magnitude -- that is what produced the "0.338 = 35%" gap that
+        #: turned out to be a units artefact (the two tracks agree to 0.01% on the rigid
+        #: wing).  Taken lazily because the tangent only exists after the solver is built.
+        self.stiffness_reference = stiffness_reference
+        #: A3: the mesh's (node_count, 6) reference layout, needed by the 6-DOF wrench.
+        self.reference_rows = reference_rows
 
     def evaluate(
         self,
@@ -142,6 +165,58 @@ class ShadowResolvedConsumer:
             (shadow - legacy_reference).norm().item() / reference_scale
         )
 
+        # -- A3: units-consistent gap and rigid resultant -------------------
+        # The ratio above is the raw R^dof L2, which mixes N / N.m / N.m^2.  These two
+        # numbers answer the questions that actually decide the load contract:
+        #   flexibility_gap_*  : how much strain energy the disagreement would put into the
+        #                        structure, relative to the legacy load itself;
+        #   wrench_*           : do the two tracks push the wing the same way at all.
+        a3: dict[str, float] = {}
+        stiffness = None
+        if self.stiffness_reference is not None:
+            try:
+                stiffness = self.stiffness_reference()
+            except Exception as error:  # pragma: no cover - diagnostic only
+                a3["a3_note"] = f"stiffness_unavailable:{type(error).__name__}"
+                stiffness = None
+        if stiffness is not None and tuple(stiffness.shape) == (shadow.shape[0],) * 2:
+            reference_load = legacy_sum if "legacy_sum" in locals() else legacy_reference
+            for name, candidate in (
+                ("flexibility_gap_vs_legacy_three_term", reference_load),
+                ("flexibility_gap_vs_legacy_constant", constant
+                 if "constant" in locals() else legacy_reference),
+            ):
+                try:
+                    a3[name] = relative_flexibility_gap(
+                        shadow, candidate, stiffness, regularisation=1.0e-12
+                    )
+                except (ValueError, FloatingPointError) as error:
+                    a3[name] = float("nan")
+                    a3[f"{name}_error"] = 1.0
+            try:
+                a3["shadow_flexibility_norm"] = flexibility_energy_norm(
+                    shadow, stiffness, regularisation=1.0e-12
+                )
+                a3["legacy_flexibility_norm"] = flexibility_energy_norm(
+                    reference_load, stiffness, regularisation=1.0e-12
+                )
+            except (ValueError, FloatingPointError):
+                pass
+            reference_rows = self.reference_rows
+            if callable(reference_rows):
+                reference_rows = reference_rows()
+            state_flat = wp.to_torch(structural_state)[0]
+            if reference_rows is not None:
+                for name, load in (("shadow", shadow), ("legacy", reference_load)):
+                    try:
+                        force, moment = wrench_components(
+                            load, state_flat, reference_rows
+                        )
+                        a3[f"wrench_{name}_force_norm"] = float(force.norm().item())
+                        a3[f"wrench_{name}_moment_norm"] = float(moment.norm().item())
+                    except (ValueError, RuntimeError):
+                        a3[f"wrench_{name}_error"] = 1.0
+
         # -- point-level work conjugacy via the transfer's own weights ------
         # The force scatter is F_s = sum_i w_{i,slot(i,s)} f_i (CSR gather
         # per support).  Its exact transpose gathers each point's velocity
@@ -196,6 +271,7 @@ class ShadowResolvedConsumer:
             "work_pointwise_relative_error": work_relative,
         }
         evidence.update(ledger)
+        evidence.update(a3)
         return evidence
 
 
