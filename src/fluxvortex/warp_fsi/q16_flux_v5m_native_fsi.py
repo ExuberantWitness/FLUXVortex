@@ -24,6 +24,15 @@ from .q16_structural_solver import Q16CudaNewmarkStepper, Q16StructuralStepResul
 
 
 NATIVE_Q16_FSI_CONTRACT = "q16-flux-v5m-native-strong-pc-cuda-v1"
+
+#: A2 (2026-11-22, default 1): in the three-slot Mf1 cancellation, subtract each endpoint's
+#: OWN acceleration (anchor -> owner.acceleration, previous -> owner.previous_acceleration).
+#: Set FLUXV_THREE_SLOT_ENDPOINT_ACCELERATION=0 to restore the earlier behaviour, which used
+#: the anchor acceleration for BOTH endpoints, so the two forms can be A/B'd on the only
+#: wake-history mode where the three-slot path is allowed (bound_rate).
+_THREE_SLOT_ENDPOINT_ACCELERATION = bool(
+    int(os.environ.get("FLUXV_THREE_SLOT_ENDPOINT_ACCELERATION", "1"))
+)
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 # DIAGNOSTIC ONLY (D1 degeneracy probe, 2026-11-21): uniformly scale the added-mass
@@ -223,6 +232,11 @@ class Q16NativeV5MFSIOwner:
     aerodynamic_force: wp.array
     aerodynamic_load: Q16NativeAuthorEndpointLoad
     previous_aerodynamic_load: Q16NativeAuthorEndpointLoad | None = None
+    #: A2: the committed acceleration vector BEFORE this step, i.e. the acceleration that
+    #: belongs to ``previous_aerodynamic_load``.  The three-slot Mf1 cancellation needs each
+    #: endpoint's OWN acceleration; until this field existed the anchor acceleration was
+    #: used for every endpoint (documented as a deviation at the M4 site).
+    previous_acceleration: wp.array | None = None
     generation: int = 0
 
     @classmethod
@@ -466,6 +480,20 @@ class Q16NativeV5MFSIStepper:
                 # previous_acceleration), so the ANCHOR acceleration is used for
                 # every endpoint rather than each endpoint's own acceleration.
                 acceleration_anchor = wp.to_torch(acceleration)[0]
+                # A2 (2026-11-22): the PREVIOUS load's endpoint subtraction uses the
+                # previous committed acceleration, not the anchor's.  Before this the two
+                # subtractions shared one vector, which is not the auditor's formula
+                # (prev_const_eff = prev_const - prev_am @ qddot_prev).  Falls back to the
+                # anchor on the first outer step, where no previous acceleration exists --
+                # the same fallback as before, now only for the case that needs it.
+                previous_acceleration = (
+                    wp.to_torch(owner.previous_acceleration)[0]
+                    if (
+                        _THREE_SLOT_ENDPOINT_ACCELERATION
+                        and owner.previous_acceleration is not None
+                    )
+                    else acceleration_anchor
+                )
                 anchor_constant = anchor_constant - (
                     anchor_am_matrix @ acceleration_anchor
                 ).unsqueeze(0)
@@ -478,7 +506,7 @@ class Q16NativeV5MFSIStepper:
                         _scale_added_mass(
                             previous_load.added_mass.generalized_matrix
                         )
-                        @ acceleration_anchor
+                        @ previous_acceleration
                     ).unsqueeze(0)
                 constant_t = anchor_constant + beta * (
                     anchor_constant - previous_constant
@@ -920,6 +948,9 @@ class Q16NativeV5MFSIStepper:
                     owner.aerodynamic.commit(formal_proposal)
                     owner.state = prepared_q
                     owner.velocity = prepared_v
+                    # A2: remember the acceleration the PREVIOUS load belongs to, before
+                    # replacing it.  `prepared_a` becomes the new committed acceleration.
+                    owner.previous_acceleration = owner.acceleration
                     owner.acceleration = prepared_a
                     owner.aerodynamic_force = prepared_force
                     owner.previous_aerodynamic_load = owner.aerodynamic_load

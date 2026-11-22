@@ -70,23 +70,63 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _require_load_gates() -> dict[str, Any]:
-    path = LOAD_GATE_ARTIFACT.resolve()
-    if not path.is_file():
-        raise RuntimeError(
-            "formal CASE is blocked until the bounded native load gates run"
-        )
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema") != "yamano2020-q16-native-load-gates-v1":
+    """A1: recompute the bounded load gates at run time instead of trusting the artifact.
+
+    The previous version ONLY did ``json.loads`` of a fixed 2026-08-23 file and copied its
+    ``metrics`` verbatim into the payload, so the reported
+    ``mf1_common_field_relative_error`` was 0.3735346675462884 no matter what the code and
+    the operator actually did.  Recomputed at HEAD that number is 2.727 (272.7%, commit
+    9216705) -- a payload field that disagrees with the code by a factor of 7 while looking
+    like a measurement.
+
+    ``run_gates()`` is the same producer that wrote the artifact and is self-contained (it
+    builds its own Yamano mesh/surface/solver), so calling it here costs one extra case
+    build and no new gate logic.  ``mf1_common_field`` is a DIAGNOSTIC gate in that
+    producer (``diagnostic_gates``), not a hard one, so recomputing cannot newly block the
+    formal CASE -- the blocking behaviour is unchanged, only the number becomes honest.
+    ``FLUXV_LOAD_GATE_STRICT=1`` additionally blocks when a diagnostic gate fails.
+    """
+
+    from verify_yamano2020_q16_native_load_gates import run_gates
+
+    recomputed = run_gates()
+    if recomputed.get("schema") != "yamano2020-q16-native-load-gates-v1":
         raise RuntimeError("formal CASE load-gate schema drift")
-    if payload.get("status") not in {"passed", "passed_with_warning"}:
+    if recomputed.get("status") not in {"passed", "passed_with_warning"}:
         failed = sorted(
-            key for key, value in payload.get("hard_gates", {}).items() if not value
+            key for key, value in recomputed.get("hard_gates", {}).items() if not value
         )
         raise RuntimeError(
-            "formal CASE is blocked by failed native load gates: "
-            + ",".join(failed)
+            "formal CASE is blocked by failed native load gates: " + ",".join(failed)
         )
-    return payload
+    strict = os.environ.get("FLUXV_LOAD_GATE_STRICT", "0").strip() == "1"
+    warnings = tuple(recomputed.get("warnings", ()))
+    if strict and warnings:
+        raise RuntimeError(
+            "formal CASE is blocked by failed DIAGNOSTIC load gates "
+            f"(FLUXV_LOAD_GATE_STRICT=1): {','.join(warnings)}"
+        )
+    # Keep the stale artifact only as a recorded contrast, never as the reported value.
+    stale: dict[str, Any] = {}
+    artifact = LOAD_GATE_ARTIFACT.resolve()
+    if artifact.is_file():
+        try:
+            previous = json.loads(artifact.read_text(encoding="utf-8"))
+            stale = {
+                "path": str(artifact),
+                "mf1_common_field_relative_error": previous.get("metrics", {}).get(
+                    "mf1_common_field_relative_error"
+                ),
+                "status": previous.get("status"),
+            }
+        except (OSError, ValueError):
+            stale = {"path": str(artifact), "unreadable": True}
+    return {
+        **recomputed,
+        "gate_source": "runtime_recompute",
+        "is_stale_gate": False,
+        "stale_artifact": stale,
+    }
 
 
 def run_case(*, outer_steps: int, output: Path | None = None,
@@ -368,6 +408,11 @@ def run_case(*, outer_steps: int, output: Path | None = None,
         "native_load_gate_metrics": load_gate_evidence["metrics"],
         "native_load_gate_status": load_gate_evidence["status"],
         "native_load_gate_warnings": load_gate_evidence.get("warnings", []),
+        # A1: the metrics above are computed in-process, not copied from the old
+        # artifact; the stale file is kept only as a recorded contrast.
+        "native_load_gate_source": load_gate_evidence.get("gate_source"),
+        "native_load_gate_is_stale": load_gate_evidence.get("is_stale_gate"),
+        "native_load_gate_stale_artifact": load_gate_evidence.get("stale_artifact"),
         "structural_nonsymmetric_solver": structural.nonsymmetric_solver,
         "reference_tangent_cache_refresh_count": (
             structural.reference_tangent_cache_refresh_count
