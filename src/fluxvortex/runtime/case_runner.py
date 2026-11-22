@@ -1249,6 +1249,24 @@ class RojratsirikulCaseRunner:
                 "wrench_shadow_moment_norm": _summary("wrench_shadow_moment_norm"),
                 "wrench_legacy_force_norm": _summary("wrench_legacy_force_norm"),
                 "wrench_legacy_moment_norm": _summary("wrench_legacy_moment_norm"),
+                # A3b (P0-2): separate the constant reference and the two unsteady slots.
+                "legacy_constant_flexibility_norm": _summary(
+                    "legacy_constant_flexibility_norm"
+                ),
+                "wrench_legacy_constant_force_norm": _summary(
+                    "wrench_legacy_constant_force_norm"
+                ),
+                "wrench_legacy_constant_moment_norm": _summary(
+                    "wrench_legacy_constant_moment_norm"
+                ),
+                "velocity_slot_flexibility_norm": _summary(
+                    "velocity_slot_flexibility_norm"
+                ),
+                "mf1_slot_flexibility_norm": _summary("mf1_slot_flexibility_norm"),
+                "wrench_velocity_slot_force_norm": _summary(
+                    "wrench_velocity_slot_force_norm"
+                ),
+                "wrench_mf1_slot_force_norm": _summary("wrench_mf1_slot_force_norm"),
                 "packet_generalized_norm": _summary("packet_generalized_norm"),
                 "legacy_three_term_norm": _summary("legacy_three_term_norm"),
                 "legacy_decomposition_norms": {

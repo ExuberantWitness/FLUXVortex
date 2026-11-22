@@ -200,6 +200,22 @@ class ShadowResolvedConsumer:
                 a3["legacy_flexibility_norm"] = flexibility_energy_norm(
                     reference_load, stiffness, regularisation=1.0e-12
                 )
+                # A3b (P0-2): the CONSTANT-only reference, so a ratio against the
+                # three-term sum can be told apart from a genuine packet over-prediction.
+                # If the three-slot sum carries Mf1 qddot twice under bound_rate, its
+                # norm is inflated and the "1.4x" is a denominator artefact that vanishes
+                # against this reference.
+                if "constant" in locals():
+                    a3["legacy_constant_flexibility_norm"] = flexibility_energy_norm(
+                        constant, stiffness, regularisation=1.0e-12
+                    )
+                if "velocity_q" in locals() and "mf1_action" in locals():
+                    a3["velocity_slot_flexibility_norm"] = flexibility_energy_norm(
+                        velocity_q, stiffness, regularisation=1.0e-12
+                    )
+                    a3["mf1_slot_flexibility_norm"] = flexibility_energy_norm(
+                        mf1_action, stiffness, regularisation=1.0e-12
+                    )
             except (ValueError, FloatingPointError):
                 pass
             reference_rows = self.reference_rows
@@ -207,7 +223,17 @@ class ShadowResolvedConsumer:
                 reference_rows = reference_rows()
             state_flat = wp.to_torch(structural_state)[0]
             if reference_rows is not None:
-                for name, load in (("shadow", shadow), ("legacy", reference_load)):
+                wrench_loads = [("shadow", shadow), ("legacy", reference_load)]
+                # A3b: same wrench for the constant-only reference and for the two
+                # unsteady slots separately.
+                for extra, key in (
+                    ("legacy_constant", "constant"),
+                    ("velocity_slot", "velocity_q"),
+                    ("mf1_slot", "mf1_action"),
+                ):
+                    if key in locals():
+                        wrench_loads.append((extra, locals()[key]))
+                for name, load in wrench_loads:
                     try:
                         force, moment = wrench_components(
                             load, state_flat, reference_rows
