@@ -439,6 +439,15 @@ _TANGENT_LINEARIZATION_REUSE = bool(
 _VALIDITY_ONLY_TRIAL_LINEARIZATION = bool(
     int(os.environ.get("FLUXV_TRIAL_LINEARIZATION_VALIDITY_ONLY", "1"))
 )
+#: S3-v2A (2026-11-22, default ON): assemble the reference tangent from per-element
+#: 96x96 blocks (2 batches of local unit directions) instead of probing 2,976 global
+#: columns (47 batches).  Measured on the A16 mesh: 11.03 s -> 0.33 s per refresh (33.8x)
+#: and the resulting 2976^2 matrix is BITWISE equal to the column probe (rel Frobenius
+#: difference 0.000e+00, max |diff| 0) -- the element operator is per-element and the
+#: scatter accumulates in the same order as the node-occurrence assembly.
+_TANGENT_ELEMENT_BLOCKS = bool(
+    int(os.environ.get("FLUXV_TANGENT_ELEMENT_BLOCKS", "1"))
+)
 #: id(stepper) -> (key, base_free).  The stepper uses __slots__, so the cache cannot
 #: live on the instance; there is one stepper per run, and a key mismatch discards it.
 _BASE_FREE_CACHE: dict[int, tuple[tuple, torch.Tensor]] = {}
@@ -727,44 +736,57 @@ class Q16CudaNewmarkStepper:
         # bit-identical: ``_tangent_action_linearized_prechecked`` consumes the
         # linearization through ``inputs=[...]`` only (its own ``delta_*`` are freshly
         # allocated with zeros_like), so the values it reads are unchanged.
-        repeated_by_count: dict[int, tuple] = {}
-        for start in range(0, self.dof_count, tangent_batch_size):
-            stop = min(start + tangent_batch_size, self.dof_count)
-            count = stop - start
-            directions = torch.zeros(
-                (count, self.dof_count),
+        if _TANGENT_ELEMENT_BLOCKS and hasattr(self._operator, "element_block_tangent"):
+            # S3-v2A: 96 element-local unit directions in 2 batches instead of 2,976
+            # global columns in 47.  Bitwise equal to the column probe (measured).
+            # NOTE: this must be a real branch -- an earlier version set `start` before the
+            # loop, but the loop rebinds it from range() so the column probe still ran and
+            # overwrote the same values (identical digests hid the waste).
+            tangent_matrix = self._operator.element_block_tangent(linearization)
+        else:
+            repeated_by_count: dict[int, tuple] = {}
+            tangent_matrix = torch.empty(
+                (self.dof_count, self.dof_count),
                 device=self.device,
                 dtype=torch.float64,
             )
-            rows = torch.arange(count, device=self.device)
-            directions[rows, rows + start] = 1.0
-            repeated_linearization = (
-                repeated_by_count.get(count) if _TANGENT_LINEARIZATION_REUSE else None
-            )
-            if repeated_linearization is None:
-                repeated_linearization = tuple(
-                    wp.from_torch(
-                        wp.to_torch(value)
-                        .expand((count,) + tuple(value.shape[1:]))
-                        .contiguous(),
-                        dtype=DTYPE,
-                        requires_grad=False,
+            for start in range(0, self.dof_count, tangent_batch_size):
+                stop = min(start + tangent_batch_size, self.dof_count)
+                count = stop - start
+                directions = torch.zeros(
+                    (count, self.dof_count),
+                    device=self.device,
+                    dtype=torch.float64,
+                )
+                rows = torch.arange(count, device=self.device)
+                directions[rows, rows + start] = 1.0
+                repeated_linearization = (
+                    repeated_by_count.get(count) if _TANGENT_LINEARIZATION_REUSE else None
+                )
+                if repeated_linearization is None:
+                    repeated_linearization = tuple(
+                        wp.from_torch(
+                            wp.to_torch(value)
+                            .expand((count,) + tuple(value.shape[1:]))
+                            .contiguous(),
+                            dtype=DTYPE,
+                            requires_grad=False,
+                        )
+                        for value in linearization
                     )
-                    for value in linearization
+                    if _TANGENT_LINEARIZATION_REUSE:
+                        repeated_by_count[count] = repeated_linearization
+                action = wp.to_torch(
+                    self._operator._tangent_action_linearized_prechecked(
+                        wp.from_torch(
+                            directions,
+                            dtype=DTYPE,
+                            requires_grad=False,
+                        ),
+                        repeated_linearization,
+                    )
                 )
-                if _TANGENT_LINEARIZATION_REUSE:
-                    repeated_by_count[count] = repeated_linearization
-            action = wp.to_torch(
-                self._operator._tangent_action_linearized_prechecked(
-                    wp.from_torch(
-                        directions,
-                        dtype=DTYPE,
-                        requires_grad=False,
-                    ),
-                    repeated_linearization,
-                )
-            )
-            tangent_matrix[:, start:stop] = action.transpose(0, 1)
+                tangent_matrix[:, start:stop] = action.transpose(0, 1)
         if not bool(torch.isfinite(tangent_matrix).all().item()):
             raise FloatingPointError("Q16 reference tangent cache is non-finite")
         self._reference_tangent_matrix_torch = tangent_matrix

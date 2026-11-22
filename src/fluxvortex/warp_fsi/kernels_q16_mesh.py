@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import torch
 import warp as wp
 
 from fluxvortex.q16_ancf_mesh import Q16ContinuumMesh, Q16MITC16EASMesh
@@ -385,6 +386,84 @@ class Q16CudaMITC16EASMeshOperator:
             local_direction, linearization
         )
         return self._assemble(local_action, global_direction.shape[0])
+
+    def element_block_tangent(self, linearization) -> torch.Tensor:
+        """S3-v2A: build the global tangent from per-element 96x96 blocks.
+
+        The element operator acts on the LOCAL layout ``(batch, element_count, 96)`` and is
+        independent per element (verified: a direction nonzero in one element produces an
+        action nonzero only in that element, and the actions are additive to the last bit
+        -- see ``diagnose_tangent_element_locality.py``).  The production probe therefore
+        wastes ~96% of its work: it feeds 2,976 GLOBAL unit columns and every kernel still
+        runs over all 50 elements, i.e. 47 batches where a local probe needs 2.
+
+        Feeding 96 local unit directions (``e_j`` in every element) yields each element's
+        full ``K_e`` in two batches, and the global matrix is their connectivity scatter:
+
+            K[g(e,i), g(e,j)] += K_e[i, j],   g(e,n) = connectivity[e,n]*6 + c
+
+        ALGEBRAIC EXACTNESS, NOT BITWISE: the scatter accumulates in a different order than
+        the kernel's node-occurrence summation, and floating-point addition is not
+        associative, so the result differs from the column probe at ~1e-15 relative.  The
+        caller compares against the column probe with a tolerance and keeps the linear and
+        nonlinear residual gates as the acceptance criteria.
+        """
+
+        local = Q16_DOF_PER_ELEMENT
+        device = self.device
+        directions = torch.zeros(
+            (local, self.element_count, local), device=device, dtype=torch.float64
+        )
+        rows = torch.arange(local, device=device)
+        directions[rows, :, rows] = 1.0
+        # Two batches (64 + 32) keep the per-direction workspace inside the same budget the
+        # production probe uses.
+        blocks = torch.empty(
+            (local, self.element_count, local), device=device, dtype=torch.float64
+        )
+        for start in range(0, local, 64):
+            stop = min(start + 64, local)
+            count = stop - start
+            # The element operator indexes the linearization PER BATCH, so it has to be
+            # broadcast to ``count`` exactly like the production probe does.  Passing the
+            # batch-1 linearization with a 96-direction batch reads out of bounds and
+            # returns garbage at ~1e10 (found by the equivalence test, not by inspection).
+            repeated_linearization = tuple(
+                wp.from_torch(
+                    wp.to_torch(value)
+                    .expand((count,) + tuple(value.shape[1:]))
+                    .contiguous(),
+                    dtype=DTYPE,
+                    requires_grad=False,
+                )
+                for value in linearization
+            )
+            action = self._element_operator._tangent_action_linearized_prechecked(
+                wp.from_torch(
+                    directions[start:stop].contiguous(),
+                    dtype=DTYPE,
+                    requires_grad=False,
+                ),
+                repeated_linearization,
+            )
+            blocks[start:stop] = wp.to_torch(action)
+        # blocks[j, e, i] = K_e[i, j]  ->  K_e[i, j] = blocks.permute(1, 2, 0)
+        connectivity = wp.to_torch(self._connectivity).to(torch.long)  # (elements, nodes)
+        component = torch.arange(6, device=device, dtype=torch.long)
+        global_dof = (
+            connectivity[:, :, None] * 6 + component[None, None, :]
+        ).reshape(self.element_count, local)
+        row_index = global_dof[:, :, None].expand(-1, local, local)
+        column_index = global_dof[:, None, :].expand(-1, local, local)
+        tangent = torch.zeros(
+            (self.dof_count, self.dof_count), device=device, dtype=torch.float64
+        )
+        tangent.index_put_(
+            (row_index.reshape(-1), column_index.reshape(-1)),
+            blocks.permute(1, 2, 0).reshape(-1),
+            accumulate=True,
+        )
+        return tangent
 
     def _material_diagonal_linearized_prechecked(self, linearization) -> wp.array:
         local_diagonal = (
