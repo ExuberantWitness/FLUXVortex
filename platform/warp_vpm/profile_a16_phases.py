@@ -165,6 +165,19 @@ TARGETS = (
         "_project_free_prechecked",
         "project_free",
     ),
+    # -- S3b: what `surface.evaluate` actually spends (state side vs velocity side) --
+    (
+        "fluxvortex.warp_fsi.kernels_q16_transfer",
+        "Q16CudaSurfaceTransfer",
+        "interpolate",
+        "surface_interpolate",
+    ),
+    (
+        "fluxvortex.warp_fsi.q16_flux_v5m_native",
+        None,
+        "assemble_native_ring_geometry",
+        "ring_geometry_assemble",
+    ),
 )
 
 #: Labels that get an entry synchronisation so the measured span can be split into
@@ -275,11 +288,14 @@ class PhaseClock:
             if resolved is None:
                 missing.append(f"{module_name} (module)")
                 continue
-            klass = getattr(resolved, class_name, None)
-            if klass is None:
-                missing.append(f"{module_name}.{class_name}")
-                continue
-            if not self.wrap(klass, method, label):
+            if class_name is None:
+                owner = resolved
+            else:
+                owner = getattr(resolved, class_name, None)
+                if owner is None:
+                    missing.append(f"{module_name}.{class_name}")
+                    continue
+            if not self.wrap(owner, method, label):
                 missing.append(f"{module_name}.{class_name}.{method}")
         return missing
 
