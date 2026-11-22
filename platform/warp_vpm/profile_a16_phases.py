@@ -110,7 +110,72 @@ TARGETS = (
         "jacobian_BS",
     ),
     ("pfield_torch_gpu", "CudaParticleField", "advance_wrk3", "advance_wrk3"),
+    # -- S2b: the non-dense structural interior -------------------------------
+    (
+        "fluxvortex.warp_fsi.q16_structural_solver",
+        "Q16CudaNewmarkStepper",
+        "predict_kinematics",
+        "predict_kinematics",
+    ),
+    (
+        "fluxvortex.warp_fsi.q16_structural_solver",
+        "Q16CudaNewmarkStepper",
+        "_kinematics",
+        "kinematics",
+    ),
+    (
+        "fluxvortex.warp_fsi.q16_structural_solver",
+        "Q16CudaNewmarkStepper",
+        "_residual",
+        "residual",
+    ),
+    (
+        "fluxvortex.warp_fsi.q16_structural_solver",
+        "Q16CudaNewmarkStepper",
+        "_norms",
+        "norms",
+    ),
+    (
+        "fluxvortex.warp_fsi.q16_structural_solver",
+        "Q16CudaNewmarkStepper",
+        "_dot",
+        "dot",
+    ),
+    (
+        "fluxvortex.warp_fsi.q16_structural_solver",
+        "Q16CudaNewmarkStepper",
+        "_apply_preconditioner",
+        "preconditioner",
+    ),
+    (
+        "fluxvortex.warp_fsi.kernels_q16_ans_eas",
+        "Q16CudaMITC16EASOperator",
+        "_linearization_prechecked",
+        "linearization",
+    ),
+    (
+        "fluxvortex.warp_fsi.kernels_q16_ans_eas",
+        "Q16CudaMITC16EASOperator",
+        "_tangent_action_linearized_prechecked",
+        "tangent_action",
+    ),
+    (
+        "fluxvortex.warp_fsi.kernels_q16_constraints",
+        "Q16CudaBoundaryConstraints",
+        "_project_free_prechecked",
+        "project_free",
+    ),
 )
+
+#: Labels that get an entry synchronisation so the measured span can be split into
+#: "backlog wait" (work already queued by earlier calls) and "own work".  This is the
+#: distinction that a bare inclusive timer cannot make: a phase containing a host sync
+#: reports the wait for everything enqueued before it.
+#: ONLY the three outermost phases are split (about 6 entry syncs per step).  Adding
+#: ``struct_step`` here was measured to be a mistake: it is called ~58 times per step and
+#: each entry sync collapses the CPU run-ahead, which stretched a 150-step run past 23
+#: minutes, so its split is not worth the serialisation.
+SPLIT_LABELS = ("propose", "integrate_structure", "tangent_refresh")
 
 #: author_loads is imported under two possible module names in this tree.
 TARGET_ALIASES = {"fluxvortex.warp_fsi.q16_author_loads": (
@@ -131,13 +196,16 @@ TARGET_ALIASES = {"fluxvortex.warp_fsi.q16_author_loads": (
 CHILDREN = {
     "propose": ("ring_BS", "particle_BS", "surface_evaluate"),
     "integrate_structure": ("velocity_force", "struct_step"),
-    "struct_step": ("dense_solve",),
+    "struct_step": ("dense_solve", "predict_kinematics", "residual", "norms",
+                    "preconditioner"),
     "dense_solve": ("accel_matrix_validate",),
+    "norms": ("dot",),
 }
 
 #: Labels that OVERLAP other labels by construction; their "exclusive" column is not
 #: meaningful and is suppressed in the printout.
-OVERLAPPING = ("advance_wrk3", "particle_BS", "ring_BS", "accel_matrix_validate")
+OVERLAPPING = ("advance_wrk3", "particle_BS", "ring_BS", "accel_matrix_validate",
+               "linearization", "tangent_action", "kinematics")
 
 #: Labels whose completion drains the event bucket.  They are the outermost phases and
 #: never nest inside one another, so draining here bounds the number of live CUDA events
@@ -150,10 +218,12 @@ class PhaseClock:
 
     def __init__(self) -> None:
         self.inclusive: dict[str, float] = collections.defaultdict(float)
+        self.backlog: dict[str, float] = collections.defaultdict(float)
+        self.own: dict[str, float] = collections.defaultdict(float)
         self.calls: dict[str, int] = collections.defaultdict(int)
-        self._bucket: dict[str, list[tuple[torch.cuda.Event, torch.cuda.Event]]] = (
-            collections.defaultdict(list)
-        )
+        self._bucket: dict[
+            str, list[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event | None]]
+        ] = collections.defaultdict(list)
         self._installed: list[str] = []
 
     # -- instrumentation -------------------------------------------------
@@ -162,17 +232,24 @@ class PhaseClock:
         if original is None or not callable(original):
             return False
         clock = self
+        split = label in SPLIT_LABELS
 
         def wrapped(*args, **kwargs):
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
+            mid = torch.cuda.Event(enable_timing=True) if split else None
             clock.calls[label] += 1
             start.record()
+            if mid is not None:
+                # Drain everything enqueued BEFORE this call: the span start->mid is
+                # someone else's queued work, mid->end is this call's own GPU time.
+                torch.cuda.synchronize()
+                mid.record()
             try:
                 return original(*args, **kwargs)
             finally:
                 end.record()
-                clock._bucket[label].append((start, end))
+                clock._bucket[label].append((start, mid, end))
                 if label in DRAIN_LABELS:
                     clock.flush_step()
 
@@ -211,13 +288,20 @@ class PhaseClock:
         if not self._bucket:
             return
         torch.cuda.synchronize()
-        for label, pairs in self._bucket.items():
+        for label, triples in self._bucket.items():
             total = 0.0
-            for start, end in pairs:
+            backlog = 0.0
+            own = 0.0
+            for start, mid, end in triples:
                 total += start.elapsed_time(end)
+                if mid is not None:
+                    backlog += start.elapsed_time(mid)
+                    own += mid.elapsed_time(end)
             self.inclusive[label] += total
-        for pairs in self._bucket.values():
-            pairs.clear()
+            self.backlog[label] += backlog
+            self.own[label] += own
+        for triples in self._bucket.values():
+            triples.clear()
 
     def exclusive(self) -> dict[str, float]:
         """Subtract direct children once.
@@ -336,6 +420,16 @@ def main() -> int:
             print(f"{label:28s} {clock.calls[label] / steps:10.2f} "
                   f"{value / steps:10.1f} {cell}")
 
+        if clock.backlog:
+            print(f"\n{'split phase':28s} {'inclusive':>11s} {'backlog':>11s} "
+                  f"{'own work':>11s}  (ms/step)")
+            for label in SPLIT_LABELS:
+                if label not in clock.inclusive:
+                    continue
+                print(f"{label:28s} {clock.inclusive[label] / steps:11.1f} "
+                      f"{clock.backlog[label] / steps:11.1f} "
+                      f"{clock.own[label] / steps:11.1f}")
+
         print(f"\n{'sync family':28s} {'calls/step':>10s} {'wall ms/step':>14s}")
         for family in ("tensor_item", "warp_synchronize_device"):
             print(f"{family:28s} {syncs.counts[family] / steps:10.2f} "
@@ -366,6 +460,8 @@ def main() -> int:
                     "wall_seconds": wall,
                     "wall_seconds_per_step": wall / steps,
                     "phase_inclusive_ms": dict(clock.inclusive),
+                    "phase_backlog_ms": dict(clock.backlog),
+                    "phase_own_ms": dict(clock.own),
                     "phase_exclusive_ms": clock.exclusive() if not arguments.count_only else {},
                     "phase_calls": dict(clock.calls),
                     "sync_counts": dict(syncs.counts),
