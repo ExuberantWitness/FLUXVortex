@@ -156,6 +156,13 @@ def _bound_rate_author_weak_choice() -> bool:
     return raw == "1"
 
 
+def _bool_env(name: str, default: str = "0") -> bool:
+    raw = os.environ.get(name, default).strip()
+    if raw not in {"0", "1"}:
+        raise ValueError(f"{name} must be '0' or '1', got {raw!r}")
+    return raw == "1"
+
+
 def _reuse_convected_field_choice() -> int:
     """S4a/S4b: how far to reuse the preconvected free wake/particles.
 
@@ -501,6 +508,14 @@ class RojratsirikulCaseRunner:
                 wake_history_mode=_wake_history_mode_choice(),
                 wake_free_rows=WAKE_FREE_ROWS,
                 dvm_target_spacing_chord=DVM_TARGET_SPACING_CHORD,
+                # Phase L (2026-11-22, default OFF = production bit-identical): the
+                # long-time-stability mechanisms.  Until now these three lived only on
+                # NativeV5MConfig and nothing could switch them on from a run, so L1/L2
+                # had no way to be measured; `corrected_pedrizzetti` in rvpm_transport.py
+                # is still un-called.
+                particle_stretching=_bool_env("FLUXV_PARTICLE_STRETCHING"),
+                particle_stretching_rvpm=_bool_env("FLUXV_PARTICLE_STRETCHING_RVPM"),
+                particle_core_spreading=_bool_env("FLUXV_PARTICLE_CORE_SPREADING"),
                 device=self.device,
             ),
         )
