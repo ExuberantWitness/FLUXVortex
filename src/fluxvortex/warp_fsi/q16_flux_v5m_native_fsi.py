@@ -284,7 +284,7 @@ class Q16NativeV5MFSIStepper:
         coupling_accelerator: str = "aitken",
         bound_rate_author_weak: bool = False,
         three_slot_mf1_cancel: bool = False,
-        reuse_convected_field: bool = False,
+        reuse_convected_field: int = 0,
     ) -> None:
         if type(structural_solver) is not Q16CudaNewmarkStepper:
             raise TypeError("structural_solver must be the production Q16 CUDA stepper")
@@ -312,13 +312,19 @@ class Q16NativeV5MFSIStepper:
         if coupling_accelerator not in {"aitken", "iqn_ils"}:
             raise ValueError("coupling_accelerator must be 'aitken' or 'iqn_ils'")
         self.coupling_accelerator = coupling_accelerator
-        # S4a (2026-11-22, default OFF): reuse the free-wake/particle state that the last
-        # trial proposal already convected when building the FORMAL REPLAY proposal.
-        # The replay runs at `structural.state/velocity`, which differs from the trial's
-        # `(q_guess, v_guess)` by at most the coupling residual (<= 5e-7 relative), so
-        # the reused field is lagged by exactly that much -- the acceptance is a
-        # tolerance on the loads, never bitwise equality.
-        self.reuse_convected_field = bool(reuse_convected_field)
+        # S4a/S4b (2026-11-22, default 0 = OFF): reuse the free-wake/particle state that
+        # this outer step already convected instead of convecting again.
+        #   1 -- the FORMAL REPLAY only.  It runs at `structural.state/velocity`, which
+        #        differs from the trial's `(q_guess, v_guess)` by at most the coupling
+        #        residual (<=5e-7 relative); measured effect on the loads: 3.6e-10.
+        #   2 -- every coupling iteration after the first.  The lag then spans the whole
+        #        structural change across the iterations, so the added-mass-interface
+        #        fixed point can move and the iteration count must be re-measured.
+        # Either way the acceptance is a tolerance on the loads, never bitwise equality,
+        # and the cull accounting is inherited from the convection that actually ran.
+        if type(reuse_convected_field) is not int or reuse_convected_field not in (0, 1, 2):
+            raise ValueError("reuse_convected_field must be 0, 1 or 2")
+        self.reuse_convected_field = reuse_convected_field
         # Stage 2 (2026-11-21, default OFF): reproduce the AUTHOR'S WEAK scheme
         # exactly.  Under wake_history_mode="bound_rate" the constant slot already
         # carries dp_add = rho (Gamma_n - Gamma_{n-1})/dt, i.e. the full one-step
@@ -773,14 +779,30 @@ class Q16NativeV5MFSIStepper:
             )
         )
         evaluations = 0
+        # S4b state: the pre-deposit snapshot of this outer step's FIRST convection and
+        # the cull accounting that came with it.  Reusing a single snapshot (rather than
+        # chaining one per iteration) keeps the convection lag bounded by the total
+        # structural change across the coupling iterations instead of compounding it.
+        step_preconvected = None
+        step_retention = None
         for iteration in range(1, self.max_coupling_iterations + 1):
             proposal_started = time.perf_counter()
+            reuse_here = (
+                iteration > 1
+                and self.reuse_convected_field >= 2
+                and step_preconvected is not None
+            )
             proposal = owner.aerodynamic.propose(
                 self.aerodynamic_solver,
                 q_guess,
                 v_guess,
-                capture_preconvected=self.reuse_convected_field,
+                preconvected=step_preconvected if reuse_here else None,
+                capture_preconvected=bool(self.reuse_convected_field) and not reuse_here,
+                inherited_retention=step_retention if reuse_here else None,
             )
+            if not reuse_here and proposal.preconvected_state is not None:
+                step_preconvected = proposal.preconvected_state
+                step_retention = proposal.preconvected_retention
             evaluations += 1
             if progress_callback is not None:
                 progress_callback(
@@ -831,7 +853,16 @@ class Q16NativeV5MFSIStepper:
                     # The PRE-DEPOSIT snapshot, not the trial state: the trial already
                     # carries this step's deposit, and re-depositing it would double the
                     # particle count (measured: capacity overflow at 32,689 + 270).
-                    preconvected=proposal.preconvected_state,
+                    # At level 2 the last iteration already reused this same snapshot, so
+                    # this is the identical field, not a second-order lag.
+                    preconvected=(
+                        step_preconvected
+                        if self.reuse_convected_field
+                        else proposal.preconvected_state
+                    ),
+                    inherited_retention=(
+                        step_retention if self.reuse_convected_field else None
+                    ),
                 )
                 evaluations += 1
                 if progress_callback is not None:

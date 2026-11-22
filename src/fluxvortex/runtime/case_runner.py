@@ -156,21 +156,27 @@ def _bound_rate_author_weak_choice() -> bool:
     return raw == "1"
 
 
-def _reuse_convected_field_choice() -> bool:
-    """S4a: reuse the trial proposal's convected field for the formal replay.
+def _reuse_convected_field_choice() -> int:
+    """S4a/S4b: how far to reuse the preconvected free wake/particles.
 
-    Default False keeps the production path bit-identical.  When on, the replay's free
-    wake and particles are the ones convected for the last trial proposal at
-    ``(q_guess, v_guess)``, i.e. lagged by the coupling residual (<= 5e-7 relative), so
-    the comparison against the default path is a tolerance on the loads, not equality.
+    0 (default) -- production path, bit-identical: every proposal convects.
+    1           -- S4a: only the formal replay reuses the last trial proposal's
+                   pre-deposit snapshot.  The structural state differs by the coupling
+                   residual (<=5e-7 relative), so the loads move ~1e-10 relative.
+    2           -- S4b: every coupling iteration after the first also reuses it.  The lag
+                   then spans the whole structural change across the coupling iterations,
+                   so the fixed point on the added-mass interface can move and the
+                   iteration count has to be re-measured, not assumed.
+
+    The level is recorded in the payload as `reuse_convected_field`.
     """
 
     raw = os.environ.get("FLUXV_REUSE_CONVECTED_FIELD", "0").strip()
-    if raw not in {"0", "1"}:
+    if raw not in {"0", "1", "2"}:
         raise ValueError(
-            f"FLUXV_REUSE_CONVECTED_FIELD must be '0' or '1', got {raw!r}"
+            f"FLUXV_REUSE_CONVECTED_FIELD must be '0', '1' or '2', got {raw!r}"
         )
-    return raw == "1"
+    return int(raw)
 
 
 def _diagnostic_mf1_scale() -> float:
@@ -1527,6 +1533,15 @@ class RojratsirikulCaseRunner:
             # claimed "105 -> 10" without a counter; these numbers replace that
             # inference with a measurement.
             "lu_cache_stats": lu_cache_stats(),
+            # S4a/S4b: 0 = every proposal convects (production), 1 = the formal replay
+            # reuses the preconvected field, 2 = every coupling iteration after the
+            # first does too.  Recorded so a reused run cannot be mistaken for the
+            # default path.
+            "reuse_convected_field": self.coupling.reuse_convected_field
+            if hasattr(self.coupling, "reuse_convected_field")
+            else getattr(
+                getattr(self.coupling, "_stepper", None), "reuse_convected_field", 0
+            ),
             "dvm_target_spacing_chord": DVM_TARGET_SPACING_CHORD,
             "perimeter_audit": self.perimeter_audit,
             "assumption_ledger": platform.assumption_ledger(case),

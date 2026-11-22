@@ -727,10 +727,16 @@ class NativeV5MProposal:
     load: NativeV5MLoad
     generalized_force: wp.array
     author_load: Any
-    #: S4a: the state right AFTER the material convection and BEFORE the deposit, so a
-    #: later propose() can reuse the convected free wake/particles without inheriting
+    #: S4a/S4b: the state right AFTER the material convection and BEFORE the deposit, so
+    #: a later propose() can reuse the convected free wake/particles without inheriting
     #: this proposal's deposit (re-depositing would double the particle count).
     preconvected_state: "NativeV5MState | None" = None
+    #: The cull accounting of the convection this state came from.  A reusing proposal
+    #: reports THESE numbers instead of zeros: the particles really were removed, and a
+    #: ledger that reports zero would break the in-repo rule that a cap destroying
+    #: circulation must never be silent.  Only the committed proposal's record reaches
+    #: the payload, so inheriting cannot double count.
+    preconvected_retention: dict | None = None
 
 
 class Q16NativePanelLoadTransfer:
@@ -1158,6 +1164,7 @@ class Q16NativeV5MSolver:
         structural_velocity: wp.array,
         preconvected: "NativeV5MState | None" = None,
         capture_preconvected: bool = False,
+        inherited_retention: dict | None = None,
     ) -> NativeV5MProposal:
         parent_digest = committed.digest()
         parent_fingerprint = committed.mutation_fingerprint()
@@ -1194,13 +1201,22 @@ class Q16NativeV5MSolver:
         if preconvected is None:
             retention = self._advance_material_state(geometry, trial)
         else:
-            # Same record shape as `_advance_material_state`, with the cull entries at
-            # zero because the age cull already ran in the proposal this state came
-            # from; `convected_reuse` makes the branch visible in the payload.
+            # The age cull ran inside the convection this state came from, so its
+            # accounting is INHERITED rather than reported as zero -- otherwise the
+            # committed record would silently claim nothing was removed.  The marker
+            # `convected_reuse` keeps the branch visible in the payload.
             retention = {
-                "particle_cull_count": 0,
-                "particle_cull_circulation": 0.0,
-                "particle_cull_linear_impulse": [0.0, 0.0, 0.0],
+                "particle_cull_count": int(
+                    (inherited_retention or {}).get("particle_cull_count", 0)
+                ),
+                "particle_cull_circulation": float(
+                    (inherited_retention or {}).get("particle_cull_circulation", 0.0)
+                ),
+                "particle_cull_linear_impulse": list(
+                    (inherited_retention or {}).get(
+                        "particle_cull_linear_impulse", [0.0, 0.0, 0.0]
+                    )
+                ),
                 "convected_reuse": 1,
             }
         # Stage 2 (experimental, default OFF): 3-D vortex stretching on the live
@@ -1228,6 +1244,18 @@ class Q16NativeV5MSolver:
         # lets it skip the O(N^2) convection while still doing its own deposit and its own
         # truncation, which is what keeps the particle count and the ledger identical.
         preconvected_state = trial.clone() if capture_preconvected else None
+        preconvected_retention = (
+            {
+                name: retention[name]
+                for name in (
+                    "particle_cull_count",
+                    "particle_cull_circulation",
+                    "particle_cull_linear_impulse",
+                )
+            }
+            if capture_preconvected
+            else None
+        )
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
         wake_velocity = self._ring_velocity(
             geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False
@@ -2172,6 +2200,7 @@ class Q16NativeV5MSolver:
             generalized_force=generalized,
             author_load=author_load,
             preconvected_state=preconvected_state,
+            preconvected_retention=preconvected_retention,
         )
 
 
@@ -2186,6 +2215,7 @@ class Q16NativeV5MOwner:
         structural_velocity: wp.array,
         preconvected: "NativeV5MState | None" = None,
         capture_preconvected: bool = False,
+        inherited_retention: dict | None = None,
     ) -> NativeV5MProposal:
         return solver.propose(
             self.state,
