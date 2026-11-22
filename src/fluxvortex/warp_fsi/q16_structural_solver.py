@@ -422,6 +422,13 @@ _EFFECTIVE_LU_CACHE: dict[int, tuple[tuple, dict[tuple, tuple]]] = {}
 #: 10 betas fit with slack; 16 caps the footprint at 16 x (47.5 MB LU + 47.5 MB
 #: effective_free) ~= 1.5 GB, of which 10 slots ~= 0.95 GB are actually used.
 _LU_CACHE_CAPACITY = 16
+#: S3a (2026-11-22, default ON): rebuild the repeated tangent linearization per distinct
+#: batch width instead of once per batch (47 batches, 2 distinct widths).  Off restores
+#: the rebuild-every-batch path; both produce the same tangent bit for bit, which the
+#: test `test_q16_tangent_refresh_linearization_reuse_gpu.py` pins.
+_TANGENT_LINEARIZATION_REUSE = bool(
+    int(os.environ.get("FLUXV_TANGENT_LINEARIZATION_REUSE", "1"))
+)
 #: id(stepper) -> (key, base_free).  The stepper uses __slots__, so the cache cannot
 #: live on the instance; there is one stepper per run, and a key mismatch discards it.
 _BASE_FREE_CACHE: dict[int, tuple[tuple, torch.Tensor]] = {}
@@ -702,6 +709,15 @@ class Q16CudaNewmarkStepper:
         if workspace_per_direction > 0:
             budget_directions = max(1, 2_147_483_648 // workspace_per_direction)
             tangent_batch_size = min(tangent_batch_size, budget_directions)
+        # S3a (2026-11-22): ``repeated_linearization`` depends only on ``count`` and on
+        # the frozen linearization, but the loop rebuilt it on every batch -- 47 rebuilds
+        # while only TWO distinct counts exist (the batch width and the last partial
+        # batch).  Measured (S2b): the non-kernel part of a refresh is ~467 ms/step of
+        # which this rebuild is the bulk, at ~78 ms per batch.  Caching per ``count`` is
+        # bit-identical: ``_tangent_action_linearized_prechecked`` consumes the
+        # linearization through ``inputs=[...]`` only (its own ``delta_*`` are freshly
+        # allocated with zeros_like), so the values it reads are unchanged.
+        repeated_by_count: dict[int, tuple] = {}
         for start in range(0, self.dof_count, tangent_batch_size):
             stop = min(start + tangent_batch_size, self.dof_count)
             count = stop - start
@@ -712,16 +728,22 @@ class Q16CudaNewmarkStepper:
             )
             rows = torch.arange(count, device=self.device)
             directions[rows, rows + start] = 1.0
-            repeated_linearization = tuple(
-                wp.from_torch(
-                    wp.to_torch(value)
-                    .expand((count,) + tuple(value.shape[1:]))
-                    .contiguous(),
-                    dtype=DTYPE,
-                    requires_grad=False,
-                )
-                for value in linearization
+            repeated_linearization = (
+                repeated_by_count.get(count) if _TANGENT_LINEARIZATION_REUSE else None
             )
+            if repeated_linearization is None:
+                repeated_linearization = tuple(
+                    wp.from_torch(
+                        wp.to_torch(value)
+                        .expand((count,) + tuple(value.shape[1:]))
+                        .contiguous(),
+                        dtype=DTYPE,
+                        requires_grad=False,
+                    )
+                    for value in linearization
+                )
+                if _TANGENT_LINEARIZATION_REUSE:
+                    repeated_by_count[count] = repeated_linearization
             action = wp.to_torch(
                 self._operator._tangent_action_linearized_prechecked(
                     wp.from_torch(
