@@ -33,6 +33,16 @@ NATIVE_Q16_FSI_CONTRACT = "q16-flux-v5m-native-strong-pc-cuda-v1"
 _THREE_SLOT_ENDPOINT_ACCELERATION = bool(
     int(os.environ.get("FLUXV_THREE_SLOT_ENDPOINT_ACCELERATION", "1"))
 )
+
+#: A2b (2026-11-23, default "auto"): explicit override for the velocity slot's Mf2_1 term,
+#: so the Slot-2 A/B the plan asks for can be run under the three-slot contract.  "auto"
+#: keeps the existing rule (Mf2_1 is dropped only on the author-weak path); "0" forces it
+#: off and "1" forces it on, independently of bound_rate_author_weak.
+_INCLUDE_MF21_OVERRIDE = os.environ.get("FLUXV_INCLUDE_MF21", "auto").strip().lower()
+if _INCLUDE_MF21_OVERRIDE not in {"auto", "0", "1"}:
+    raise ValueError(
+        f"FLUXV_INCLUDE_MF21 must be 'auto', '0' or '1', got {_INCLUDE_MF21_OVERRIDE!r}"
+    )
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 # DIAGNOSTIC ONLY (D1 degeneracy probe, 2026-11-21): uniformly scale the added-mass
@@ -528,7 +538,11 @@ class Q16NativeV5MFSIStepper:
             constant = wp.from_torch(
                 constant_t, dtype=config.DTYPE, requires_grad=False
             )
-            include_mf21 = not self.bound_rate_author_weak
+            include_mf21 = (
+                not self.bound_rate_author_weak
+                if _INCLUDE_MF21_OVERRIDE == "auto"
+                else _INCLUDE_MF21_OVERRIDE == "1"
+            )
             anchor_velocity_force = owner.aerodynamic_load.velocity_force(
                 velocity, include_mf21=include_mf21
             )
