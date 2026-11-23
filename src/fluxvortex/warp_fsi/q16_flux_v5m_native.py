@@ -6,6 +6,8 @@ numerical array is CUDA float64; Python owns only topology and transactions.
 """
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass
 import hashlib
 import math
@@ -1265,6 +1267,10 @@ class Q16NativeV5MSolver:
             if trial.particle_field.n
             else torch.zeros_like(geometry.collocation)
         )
+        if _ZERO_INDUCED in {"particles", "both"}:
+            particle_velocity = torch.zeros_like(particle_velocity)
+        if _ZERO_INDUCED in {"wake", "both"}:
+            wake_velocity = torch.zeros_like(wake_velocity)
         rhs = torch.sum(
             (geometry.collocation_velocity - self.v_inf - wake_velocity - particle_velocity)
             * geometry.normals,
@@ -2202,6 +2208,21 @@ class Q16NativeV5MSolver:
             preconvected_state=preconvected_state,
             preconvected_retention=preconvected_retention,
         )
+
+
+#: A6 diagnostics (2026-11-23, default OFF): zero one induced-velocity term in the
+#: collocation RHS so the load can be attributed to its sources by ablation --
+#:   "particles" -> drop the deposited LEV/free particles,
+#:   "wake"      -> drop the bound+wake ring influence,
+#:   "both"      -> drop both (nothing but the kinematics and the freestream remains).
+#: Ablation rather than a linear split because the LESP pinning downstream is nonlinear,
+#: so a load-level superposition would not close.  Zeroing here means the reported load is
+#: the load the wing WOULD carry without that source, with the same nonlinear path.
+_ZERO_INDUCED = os.environ.get("FLUXV_ZERO_INDUCED", "").strip().lower()
+if _ZERO_INDUCED not in {"", "particles", "wake", "both"}:
+    raise ValueError(
+        f"FLUXV_ZERO_INDUCED must be '', 'particles', 'wake' or 'both', got {_ZERO_INDUCED!r}"
+    )
 
 
 class Q16NativeV5MOwner:
