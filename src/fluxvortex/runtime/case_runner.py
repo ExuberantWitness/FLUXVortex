@@ -1140,6 +1140,10 @@ class RojratsirikulCaseRunner:
         output: Path | None,
         substeps: int,
     ) -> dict[str, Any]:
+        #: populated by the accuracy-gate block below; stays empty when the run is too
+        #: short to produce statistics, so the payload still serialises.
+        coefficient_conventions: dict[str, Any] = {}
+
         case = self.case
         # M1-3 migration evidence: the unified resolved point-load packet is
         # published by the Q16 native propose alongside the legacy pressure
@@ -1408,6 +1412,73 @@ class RojratsirikulCaseRunner:
             }
             mean_cn = statistics["mean_cn"]
             low, high = self.spec.target_cn_band
+            # 2026-11-23: the three force-coefficient conventions, because which one the
+            # PAPER reports decides whether we pass or fail.  `mean_cn` above is the force
+            # along global z divided by q*c*b, i.e. LIFT for a freestream along x; the
+            # membrane-wing literature's Cn is the force along the wing NORMAL
+            # n = (-sin(alpha), 0, cos(alpha)).  At alpha=16 deg the two differ by 11
+            # percentage points on A16 (1.2472 lift vs 1.1255 normal), which is a third of
+            # the reported +37% gap.  Both are recorded and the paper-aligned NORMAL one
+            # gets its own gate, so the headline number can never again be a convention.
+            window_records = [
+                record
+                for record in records
+                if record["time_star"] >= self.spec.statistics_min_time_star
+            ]
+            coefficient_window = "statistics_window"
+            if not window_records and records:
+                # Short runs never reach statistics_min_time_star (20.0 on the Roj cases),
+                # so fall back to every record but SAY SO -- a coefficient computed on the
+                # startup transient must not be mistaken for the converged one.
+                window_records = list(records)
+                coefficient_window = (
+                    "all_records (run shorter than statistics_min_time_star)"
+                )
+            coefficient_conventions = {
+                "definition_note": (
+                    "mean_cn (existing) = Fz/(q c b) = LIFT; mean_cn_normal = "
+                    "(-Fx sin a + Fz cos a)/(q c b) = the membrane-literature Cn; "
+                    "mean_cl = same as mean_cn but named honestly"
+                ),
+                "sample_count": len(window_records),
+                "window": coefficient_window,
+            }
+            if window_records:
+                import math as _math
+
+                alpha = _math.radians(float(self.spec.angle_deg))
+                q_s = (
+                    0.5
+                    * float(self.case.fluid_density_kg_m3)
+                    * float(self.case.freestream_m_s) ** 2
+                    * float(self.case.chord_m)
+                    * float(self.case.span_m)
+                )
+                fx = sum(r["total_aerodynamic_force_n"][0] for r in window_records) / len(window_records)
+                fz = sum(r["total_aerodynamic_force_n"][2] for r in window_records) / len(window_records)
+                lift = fz / q_s
+                normal = (-fx * _math.sin(alpha) + fz * _math.cos(alpha)) / q_s
+                coefficient_conventions.update(
+                    {
+                        "q_times_s": q_s,
+                        "mean_force_x_n": fx,
+                        "mean_force_z_n": fz,
+                        "mean_cn_normal": normal,
+                        "mean_cl": lift,
+                        "normal_minus_lift_relative": (normal - lift) / lift,
+                    }
+                )
+                accuracy_gates["h9_mean_cn_normal"] = {
+                    "value": normal,
+                    "digitized_band": [low, high],
+                    "relative_tolerance": self.spec.cn_band_relative_tolerance,
+                    "passed": (
+                        (1.0 - self.spec.cn_band_relative_tolerance) * low
+                        <= normal
+                        <= (1.0 + self.spec.cn_band_relative_tolerance) * high
+                    ),
+                    "definition": "paper-aligned normal-force coefficient",
+                }
             accuracy_gates["h9_mean_cn"] = {
                 "value": mean_cn,
                 "digitized_band": [low, high],
@@ -1629,6 +1700,8 @@ class RojratsirikulCaseRunner:
                 else None
             ),
             "mean_Cn": statistics["mean_cn"] if statistics else None,
+            # 2026-11-23: lift / normal conventions side by side (see the gate block).
+            "force_coefficient_conventions": coefficient_conventions,
             "mean_zmax_over_c": (
                 statistics["zmax_over_c_mean_map"] if statistics else None
             ),
