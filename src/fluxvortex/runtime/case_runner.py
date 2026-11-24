@@ -516,6 +516,11 @@ class RojratsirikulCaseRunner:
                 particle_stretching=_bool_env("FLUXV_PARTICLE_STRETCHING"),
                 particle_stretching_rvpm=_bool_env("FLUXV_PARTICLE_STRETCHING_RVPM"),
                 particle_core_spreading=_bool_env("FLUXV_PARTICLE_CORE_SPREADING"),
+                # Leading-edge pin study (2026-11-24): FLUXV_JOINT_SEPARATION=1 selects the
+                # in-tree joint solve, whose pin target is already on the attached sign.
+                # Before this it was a NativeV5MConfig field that no run could set.  The
+                # legacy pin FORM is selected inside the solver by FLUXV_LE_PIN.
+                joint_separation_solve=_bool_env("FLUXV_JOINT_SEPARATION"),
                 device=self.device,
             ),
         )

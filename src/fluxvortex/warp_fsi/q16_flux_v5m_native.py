@@ -38,6 +38,37 @@ LESP_FACTOR = 1.13
 _FOUR_PI = 4.0 * math.pi
 _EPS_V = 1.0e-9
 
+#: Leading-edge pin form on the legacy (production) separated path (2026-11-24).
+#:
+#: Two LESP sign conventions meet at the pin.  The 2-D source bank follows Ramesh
+#: (LESP == A0, A0 > 0 for positive suction; it returns A0 = +lesp_crit on a shed strip).
+#: The 3-D side defines lesp_pre = -gamma_pre/scale, i.e. with one extra minus sign, and
+#: the legacy pin then applies Gamma_LE = -A0_bank*scale -- so the 3-D minus sign is
+#: applied to a quantity (the bank's A0) that never carried it.  Measured at runtime on
+#: A16 (12 steps, 30/30 strips): bank A0 = +0.110, 3-D lesp_pre = -0.35, attached
+#: gamma_pre = +0.004, pinned Gamma_LE < 0 -- the leading-edge row ends up with the
+#: OPPOSITE sign to the attached circulation it is supposed to bound.  The separation mask
+#: is |LESP| > crit, which is sign-symmetric, so this never changed WHICH strips separate;
+#: it only changed what they are pinned to.
+#:
+#: The in-tree joint path already lands on the attached sign: it uses the SAME 3-D
+#: definition (lesp_pre = -gamma_pre/scale) but writes its target as
+#: -sign(lesp_pre)*crit*scale, which resolves to +sign(gamma_pre)*crit*scale.  And the
+#: literature agrees: Hirato et al. 2019 (J. Aircraft, eq. 6) has A0 proportional to
+#: Gamma_1 with no minus sign, so A0 and Gamma_1 share a sign.
+#:
+#:   legacy      Gamma_LE = -A0_bank*scale              (the historical behaviour)
+#:   signed      Gamma_LE = +A0_bank*scale              (literature convention)
+#:   signed_mag  Gamma_LE = +sign(gamma_pre)*|A0|*scale (sign from the 3-D solution itself)
+#:
+#: The choice between them is made ONLY by the error against the digitised experiment
+#: (A16 Cn 0.92-0.95, zmax/c 0.043 on the converged window), not by argument.
+_LE_PIN = os.environ.get("FLUXV_LE_PIN", "legacy").strip().lower()
+if _LE_PIN not in {"legacy", "signed", "signed_mag"}:
+    raise ValueError(
+        f"FLUXV_LE_PIN must be 'legacy', 'signed' or 'signed_mag', got {_LE_PIN!r}"
+    )
+
 
 def _require_cuda64(name: str, value: torch.Tensor, device: torch.device) -> torch.Tensor:
     if type(value) is not torch.Tensor:
@@ -1646,7 +1677,19 @@ class Q16NativeV5MSolver:
             source_a0 = source_result["A0"][:ns]
             separated_aic[active_indices] = 0.0
             separated_aic[active_indices, active_indices] = 1.0
-            separated_rhs[active_indices] = (-source_a0 * scale)[pin_active]
+            if _LE_PIN == "legacy":
+                # Kept as the literal historical expression so the default path stays
+                # bit-identical (see the FLUXV_LE_PIN note at the top of this module).
+                separated_rhs[active_indices] = (-source_a0 * scale)[pin_active]
+            else:
+                # `gamma_pre` here is the attached solve BEFORE the pin; its sign is the
+                # sign the leading-edge row carries when no strip is separated.
+                sign_pre = torch.sign(gamma_pre[:ns])
+                if _LE_PIN == "signed_mag":
+                    pinned_value = sign_pre * torch.abs(source_a0) * scale
+                else:  # "signed"
+                    pinned_value = source_a0 * scale
+                separated_rhs[active_indices] = pinned_value[pin_active]
             gamma = torch.linalg.solve(separated_aic, separated_rhs)
             if use_active_set:
                 # Exact: d(gamma)/d(rhs) = separated_aic^-1 because the pin
@@ -1702,7 +1745,16 @@ class Q16NativeV5MSolver:
         pin_error = torch.zeros((), device=self.device, dtype=torch.float64)
         if active_indices.numel() and not joint_solve:
             source_a0 = source_result["A0"][:ns]
-            pin_error = torch.max(torch.abs(solved_lesp[active_indices] - source_a0[active_indices]))
+            if _LE_PIN == "legacy":
+                # The legacy convention, consistently: LESP is -Gamma/scale and the pin
+                # demands that this equal the bank's (positive) A0.
+                pin_error = torch.max(torch.abs(solved_lesp[active_indices] - source_a0[active_indices]))
+            else:
+                # Literature convention (Hirato 2019 eq. 6): A0 and the leading-edge
+                # circulation share a sign, so the pin demands +Gamma_LE/scale == A0.
+                # The expected value moves WITH the pin form; this is the same gate
+                # expressed in the convention the arm uses, not a relaxed one.
+                pin_error = torch.max(torch.abs(solved_lesp[active_indices] + source_a0[active_indices]))
             if bool((pin_error > 1.0e-6).item()):
                 raise RuntimeError("native V5M LESP pin failed")
         if joint_solve and active_indices.numel():
