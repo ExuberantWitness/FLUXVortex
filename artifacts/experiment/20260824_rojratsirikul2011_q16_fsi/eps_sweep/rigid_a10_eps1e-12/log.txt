@@ -1,0 +1,60 @@
+
+##### 2026-11-24 21:42:46  eps=1e-12  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 10.0 --steps 3 --average-last 1 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a10_eps1e-12/result_s3.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 8e4356e load on device 'cuda:0' took 0.41 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+
+=== rigid plate alpha=10 deg, 3 steps, eps 1e-12, 1 s ===
+Cn along the wing normal, window mean : +0.0275   (min +0.0275, max +0.0275; max|cn| whole run 0.0275)
+  lift +0.0271  streamwise +0.0048  Cn by Fx sin a + Fz cos a +0.0275  Kutta-Joukowski +0.0003
+  paper Fig. 9, rigid U=5 : 0.4508  -> model / experiment -93.9%
+  attached thin wing, elliptic AR=1.99855 : 0.5453  -> model / theory -95.0%
+trailing-edge row: centre 0.00005 m^2/s = 0.000 of 2-D; tip/centre 0.489 (elliptic 0.256); mean/centre 0.878 (elliptic 0.787); outer-20% 0.143 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.00005 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a10_eps1e-12/result_s3.json
+
+##### 2026-11-24 21:42:48  eps=1e-12  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 10.0 --steps 150 --average-last 1 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a10_eps1e-12/result_s150.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 8e4356e load on device 'cuda:0' took 0.42 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+
+=== rigid plate alpha=10 deg, 150 steps, eps 1e-12, 20 s ===
+Cn along the wing normal, window mean : +0.2755   (min +0.2755, max +0.2755; max|cn| whole run 0.4998)
+  lift +0.2773  streamwise +0.0138  Cn by Fx sin a + Fz cos a +0.2755  Kutta-Joukowski +0.2637
+  paper Fig. 9, rigid U=5 : 0.4508  -> model / experiment -38.9%
+  attached thin wing, elliptic AR=1.99855 : 0.5453  -> model / theory -49.5%
+trailing-edge row: centre 0.05302 m^2/s = 0.283 of 2-D; tip/centre 0.412 (elliptic 0.256); mean/centre 0.856 (elliptic 0.787); outer-20% 0.130 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.02355 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a10_eps1e-12/result_s150.json
+
+##### 2026-11-24 21:43:09  eps=1e-12  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 10.0 --steps 1500 --average-last 1200 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a10_eps1e-12/result.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 8e4356e load on device 'cuda:0' took 0.42 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+
+=== rigid plate alpha=10 deg, 1500 steps, eps 1e-12, 513 s ===
+Cn along the wing normal, window mean : +0.2712   (min +0.2702, max +0.2725; max|cn| whole run 0.4998)
+  lift +0.2733  streamwise +0.0120  Cn by Fx sin a + Fz cos a +0.2712  Kutta-Joukowski +0.2742
+  paper Fig. 9, rigid U=5 : 0.4508  -> model / experiment -39.8%
+  attached thin wing, elliptic AR=1.99855 : 0.5453  -> model / theory -50.3%
+trailing-edge row: centre 0.05499 m^2/s = 0.293 of 2-D; tip/centre 0.416 (elliptic 0.256); mean/centre 0.859 (elliptic 0.787); outer-20% 0.131 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.02410 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a10_eps1e-12/result.json

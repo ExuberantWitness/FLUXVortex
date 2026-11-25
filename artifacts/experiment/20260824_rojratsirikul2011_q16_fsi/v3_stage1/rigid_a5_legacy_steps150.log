@@ -1,0 +1,22 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity b597acd load on device 'cuda:0' took 0.55 ms  (cached)
+ring kernel constant: torch path 1e-09, fused kernel 1e-09; one panel-sized ring at its centre, over the unregularised law: torch 0.0995, fused 0.0995
+
+=== rigid plate alpha=5 deg, 150 steps, eps 1e-09, 21 s ===
+Cn along the wing normal, window mean : +0.3186   (min +0.3069, max +0.3282; max|cn| whole run 0.3984)
+  lift +0.3186  streamwise +0.0139  Cn by Fx sin a + Fz cos a +0.3186  Kutta-Joukowski +0.2689
+  paper Fig. 9, rigid U=5 : 0.1985  -> model / experiment +60.5%
+  attached thin wing, elliptic AR=1.99855 : 0.2737  -> model / theory +16.4%
+  attached thin wing, Helmbold AR=1.99855 : 0.2267  -> model / theory +40.5%
+trailing-edge row: centre 0.05433 m^2/s = 0.577 of 2-D; tip/centre 0.905 (elliptic 0.256); mean/centre 0.927 (elliptic 0.787); outer-20% 0.176 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.02270 m^2/s, signs [-1.0, 1.0];  particles at the last step 0 (max 0)
+wake at the last step: 150 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0366 0.0466 0.0566 0.0666; normal offset: +0.0000 +0.0000 +0.0007 +0.0005 +0.0003 +0.0003
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0100, min 0.0000, max 0.0200;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.108 chord
+  wake circulation: newest row +1.51120, oldest row +0.00029, total +122.1102;  trailing-edge row now +1.51120, so a steady wake would total +226.6793
+wrote artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/v3_stage1/rigid_a5_legacy_steps150.json

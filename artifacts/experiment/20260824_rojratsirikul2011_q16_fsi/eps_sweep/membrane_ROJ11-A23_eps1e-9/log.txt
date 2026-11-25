@@ -1,0 +1,1210 @@
+
+##### 2026-11-25 07:18:53  eps=1e-9  platform/warp_vpm/reproduce_rojratsirikul2011_q16_flux_v5m_native.py --case ROJ11-A23 --max-aero-steps 3 --output /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/membrane_ROJ11-A23_eps1e-9/payload_s3.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.46 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.19 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.26 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.80 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.48 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 0.99 ms  (cached)
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.57 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.42 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {},
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 3,
+  "alpha_deg": 23.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-A23",
+  "chordwise_peak_count": null,
+  "commit_count": 3,
+  "coupling_iteration_mean": 1.3333333333333333,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "diagnostic_mf1_scale": 1.0,
+  "dirty_state_digest": "c66e512c76e259eacc1b87eddda96f89d855c1cd4973d18c4dabdc6f3d03d214",
+  "discarded_trial_count": 4,
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 4.504939150006976,
+  "execution_gate_only": false,
+  "force_coefficient_conventions": {},
+  "formal_replay_count": 3,
+  "free_wake": true,
+  "git_head": "5b0a6e57e2f057f796e4ae5a7e67d682f99c9fde",
+  "is_calibration_sensitivity": false,
+  "is_diagnostic_branch": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 90,
+  "lu_cache_stats": {
+    "back_substitutions": 140,
+    "factorizations": 40,
+    "hits": 100,
+    "misses": 40
+  },
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.710505431213761e-20,
+  "max_abs_lesp_pre": 0.5941003744303652,
+  "mean_Cn": null,
+  "mean_zmax_over_c": null,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 7,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 1,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 3.110264969264318e-05,
+    "shadow_5p_to_q16": {
+      "constant_only_vs_packet_relative": {
+        "max": 0.337141882384074,
+        "mean": 0.337141882384074,
+        "n": 1
+      },
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 0.31256017620775184,
+        "mean": 0.31256017620775184,
+        "n": 1
+      },
+      "flexibility_gap_vs_legacy_constant": {
+        "max": 0.07326376169168775,
+        "mean": 0.07326376169168775,
+        "n": 1
+      },
+      "flexibility_gap_vs_legacy_three_term": {
+        "max": 0.5526485961817946,
+        "mean": 0.5526485961817946,
+        "n": 1
+      },
+      "legacy_constant_flexibility_norm": {
+        "max": 0.12224643031382484,
+        "mean": 0.12224643031382484,
+        "n": 1
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.0005885571290616848,
+          "mean": 0.0005885571290616848,
+          "n": 1
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.00019123594686112149,
+          "mean": 0.00019123594686112149,
+          "n": 1
+        },
+        "legacy_velocity_norm": {
+          "max": 1.5056105861486985e-08,
+          "mean": 1.5056105861486985e-08,
+          "n": 1
+        }
+      },
+      "legacy_flexibility_norm": {
+        "max": 0.08306269965804093,
+        "mean": 0.08306269965804093,
+        "n": 1
+      },
+      "legacy_three_term_norm": {
+        "max": 0.0004052048067842191,
+        "mean": 0.0004052048067842191,
+        "n": 1
+      },
+      "mf1_slot_flexibility_norm": {
+        "max": 0.039754898303749085,
+        "mean": 0.039754898303749085,
+        "n": 1
+      },
+      "packet_full_vs_legacy_three_term_relative": {
+        "max": 0.382097505677934,
+        "mean": 0.382097505677934,
+        "n": 1
+      },
+      "packet_generalized_norm": {
+        "max": 0.0005456442215573828,
+        "mean": 0.0005456442215573828,
+        "n": 1
+      },
+      "samples_time_star": [
+        0.03
+      ],
+      "shadow_flexibility_norm": {
+        "max": 0.1287799023444475,
+        "mean": 0.1287799023444475,
+        "n": 1
+      },
+      "transfer_force_max_abs_error": {
+        "max": 8.673617379884035e-19,
+        "mean": 8.673617379884035e-19,
+        "n": 1
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 0.0,
+        "mean": 0.0,
+        "n": 1
+      },
+      "velocity_slot_flexibility_norm": {
+        "max": 2.1124137481769716e-06,
+        "mean": 2.1124137481769716e-06,
+        "n": 1
+      },
+      "work_pointwise_relative_error": {
+        "max": 0.0,
+        "mean": 0.0,
+        "n": 1
+      },
+      "wrench_legacy_constant_force_norm": {
+        "max": 0.010556738624248309,
+        "mean": 0.010556738624248309,
+        "n": 1
+      },
+      "wrench_legacy_constant_moment_norm": {
+        "max": 0.0008274547765848423,
+        "mean": 0.0008274547765848423,
+        "n": 1
+      },
+      "wrench_legacy_force_norm": {
+        "max": 0.007100893684907976,
+        "mean": 0.007100893684907976,
+        "n": 1
+      },
+      "wrench_legacy_moment_norm": {
+        "max": 0.0005610593261221574,
+        "mean": 0.0005610593261221574,
+        "n": 1
+      },
+      "wrench_mf1_slot_force_norm": {
+        "max": 0.0034558465896490707,
+        "mean": 0.0034558465896490707,
+        "n": 1
+      },
+      "wrench_shadow_force_norm": {
+        "max": 0.011033385077337022,
+        "mean": 0.011033385077337022,
+        "n": 1
+      },
+      "wrench_shadow_moment_norm": {
+        "max": 0.0008702646864704387,
+        "mean": 0.0008702646864704387,
+        "n": 1
+      },
+      "wrench_velocity_slot_force_norm": {
+        "max": 1.6503089077307617e-09,
+        "mean": 1.6503089077307617e-09,
+        "n": 1
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "not_applicable",
+    "execution": "completed",
+    "exit_code": 0,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "pending"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": 0.0,
+    "particle_cull_count_total": 0,
+    "removed_over_retained": 0.0,
+    "retained_circulation_live": {
+      "gamma_bound": 0.11203789724938265,
+      "particle_circulation": -5.4616684438957286e-18,
+      "wake_gamma": 0.015481342556858754
+    },
+    "wake_truncate_circulation_total": 0.0,
+    "wake_truncate_ring_count_total": 0
+  },
+  "reuse_convected_field": 0,
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.0006546708049393523,
+      "mean": 0.0002666936308855559,
+      "n": 30
+    },
+    "dq_norm": {
+      "max_abs": 1.9316596476483893e-07,
+      "mean": 5.7340655403486186e-08,
+      "n": 30
+    },
+    "dw_predictor_lag": {
+      "max_abs": 7.448658919480959e-21,
+      "mean": 1.1727802153762701e-21,
+      "n": 30
+    },
+    "enabled": true,
+    "formal_substep_entries": 30,
+    "mf1_action_norm": {
+      "max_abs": 0.00019123594685752218,
+      "mean": 7.819522321163507e-05,
+      "n": 30
+    },
+    "total_entries_including_nonformal": 70,
+    "velocity_norm": {
+      "max_abs": 8.575015945299698e-08,
+      "mean": 1.855141410081526e-08,
+      "n": 30
+    },
+    "w_accelerative": {
+      "max_abs": 3.292370880882901e-11,
+      "mean": -6.953167311964657e-12,
+      "n": 30
+    },
+    "w_algorithmic": {
+      "max_abs": 7.958953649638993e-11,
+      "mean": 1.6786023736540787e-11,
+      "n": 30
+    },
+    "w_nonaccelerative": {
+      "max_abs": 1.1251324530521894e-10,
+      "mean": 2.3739191048505443e-11,
+      "n": 30
+    },
+    "w_ratio_conventions": {
+      "max_abs_component_ratio": 0.2926207374030997,
+      "signed_cumulative_ratio": -0.2928982414673481
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": null,
+  "spanwise_peak_count": null,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=23 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 2.019369332003407,
+  "step_wall_seconds_mean": 1.5010606029924627,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.2673861194248092,
+      "virtual_work_error": 0.0
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 90,
+  "window_selection": null,
+  "zsd_max_over_c": null
+}
+
+##### 2026-11-25 07:19:03  eps=1e-9  platform/warp_vpm/reproduce_rojratsirikul2011_q16_flux_v5m_native.py --case ROJ11-A23 --max-aero-steps 150 --output /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/membrane_ROJ11-A23_eps1e-9/payload_s150.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.48 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.27 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.19 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.79 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.48 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 0.98 ms  (cached)
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.56 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.40 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.40 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "chordwise_peak_count": {
+      "digitized_target": 2,
+      "passed": false,
+      "value": 1
+    },
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.9169,
+        1.0769
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 2.045828622224092
+    },
+    "h9_mean_cn_normal": {
+      "definition": "paper-aligned normal-force coefficient",
+      "digitized_band": [
+        0.9169,
+        1.0769
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 1.4904536026812911
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.04715,
+      "passed": false,
+      "tolerance": 0.005,
+      "value": 0.07219642230943327
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 150,
+  "alpha_deg": 23.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-A23",
+  "chordwise_peak_count": 1,
+  "commit_count": 150,
+  "coupling_iteration_mean": 1.9866666666666666,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "diagnostic_mf1_scale": 1.0,
+  "dirty_state_digest": "c66e512c76e259eacc1b87eddda96f89d855c1cd4973d18c4dabdc6f3d03d214",
+  "discarded_trial_count": 298,
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 597.9123784159892,
+  "execution_gate_only": false,
+  "force_coefficient_conventions": {
+    "definition_note": "mean_cn (existing) = Fz/(q c b) = LIFT; mean_cn_normal = (Fx sin a + Fz cos a)/(q c b) = the membrane-literature Cn (force along the wing normal; trailing edge is DOWN, so the streamwise term ADDS); mean_c_streamwise = Fx/(q c b); mean_cl = same as mean_cn but named honestly",
+    "mean_c_streamwise": 0.5475639724996133,
+    "mean_cl": 1.3867426217241563,
+    "mean_cn_normal": 1.4904536026812911,
+    "mean_force_x_n": 0.07821732321567978,
+    "mean_force_z_n": 0.19809063654280887,
+    "normal_formula": "(Fx sin a + Fz cos a)/(q c b) = CL cos a + Cx sin a",
+    "normal_minus_lift_relative": 0.07478747630053335,
+    "q_times_s": 0.14284600000000003,
+    "sample_count": 150,
+    "window": "all_records (run shorter than statistics_min_time_star)"
+  },
+  "formal_replay_count": 150,
+  "free_wake": true,
+  "git_head": "5b0a6e57e2f057f796e4ae5a7e67d682f99c9fde",
+  "is_calibration_sensitivity": false,
+  "is_diagnostic_branch": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 4500,
+  "lu_cache_stats": {
+    "back_substitutions": 24766,
+    "factorizations": 1510,
+    "hits": 23256,
+    "misses": 1510
+  },
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.7755575615628914e-17,
+  "max_abs_lesp_pre": 0.5941003744303652,
+  "mean_Cn": 2.045828622224092,
+  "mean_zmax_over_c": 0.07219642230943327,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 448,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 24,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 0.09762191877730095,
+    "shadow_5p_to_q16": {
+      "constant_only_vs_packet_relative": {
+        "max": 0.9557188649498697,
+        "mean": 0.8842992991888239,
+        "n": 3
+      },
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 1.3055016623626754,
+        "mean": 1.0916335961909989,
+        "n": 3
+      },
+      "flexibility_gap_vs_legacy_constant": {
+        "max": 0.0988987284961509,
+        "mean": 0.06862849534481733,
+        "n": 3
+      },
+      "flexibility_gap_vs_legacy_three_term": {
+        "max": 0.30704517367554013,
+        "mean": 0.1975278825173401,
+        "n": 3
+      },
+      "legacy_constant_flexibility_norm": {
+        "max": 3.038153302753293,
+        "mean": 2.5195018878132314,
+        "n": 3
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.02466801521976511,
+          "mean": 0.01937851953694034,
+          "n": 3
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.0036632941712896,
+          "mean": 0.002192250254682484,
+          "n": 3
+        },
+        "legacy_velocity_norm": {
+          "max": 0.0022178811947032606,
+          "mean": 0.0017088008353740504,
+          "n": 3
+        }
+      },
+      "legacy_flexibility_norm": {
+        "max": 3.742226513401454,
+        "mean": 2.6502580024514155,
+        "n": 3
+      },
+      "legacy_three_term_norm": {
+        "max": 0.02617951761774481,
+        "mean": 0.020371328369471347,
+        "n": 3
+      },
+      "mf1_slot_flexibility_norm": {
+        "max": 0.6859181352651407,
+        "mean": 0.38895769920857703,
+        "n": 3
+      },
+      "packet_full_vs_legacy_three_term_relative": {
+        "max": 0.9691214274699689,
+        "mean": 0.9002972423113457,
+        "n": 3
+      },
+      "packet_generalized_norm": {
+        "max": 0.03369624275260103,
+        "mean": 0.024591460023590625,
+        "n": 3
+      },
+      "samples_time_star": [
+        0.5,
+        1.0,
+        1.5
+      ],
+      "shadow_flexibility_norm": {
+        "max": 3.042163281672882,
+        "mean": 2.564863910964473,
+        "n": 3
+      },
+      "transfer_force_max_abs_error": {
+        "max": 2.7755575615628914e-17,
+        "mean": 9.766854570473585e-18,
+        "n": 3
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 3.469446951953614e-18,
+        "mean": 1.734723475976807e-18,
+        "n": 3
+      },
+      "velocity_slot_flexibility_norm": {
+        "max": 0.045835271463191454,
+        "mean": 0.026481870743794402,
+        "n": 3
+      },
+      "work_pointwise_relative_error": {
+        "max": 1.1824382366274666e-16,
+        "mean": 7.811196406268869e-17,
+        "n": 3
+      },
+      "wrench_legacy_constant_force_norm": {
+        "max": 0.280897076193816,
+        "mean": 0.2316037343623852,
+        "n": 3
+      },
+      "wrench_legacy_constant_moment_norm": {
+        "max": 0.02149840879849683,
+        "mean": 0.017427976042059083,
+        "n": 3
+      },
+      "wrench_legacy_force_norm": {
+        "max": 0.3459931708887332,
+        "mean": 0.24414751664826853,
+        "n": 3
+      },
+      "wrench_legacy_moment_norm": {
+        "max": 0.02681726867029076,
+        "mean": 0.01846513886221797,
+        "n": 3
+      },
+      "wrench_mf1_slot_force_norm": {
+        "max": 0.06341754698350432,
+        "mean": 0.03555845750365303,
+        "n": 3
+      },
+      "wrench_shadow_force_norm": {
+        "max": 0.28126758011186204,
+        "mean": 0.23573529745239538,
+        "n": 3
+      },
+      "wrench_shadow_moment_norm": {
+        "max": 0.021267411869715664,
+        "mean": 0.01760099094871091,
+        "n": 3
+      },
+      "wrench_velocity_slot_force_norm": {
+        "max": 0.004228734558175584,
+        "mean": 0.0024016041313595932,
+        "n": 3
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": -8.42824887572341e-15,
+    "particle_cull_count_total": 13213,
+    "removed_over_retained": 1.2042348488489494e-17,
+    "retained_circulation_live": {
+      "gamma_bound": 92.93650965625163,
+      "particle_circulation": 6.46011022453763e-15,
+      "wake_gamma": 606.9476436531656
+    },
+    "wake_truncate_circulation_total": 0.0,
+    "wake_truncate_ring_count_total": 0
+  },
+  "reuse_convected_field": 0,
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.02510960258025372,
+      "mean": 0.015856708434025008,
+      "n": 1500
+    },
+    "dq_norm": {
+      "max_abs": 0.00010502191309614687,
+      "mean": 5.779188492805777e-05,
+      "n": 1500
+    },
+    "dw_predictor_lag": {
+      "max_abs": 4.939617596773401e-14,
+      "mean": 1.790545189737074e-15,
+      "n": 1500
+    },
+    "enabled": true,
+    "formal_substep_entries": 1500,
+    "mf1_action_norm": {
+      "max_abs": 0.005079442450207729,
+      "mean": 0.0022114236869225463,
+      "n": 1500
+    },
+    "total_entries_including_nonformal": 4480,
+    "velocity_norm": {
+      "max_abs": 0.002415519503211711,
+      "mean": 0.001221953198874334,
+      "n": 1500
+    },
+    "w_accelerative": {
+      "max_abs": 2.3976060009753386e-07,
+      "mean": -2.1246002388626056e-08,
+      "n": 1500
+    },
+    "w_algorithmic": {
+      "max_abs": 1.14708773821531e-06,
+      "mean": 2.668638519465293e-07,
+      "n": 1500
+    },
+    "w_nonaccelerative": {
+      "max_abs": 1.0691313626692555e-06,
+      "mean": 2.881098543351554e-07,
+      "n": 1500
+    },
+    "w_ratio_conventions": {
+      "max_abs_component_ratio": 0.2242573817111993,
+      "signed_cumulative_ratio": -0.07374271330515061
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 0,
+    "max_over_c": 0.06340909283889348,
+    "min_over_c": 0.03380414016451032,
+    "station": [
+      10,
+      22
+    ]
+  },
+  "spanwise_peak_count": 2,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=23 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 7.4171004589879885,
+  "step_wall_seconds_mean": 3.984097717364396,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.27576951468249056,
+      "virtual_work_error": 3.951125315378757e-16
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 4500,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      150
+    ]
+  },
+  "zsd_max_over_c": 0.009270990222273897
+}
+
+##### 2026-11-25 07:29:07  eps=1e-9  platform/warp_vpm/reproduce_rojratsirikul2011_q16_flux_v5m_native.py --case ROJ11-A23 --max-aero-steps 650 --output /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/membrane_ROJ11-A23_eps1e-9/payload.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_q16_mesh cc4bc4d load on device 'cuda:0' took 0.49 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ancf 9b4e308 load on device 'cuda:0' took 2.21 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_ans_eas 5fdf184 load on device 'cuda:0' took 5.30 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_transfer 813de10 load on device 'cuda:0' took 0.79 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_q16_constraints eb33309 load on device 'cuda:0' took 0.47 ms  (cached)
+Module fluxvortex.warp_fsi.q16_structural_solver a43b590 load on device 'cuda:0' took 0.99 ms  (cached)
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.58 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 2da01f1 load on device 'cuda:0' took 0.39 ms  (cached)
+Module fluxvortex.warp_fsi.q16_ptera_resolved_transfer cc39470 load on device 'cuda:0' took 0.41 ms  (cached)
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {
+    "chordwise_peak_count": {
+      "digitized_target": 2,
+      "passed": false,
+      "value": 1
+    },
+    "h8_stationarity": {
+      "note": "no block-stationary window found; accuracy scored on the full post-startup fallback window",
+      "passed": false
+    },
+    "h9_mean_cn": {
+      "digitized_band": [
+        0.9169,
+        1.0769
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 1.6966727879135017
+    },
+    "h9_mean_cn_normal": {
+      "definition": "paper-aligned normal-force coefficient",
+      "digitized_band": [
+        0.9169,
+        1.0769
+      ],
+      "passed": false,
+      "relative_tolerance": 0.1,
+      "value": 1.6222256040667902
+    },
+    "h9_zmax_over_c": {
+      "digitized_target": 0.04715,
+      "passed": true,
+      "tolerance": 0.005,
+      "value": 0.04262424511068047
+    },
+    "st_gate": {
+      "digitized_target": 0.83,
+      "passed": false,
+      "strouhal": 0.3636363636363636,
+      "tolerance": 0.08
+    }
+  },
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 650,
+  "alpha_deg": 23.0,
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-A23",
+  "chordwise_peak_count": 1,
+  "commit_count": 650,
+  "coupling_iteration_mean": 1.996923076923077,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "diagnostic_mf1_scale": 1.0,
+  "dirty_state_digest": "3bb7dd8569c2833010958111d3da21f13686f46dc942027bbaa063c2a89376ae",
+  "discarded_trial_count": 1298,
+  "dominant_St": 0.3636363636363636,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 4305.0917310499935,
+  "execution_gate_only": false,
+  "force_coefficient_conventions": {
+    "definition_note": "mean_cn (existing) = Fz/(q c b) = LIFT; mean_cn_normal = (Fx sin a + Fz cos a)/(q c b) = the membrane-literature Cn (force along the wing normal; trailing edge is DOWN, so the streamwise term ADDS); mean_c_streamwise = Fx/(q c b); mean_cl = same as mean_cn but named honestly",
+    "mean_c_streamwise": 0.5319680888953879,
+    "mean_cl": 1.5365145627072883,
+    "mean_cn_normal": 1.6222256040667902,
+    "mean_force_x_n": 0.0759895136263506,
+    "mean_force_z_n": 0.21948495922448535,
+    "normal_formula": "(Fx sin a + Fz cos a)/(q c b) = CL cos a + Cx sin a",
+    "normal_minus_lift_relative": 0.055782771891521726,
+    "q_times_s": 0.14284600000000003,
+    "sample_count": 650,
+    "window": "all_records (run shorter than statistics_min_time_star)"
+  },
+  "formal_replay_count": 650,
+  "free_wake": true,
+  "git_head": "5b0a6e57e2f057f796e4ae5a7e67d682f99c9fde",
+  "is_calibration_sensitivity": false,
+  "is_diagnostic_branch": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 19500,
+  "lu_cache_stats": {
+    "back_substitutions": 123292,
+    "factorizations": 6510,
+    "hits": 116782,
+    "misses": 6510
+  },
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.7755575615628914e-17,
+  "max_abs_lesp_pre": 0.6463452147970553,
+  "mean_Cn": 1.6966727879135017,
+  "mean_zmax_over_c": 0.04262424511068047,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 1948,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "reference_tangent_cache_refresh_count": 86,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 0.11727188589187162,
+    "shadow_5p_to_q16": {
+      "constant_only_vs_packet_relative": {
+        "max": 0.9751373971585295,
+        "mean": 0.9492066738981205,
+        "n": 13
+      },
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 1.4317847272837303,
+        "mean": 1.3230062280221906,
+        "n": 13
+      },
+      "flexibility_gap_vs_legacy_constant": {
+        "max": 0.17176923118653464,
+        "mean": 0.11813334515145876,
+        "n": 13
+      },
+      "flexibility_gap_vs_legacy_three_term": {
+        "max": 0.30704517367554013,
+        "mean": 0.17167295394274207,
+        "n": 13
+      },
+      "legacy_constant_flexibility_norm": {
+        "max": 3.038153302753293,
+        "mean": 2.465224430196067,
+        "n": 13
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.025633202254171938,
+          "mean": 0.023652658291515048,
+          "n": 13
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.0036632941712896,
+          "mean": 0.001285482847511341,
+          "n": 13
+        },
+        "legacy_velocity_norm": {
+          "max": 0.0022178811947032606,
+          "mean": 0.0010725357612480896,
+          "n": 13
+        }
+      },
+      "legacy_flexibility_norm": {
+        "max": 3.742226513401454,
+        "mean": 2.4809638943591077,
+        "n": 13
+      },
+      "legacy_three_term_norm": {
+        "max": 0.02688918405782403,
+        "mean": 0.024083965575564432,
+        "n": 13
+      },
+      "mf1_slot_flexibility_norm": {
+        "max": 0.6859181352651407,
+        "mean": 0.20800424167856654,
+        "n": 13
+      },
+      "packet_full_vs_legacy_three_term_relative": {
+        "max": 0.9767295016613532,
+        "mean": 0.9541660681994568,
+        "n": 13
+      },
+      "packet_generalized_norm": {
+        "max": 0.03686382059465097,
+        "mean": 0.03323712918932127,
+        "n": 13
+      },
+      "samples_time_star": [
+        0.5,
+        1.0,
+        1.5,
+        2.0,
+        2.5,
+        3.0,
+        3.5,
+        4.0,
+        4.5,
+        5.0,
+        5.5,
+        6.0,
+        6.5
+      ],
+      "shadow_flexibility_norm": {
+        "max": 3.05229035870196,
+        "mean": 2.543247420723138,
+        "n": 13
+      },
+      "transfer_force_max_abs_error": {
+        "max": 2.7755575615628914e-17,
+        "mean": 7.777065583405637e-18,
+        "n": 13
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 3.469446951953614e-18,
+        "mean": 1.6012832085939759e-18,
+        "n": 13
+      },
+      "velocity_slot_flexibility_norm": {
+        "max": 0.045835271463191454,
+        "mean": 0.01404404621184787,
+        "n": 13
+      },
+      "work_pointwise_relative_error": {
+        "max": 1.925870381474612e-16,
+        "mean": 6.742264020714066e-17,
+        "n": 13
+      },
+      "wrench_legacy_constant_force_norm": {
+        "max": 0.280897076193816,
+        "mean": 0.22892327476955496,
+        "n": 13
+      },
+      "wrench_legacy_constant_moment_norm": {
+        "max": 0.02149840879849683,
+        "mean": 0.01677949282401108,
+        "n": 13
+      },
+      "wrench_legacy_force_norm": {
+        "max": 0.3459931708887332,
+        "mean": 0.23044881345901644,
+        "n": 13
+      },
+      "wrench_legacy_moment_norm": {
+        "max": 0.02681726867029076,
+        "mean": 0.016937011350656252,
+        "n": 13
+      },
+      "wrench_mf1_slot_force_norm": {
+        "max": 0.06341754698350432,
+        "mean": 0.019206425651877117,
+        "n": 13
+      },
+      "wrench_shadow_force_norm": {
+        "max": 0.28237424471912514,
+        "mean": 0.23617179731732493,
+        "n": 13
+      },
+      "wrench_shadow_moment_norm": {
+        "max": 0.021267411869715664,
+        "mean": 0.01715160767669344,
+        "n": 13
+      },
+      "wrench_velocity_slot_force_norm": {
+        "max": 0.004228734558175584,
+        "mean": 0.0012798431172409493,
+        "n": 13
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": 1.135367028257811e-14,
+    "particle_cull_count_total": 148706,
+    "removed_over_retained": 0.7881605942458261,
+    "retained_circulation_live": {
+      "gamma_bound": 100.71563249927459,
+      "particle_circulation": -1.9081958235744878e-17,
+      "wake_gamma": 2736.036028993376
+    },
+    "wake_truncate_circulation_total": 2235.815875249882,
+    "wake_truncate_ring_count_total": 10500
+  },
+  "reuse_convected_field": 0,
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.025868596174280147,
+      "mean": 0.02280184282547305,
+      "n": 6500
+    },
+    "dq_norm": {
+      "max_abs": 0.00010502191309614687,
+      "mean": 4.22050600367599e-05,
+      "n": 6500
+    },
+    "dw_predictor_lag": {
+      "max_abs": 4.939617596773401e-14,
+      "mean": -3.7829009006431757e-16,
+      "n": 6500
+    },
+    "enabled": true,
+    "formal_substep_entries": 6500,
+    "mf1_action_norm": {
+      "max_abs": 0.005079442450207729,
+      "mean": 0.0012519768985543125,
+      "n": 6500
+    },
+    "total_entries_including_nonformal": 19480,
+    "velocity_norm": {
+      "max_abs": 0.002415519503211711,
+      "mean": 0.00103945990093963,
+      "n": 6500
+    },
+    "w_accelerative": {
+      "max_abs": 2.3976060009753386e-07,
+      "mean": -1.22307420989337e-10,
+      "n": 6500
+    },
+    "w_algorithmic": {
+      "max_abs": 1.14708773821531e-06,
+      "mean": 5.397865548670722e-08,
+      "n": 6500
+    },
+    "w_nonaccelerative": {
+      "max_abs": 1.0691313626692555e-06,
+      "mean": 5.4100962907696564e-08,
+      "n": 6500
+    },
+    "w_ratio_conventions": {
+      "max_abs_component_ratio": 0.2242573817111993,
+      "signed_cumulative_ratio": -0.002260725399619981
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": {
+    "crossings": 2,
+    "max_over_c": 0.07535438110801301,
+    "min_over_c": -0.016029601299277687,
+    "station": [
+      9,
+      15
+    ]
+  },
+  "spanwise_peak_count": 1,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=23 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 9.525591743993573,
+  "step_wall_seconds_mean": 6.616971625745512,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.27576951468249056,
+      "virtual_work_error": 1.049103572625024e-15
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 9000,
+  "window_selection": {
+    "first_allowed_index": 100,
+    "required_length_star": 10.0,
+    "stationary_window_found": false,
+    "window": [
+      100,
+      650
+    ]
+  },
+  "zsd_max_over_c": 0.02515253632433498
+}

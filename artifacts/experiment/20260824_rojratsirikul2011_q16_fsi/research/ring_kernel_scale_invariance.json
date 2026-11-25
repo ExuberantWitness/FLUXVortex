@@ -1,0 +1,194 @@
+[
+ {
+  "scale": 1.0,
+  "target": "ring centre (self)",
+  "min_cross_sq_m4": 1.1048345679012326e-10,
+  "kernel_vz": 19.536242060369773,
+  "exact_vz": 196.36128562758188,
+  "kernel_over_exact": 0.09949131264816702
+ },
+ {
+  "scale": 1.0,
+  "target": "panel collocation point (self)",
+  "min_cross_sq_m4": 2.762086419753073e-11,
+  "kernel_vz": 17.28559008151657,
+  "exact_vz": 238.65253218112738,
+  "kernel_over_exact": 0.07242994626345521
+ },
+ {
+  "scale": 1.0,
+  "target": "neighbour +1 panel chordwise",
+  "min_cross_sq_m4": 1.1048345679012341e-10,
+  "kernel_vz": 0.43229149127571187,
+  "exact_vz": -24.979831422675975,
+  "kernel_over_exact": -0.017305620841111445
+ },
+ {
+  "scale": 1.0,
+  "target": "neighbour -1 panel chordwise",
+  "min_cross_sq_m4": 1.1048345679012341e-10,
+  "kernel_vz": 0.43229149127570476,
+  "exact_vz": -24.979831422675893,
+  "kernel_over_exact": -0.017305620841111216
+ },
+ {
+  "scale": 1.0,
+  "target": "neighbour +1 strip",
+  "min_cross_sq_m4": 1.1048343942880694e-10,
+  "kernel_vz": 0.4340027923527259,
+  "exact_vz": -25.022399957553127,
+  "kernel_over_exact": -0.01734457098795274
+ },
+ {
+  "scale": 1.0,
+  "target": "neighbour +2 strips",
+  "min_cross_sq_m4": 1.104834567901233e-10,
+  "kernel_vz": -1.4304472979497727,
+  "exact_vz": -2.382938505073311,
+  "kernel_over_exact": 0.6002871223509668
+ },
+ {
+  "scale": 1.0,
+  "target": "neighbour +4 strips",
+  "min_cross_sq_m4": 1.104834567901232e-10,
+  "kernel_vz": -0.39091078650719435,
+  "exact_vz": -0.2779020325591752,
+  "kernel_over_exact": 1.4066496128413726
+ },
+ {
+  "scale": 1.0,
+  "target": "far corner ring (7 panels, 15 strips)",
+  "min_cross_sq_m4": 2.762086196206121e-09,
+  "kernel_vz": -0.025058420291868264,
+  "exact_vz": -0.03957779061681936,
+  "kernel_over_exact": 0.6331434853066101
+ },
+ {
+  "scale": 10.0,
+  "target": "ring centre (self)",
+  "min_cross_sq_m4": 1.104834567901232e-06,
+  "kernel_vz": 19.618371721786907,
+  "exact_vz": 19.636128562758184,
+  "kernel_over_exact": 0.9990957056064017
+ },
+ {
+  "scale": 10.0,
+  "target": "panel collocation point (self)",
+  "min_cross_sq_m4": 2.7620864197530937e-07,
+  "kernel_vz": 23.81140753360614,
+  "exact_vz": 23.865253218112695,
+  "kernel_over_exact": 0.9977437622800629
+ },
+ {
+  "scale": 10.0,
+  "target": "neighbour +1 panel chordwise",
+  "min_cross_sq_m4": 1.1048345679012347e-06,
+  "kernel_vz": -2.4951366586586943,
+  "exact_vz": -2.4979831422676,
+  "kernel_over_exact": 0.9988604872624073
+ },
+ {
+  "scale": 10.0,
+  "target": "neighbour -1 panel chordwise",
+  "min_cross_sq_m4": 1.1048345679012347e-06,
+  "kernel_vz": -2.495136658658684,
+  "exact_vz": -2.49798314226759,
+  "kernel_over_exact": 0.9988604872624072
+ },
+ {
+  "scale": 10.0,
+  "target": "neighbour +1 strip",
+  "min_cross_sq_m4": 1.1048343942880696e-06,
+  "kernel_vz": -2.4993884640570494,
+  "exact_vz": -2.5022399957553123,
+  "kernel_over_exact": 0.99886040839284
+ },
+ {
+  "scale": 10.0,
+  "target": "neighbour +2 strips",
+  "min_cross_sq_m4": 1.104834567901232e-06,
+  "kernel_vz": -0.2384304960606298,
+  "exact_vz": -0.23829385050733087,
+  "kernel_over_exact": 1.000573432982043
+ },
+ {
+  "scale": 10.0,
+  "target": "neighbour +4 strips",
+  "min_cross_sq_m4": 1.104834567901232e-06,
+  "kernel_vz": -0.02781328781498827,
+  "exact_vz": -0.027790203255916805,
+  "kernel_over_exact": 1.0008306725524416
+ },
+ {
+  "scale": 10.0,
+  "target": "far corner ring (7 panels, 15 strips)",
+  "min_cross_sq_m4": 2.762086196206123e-05,
+  "kernel_vz": -0.003957563533082709,
+  "exact_vz": -0.0039577790616819215,
+  "kernel_over_exact": 0.9999455430442544
+ },
+ {
+  "scale": 100.0,
+  "target": "ring centre (self)",
+  "min_cross_sq_m4": 0.011048345679012308,
+  "kernel_vz": 1.9636126785467063,
+  "exact_vz": 1.9636128562758193,
+  "kernel_over_exact": 0.9999999094887201
+ },
+ {
+  "scale": 100.0,
+  "target": "panel collocation point (self)",
+  "min_cross_sq_m4": 0.002762086419753077,
+  "kernel_vz": 2.386524781656565,
+  "exact_vz": 2.386525321811273,
+  "kernel_over_exact": 0.9999997736647908
+ },
+ {
+  "scale": 100.0,
+  "target": "neighbour +1 panel chordwise",
+  "min_cross_sq_m4": 0.011048345679012328,
+  "kernel_vz": -0.24979828573557086,
+  "exact_vz": -0.24979831422675966,
+  "kernel_over_exact": 0.9999998859432303
+ },
+ {
+  "scale": 100.0,
+  "target": "neighbour -1 panel chordwise",
+  "min_cross_sq_m4": 0.011048345679012327,
+  "kernel_vz": -0.2497982857355699,
+  "exact_vz": -0.24979831422675863,
+  "kernel_over_exact": 0.9999998859432305
+ },
+ {
+  "scale": 100.0,
+  "target": "neighbour +1 strip",
+  "min_cross_sq_m4": 0.011048343942880682,
+  "kernel_vz": -0.25022397103381433,
+  "exact_vz": -0.250223999575531,
+  "kernel_over_exact": 0.9999998859353351
+ },
+ {
+  "scale": 100.0,
+  "target": "neighbour +2 strips",
+  "min_cross_sq_m4": 0.011048345679012306,
+  "kernel_vz": -0.02382938641893211,
+  "exact_vz": -0.023829385050733055,
+  "kernel_over_exact": 1.0000000574164651
+ },
+ {
+  "scale": 100.0,
+  "target": "neighbour +4 strips",
+  "min_cross_sq_m4": 0.011048345679012299,
+  "kernel_vz": -0.002779020556660734,
+  "exact_vz": -0.002779020325591749,
+  "kernel_over_exact": 1.0000000831476412
+ },
+ {
+  "scale": 100.0,
+  "target": "far corner ring (7 panels, 15 strips)",
+  "min_cross_sq_m4": 0.27620861962061216,
+  "kernel_vz": -0.00039577790401279186,
+  "exact_vz": -0.00039577790616817776,
+  "kernel_over_exact": 0.999999994554052
+ }
+]

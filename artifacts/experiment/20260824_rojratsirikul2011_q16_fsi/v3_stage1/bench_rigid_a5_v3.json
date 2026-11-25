@@ -1,0 +1,44 @@
+{
+ "alpha_deg": 5.0,
+ "warmup_steps": 400,
+ "timed_steps": 60,
+ "dt_star": 0.01,
+ "wake_max_rows": 300,
+ "wake_free_rows": 100,
+ "wake_rings_during_timing": 9000,
+ "kernel": "v3",
+ "te_wake": "v3",
+ "wake_core_panels": 0.25,
+ "dtype": "torch.float64",
+ "device": "NVIDIA GeForce RTX 4090 D",
+ "bare_seconds_per_step": 0.41349840128289844,
+ "wrapped_seconds_per_step": 0.41216814388365797,
+ "phase_seconds_per_step": {
+  "convection": 0.3414684612478595,
+  "matrix": 0.0008528595683552946,
+  "wake+solve": 0.0,
+  "loads": 0.009136967351272082,
+  "packet": 0.001471266694716178,
+  "refine": 0.021628471648242945,
+  "rest": 0.03761011737321196
+ },
+ "phase_calls_per_step": {
+  "convection": 1.0,
+  "matrix": 1.0,
+  "wake+solve": 0.0,
+  "loads": 1.0,
+  "packet": 2.0,
+  "refine": 1.0,
+  "rest": 0.0
+ },
+ "filament_evaluations_per_step": {
+  "convection": 1360800000,
+  "matrix": 0,
+  "wake+solve": 85266000,
+  "loads": 0,
+  "packet": 0,
+  "refine": 68040000,
+  "rest": 0
+ },
+ "convection_filament_evaluations_per_second": 3985141102.1302047
+}

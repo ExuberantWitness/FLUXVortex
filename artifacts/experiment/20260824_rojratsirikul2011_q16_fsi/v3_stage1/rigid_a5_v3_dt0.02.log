@@ -1,0 +1,24 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+gate G-dt: dt* 0.02, wake 150 rows, free rows 50, particle age 50 steps
+Module fluxvortex.warp_fsi.kernels_ring_velocity b597acd load on device 'cuda:0' took 0.56 ms  (cached)
+ring kernel constant: torch path 1e-09, fused kernel 1e-09; one panel-sized ring at its centre, over the unregularised law: torch 1.0000, fused 1.0000
+ring kernel: v3 (exact law, collinear guard 1e-12); trailing-edge wake: v3 (implicit nascent row); wake core 0.25 chordwise panels
+
+=== rigid plate alpha=5 deg, 750 steps, eps 1e-09, 122 s ===
+Cn along the wing normal, window mean : +0.2190   (min +0.2183, max +0.2190; max|cn| whole run 0.2924)
+  lift +0.2191  streamwise +0.0076  Cn by Fx sin a + Fz cos a +0.2190  Kutta-Joukowski +0.2194
+  paper Fig. 9, rigid U=5 : 0.1985  -> model / experiment +10.3%
+  attached thin wing, elliptic AR=1.99855 : 0.2737  -> model / theory -20.0%
+  attached thin wing, Helmbold AR=1.99855 : 0.2267  -> model / theory -3.4%
+trailing-edge row: centre 0.04656 m^2/s = 0.494 of 2-D; tip/centre 0.335 (elliptic 0.256); mean/centre 0.811 (elliptic 0.787); outer-20% 0.117 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.01296 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wake at the last step: 150 rows; first rows, chord aft of the edge: 0.0167 0.0366 0.0566 0.0766 0.0966 0.1166; normal offset: +0.0000 +0.0003 +0.0006 +0.0009 +0.0012 +0.0015
+  row spacing over the first 20 rows (nominal 0.0200): mean 0.0200, min 0.0200, max 0.0202;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.293 chord
+  wake circulation: newest row +1.13288, oldest row +1.13289, total +169.9327;  trailing-edge row now +1.13288, so a steady wake would total +169.9324
+wrote artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/v3_stage1/rigid_a5_v3_dt0.02.json

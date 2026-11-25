@@ -1,0 +1,114 @@
+{
+ "alpha_deg": 10.0,
+ "steps": 3,
+ "window": [
+  3,
+  3
+ ],
+ "environment": {
+  "FLUXV_RING_EPS_V": "3e-11",
+  "FLUXV_LE_PIN": "legacy",
+  "FLUXV_LESP_MASK_OFF": "",
+  "FLUXV_PACKET_CLOSURE_SCALE": "l1"
+ },
+ "kernel_check": {
+  "eps_torch_path": 3e-11,
+  "eps_fused_kernel": 3e-11,
+  "self_torch_over_exact": 0.7864517240288387,
+  "self_fused_over_exact": 0.7864517240288387
+ },
+ "cn_normal": {
+  "mean": 0.02914906722770868,
+  "min": 0.02914906722770868,
+  "max": 0.02914906722770868
+ },
+ "cn_by_formula": 0.029149067227708676,
+ "lift": 0.028706239456201814,
+ "streamwise": 0.005061614024548245,
+ "max_abs_cn_whole_run": 0.02914906722770868,
+ "paper_cn_rigid": 0.4508,
+ "theory_elliptic": 0.545333536163624,
+ "model_over_paper": -0.9353392474984279,
+ "model_over_theory": -0.9465481851111341,
+ "kutta_joukowski_check": 0.0003123346934887057,
+ "trailing_edge_row": {
+  "centre_m2_s": 6.079732634370989e-05,
+  "centre_over_2d": 0.0003239708502204079,
+  "tip_over_centre": 0.517914683111367,
+  "mean_over_centre": 0.8836172659361596,
+  "outer_20pct_share": 0.1462320933835824,
+  "values": [
+   3.1487828007320876e-05,
+   4.0515438084826486e-05,
+   4.583399255599896e-05,
+   4.949423064482798e-05,
+   5.2198462258105014e-05,
+   5.427290567624654e-05,
+   5.589796945686089e-05,
+   5.7184771645458814e-05,
+   5.8206710399075196e-05,
+   5.9014521428957156e-05,
+   5.9644238544486946e-05,
+   6.012172915716581e-05,
+   6.04654172952232e-05,
+   6.0687967702596884e-05,
+   6.0797326343709896e-05,
+   6.079732634370989e-05,
+   6.0687967702596776e-05,
+   6.046541729522306e-05,
+   6.012172915716575e-05,
+   5.9644238544486986e-05,
+   5.901452142895727e-05,
+   5.820671039907529e-05,
+   5.718477164545874e-05,
+   5.589796945686095e-05,
+   5.427290567624665e-05,
+   5.219846225810501e-05,
+   4.949423064482798e-05,
+   4.583399255599895e-05,
+   4.0515438084826507e-05,
+   3.148782800732091e-05
+  ]
+ },
+ "elliptic_reference": {
+  "tip_over_centre": 0.25603819159562036,
+  "mean_over_centre": 0.7868737247596751,
+  "outer_20pct_share": 0.10545519949615866
+ },
+ "leading_edge_row": {
+  "mean_abs_m2_s": 5.371823708808726e-05,
+  "signs": [
+   1.0
+  ]
+ },
+ "particles_last": 0,
+ "particles_max": 0,
+ "cn_series_every_100": [
+  0.005835405933483127
+ ],
+ "wake_shape": {
+  "rows": 3,
+  "first_rows_chord_aft_of_edge": [
+   0.016666666666666666,
+   0.016666666666666666,
+   0.01669823556266216
+  ],
+  "first_rows_normal_offset": [
+   1.1819064380292563e-17,
+   1.1819064380292563e-17,
+   6.064409726326496e-06
+  ],
+  "spacing_first20_mean": 1.578444799774717e-05,
+  "spacing_first20_min": 0.0,
+  "spacing_first20_max": 3.156925267519539e-05,
+  "nodes_upstream_of_edge": 0,
+  "max_abs_normal_offset_all_rows": 6.260942108266539e-06,
+  "nominal_spacing": 0.01,
+  "newest_row_circulation_sum": 0.0016116470184017215,
+  "oldest_row_circulation_sum": 0.00017917821073850027,
+  "wake_total_circulation": 0.002507366196104069,
+  "trailing_edge_row_circulation_sum_now": 0.0016116470184017215,
+  "wake_total_if_steady": 0.004834941055205164
+ },
+ "elapsed_seconds": 0.6415786743164062
+}

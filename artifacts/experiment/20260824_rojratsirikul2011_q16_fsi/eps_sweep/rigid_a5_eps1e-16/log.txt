@@ -1,0 +1,72 @@
+
+##### 2026-11-25 13:16:36  eps=1e-16  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 5.0 --steps 3 --average-last 1 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a5_eps1e-16/result_s3.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity c3b4548 load on device 'cuda:0' took 529.15 ms  (compiled)
+ring kernel constant: torch path 1e-16, fused kernel 1e-16; one panel-sized ring at its centre, over the unregularised law: torch 1.0000, fused 1.0000
+
+=== rigid plate alpha=5 deg, 3 steps, eps 1e-16, 1 s ===
+Cn along the wing normal, window mean : +0.0138   (min +0.0138, max +0.0138; max|cn| whole run 0.0138)
+  lift +0.0137  streamwise +0.0012  Cn by Fx sin a + Fz cos a +0.0138  Kutta-Joukowski +0.0001
+  paper Fig. 9, rigid U=5 : 0.1985  -> model / experiment -93.1%
+  attached thin wing, elliptic AR=1.99855 : 0.2737  -> model / theory -95.0%
+  attached thin wing, Helmbold AR=1.99855 : 0.2267  -> model / theory -93.9%
+trailing-edge row: centre 0.00003 m^2/s = 0.000 of 2-D; tip/centre 0.488 (elliptic 0.256); mean/centre 0.878 (elliptic 0.787); outer-20% 0.143 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.00002 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wake at the last step: 3 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0168; normal offset: +0.0000 +0.0000 +0.0003
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0001, min 0.0000, max 0.0001;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.000 chord
+  wake circulation: newest row +0.00072, oldest row +0.00008, total +0.0011;  trailing-edge row now +0.00072, so a steady wake would total +0.0021
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a5_eps1e-16/result_s3.json
+
+##### 2026-11-25 13:16:38  eps=1e-16  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 5.0 --steps 150 --average-last 1 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a5_eps1e-16/result_s150.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity c3b4548 load on device 'cuda:0' took 0.57 ms  (cached)
+ring kernel constant: torch path 1e-16, fused kernel 1e-16; one panel-sized ring at its centre, over the unregularised law: torch 1.0000, fused 1.0000
+
+=== rigid plate alpha=5 deg, 150 steps, eps 1e-16, 22 s ===
+Cn along the wing normal, window mean : +0.1505   (min +0.1505, max +0.1505; max|cn| whole run 0.2611)
+  lift +0.1507  streamwise +0.0042  Cn by Fx sin a + Fz cos a +0.1505  Kutta-Joukowski +0.1393
+  paper Fig. 9, rigid U=5 : 0.1985  -> model / experiment -24.2%
+  attached thin wing, elliptic AR=1.99855 : 0.2737  -> model / theory -45.0%
+  attached thin wing, Helmbold AR=1.99855 : 0.2267  -> model / theory -33.6%
+trailing-edge row: centre 0.02895 m^2/s = 0.307 of 2-D; tip/centre 0.382 (elliptic 0.256); mean/centre 0.827 (elliptic 0.787); outer-20% 0.125 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.01183 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wake at the last step: 150 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0415 0.0514 0.0610 0.0716; normal offset: +0.0000 +0.0000 +0.0014 +0.0040 +0.0054 +0.0065
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0106, min -0.0103, max 0.0338;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.233 chord
+  wake circulation: newest row +0.71855, oldest row +0.00008, total +62.1551;  trailing-edge row now +0.71855, so a steady wake would total +107.7826
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a5_eps1e-16/result_s150.json
+
+##### 2026-11-25 13:17:01  eps=1e-16  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 5.0 --steps 1500 --average-last 1200 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a5_eps1e-16/result.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity c3b4548 load on device 'cuda:0' took 0.54 ms  (cached)
+ring kernel constant: torch path 1e-16, fused kernel 1e-16; one panel-sized ring at its centre, over the unregularised law: torch 1.0000, fused 1.0000
+
+=== rigid plate alpha=5 deg, 1500 steps, eps 1e-16, 550 s ===
+Cn along the wing normal, window mean : +0.1480   (min +0.0855, max +0.2039; max|cn| whole run 0.2611)
+  lift +0.1483  streamwise +0.0035  Cn by Fx sin a + Fz cos a +0.1480  Kutta-Joukowski +0.1475
+  paper Fig. 9, rigid U=5 : 0.1985  -> model / experiment -25.4%
+  attached thin wing, elliptic AR=1.99855 : 0.2737  -> model / theory -45.9%
+  attached thin wing, Helmbold AR=1.99855 : 0.2267  -> model / theory -34.7%
+trailing-edge row: centre 0.03082 m^2/s = 0.327 of 2-D; tip/centre 0.335 (elliptic 0.256); mean/centre 0.820 (elliptic 0.787); outer-20% 0.121 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.01215 m^2/s, signs [1.0];  particles at the last step 0 (max 0)
+wake at the last step: 300 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0412 0.0525 0.0614 0.0725; normal offset: +0.0000 +0.0000 +0.0018 +0.0037 +0.0045 +0.0066
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0107, min -0.0145, max 0.0268;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.549 chord
+  wake circulation: newest row +0.75797, oldest row +0.76203, total +228.6133;  trailing-edge row now +0.75797, so a steady wake would total +227.3920
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a5_eps1e-16/result.json

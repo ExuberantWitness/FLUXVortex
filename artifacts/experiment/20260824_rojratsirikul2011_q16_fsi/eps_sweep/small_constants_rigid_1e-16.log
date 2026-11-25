@@ -1,0 +1,17 @@
+[13:16:36] run  rigid a=5 eps=1e-16 steps=3
+[13:16:38] done rigid a=5 eps=1e-16 steps=3: Cn +0.0138, max|Cn| 0.0138, particles 0, 2 s
+[13:16:38] run  rigid a=5 eps=1e-16 steps=150
+[13:17:01] done rigid a=5 eps=1e-16 steps=150: Cn +0.1505, max|Cn| 0.2611, particles 0, 23 s
+[13:17:01] run  rigid a=5 eps=1e-16 steps=1500
+[13:26:12] done rigid a=5 eps=1e-16 steps=1500: Cn +0.1480, max|Cn| 0.2611, particles 0, 551 s
+[13:26:12] run  rigid a=10 eps=1e-16 steps=3
+[13:26:14] done rigid a=10 eps=1e-16 steps=3: Cn +0.0274, max|Cn| 0.0274, particles 0, 2 s
+[13:26:14] run  rigid a=10 eps=1e-16 steps=150
+[13:26:37] done rigid a=10 eps=1e-16 steps=150: Cn +0.2522, max|Cn| 0.8229, particles 0, 23 s
+[13:26:37] run  rigid a=10 eps=1e-16 steps=1500
+[13:35:48] done rigid a=10 eps=1e-16 steps=1500: Cn +0.2667, max|Cn| 0.8229, particles 0, 551 s
+[13:35:48] run  rigid a=16 eps=1e-16 steps=3
+[13:35:50] done rigid a=16 eps=1e-16 steps=3: Cn +0.0363, max|Cn| 0.0363, particles 486, 2 s
+[13:35:50] run  rigid a=16 eps=1e-16 steps=150
+[13:36:54] done rigid a=16 eps=1e-16 steps=150: Cn +0.5027, max|Cn| 1.2015, particles 15068, 64 s
+[13:36:54] run  rigid a=16 eps=1e-16 steps=1500

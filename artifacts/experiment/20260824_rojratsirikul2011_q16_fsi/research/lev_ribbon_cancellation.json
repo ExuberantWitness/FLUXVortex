@@ -1,0 +1,148 @@
+{
+ "alpha_deg": 16.0,
+ "nc": 15,
+ "ns": 30,
+ "chord_m": 0.0688,
+ "span_m": 0.1375,
+ "pinned_strength_m2_s": -0.0342,
+ "target_spacing_chord": 0.018,
+ "smoothing_radius_chord": 0.04,
+ "rows": [
+  {
+   "arm": "open_filament",
+   "thickness_over_chord": 0.0,
+   "particles": 120,
+   "normal_rms_m_s": 0.6759372052591449,
+   "ratio_to_open": 1.0,
+   "normal_max_abs_m_s": 0.6949302859550124
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.0001,
+   "particles": 242,
+   "normal_rms_m_s": 1.006547867048972e-06,
+   "ratio_to_open": 1.4891144609551052e-06,
+   "normal_max_abs_m_s": 1.0250549627370369e-06
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.0005,
+   "particles": 242,
+   "normal_rms_m_s": 2.516308480361419e-05,
+   "ratio_to_open": 3.722695630279297e-05,
+   "normal_max_abs_m_s": 2.5625752367698998e-05
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.001,
+   "particles": 242,
+   "normal_rms_m_s": 0.0001006446914502,
+   "ratio_to_open": 0.0001488965108994322,
+   "normal_max_abs_m_s": 0.00010249523880650341
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.005,
+   "particles": 242,
+   "normal_rms_m_s": 0.002510010687239107,
+   "ratio_to_open": 0.003713378502780896,
+   "normal_max_abs_m_s": 0.0025561762266013525
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.01,
+   "particles": 242,
+   "normal_rms_m_s": 0.00996428732012335,
+   "ratio_to_open": 0.014741439356490492,
+   "normal_max_abs_m_s": 0.010147731375732605
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.02,
+   "particles": 244,
+   "normal_rms_m_s": 0.038679189908571936,
+   "ratio_to_open": 0.05722305209363771,
+   "normal_max_abs_m_s": 0.03939399177854615
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.03333333333333333,
+   "particles": 244,
+   "normal_rms_m_s": 0.10025333025301988,
+   "ratio_to_open": 0.14831752043384586,
+   "normal_max_abs_m_s": 0.10212254242644958
+  },
+  {
+   "arm": "closed_ribbon_normal",
+   "thickness_over_chord": 0.05,
+   "particles": 246,
+   "normal_rms_m_s": 0.19846701996514882,
+   "ratio_to_open": 0.2936175408321537,
+   "normal_max_abs_m_s": 0.20222975340092003
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.0001,
+   "particles": 242,
+   "normal_rms_m_s": 0.0014273283267149399,
+   "ratio_to_open": 0.002111628588587193,
+   "normal_max_abs_m_s": 0.0015673505263260174
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.0005,
+   "particles": 242,
+   "normal_rms_m_s": 0.007188292744402151,
+   "ratio_to_open": 0.01063455700984274,
+   "normal_max_abs_m_s": 0.007889302395816786
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.001,
+   "particles": 242,
+   "normal_rms_m_s": 0.014505446131982831,
+   "ratio_to_open": 0.02145975398176469,
+   "normal_max_abs_m_s": 0.015909706910144036
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.005,
+   "particles": 242,
+   "normal_rms_m_s": 0.07761275575578304,
+   "ratio_to_open": 0.11482243491246703,
+   "normal_max_abs_m_s": 0.08472268707977308
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.01,
+   "particles": 242,
+   "normal_rms_m_s": 0.16744347807375376,
+   "ratio_to_open": 0.24772046392912825,
+   "normal_max_abs_m_s": 0.1818796963358248
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.02,
+   "particles": 244,
+   "normal_rms_m_s": 0.37843877954297955,
+   "ratio_to_open": 0.5598726872829723,
+   "normal_max_abs_m_s": 0.4080122108486789
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.03333333333333333,
+   "particles": 244,
+   "normal_rms_m_s": 0.7002497931506163,
+   "ratio_to_open": 1.035968707895211,
+   "normal_max_abs_m_s": 0.7507622757265336
+  },
+  {
+   "arm": "closed_ribbon_chord",
+   "thickness_over_chord": 0.05,
+   "particles": 246,
+   "normal_rms_m_s": 1.0964197011449204,
+   "ratio_to_open": 1.622073311861223,
+   "normal_max_abs_m_s": 1.1729161955527214
+  }
+ ]
+}

@@ -1,0 +1,716 @@
+{
+  "E": 2200000.0,
+  "Lcrit": 0.11,
+  "Re": 24324.70654787159,
+  "S": 0.009460000000000001,
+  "U_inf": 5.0,
+  "accuracy_gates": {},
+  "aero_nchord": 15,
+  "aero_nspan": 30,
+  "aero_steps": 3,
+  "alpha_deg": 23.0,
+  "assumption_ledger": {
+    "boundary_director_condition": {
+      "discipline": "translation-only relaxation requires independent oracle evidence first",
+      "frozen_value": "four-edge six-DOF clamped (positions + directors)",
+      "paper_status": "not reported"
+    },
+    "frame_aerodynamic_thickness": {
+      "discipline": "explicit frame is a separate later branch",
+      "frozen_value": "fixed boundary, full c x b outer mould line",
+      "paper_status": "only figure-2 cross-section given"
+    },
+    "initial_geometric_imperfection": {
+      "basis": "symmetric bifurcation issues get machine-scale reproducible perturbation, reported separately",
+      "frozen_value": "perfectly flat",
+      "paper_status": "not reported"
+    },
+    "initial_prestress_n_m": {
+      "basis": "zero",
+      "discipline": "no adding prestress after seeing under-deformation",
+      "frozen_value": 0.0,
+      "paper_status": "not reported"
+    },
+    "initial_slack_or_excess": {
+      "basis": "perfectly taut planar membrane",
+      "frozen_value": 0.0,
+      "paper_status": "not reported"
+    },
+    "inlet_turbulence_transition": {
+      "frozen_value": "none; no empirical turbulence tuning",
+      "paper_status": "not reported"
+    },
+    "latex_constitutive_curve": {
+      "discipline": "no hiding hyperelasticity inside a fitted E",
+      "frozen_value": "isotropic geometrically nonlinear Q16 baseline",
+      "paper_status": "only E = 2.2 MPa reported"
+    },
+    "poisson_ratio": {
+      "basis": "declared near-incompressible latex assumption",
+      "discipline": "must not be tuned against responses",
+      "frozen_value": 0.49,
+      "paper_status": "not reported"
+    },
+    "structural_damping": {
+      "basis": "literature latex viscoelastic loss factor eta~0.05-0.15 (DMA literature; experiment membrane is real latex), applied as Kelvin-Voigt theta*K at the St~1 lock-in frequency; the earlier zero assumption is rewritten per research/CLAIM_TREE.md N4 with independent-source evidence, not fitted against responses",
+      "discipline": "sensitivity branches eta in {0.05, 0.1, 0.15}; zero-damping run preserved as the primary artifact",
+      "frozen_value": 0.1,
+      "paper_status": "not reported"
+    }
+  },
+  "b": 0.1375,
+  "c": 0.0688,
+  "case_id": "ROJ11-A23",
+  "chordwise_peak_count": null,
+  "commit_count": 3,
+  "coupling_iteration_mean": 1.3333333333333333,
+  "cpu_fallback_count": 0,
+  "damping_evidence_role": "assumed_literature_sensitivity",
+  "damping_loss_factor": 0.1,
+  "damping_model": "kelvin_voigt_stiffness_theta_K (theta = eta/omega_lockin)",
+  "device": "cuda:0",
+  "device_name": "NVIDIA GeForce RTX 4090 D",
+  "diagnostic_mf1_scale": 1.0,
+  "dirty_state_digest": "c66e512c76e259eacc1b87eddda96f89d855c1cd4973d18c4dabdc6f3d03d214",
+  "discarded_trial_count": 4,
+  "dominant_St": null,
+  "dt_star": 0.01,
+  "dtype": "float64",
+  "dvm_target_spacing_chord": 0.018,
+  "elapsed_seconds": 4.504939150006976,
+  "execution_gate_only": false,
+  "field_roles": {
+    "aerodynamic_dt_star": "numerical_protocol",
+    "chord_m": "paper_printed",
+    "fluid_density_kg_m3": "derived_from_printed_pairs",
+    "freestream_m_s": "paper_printed",
+    "kinematic_viscosity_m2_s": "derived_from_printed_pairs",
+    "lesp_crit": "model_assumption",
+    "membrane_density_kg_m3": "paper_printed",
+    "poisson_ratio_assumed": "model_assumption",
+    "prestress_n_m_assumed": "model_assumption",
+    "span_m": "paper_printed",
+    "startup_time_star": "numerical_protocol",
+    "statistics_min_time_star": "numerical_protocol",
+    "statistics_start_time_star": "numerical_protocol",
+    "structural_damping_loss_factor": "model_assumption",
+    "structural_substeps_per_aerodynamic_step": "numerical_protocol",
+    "target_chordwise_peak_count": "digitized_approx",
+    "target_cn_band": "digitized_approx",
+    "target_spanwise_peak_count": "digitized_approx",
+    "target_strouhal": "digitized_approx",
+    "target_zmax_over_c": "digitized_approx",
+    "thickness_m": "paper_printed",
+    "young_modulus_pa": "paper_printed"
+  },
+  "force_coefficient_conventions": {},
+  "formal_replay_count": 3,
+  "free_wake": true,
+  "git_head": "5b0a6e57e2f057f796e4ae5a7e67d682f99c9fde",
+  "is_calibration_sensitivity": false,
+  "is_diagnostic_branch": false,
+  "joint_tev": true,
+  "lesp_release_condition": "3D LESP separation eligibility AND 2D source-bank release trigger (release_owner_conflicts must stay 0)",
+  "lev_release_count_total": 90,
+  "lu_cache_stats": {
+    "back_substitutions": 140,
+    "factorizations": 40,
+    "hits": 100,
+    "misses": 40
+  },
+  "material_branch": "primary_E2.2",
+  "max_abs_kelvin_residual": 2.710505431213761e-20,
+  "max_abs_lesp_pre": 0.5941003744303652,
+  "mean_Cn": null,
+  "mean_map": null,
+  "mean_zmax_over_c": null,
+  "nu_air": 1.4142e-05,
+  "nu_s": 0.49,
+  "observations_csv_sha256": "4864749f8d3718f3571a71a33a97365feec1d2f3762a410751bfb1056585f12e",
+  "paper": "Flow-induced vibrations of low aspect ratio rectangular membrane wings",
+  "paper_doi": "10.1016/j.jfluidstructs.2011.06.007",
+  "particle_capacity": 32768,
+  "particle_max_age_steps": 100,
+  "perimeter_audit": {
+    "clamped_dof_count": 540,
+    "edge_node_counts": {
+      "leading": 31,
+      "side": 16,
+      "side_opposite": 16,
+      "trailing": 31
+    },
+    "free_dof_count": 2436,
+    "interior_node_count": 406,
+    "perimeter_node_count": 90
+  },
+  "physics_contract": {
+    "passed": true,
+    "violations": []
+  },
+  "prestress": 0.0,
+  "proposal_count": 7,
+  "q16_macro_chord": 5,
+  "q16_macro_span": 10,
+  "records": [
+    {
+      "aero_step": 1,
+      "aero_wrench_full_action_n": [
+        0.0006200210410915028,
+        9.286239046768481e-20,
+        0.0014606779341241624,
+        0.00010042160796990507,
+        -6.115659046121373e-05,
+        -4.262644657456069e-05
+      ],
+      "aerodynamic": {
+        "algebraic_neumann_max_abs": 1.8973538018496328e-18,
+        "bound_circulation_total": 0.012755501420015407,
+        "continuing_separated_count": 0,
+        "cuda_float64": true,
+        "flux_consistent_shedding": false,
+        "flux_le_no_penetration_residual": 0.0,
+        "flux_shed_max": 0.0,
+        "full_surface_neumann_max_abs": 1.8973538018496328e-18,
+        "kelvin_identity_residual": 3.3881317890172014e-21,
+        "le_constraint_window_steps": 0,
+        "le_window_old_particle_fraction": 0.0,
+        "lesp_pin_max_abs": 1.4904744105592727e-14,
+        "lesp_pre_max_abs": 0.5941003744303652,
+        "lev_release_count": 30,
+        "lev_released_total": -0.00028310655966391047,
+        "lev_strip_last_release_max_abs": 9.436885357000452e-06,
+        "lev_strip_released_total_abs_max": 9.436885357000452e-06,
+        "lev_strip_released_total_sum": -0.00028310655966391047,
+        "load_derivative_scope": "unconstrained",
+        "material_convection_scheme": "legacy_split_frozen_ring_sources",
+        "neumann_acceptance_scope": "legacy_retained_rows",
+        "newborn_lev_circulation_max_abs": 0.0,
+        "newly_separated_count": 30,
+        "particle_count": 252,
+        "particle_cull_circulation": 0.0,
+        "particle_cull_count": 0,
+        "particle_cull_linear_impulse": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "release_2d_only_count": 0,
+        "release_3d_only_count": 0,
+        "release_gate_overrides": 0,
+        "release_owner_conflicts": 0,
+        "separated_strip_count": 30,
+        "step": 1,
+        "strips_with_existing_lev_circulation": 0,
+        "te_leg_candidate": {},
+        "wake_ring_count": 30,
+        "wake_truncate_circulation": 0.0,
+        "wake_truncate_linear_impulse": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "wake_truncate_ring_count": 0
+      },
+      "aerodynamic_evaluations": 2,
+      "cn": 0.016480030336094957,
+      "cn_constant_current": 0.016480030336094957,
+      "cn_full_action": 0.011108625014105767,
+      "cn_tap": "two_tap_G000",
+      "committed_digest": "fd548787661539b0f1079ba9e4fed79129f73a9934b7ebe580f1069f08fc7489",
+      "coupling_iterations": 1,
+      "coupling_residual": 1.4465673881074753e-08,
+      "frame_gates": {
+        "frame_area_over_S": 1.0000000000000455,
+        "frame_normal_alignment": 1.0
+      },
+      "freestream_factor": 0.0002467198171342,
+      "gamma_bound_sum": 0.012755501420015407,
+      "instantaneous_zmax_over_c": 5.3313893468307734e-08,
+      "parent_digest": "d5708a3e58adef0d3565da52280202a73c09d51af582cc143ea776a8cef45311",
+      "particle_circulation_sum": -6.776263578034403e-21,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 20,
+      "time_star": 0.01,
+      "total_aerodynamic_force_n": [
+        0.0009198227462699801,
+        5.543612600139806e-20,
+        0.0021669663405340304
+      ],
+      "transfer_gates": {
+        "author_chain_error": 0.0,
+        "force_transfer_error": 0.0,
+        "moment_transfer_error": 0.0,
+        "projection_quadrature_discrepancy": 0.2614254998689818,
+        "virtual_work_error": 0.0
+      },
+      "unified_gate": {
+        "commit_count": 1,
+        "discarded_trial_count": 1,
+        "formal_replay_count": 1,
+        "proposal_count": 2,
+        "unified_path_parent_digest_match": true,
+        "unified_path_parent_unchanged": true
+      },
+      "wake_gamma_sum": 0.0009515581567027124,
+      "world_generation": 1
+    },
+    {
+      "aero_step": 2,
+      "aero_wrench_full_action_n": [
+        0.0022133489547695065,
+        5.822626887331017e-19,
+        0.005214321152100694,
+        0.0003584845792457201,
+        -0.0002159673907024424,
+        -0.00015216774065687202
+      ],
+      "aerodynamic": {
+        "algebraic_neumann_max_abs": 1.713039432527097e-17,
+        "bound_circulation_total": 0.05225588882404629,
+        "continuing_separated_count": 30,
+        "cuda_float64": true,
+        "flux_consistent_shedding": false,
+        "flux_le_no_penetration_residual": 0.0,
+        "flux_shed_max": 0.0,
+        "full_surface_neumann_max_abs": 1.713039432527097e-17,
+        "kelvin_identity_residual": 1.3552527156068805e-20,
+        "le_constraint_window_steps": 0,
+        "le_window_old_particle_fraction": 0.0,
+        "lesp_pin_max_abs": 3.512468094157839e-14,
+        "lesp_pre_max_abs": 0.5933809117040002,
+        "lev_release_count": 30,
+        "lev_released_total": -0.0007075411643720254,
+        "lev_strip_last_release_max_abs": 1.4147846773771219e-05,
+        "lev_strip_released_total_abs_max": 2.358473213077167e-05,
+        "lev_strip_released_total_sum": -0.0007075411643720254,
+        "load_derivative_scope": "unconstrained",
+        "material_convection_scheme": "legacy_split_frozen_ring_sources",
+        "neumann_acceptance_scope": "legacy_retained_rows",
+        "newborn_lev_circulation_max_abs": 0.0,
+        "newly_separated_count": 0,
+        "particle_count": 522,
+        "particle_cull_circulation": 0.0,
+        "particle_cull_count": 0,
+        "particle_cull_linear_impulse": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "release_2d_only_count": 0,
+        "release_3d_only_count": 0,
+        "release_gate_overrides": 0,
+        "release_owner_conflicts": 0,
+        "separated_strip_count": 30,
+        "step": 2,
+        "strips_with_existing_lev_circulation": 30,
+        "te_leg_candidate": {},
+        "wake_ring_count": 60,
+        "wake_truncate_circulation": 0.0,
+        "wake_truncate_linear_impulse": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "wake_truncate_ring_count": 0
+      },
+      "aerodynamic_evaluations": 2,
+      "cn": 0.05103496993170154,
+      "cn_constant_current": 0.05103496993170154,
+      "cn_full_action": 0.03965551897012203,
+      "cn_tap": "two_tap_G000",
+      "committed_digest": "2d88d950cb9ebc75e6fb2385d5becc200f6229451fead197bc769c4e04068ba9",
+      "coupling_iterations": 1,
+      "coupling_residual": 2.498261810788409e-16,
+      "frame_gates": {
+        "frame_area_over_S": 1.000000000002369,
+        "frame_normal_alignment": 0.9999999999999977
+      },
+      "freestream_factor": 0.0009866357858642205,
+      "gamma_bound_sum": 0.05225588882404629,
+      "instantaneous_zmax_over_c": 3.9572729345432326e-07,
+      "parent_digest": "fd548787661539b0f1079ba9e4fed79129f73a9934b7ebe580f1069f08fc7489",
+      "particle_circulation_sum": 3.3881317890172014e-21,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 20,
+      "time_star": 0.02,
+      "total_aerodynamic_force_n": [
+        0.002848487024382449,
+        6.43822381300542e-19,
+        0.006710609664003239
+      ],
+      "transfer_gates": {
+        "author_chain_error": 0.0,
+        "force_transfer_error": 0.0,
+        "moment_transfer_error": 0.0,
+        "projection_quadrature_discrepancy": 0.25932864635736463,
+        "virtual_work_error": 0.0
+      },
+      "unified_gate": {
+        "commit_count": 1,
+        "discarded_trial_count": 1,
+        "formal_replay_count": 1,
+        "proposal_count": 2
+      },
+      "wake_gamma_sum": 0.005513801279318765,
+      "world_generation": 2
+    },
+    {
+      "aero_step": 3,
+      "aero_wrench_full_action_n": [
+        0.002774545930269422,
+        2.7931683387128353e-18,
+        0.006536404669632332,
+        0.0004493778210658198,
+        -0.00027651684646835855,
+        -0.0001907500327181614
+      ],
+      "aerodynamic": {
+        "algebraic_neumann_max_abs": 2.6020852139652106e-17,
+        "bound_circulation_total": 0.11203789724938265,
+        "continuing_separated_count": 30,
+        "cuda_float64": true,
+        "flux_consistent_shedding": false,
+        "flux_le_no_penetration_residual": 0.0,
+        "flux_shed_max": 0.0,
+        "full_surface_neumann_max_abs": 2.6020852139652106e-17,
+        "kelvin_identity_residual": 2.710505431213761e-20,
+        "le_constraint_window_steps": 0,
+        "le_window_old_particle_fraction": 0.0,
+        "lesp_pin_max_abs": 3.880229471064922e-14,
+        "lesp_pre_max_abs": 0.5798828291193395,
+        "lev_release_count": 30,
+        "lev_released_total": -0.001773678334422351,
+        "lev_strip_last_release_max_abs": 3.553808482168055e-05,
+        "lev_strip_released_total_abs_max": 5.91228169524522e-05,
+        "lev_strip_released_total_sum": -0.001773678334422351,
+        "load_derivative_scope": "unconstrained",
+        "material_convection_scheme": "legacy_split_frozen_ring_sources",
+        "neumann_acceptance_scope": "legacy_retained_rows",
+        "newborn_lev_circulation_max_abs": 0.0,
+        "newly_separated_count": 0,
+        "particle_count": 792,
+        "particle_cull_circulation": 0.0,
+        "particle_cull_count": 0,
+        "particle_cull_linear_impulse": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "release_2d_only_count": 0,
+        "release_3d_only_count": 0,
+        "release_gate_overrides": 0,
+        "release_owner_conflicts": 0,
+        "separated_strip_count": 30,
+        "step": 3,
+        "strips_with_existing_lev_circulation": 30,
+        "te_leg_candidate": {},
+        "wake_ring_count": 90,
+        "wake_truncate_circulation": 0.0,
+        "wake_truncate_linear_impulse": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "wake_truncate_ring_count": 0
+      },
+      "aerodynamic_evaluations": 3,
+      "cn": 0.07724210528042956,
+      "cn_constant_current": 0.07724210528042956,
+      "cn_full_action": 0.049710133184725155,
+      "cn_tap": "two_tap_G000",
+      "committed_digest": "6794c9fd87f1b2efa8e26a0c6cbb81dec66394d099d11ef732979eaa9ccdd82b",
+      "coupling_iterations": 2,
+      "coupling_residual": 4.0766266895961845e-16,
+      "frame_gates": {
+        "frame_area_over_S": 1.0000000000321394,
+        "frame_normal_alignment": 0.9999999999999624
+      },
+      "freestream_factor": 0.002219017698460002,
+      "gamma_bound_sum": 0.11203789724938265,
+      "instantaneous_zmax_over_c": 1.4989116907616016e-06,
+      "parent_digest": "2d88d950cb9ebc75e6fb2385d5becc200f6229451fead197bc769c4e04068ba9",
+      "particle_circulation_sum": -5.4616684438957286e-18,
+      "structural_cg_iterations": 0,
+      "structural_newton_iterations": 20,
+      "time_star": 0.03,
+      "total_aerodynamic_force_n": [
+        0.004311231854111713,
+        2.355743382921406e-18,
+        0.010156593143737631
+      ],
+      "transfer_gates": {
+        "author_chain_error": 0.0,
+        "force_transfer_error": 0.0,
+        "moment_transfer_error": 0.0,
+        "projection_quadrature_discrepancy": 0.2673861194248092,
+        "virtual_work_error": 0.0
+      },
+      "unified_gate": {
+        "commit_count": 1,
+        "discarded_trial_count": 2,
+        "formal_replay_count": 1,
+        "proposal_count": 3
+      },
+      "wake_gamma_sum": 0.015481342556858754,
+      "world_generation": 3
+    }
+  ],
+  "reference_tangent_cache_refresh_count": 1,
+  "reference_tangent_refresh_rtol": 0.002,
+  "rejected_trial_note": "true transaction counting: discarded = aerodynamic evaluations - one formal replay per committed step",
+  "resolved_load_evidence": {
+    "note": "unified NativeV5MSurfaceLoadPacket published on every proposal; consumer switch pending (M1-4)",
+    "resolved_vs_quadrature_relative": 3.110264969264318e-05,
+    "shadow_5p_to_q16": {
+      "constant_only_vs_packet_relative": {
+        "max": 0.337141882384074,
+        "mean": 0.337141882384074,
+        "n": 1
+      },
+      "decomposition_note": "5P comparison is against the CONSTANT component only; production substeps add velocity_force and Mf1 (norms in ledger)",
+      "fiveP_instantaneous_vs_legacy_constant_only_relative": {
+        "max": 0.31256017620775184,
+        "mean": 0.31256017620775184,
+        "n": 1
+      },
+      "flexibility_gap_vs_legacy_constant": {
+        "max": 0.07326376169168775,
+        "mean": 0.07326376169168775,
+        "n": 1
+      },
+      "flexibility_gap_vs_legacy_three_term": {
+        "max": 0.5526485961817946,
+        "mean": 0.5526485961817946,
+        "n": 1
+      },
+      "legacy_constant_flexibility_norm": {
+        "max": 0.12224643031382484,
+        "mean": 0.12224643031382484,
+        "n": 1
+      },
+      "legacy_decomposition_norms": {
+        "legacy_constant_norm": {
+          "max": 0.0005885571290616848,
+          "mean": 0.0005885571290616848,
+          "n": 1
+        },
+        "legacy_mf1_action_norm": {
+          "max": 0.00019123594686112149,
+          "mean": 0.00019123594686112149,
+          "n": 1
+        },
+        "legacy_velocity_norm": {
+          "max": 1.5056105861486985e-08,
+          "mean": 1.5056105861486985e-08,
+          "n": 1
+        }
+      },
+      "legacy_flexibility_norm": {
+        "max": 0.08306269965804093,
+        "mean": 0.08306269965804093,
+        "n": 1
+      },
+      "legacy_three_term_norm": {
+        "max": 0.0004052048067842191,
+        "mean": 0.0004052048067842191,
+        "n": 1
+      },
+      "mf1_slot_flexibility_norm": {
+        "max": 0.039754898303749085,
+        "mean": 0.039754898303749085,
+        "n": 1
+      },
+      "packet_full_vs_legacy_three_term_relative": {
+        "max": 0.382097505677934,
+        "mean": 0.382097505677934,
+        "n": 1
+      },
+      "packet_generalized_norm": {
+        "max": 0.0005456442215573828,
+        "mean": 0.0005456442215573828,
+        "n": 1
+      },
+      "samples_time_star": [
+        0.03
+      ],
+      "shadow_flexibility_norm": {
+        "max": 0.1287799023444475,
+        "mean": 0.1287799023444475,
+        "n": 1
+      },
+      "transfer_force_max_abs_error": {
+        "max": 8.673617379884035e-19,
+        "mean": 8.673617379884035e-19,
+        "n": 1
+      },
+      "transfer_moment_max_abs_error": {
+        "max": 0.0,
+        "mean": 0.0,
+        "n": 1
+      },
+      "velocity_slot_flexibility_norm": {
+        "max": 2.1124137481769716e-06,
+        "mean": 2.1124137481769716e-06,
+        "n": 1
+      },
+      "work_pointwise_relative_error": {
+        "max": 0.0,
+        "mean": 0.0,
+        "n": 1
+      },
+      "wrench_legacy_constant_force_norm": {
+        "max": 0.010556738624248309,
+        "mean": 0.010556738624248309,
+        "n": 1
+      },
+      "wrench_legacy_constant_moment_norm": {
+        "max": 0.0008274547765848423,
+        "mean": 0.0008274547765848423,
+        "n": 1
+      },
+      "wrench_legacy_force_norm": {
+        "max": 0.007100893684907976,
+        "mean": 0.007100893684907976,
+        "n": 1
+      },
+      "wrench_legacy_moment_norm": {
+        "max": 0.0005610593261221574,
+        "mean": 0.0005610593261221574,
+        "n": 1
+      },
+      "wrench_mf1_slot_force_norm": {
+        "max": 0.0034558465896490707,
+        "mean": 0.0034558465896490707,
+        "n": 1
+      },
+      "wrench_shadow_force_norm": {
+        "max": 0.011033385077337022,
+        "mean": 0.011033385077337022,
+        "n": 1
+      },
+      "wrench_shadow_moment_norm": {
+        "max": 0.0008702646864704387,
+        "mean": 0.0008702646864704387,
+        "n": 1
+      },
+      "wrench_velocity_slot_force_norm": {
+        "max": 1.6503089077307617e-09,
+        "mean": 1.6503089077307617e-09,
+        "n": 1
+      }
+    }
+  },
+  "result_status": {
+    "accuracy": "not_applicable",
+    "execution": "completed",
+    "exit_code": 0,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "pending"
+  },
+  "retention_ledger": {
+    "particle_cull_circulation_total": 0.0,
+    "particle_cull_count_total": 0,
+    "removed_over_retained": 0.0,
+    "retained_circulation_live": {
+      "gamma_bound": 0.11203789724938265,
+      "particle_circulation": -5.4616684438957286e-18,
+      "wake_gamma": 0.015481342556858754
+    },
+    "wake_truncate_circulation_total": 0.0,
+    "wake_truncate_ring_count_total": 0
+  },
+  "reuse_convected_field": 0,
+  "rho_air": 1.208,
+  "rho_m": 1000.0,
+  "rhs_observer_evidence": {
+    "constant_norm": {
+      "max_abs": 0.0006546708049393523,
+      "mean": 0.0002666936308855559,
+      "n": 30
+    },
+    "dq_norm": {
+      "max_abs": 1.9316596476483893e-07,
+      "mean": 5.7340655403486186e-08,
+      "n": 30
+    },
+    "dw_predictor_lag": {
+      "max_abs": 7.448658919480959e-21,
+      "mean": 1.1727802153762701e-21,
+      "n": 30
+    },
+    "enabled": true,
+    "formal_substep_entries": 30,
+    "mf1_action_norm": {
+      "max_abs": 0.00019123594685752218,
+      "mean": 7.819522321163507e-05,
+      "n": 30
+    },
+    "total_entries_including_nonformal": 70,
+    "velocity_norm": {
+      "max_abs": 8.575015945299698e-08,
+      "mean": 1.855141410081526e-08,
+      "n": 30
+    },
+    "w_accelerative": {
+      "max_abs": 3.292370880882901e-11,
+      "mean": -6.953167311964657e-12,
+      "n": 30
+    },
+    "w_algorithmic": {
+      "max_abs": 7.958953649638993e-11,
+      "mean": 1.6786023736540787e-11,
+      "n": 30
+    },
+    "w_nonaccelerative": {
+      "max_abs": 1.1251324530521894e-10,
+      "mean": 2.3739191048505443e-11,
+      "n": 30
+    },
+    "w_ratio_conventions": {
+      "max_abs_component_ratio": 0.2926207374030997,
+      "signed_cumulative_ratio": -0.2928982414673481
+    }
+  },
+  "runtime_legacy_module_count": 0,
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2",
+  "separated_lev_mandatory": true,
+  "sign_crossing": null,
+  "spanwise_peak_count": null,
+  "startup_ramp": "half-cosine 0->U0 over t* in [0,1]; excluded from statistics",
+  "startup_window_time_star": 1.0,
+  "static_motion_contract": {
+    "U_inf_history": "U0=5 m/s constant along +x (frozen half-cosine ramp only over t*<=1)",
+    "alpha_history": "alpha0=23 deg constant geometric angle, realized by rigidly pitching the reference membrane nose-up about its leading-edge line (the oracle-verified native-path incidence mechanism); the freestream vector is never tilted",
+    "boundary": "four-edge six-DOF clamped at rotated reference values",
+    "flapping_heave_pitch_laws": "forbidden for this case",
+    "frame_pose": "frame_pose(0) rigid and fixed for all t",
+    "frame_velocity_m_s": 0.0,
+    "prescribed_structural_forces": null
+  },
+  "statistics_min_time_star": 20.0,
+  "status": "completed",
+  "step_wall_seconds_last": 2.019369332003407,
+  "step_wall_seconds_mean": 1.5010606029924627,
+  "structural_substeps": 10,
+  "thickness": 0.0002,
+  "transfer_gates": {
+    "max_errors": {
+      "author_chain_error": 0.0,
+      "force_transfer_error": 0.0,
+      "moment_transfer_error": 0.0,
+      "projection_quadrature_discrepancy": 0.2673861194248092,
+      "virtual_work_error": 0.0
+    },
+    "passed": true,
+    "tolerance": 1e-09
+  },
+  "wake_free_rows": 100,
+  "wake_history_mode": "bound_rate",
+  "wake_max_rows": 300,
+  "wake_ring_count": 90,
+  "window_selection": null,
+  "zsd_map": null,
+  "zsd_max_over_c": null
+}

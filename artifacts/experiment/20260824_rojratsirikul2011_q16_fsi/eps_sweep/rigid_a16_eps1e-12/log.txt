@@ -1,0 +1,69 @@
+
+##### 2026-11-24 21:51:43  eps=1e-12  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 16.0 --steps 3 --average-last 1 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a16_eps1e-12/result_s3.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 8e4356e load on device 'cuda:0' took 0.42 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.56 ms  (cached)
+
+=== rigid plate alpha=16 deg, 3 steps, eps 1e-12, 1 s ===
+Cn along the wing normal, window mean : +0.0364   (min +0.0364, max +0.0364; max|cn| whole run 0.0364)
+  lift +0.0350  streamwise +0.0100  Cn by Fx sin a + Fz cos a +0.0364  Kutta-Joukowski +0.0004
+  paper Fig. 9, rigid U=5 : 0.7431  -> model / experiment -95.1%
+  attached thin wing, elliptic AR=1.99855 : 0.8656  -> model / theory -95.8%
+trailing-edge row: centre 0.00008 m^2/s = 0.000 of 2-D; tip/centre 0.499 (elliptic 0.256); mean/centre 0.884 (elliptic 0.787); outer-20% 0.144 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.00007 m^2/s, signs [-1.0, 1.0];  particles at the last step 486 (max 486)
+wake at the last step: 3 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0167; normal offset: -0.0000 -0.0000 +0.0000
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0000, min 0.0000, max 0.0000;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.000 chord
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a16_eps1e-12/result_s3.json
+
+##### 2026-11-24 21:51:44  eps=1e-12  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 16.0 --steps 150 --average-last 1 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a16_eps1e-12/result_s150.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 8e4356e load on device 'cuda:0' took 0.41 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.57 ms  (cached)
+
+=== rigid plate alpha=16 deg, 150 steps, eps 1e-12, 57 s ===
+Cn along the wing normal, window mean : +0.4882   (min +0.4882, max +0.4882; max|cn| whole run 1.1289)
+  lift +0.4939  streamwise +0.0488  Cn by Fx sin a + Fz cos a +0.4882  Kutta-Joukowski +0.4322
+  paper Fig. 9, rigid U=5 : 0.7431  -> model / experiment -34.3%
+  attached thin wing, elliptic AR=1.99855 : 0.8656  -> model / theory -43.6%
+trailing-edge row: centre 0.08776 m^2/s = 0.295 of 2-D; tip/centre 0.385 (elliptic 0.256); mean/centre 0.847 (elliptic 0.787); outer-20% 0.124 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.03061 m^2/s, signs [-1.0, 1.0];  particles at the last step 14792 (max 16470)
+wake at the last step: 150 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0432 0.0553 0.0663 0.0761; normal offset: -0.0000 -0.0000 -0.0017 +0.0039 +0.0072 +0.0113
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0111, min 0.0000, max 0.0274;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.720 chord
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a16_eps1e-12/result_s150.json
+
+##### 2026-11-24 21:52:42  eps=1e-12  platform/warp_vpm/diagnose_rigid_plate_coefficients.py --alpha 16.0 --steps 1500 --average-last 1200 --out /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a16_eps1e-12/result.json
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 8e4356e load on device 'cuda:0' took 0.41 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.57 ms  (cached)
+
+=== rigid plate alpha=16 deg, 1500 steps, eps 1e-12, 1579 s ===
+Cn along the wing normal, window mean : +0.5158   (min +0.4507, max +0.5648; max|cn| whole run 1.1289)
+  lift +0.5241  streamwise +0.0437  Cn by Fx sin a + Fz cos a +0.5158  Kutta-Joukowski +0.4916
+  paper Fig. 9, rigid U=5 : 0.7431  -> model / experiment -30.6%
+  attached thin wing, elliptic AR=1.99855 : 0.8656  -> model / theory -40.4%
+trailing-edge row: centre 0.09870 m^2/s = 0.331 of 2-D; tip/centre 0.401 (elliptic 0.256); mean/centre 0.854 (elliptic 0.787); outer-20% 0.131 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.03131 m^2/s, signs [-1.0, 1.0];  particles at the last step 19682 (max 19793)
+wake at the last step: 300 rows; first rows, chord aft of the edge: 0.0167 0.0167 0.0440 0.0572 0.0683 0.0802; normal offset: -0.0000 -0.0000 -0.0022 +0.0038 +0.0089 +0.0118
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0120, min 0.0000, max 0.0280;  nodes upstream of the edge: 0;  largest normal offset over all rows: 1.598 chord
+wrote /home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/rigid_a16_eps1e-12/result.json

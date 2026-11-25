@@ -1,0 +1,17 @@
+{
+  "case_id": "ROJ11-A10",
+  "completed_aero_steps": 650,
+  "elapsed_seconds": 3349.023134425981,
+  "final_output": "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/eps_sweep/membrane_ROJ11-A10_eps1e-9/payload.json",
+  "result_status": {
+    "accuracy": "failed",
+    "execution": "completed",
+    "exit_code": 2,
+    "is_formal_reproduction": false,
+    "numerical": "converged",
+    "physics": "passed",
+    "reproduction": "partial"
+  },
+  "schema": "rojratsirikul2011-q16-native-flux-v5m-fsi-unified-v2-checkpoint",
+  "status": "completed"
+}
