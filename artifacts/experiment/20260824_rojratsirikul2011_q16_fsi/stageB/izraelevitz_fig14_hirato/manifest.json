@@ -1,0 +1,251 @@
+{
+  "conditions": {
+    "IZRA-15-015": {
+      "ct": 0.1374203700578876,
+      "ct_raw": 0.1944203700578876,
+      "elapsed_seconds": 356.0340485230554,
+      "gpu_peak_memory_mib": 2556.29248046875,
+      "phase_offset_deg": 15.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-030": {
+      "ct": 0.16322362824092246,
+      "ct_raw": 0.22022362824092245,
+      "elapsed_seconds": 317.0603291140869,
+      "gpu_peak_memory_mib": 2554.09814453125,
+      "phase_offset_deg": 30.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-045": {
+      "ct": 0.1879420496838388,
+      "ct_raw": 0.2449420496838388,
+      "elapsed_seconds": 284.50678219099063,
+      "gpu_peak_memory_mib": 2532.30517578125,
+      "phase_offset_deg": 45.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-060": {
+      "ct": 0.1992787258035964,
+      "ct_raw": 0.2562787258035964,
+      "elapsed_seconds": 224.92103430395946,
+      "gpu_peak_memory_mib": 2529.77880859375,
+      "phase_offset_deg": 60.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-075": {
+      "ct": 0.20582474706074955,
+      "ct_raw": 0.26282474706074954,
+      "elapsed_seconds": 103.90133947297,
+      "gpu_peak_memory_mib": 2570.3134765625,
+      "phase_offset_deg": 75.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-090": {
+      "ct": 0.2001432543893943,
+      "ct_raw": 0.2571432543893943,
+      "elapsed_seconds": 90.51578292797785,
+      "gpu_peak_memory_mib": 2452.57177734375,
+      "phase_offset_deg": 90.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-15-105": {
+      "ct": 0.2010859140348623,
+      "ct_raw": 0.2580859140348623,
+      "elapsed_seconds": 90.51198272895999,
+      "gpu_peak_memory_mib": 2452.57177734375,
+      "phase_offset_deg": 105.0,
+      "steps_total": 512,
+      "theta_max_deg": 15.0
+    },
+    "IZRA-25-045": {
+      "ct": 0.08111021694574203,
+      "ct_raw": 0.13811021694574202,
+      "elapsed_seconds": 294.2612730959663,
+      "gpu_peak_memory_mib": 2578.36865234375,
+      "phase_offset_deg": 45.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-060": {
+      "ct": 0.09247158789493654,
+      "ct_raw": 0.14947158789493653,
+      "elapsed_seconds": 206.7608374459669,
+      "gpu_peak_memory_mib": 2452.57177734375,
+      "phase_offset_deg": 60.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-075": {
+      "ct": 0.08334566437149021,
+      "ct_raw": 0.1403456643714902,
+      "elapsed_seconds": 88.45204370492138,
+      "gpu_peak_memory_mib": 2452.57177734375,
+      "phase_offset_deg": 75.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-090": {
+      "ct": 0.0724947652194105,
+      "ct_raw": 0.1294947652194105,
+      "elapsed_seconds": 88.96104627696332,
+      "gpu_peak_memory_mib": 2452.57177734375,
+      "phase_offset_deg": 90.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    },
+    "IZRA-25-105": {
+      "ct": 0.07196337695892921,
+      "ct_raw": 0.1289633769589292,
+      "elapsed_seconds": 88.74478221696336,
+      "gpu_peak_memory_mib": 2452.57177734375,
+      "phase_offset_deg": 105.0,
+      "steps_total": 512,
+      "theta_max_deg": 25.0
+    }
+  },
+  "diagnostic_only": true,
+  "git": {
+    "branch": "run/q16-lev-tev-pc-fsi-20260821",
+    "changed_files": [
+      "M artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/UNIFIED_Q16_V5M_FSI_REFACTOR_PLAN_20260826.md",
+      " M platform/warp_vpm/diagnose_rigid_plate_coefficients.py",
+      " M src/fluxvortex/aero/v5m/load_packet.py",
+      " M src/fluxvortex/warp_fsi/kernels_ring_velocity.py",
+      " M src/fluxvortex/warp_fsi/q16_flux_v5m_native.py",
+      " M src/fluxvortex/warp_fsi/rigid_flux_v5m_native.py",
+      "?? RESEARCH_BRIEF.md",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_12x36/fig14_ct_vs_phase.pdf",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_12x36/run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_12x36_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_lev_single_owner_check/",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_lev_single_owner_check_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v2/",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v2_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v3_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v4_run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v5_post_speedup/fig14_ct_vs_phase.pdf",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v5_post_speedup/fig14_ct_vs_phase.png",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v5_post_speedup/fig14_geometry_schematic.png",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v5_post_speedup/run.log",
+      "?? artifacts/baselines/fluxv_v5m_izraelevitz2017_fig14_mandatory_v5_post_speedup_run.log",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A16_EXECUTION.log",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A16_FULL.log",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A16_FULL_20261122_HEAD.z_history.npz",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A16_FULL_20261123_CNCONV.z_history.npz",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A16_FULL_20261124_LEPIN_joint.z_history.npz",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A16_FULL_20261124_LEPIN_signed.z_history.npz",
+      "?? artifacts/baselines/fluxv_v5m_rojratsirikul2011_unified_current/ROJ11_A17_MODE_FULL.log",
+      "?? artifacts/baselines/roj_p1_history_53dc83a_20260906/",
+      "?? artifacts/baselines/roj_p1_stage2_20260906/",
+      "?? artifacts/baselines/roj_rigid_load_diagnostic_6527a6f_20260906/",
+      "?? artifacts/baselines/roj_te_connectivity_review_97e7c92_20260906/",
+      "?? artifacts/experiment/20260824_rojatsirikul2011_q16_fsi_placeholder",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/observations/figure_digitization_20260829/__pycache__/",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/A23_NEW_DEFAULTS_FREE_WAKE_CORE_AND_HIRATO_LEV_FIRST_RESULTS_20261125.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/FIG06_FIG09_ERROR_AUDIT_20260830.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/HANDOFF_USE_FIG06_09_12_15_DIGITIZED_DATA_20260829.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/LOAD_REPRODUCTION_DIAGNOSIS_AND_MODIFICATION_20260906.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/MODIFICATION_PLAN_ROJ_ACCURACY_PERFORMANCE_20260830.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/P0_REVIEW_AND_RIGID_DIAGNOSTIC_6527A6F_20260906.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/P1_REAL_B_REVIEW_AND_SYNCHRONOUS_WAKE_FIX_20260906.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/P1_SHARED_EDGE_TIME_DISCRETE_DERIVATION_AND_REVIEW_97E7C92_20260906.md",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/research/load_diagnosis_20260906/",
+      "?? artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/stageB/",
+      "?? platform/warp_vpm/analyze_roj_joint_history.py",
+      "?? platform/warp_vpm/analyze_roj_rigid_load_snapshots.py",
+      "?? platform/warp_vpm/compare_flapping_runs.py",
+      "?? platform/warp_vpm/diagnose_material_self_advection.py",
+      "?? platform/warp_vpm/diagnose_roj_curved_mf1.py",
+      "?? platform/warp_vpm/diagnose_roj_joint_birth_operator.py",
+      "?? platform/warp_vpm/diagnose_roj_joint_checkpoint_branches.py",
+      "?? platform/warp_vpm/diagnose_roj_joint_history.py",
+      "?? platform/warp_vpm/diagnose_roj_joint_separation.py",
+      "?? platform/warp_vpm/diagnose_roj_rigid_loads.py",
+      "?? platform/warp_vpm/diagnose_roj_te_connectivity.py",
+      "?? platform/warp_vpm/plot_roj_joint_history.py",
+      "?? platform/warp_vpm/probe_joint_material_rk3.py",
+      "?? profile_output/roj_20260830/",
+      "?? src/fluxvortex/warp_fsi/lev_hirato.py",
+      "?? tests/test_lev_hirato_cpu.py"
+    ],
+    "dirty": true,
+    "head": "e78b8b1c05965d7308f0c1b41ece27958a31ea51"
+  },
+  "ground_truth": {
+    "experimental_markers": 14,
+    "path": "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH/FLUXV_RUNS/v5m-fa8eaca/docs/forward_flight_large_pitch/reproductions/unified_fluxv_upgrade_20260812/source_data/izraelevitz2017_fig14_digitized.csv",
+    "sha256": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf",
+    "unique_conditions": 12
+  },
+  "load_ownership": {
+    "cd0": 0.057,
+    "cd0_subtraction_count": 1,
+    "posthoc_separation_delta": "none",
+    "profile_drag_owner": "scorer (CT = CT_raw - Cd0, subtracted exactly once)",
+    "separated_load_owner": "RigidNativeV5MSolver.propose (integrated LEV ribbon particles + pinned LESP strips)",
+    "surface_load_owner": "RigidAuthorLoadAssembler (single integrated author-pressure owner)"
+  },
+  "metrics": {
+    "bias_ct": 0.0008735215557426444,
+    "gate": {
+      "limit": 0.01745211311116545,
+      "max_abs_error_limit": 0.04963501153092067,
+      "metric": "14-marker MAE_CT",
+      "passed": false,
+      "value": 0.02060572069014785
+    },
+    "mae_ct": 0.02060572069014785,
+    "max_abs_error_condition": [
+      25.0,
+      105.0
+    ],
+    "max_abs_error_ct": 0.05990973095892921,
+    "n_markers": 14,
+    "rmse_ct": 0.026803030246098418
+  },
+  "numerics": {
+    "chordwise_panels": 8,
+    "cpu_role": "scheduling / I/O / hashing only",
+    "cuda_version": "13.0",
+    "cycles": 4,
+    "device": "cuda:0",
+    "dtype": "float64",
+    "gpu_name": "NVIDIA GeForce RTX 4090 D",
+    "grid": "8x24",
+    "scored_window": "last complete cycle",
+    "spanwise_panels": 24,
+    "steps_per_cycle": 128,
+    "torch_version": "2.11.0+cu130"
+  },
+  "physics_switches": {
+    "dvm_target_spacing_chord": 0.018,
+    "effective_lesp_crit": 0.2393,
+    "enable_lev": true,
+    "joint_tev": true,
+    "lesp_crit_source": "static-polar hypothesis (lesp_crit_override)",
+    "particle_capacity": 131072,
+    "particle_max_age_steps": 64,
+    "prescribed_wake": false,
+    "release_condition_source": "static-polar-derived release threshold hypothesis: sin(CLmax/CLa) = sin(0.90/0.065 deg) = 0.2393 from the Scherer 1968 steady calibration (CLa=0.065 /deg, CLmax=0.90); passed directly as NativeV5MConfig.lesp_crit_override=0.2393, NOT from the thickness/Re correlation (real NACA 63A015 t/c=0.15 would give Lcrit~=0.481 there) and NOT the frozen Yamano flat-plate Lcrit=0.11",
+    "wake_history_mode": "bound_rate",
+    "wake_max_rows": 128
+  },
+  "schema": "flux-v5m-izraelevitz2017-fig14-mandatory-v1",
+  "sha256": {
+    "case_config": "b9f02f9a99df403a9caf00222a822c3daf6d9fafb7fb27ae0fa54942afb72ce9",
+    "ground_truth_csv": "993f410c5d4857a221e57c616bf45beb5eaef5391a2deafb0b6e48e6d083b3cf",
+    "kinematics": "c0d02c4e1428f224315a6904932403e4ed3bf94abbe595e4f4fa162683e688ae",
+    "native_v5m": "9ef533918b27a872a987afb16ba7134c6dafc08dac39081f0cb005c5c9ac686b",
+    "rigid_native": "c5e046e93d132f1ebc76a19197f3846d8dafedfac1581e602a36f8f72815e2e7",
+    "runner": "0af4449ffc0b47a31bdcd6a2271c94a1b42967e10e85fbf2cec3ddb604c6dcbe",
+    "stepper": "c00e7beb8f48da9cdb2287adc755ca1e5c700fb442cbe3d2776a71840b73cff1"
+  },
+  "status": "FAIL_PHYSICS_CONTRACT"
+}

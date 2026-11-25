@@ -1,0 +1,132 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-11-25 21:03:51,987 INFO GT closed: 14 markers / 12 conditions, sha256=993f410c5d4857a2...
+2026-11-25 21:03:51,987 INFO [1/12] IZRA-15-015 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=15.0 deg, pivot x/c=0.75)
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 1.03 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 63be46f load on device 'cuda:0' took 0.62 ms  (cached)
+2026-11-25 21:04:02,822 INFO IZRA-15-015 step 64/512 lesp=0.1174 lev_release=0 particles=9798 wake_rows=1536
+2026-11-25 21:04:24,980 INFO IZRA-15-015 step 128/512 lesp=0.1238 lev_release=0 particles=8607 wake_rows=3072
+2026-11-25 21:04:51,499 INFO IZRA-15-015 step 192/512 lesp=0.7995 lev_release=0 particles=9085 wake_rows=3072
+2026-11-25 21:05:22,370 INFO IZRA-15-015 step 256/512 lesp=0.0623 lev_release=0 particles=11685 wake_rows=3072
+2026-11-25 21:05:47,864 INFO IZRA-15-015 step 320/512 lesp=0.1261 lev_release=0 particles=6712 wake_rows=3072
+2026-11-25 21:06:14,603 INFO IZRA-15-015 step 384/512 lesp=0.1265 lev_release=0 particles=9257 wake_rows=3072
+2026-11-25 21:06:42,558 INFO IZRA-15-015 step 448/512 lesp=0.1223 lev_release=0 particles=9262 wake_rows=3072
+2026-11-25 21:07:10,033 INFO IZRA-15-015 step 512/512 lesp=0.1241 lev_release=0 particles=9164 wake_rows=3072
+2026-11-25 21:07:10,033 INFO IZRA-15-015 CT_raw=+0.256829 CT=+0.199829 (mean Fx=-36.945 N, 197.9 s, 2453 MiB)
+2026-11-25 21:07:10,186 INFO [2/12] IZRA-15-030 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=30.0 deg, pivot x/c=0.75)
+2026-11-25 21:07:19,878 INFO IZRA-15-030 step 64/512 lesp=0.1199 lev_release=0 particles=8264 wake_rows=1536
+2026-11-25 21:07:39,824 INFO IZRA-15-030 step 128/512 lesp=0.1255 lev_release=0 particles=7134 wake_rows=3072
+2026-11-25 21:08:03,994 INFO IZRA-15-030 step 192/512 lesp=0.1228 lev_release=0 particles=7095 wake_rows=3072
+2026-11-25 21:08:28,942 INFO IZRA-15-030 step 256/512 lesp=0.1243 lev_release=0 particles=7519 wake_rows=3072
+2026-11-25 21:08:53,688 INFO IZRA-15-030 step 320/512 lesp=0.1249 lev_release=0 particles=7215 wake_rows=3072
+2026-11-25 21:09:18,755 INFO IZRA-15-030 step 384/512 lesp=0.1249 lev_release=0 particles=7435 wake_rows=3072
+2026-11-25 21:09:43,303 INFO IZRA-15-030 step 448/512 lesp=0.1404 lev_release=0 particles=7601 wake_rows=3072
+2026-11-25 21:10:08,247 INFO IZRA-15-030 step 512/512 lesp=0.2978 lev_release=0 particles=7824 wake_rows=3072
+2026-11-25 21:10:08,248 INFO IZRA-15-030 CT_raw=-0.712984 CT=-0.769984 (mean Fx=+102.562 N, 178.1 s, 2570 MiB)
+2026-11-25 21:10:08,403 INFO [3/12] IZRA-15-045 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=45.0 deg, pivot x/c=0.75)
+2026-11-25 21:10:16,093 INFO IZRA-15-045 step 64/512 lesp=0.1107 lev_release=0 particles=5728 wake_rows=1536
+2026-11-25 21:10:32,419 INFO IZRA-15-045 step 128/512 lesp=0.1135 lev_release=0 particles=4940 wake_rows=3072
+2026-11-25 21:10:53,179 INFO IZRA-15-045 step 192/512 lesp=0.1121 lev_release=0 particles=5161 wake_rows=3072
+2026-11-25 21:11:14,861 INFO IZRA-15-045 step 256/512 lesp=0.1053 lev_release=0 particles=5361 wake_rows=3072
+2026-11-25 21:11:36,053 INFO IZRA-15-045 step 320/512 lesp=0.1144 lev_release=0 particles=4910 wake_rows=3072
+2026-11-25 21:11:57,863 INFO IZRA-15-045 step 384/512 lesp=0.1149 lev_release=0 particles=5480 wake_rows=3072
+2026-11-25 21:12:19,898 INFO IZRA-15-045 step 448/512 lesp=0.1145 lev_release=0 particles=5633 wake_rows=3072
+2026-11-25 21:12:41,998 INFO IZRA-15-045 step 512/512 lesp=0.1144 lev_release=0 particles=5484 wake_rows=3072
+2026-11-25 21:12:41,999 INFO IZRA-15-045 CT_raw=+0.231370 CT=+0.174370 (mean Fx=-33.283 N, 153.6 s, 2458 MiB)
+2026-11-25 21:12:42,191 INFO [4/12] IZRA-15-060 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=60.0 deg, pivot x/c=0.75)
+2026-11-25 21:12:48,485 INFO IZRA-15-060 step 64/512 lesp=0.0874 lev_release=0 particles=3190 wake_rows=1536
+2026-11-25 21:13:01,269 INFO IZRA-15-060 step 128/512 lesp=0.0938 lev_release=0 particles=2530 wake_rows=3072
+2026-11-25 21:13:18,695 INFO IZRA-15-060 step 192/512 lesp=0.0915 lev_release=0 particles=2538 wake_rows=3072
+2026-11-25 21:13:35,955 INFO IZRA-15-060 step 256/512 lesp=0.0935 lev_release=0 particles=2422 wake_rows=3072
+2026-11-25 21:13:53,293 INFO IZRA-15-060 step 320/512 lesp=0.0899 lev_release=0 particles=2725 wake_rows=3072
+2026-11-25 21:14:10,518 INFO IZRA-15-060 step 384/512 lesp=0.0942 lev_release=0 particles=2169 wake_rows=3072
+2026-11-25 21:14:27,849 INFO IZRA-15-060 step 448/512 lesp=0.0913 lev_release=0 particles=2639 wake_rows=3072
+2026-11-25 21:14:44,334 INFO IZRA-15-060 step 512/512 lesp=0.0943 lev_release=0 particles=1028 wake_rows=3072
+2026-11-25 21:14:44,334 INFO IZRA-15-060 CT_raw=+0.254691 CT=+0.197691 (mean Fx=-36.637 N, 122.1 s, 2536 MiB)
+2026-11-25 21:14:44,371 INFO [5/12] IZRA-15-075 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=75.0 deg, pivot x/c=0.75)
+2026-11-25 21:14:48,732 INFO IZRA-15-075 step 64/512 lesp=0.0613 lev_release=0 particles=416 wake_rows=1536
+2026-11-25 21:14:58,486 INFO IZRA-15-075 step 128/512 lesp=0.0638 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:15:11,459 INFO IZRA-15-075 step 192/512 lesp=0.0637 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:15:24,463 INFO IZRA-15-075 step 256/512 lesp=0.0644 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:15:37,537 INFO IZRA-15-075 step 320/512 lesp=0.0638 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:15:50,648 INFO IZRA-15-075 step 384/512 lesp=0.0640 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:16:03,717 INFO IZRA-15-075 step 448/512 lesp=0.0636 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:16:16,687 INFO IZRA-15-075 step 512/512 lesp=0.0639 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:16:16,687 INFO IZRA-15-075 CT_raw=+0.261539 CT=+0.204539 (mean Fx=-37.622 N, 92.3 s, 2453 MiB)
+2026-11-25 21:16:16,912 INFO [6/12] IZRA-15-090 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=90.0 deg, pivot x/c=0.75)
+2026-11-25 21:16:20,220 INFO IZRA-15-090 step 64/512 lesp=0.0307 lev_release=0 particles=0 wake_rows=1536
+2026-11-25 21:16:28,987 INFO IZRA-15-090 step 128/512 lesp=0.0319 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:16:41,933 INFO IZRA-15-090 step 192/512 lesp=0.0325 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:16:54,831 INFO IZRA-15-090 step 256/512 lesp=0.0319 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:17:07,779 INFO IZRA-15-090 step 320/512 lesp=0.0320 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:17:20,842 INFO IZRA-15-090 step 384/512 lesp=0.0320 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:17:33,750 INFO IZRA-15-090 step 448/512 lesp=0.0319 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:17:46,725 INFO IZRA-15-090 step 512/512 lesp=0.0321 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:17:46,726 INFO IZRA-15-090 CT_raw=+0.257143 CT=+0.200143 (mean Fx=-36.990 N, 89.8 s, 2453 MiB)
+2026-11-25 21:17:46,951 INFO [7/12] IZRA-15-105 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=105.0 deg, pivot x/c=0.75)
+2026-11-25 21:17:50,288 INFO IZRA-15-105 step 64/512 lesp=0.0201 lev_release=0 particles=0 wake_rows=1536
+2026-11-25 21:17:59,234 INFO IZRA-15-105 step 128/512 lesp=0.0188 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:18:12,296 INFO IZRA-15-105 step 192/512 lesp=0.0185 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:18:25,453 INFO IZRA-15-105 step 256/512 lesp=0.0186 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:18:38,605 INFO IZRA-15-105 step 320/512 lesp=0.0187 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:18:51,710 INFO IZRA-15-105 step 384/512 lesp=0.0181 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:19:04,881 INFO IZRA-15-105 step 448/512 lesp=0.0185 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:19:18,176 INFO IZRA-15-105 step 512/512 lesp=0.0190 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:19:18,177 INFO IZRA-15-105 CT_raw=+0.258086 CT=+0.201086 (mean Fx=-37.126 N, 91.2 s, 2453 MiB)
+2026-11-25 21:19:18,402 INFO [8/12] IZRA-25-045 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=25.0 deg at psi=45.0 deg, pivot x/c=0.75)
+2026-11-25 21:19:27,536 INFO IZRA-25-045 step 64/512 lesp=0.2249 lev_release=0 particles=6662 wake_rows=1536
+2026-11-25 21:19:45,654 INFO IZRA-25-045 step 128/512 lesp=0.2265 lev_release=0 particles=6284 wake_rows=3072
+2026-11-25 21:20:08,602 INFO IZRA-25-045 step 192/512 lesp=0.2274 lev_release=0 particles=6391 wake_rows=3072
+2026-11-25 21:20:32,847 INFO IZRA-25-045 step 256/512 lesp=0.2268 lev_release=0 particles=6775 wake_rows=3072
+2026-11-25 21:20:56,567 INFO IZRA-25-045 step 320/512 lesp=0.2276 lev_release=0 particles=6610 wake_rows=3072
+2026-11-25 21:21:20,500 INFO IZRA-25-045 step 384/512 lesp=0.2269 lev_release=0 particles=6723 wake_rows=3072
+2026-11-25 21:21:44,302 INFO IZRA-25-045 step 448/512 lesp=0.2273 lev_release=0 particles=6574 wake_rows=3072
+2026-11-25 21:22:08,557 INFO IZRA-25-045 step 512/512 lesp=0.2269 lev_release=0 particles=6830 wake_rows=3072
+2026-11-25 21:22:08,558 INFO IZRA-25-045 CT_raw=+0.132629 CT=+0.075629 (mean Fx=-19.079 N, 170.2 s, 2492 MiB)
+2026-11-25 21:22:08,711 INFO [9/12] IZRA-25-060 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=25.0 deg at psi=60.0 deg, pivot x/c=0.75)
+2026-11-25 21:22:15,545 INFO IZRA-25-060 step 64/512 lesp=0.1910 lev_release=0 particles=2570 wake_rows=1536
+2026-11-25 21:22:28,483 INFO IZRA-25-060 step 128/512 lesp=0.1941 lev_release=0 particles=2625 wake_rows=3072
+2026-11-25 21:22:45,804 INFO IZRA-25-060 step 192/512 lesp=0.1932 lev_release=0 particles=2322 wake_rows=3072
+2026-11-25 21:23:03,483 INFO IZRA-25-060 step 256/512 lesp=0.1938 lev_release=0 particles=2634 wake_rows=3072
+2026-11-25 21:23:20,577 INFO IZRA-25-060 step 320/512 lesp=0.1930 lev_release=0 particles=2301 wake_rows=3072
+2026-11-25 21:23:38,136 INFO IZRA-25-060 step 384/512 lesp=0.1934 lev_release=0 particles=2721 wake_rows=3072
+2026-11-25 21:23:55,388 INFO IZRA-25-060 step 448/512 lesp=0.1936 lev_release=0 particles=2204 wake_rows=3072
+2026-11-25 21:24:13,040 INFO IZRA-25-060 step 512/512 lesp=0.1934 lev_release=0 particles=2774 wake_rows=3072
+2026-11-25 21:24:13,040 INFO IZRA-25-060 CT_raw=+0.139319 CT=+0.082319 (mean Fx=-20.041 N, 124.3 s, 2554 MiB)
+2026-11-25 21:24:13,108 INFO [10/12] IZRA-25-075 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=25.0 deg at psi=75.0 deg, pivot x/c=0.75)
+2026-11-25 21:24:16,439 INFO IZRA-25-075 step 64/512 lesp=0.1433 lev_release=0 particles=0 wake_rows=1536
+2026-11-25 21:24:25,282 INFO IZRA-25-075 step 128/512 lesp=0.1452 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:24:38,249 INFO IZRA-25-075 step 192/512 lesp=0.1447 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:24:51,407 INFO IZRA-25-075 step 256/512 lesp=0.1449 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:25:04,567 INFO IZRA-25-075 step 320/512 lesp=0.1448 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:25:17,680 INFO IZRA-25-075 step 384/512 lesp=0.1448 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:25:30,775 INFO IZRA-25-075 step 448/512 lesp=0.1448 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:25:43,943 INFO IZRA-25-075 step 512/512 lesp=0.1448 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:25:43,943 INFO IZRA-25-075 CT_raw=+0.140346 CT=+0.083346 (mean Fx=-20.189 N, 90.8 s, 2453 MiB)
+2026-11-25 21:25:44,168 INFO [11/12] IZRA-25-090 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=25.0 deg at psi=90.0 deg, pivot x/c=0.75)
+2026-11-25 21:25:47,514 INFO IZRA-25-090 step 64/512 lesp=0.0812 lev_release=0 particles=0 wake_rows=1536
+2026-11-25 21:25:56,445 INFO IZRA-25-090 step 128/512 lesp=0.0823 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:26:09,596 INFO IZRA-25-090 step 192/512 lesp=0.0822 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:26:22,623 INFO IZRA-25-090 step 256/512 lesp=0.0822 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:26:35,587 INFO IZRA-25-090 step 320/512 lesp=0.0822 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:26:48,451 INFO IZRA-25-090 step 384/512 lesp=0.0822 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:27:01,359 INFO IZRA-25-090 step 448/512 lesp=0.0822 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:27:14,454 INFO IZRA-25-090 step 512/512 lesp=0.0822 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:27:14,455 INFO IZRA-25-090 CT_raw=+0.129495 CT=+0.072495 (mean Fx=-18.628 N, 90.3 s, 2453 MiB)
+2026-11-25 21:27:14,680 INFO [12/12] IZRA-25-105 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=25.0 deg at psi=105.0 deg, pivot x/c=0.75)
+2026-11-25 21:27:18,026 INFO IZRA-25-105 step 64/512 lesp=0.0219 lev_release=0 particles=0 wake_rows=1536
+2026-11-25 21:27:26,906 INFO IZRA-25-105 step 128/512 lesp=0.0227 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:27:39,984 INFO IZRA-25-105 step 192/512 lesp=0.0226 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:27:53,082 INFO IZRA-25-105 step 256/512 lesp=0.0227 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:28:06,128 INFO IZRA-25-105 step 320/512 lesp=0.0227 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:28:19,114 INFO IZRA-25-105 step 384/512 lesp=0.0226 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:28:32,198 INFO IZRA-25-105 step 448/512 lesp=0.0228 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:28:45,264 INFO IZRA-25-105 step 512/512 lesp=0.0227 lev_release=0 particles=0 wake_rows=3072
+2026-11-25 21:28:45,264 INFO IZRA-25-105 CT_raw=+0.128963 CT=+0.071963 (mean Fx=-18.551 N, 90.6 s, 2453 MiB)
+2026-11-25 21:28:45,490 INFO 14-marker MAE=0.097404763486 RMSE=0.256682919372 bias=-0.059251938087 max=0.949645191221 at [15.0, 30.0] (gate 0.017452113111)
+2026-11-25 21:28:46,125 WARNING diagnostic-only mode: accuracy gate ignored, exit 0

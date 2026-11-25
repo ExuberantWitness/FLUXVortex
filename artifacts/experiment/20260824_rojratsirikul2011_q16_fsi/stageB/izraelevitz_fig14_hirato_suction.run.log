@@ -1,0 +1,27 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-11-25 21:49:26,152 INFO GT closed: 14 markers / 12 conditions, sha256=993f410c5d4857a2...
+2026-11-25 21:49:26,152 INFO [1/12] IZRA-15-015 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=15.0 deg, pivot x/c=0.75)
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.63 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 63be46f load on device 'cuda:0' took 0.58 ms  (cached)
+2026-11-25 21:49:42,074 INFO IZRA-15-015 step 64/512 lesp=0.1239 lev_release=0 particles=15424 wake_rows=1536
+2026-11-25 21:50:22,783 INFO IZRA-15-015 step 128/512 lesp=0.1244 lev_release=0 particles=18866 wake_rows=3072
+2026-11-25 21:51:13,253 INFO IZRA-15-015 step 192/512 lesp=0.1240 lev_release=0 particles=19184 wake_rows=3072
+2026-11-25 21:52:03,425 INFO IZRA-15-015 step 256/512 lesp=0.1248 lev_release=0 particles=18916 wake_rows=3072
+2026-11-25 21:52:54,421 INFO IZRA-15-015 step 320/512 lesp=0.1240 lev_release=0 particles=19117 wake_rows=3072
+2026-11-25 21:53:44,335 INFO IZRA-15-015 step 384/512 lesp=0.1243 lev_release=0 particles=18782 wake_rows=3072
+2026-11-25 21:54:34,646 INFO IZRA-15-015 step 448/512 lesp=0.1244 lev_release=0 particles=18880 wake_rows=3072
+2026-11-25 21:55:25,147 INFO IZRA-15-015 step 512/512 lesp=0.1249 lev_release=0 particles=19023 wake_rows=3072
+2026-11-25 21:55:25,148 INFO IZRA-15-015 CT_raw=+0.441775 CT=+0.384775 (mean Fx=-63.549 N, 358.9 s, 2556 MiB)
+2026-11-25 21:55:25,308 INFO [2/12] IZRA-15-030 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=30.0 deg, pivot x/c=0.75)
+2026-11-25 21:55:40,174 INFO IZRA-15-030 step 64/512 lesp=0.1244 lev_release=0 particles=13388 wake_rows=1536
+2026-11-25 21:56:16,488 INFO IZRA-15-030 step 128/512 lesp=0.1263 lev_release=0 particles=16207 wake_rows=3072
+2026-11-25 21:57:00,202 INFO IZRA-15-030 step 192/512 lesp=0.1254 lev_release=0 particles=16202 wake_rows=3072
+2026-11-25 21:57:44,168 INFO IZRA-15-030 step 256/512 lesp=0.1262 lev_release=0 particles=16182 wake_rows=3072
+2026-11-25 21:58:29,134 INFO IZRA-15-030 step 320/512 lesp=0.1262 lev_release=0 particles=16653 wake_rows=3072
+2026-11-25 21:59:13,734 INFO IZRA-15-030 step 384/512 lesp=0.1260 lev_release=0 particles=16392 wake_rows=3072

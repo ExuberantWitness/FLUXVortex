@@ -1,0 +1,40 @@
+{
+  "bias_ct": 0.0034494550578875946,
+  "mae_ct": 0.010879291000000006,
+  "markers_within_error_bar": 1,
+  "max_abs_error_condition": [
+    15.0,
+    15.0
+  ],
+  "max_abs_error_ct": 0.0143287460578876,
+  "n_markers": 2,
+  "per_marker": [
+    {
+      "abs_error": 0.0143287460578876,
+      "case_id": "IZRA-15-015",
+      "ct_error_minus": 0.011190235,
+      "ct_error_plus": 0.011190029,
+      "ct_experiment": 0.123091624,
+      "ct_prediction": 0.1374203700578876,
+      "phase_offset_deg": 15.0,
+      "replicate": 1,
+      "signed_error": 0.0143287460578876,
+      "theta_max_deg": 15.0,
+      "within_error_bar": false
+    },
+    {
+      "abs_error": 0.007429835942112412,
+      "case_id": "IZRA-15-015",
+      "ct_error_minus": 0.011190269,
+      "ct_error_plus": 0.011190064,
+      "ct_experiment": 0.144850206,
+      "ct_prediction": 0.1374203700578876,
+      "phase_offset_deg": 15.0,
+      "replicate": 2,
+      "signed_error": -0.007429835942112412,
+      "theta_max_deg": 15.0,
+      "within_error_bar": true
+    }
+  ],
+  "rmse_ct": 0.011413050112001938
+}

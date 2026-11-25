@@ -1,0 +1,23 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-11-25 21:59:38,936 INFO GT closed: 14 markers / 12 conditions, sha256=993f410c5d4857a2...
+2026-11-25 21:59:38,936 INFO [1/1] IZRA-15-015 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=15.0 deg, pivot x/c=0.75)
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.63 ms  (cached)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 63be46f load on device 'cuda:0' took 0.58 ms  (cached)
+2026-11-25 21:59:54,883 INFO IZRA-15-015 step 64/512 lesp=0.1239 lev_release=0 particles=15424 wake_rows=1536
+2026-11-25 22:00:35,496 INFO IZRA-15-015 step 128/512 lesp=0.1244 lev_release=0 particles=18866 wake_rows=3072
+2026-11-25 22:01:26,397 INFO IZRA-15-015 step 192/512 lesp=0.1240 lev_release=0 particles=19184 wake_rows=3072
+2026-11-25 22:02:16,570 INFO IZRA-15-015 step 256/512 lesp=0.1248 lev_release=0 particles=18916 wake_rows=3072
+2026-11-25 22:03:07,195 INFO IZRA-15-015 step 320/512 lesp=0.1240 lev_release=0 particles=19117 wake_rows=3072
+2026-11-25 22:03:56,923 INFO IZRA-15-015 step 384/512 lesp=0.1243 lev_release=0 particles=18782 wake_rows=3072
+2026-11-25 22:04:46,905 INFO IZRA-15-015 step 448/512 lesp=0.1244 lev_release=0 particles=18880 wake_rows=3072
+2026-11-25 22:05:37,318 INFO IZRA-15-015 step 512/512 lesp=0.1249 lev_release=0 particles=19023 wake_rows=3072
+2026-11-25 22:05:37,319 INFO IZRA-15-015 CT_raw=+0.194420 CT=+0.137420 (mean Fx=-27.967 N, 358.2 s, 2556 MiB)
+2026-11-25 22:05:37,480 ERROR gate G2 physics contract violated: ['IZRA-15-015: DVM source did not advance every step']
+2026-11-25 22:05:37,480 WARNING subset run (1 condition(s)): the 14-marker accuracy gate is skipped
+2026-11-25 22:05:38,097 WARNING diagnostic-only mode: accuracy gate ignored, exit 0
