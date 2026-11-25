@@ -1,0 +1,42 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+2026-11-26 01:14:16,651 INFO GT closed: 14 markers / 12 conditions, sha256=993f410c5d4857a2...
+2026-11-26 01:14:16,651 INFO [1/12] IZRA-15-015 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=15.0 deg, pivot x/c=0.75)
+Module fluxvortex.warp_fsi.kernels_ring_velocity 63be46f load on device 'cuda:0' took 0.55 ms  (cached)
+2026-11-26 01:14:30,592 INFO IZRA-15-015 step 64/512 lesp=0.1331 lev_release=0 particles=0 wake_rows=1536
+2026-11-26 01:14:53,375 INFO IZRA-15-015 step 128/512 lesp=0.1347 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:15:21,832 INFO IZRA-15-015 step 192/512 lesp=0.1214 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:15:49,944 INFO IZRA-15-015 step 256/512 lesp=0.1146 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:16:17,850 INFO IZRA-15-015 step 320/512 lesp=0.1196 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:16:46,043 INFO IZRA-15-015 step 384/512 lesp=0.1191 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:17:14,294 INFO IZRA-15-015 step 448/512 lesp=0.1181 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:17:42,606 INFO IZRA-15-015 step 512/512 lesp=0.1189 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:17:42,607 INFO IZRA-15-015 CT_raw=+0.372729 CT=+0.315729 (mean Fx=-53.617 N, 205.8 s, 2453 MiB)
+2026-11-26 01:17:42,690 INFO [2/12] IZRA-15-030 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=30.0 deg, pivot x/c=0.75)
+2026-11-26 01:17:56,234 INFO IZRA-15-030 step 64/512 lesp=0.1196 lev_release=0 particles=0 wake_rows=1536
+2026-11-26 01:18:18,928 INFO IZRA-15-030 step 128/512 lesp=0.1222 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:18:47,462 INFO IZRA-15-030 step 192/512 lesp=0.1334 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:19:15,603 INFO IZRA-15-030 step 256/512 lesp=0.1201 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:19:43,734 INFO IZRA-15-030 step 320/512 lesp=2.9567 lev_release=18 particles=0 wake_rows=3072
+2026-11-26 01:20:12,117 INFO IZRA-15-030 step 384/512 lesp=50.0796 lev_release=24 particles=0 wake_rows=3072
+2026-11-26 01:20:40,301 INFO IZRA-15-030 step 448/512 lesp=13.9524 lev_release=15 particles=0 wake_rows=3072
+2026-11-26 01:21:08,521 INFO IZRA-15-030 step 512/512 lesp=25.7206 lev_release=24 particles=0 wake_rows=3072
+2026-11-26 01:21:08,522 INFO IZRA-15-030 CT_raw=-202820.042783 CT=-202820.099783 (mean Fx=+29175578.109 N, 205.8 s, 2453 MiB)
+2026-11-26 01:21:08,607 INFO [3/12] IZRA-15-045 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=45.0 deg, pivot x/c=0.75)
+2026-11-26 01:21:22,021 INFO IZRA-15-045 step 64/512 lesp=0.1080 lev_release=0 particles=0 wake_rows=1536
+2026-11-26 01:21:44,724 INFO IZRA-15-045 step 128/512 lesp=0.1122 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:22:13,184 INFO IZRA-15-045 step 192/512 lesp=0.1117 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:22:41,517 INFO IZRA-15-045 step 256/512 lesp=0.1109 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:23:09,729 INFO IZRA-15-045 step 320/512 lesp=0.1110 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:23:38,229 INFO IZRA-15-045 step 384/512 lesp=0.1121 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:24:06,755 INFO IZRA-15-045 step 448/512 lesp=0.1114 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:24:35,137 INFO IZRA-15-045 step 512/512 lesp=0.1095 lev_release=0 particles=0 wake_rows=3072
+2026-11-26 01:24:35,138 INFO IZRA-15-045 CT_raw=+0.329854 CT=+0.272854 (mean Fx=-47.449 N, 206.5 s, 2453 MiB)
+2026-11-26 01:24:35,223 INFO [4/12] IZRA-15-060 (rectangular AR=3 finite wing, forward water flow U=3.048 m/s, Re=309677, heave h/c=0.6, pitch theta_max=15.0 deg at psi=60.0 deg, pivot x/c=0.75)
+2026-11-26 01:24:47,978 INFO IZRA-15-060 step 64/512 lesp=0.0893 lev_release=0 particles=0 wake_rows=1536
+2026-11-26 01:25:10,769 INFO IZRA-15-060 step 128/512 lesp=0.0931 lev_release=0 particles=0 wake_rows=3072

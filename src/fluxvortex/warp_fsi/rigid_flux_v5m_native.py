@@ -605,6 +605,11 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
         geometry = self.surface.evaluate(None, None)
         assembler = self.author_load_assembler
         gamma = trial.gamma_bound  # the base propose() stored Gamma_n here
+        if self._lev_bound_extra is not None:
+            # plan V3 stage 2: the pseudovortex ring of a shedding strip is bound vorticity,
+            # and the loads are integrated with its strength on the strip (the base propose()
+            # does the same for its packet)
+            gamma = gamma + self._lev_bound_extra
         gamma_rate = author.wake_history_pressure / self.settings.density
         mids = assembler.leg_midpoints_flat(geometry)
         velocity = self.v_inf[None, :].expand(mids.shape[0], 3) + self._ring_velocity(
@@ -637,7 +642,8 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             velocity = velocity + trial.particle_field.velocity_at_cuda(mids)
         # Plan V3 stage 2: the leading-edge ring chains and the pseudovortex rings
         if self._lev_field is not None:
-            velocity = velocity + self._ring_velocity(mids, *self._lev_field, rough=False)
+            velocity = velocity + self._ring_velocity(mids, *self._lev_field, rough=False, free=True)
+            velocity = velocity + self._ring_velocity(mids, *self._lev_pseudovortex, rough=False)
         panel_forces, total_force, total_moment = (
             assembler.refine_kj_with_solution_velocity(
                 geometry, gamma, gamma_rate, velocity

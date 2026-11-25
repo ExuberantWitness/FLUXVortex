@@ -5,10 +5,10 @@ Wings", Journal of Aircraft, doi:10.2514/1.C035124, Sec. II.D (plan V3, stage 2)
 states that its method applies to wings of aspect ratio four and higher; the wings here are below
 that.
 
-Per span strip the sheet is a chain of at most `LEV_MAX_ROWS` ring rows.  A row is stored in the
-solver's corner order, (front-left, front-right, back-right, back-left) =
-(free_j, free_{j+1}, aft_{j+1}, aft_j): the free end points away from the wing, the aft end
-towards it.  Row 0 is the nascent ring while the strip sheds; its aft corners are then the
+Per span strip the sheet is a chain of at most `LEV_MAX_ROWS` ring rows, every one an exact
+ring.  A row is stored in the solver's corner order, (front-left, front-right, back-right,
+back-left) = (free_j, free_{j+1}, aft_{j+1}, aft_j): the free end points away from the wing,
+the aft end towards it.  Row 0 is the nascent ring while the strip sheds; its aft corners are then the
 leading-edge nodes.  Along that edge the nascent ring runs j+1 -> j, against the bound front leg
 of the first ring row (j -> j+1), and the pseudovortex ring across the chord has its front edge
 on the same line with the same strength, so the leading-edge filament cancels and the first span
@@ -18,8 +18,17 @@ strength.
 When a strip sheds again at the next step, the previous row 0 is split one third of the way
 from the leading edge to its own aft end (the paper's Eq. 7): that aft end moves to the split
 point and the new nascent ring takes the room next to the leading edge.  Every row keeps the
-strength it had when it was shed.  A row that leaves the buffer is handed to the particle field
-as a closed ring.
+strength it had when it was shed.  A row that leaves the buffer is dropped, and its circulation
+and impulse are handed back to the caller for its ledger.
+
+Why the rows are not handed to the particle field.  A first version kept 3 rows as rings and
+turned the rest into Gaussian particles with the smoothing radius of the old deposit.  On the
+rigid plate at 16 deg that gave a thrust of its own kind of trouble: Cn 0.165 against 0.633 for
+the old deposit, never settling (note A23, 6b).  In continuous shedding a row is 1-3 U dt long
+and the smoothing radius was 4 U dt, so the front and back edges of a released ring cancelled
+within it, and the streamwise legs of the sheet, once particles, acted on the next strip's
+collocation points at 13 % of the filament law: the far sheet was smoothed away.  The sheet has
+to stay filaments.
 
 The paper's split presumes a sheet that keeps shedding.  A strip that stopped shedding has a
 chain that convected away from the edge; when it sheds again its new ring is a first ring on the
@@ -41,7 +50,10 @@ from dataclasses import dataclass
 
 import torch
 
-LEV_MAX_ROWS = 3
+#: Ring rows kept per strip.  In continuous shedding a row is about one U dt long, so this is
+#: about one chord of sheet on the Rojratsirikul wing (dt* = 0.01); the trailing-edge wake keeps
+#: three.  A row that leaves is dropped and audited, as the trailing-edge wake's are.
+LEV_MAX_ROWS = 96
 #: the paper's Eq. (7): the split point is this fraction of the way from the leading edge
 SPLIT_FRACTION = 1.0 / 3.0
 
@@ -78,14 +90,33 @@ def nascent_row(free_pairs: torch.Tensor, leading_edge_pairs: torch.Tensor) -> t
     )
 
 
-def pseudovortex_ring(leading_edge: torch.Tensor, trailing_edge: torch.Tensor) -> torch.Tensor:
-    """(N, 4, 3): the ring across the chord of every strip, front edge on the leading edge.
+def pseudovortex_ring(leading_edge: torch.Tensor, rear: torch.Tensor) -> torch.Tensor:
+    """(N, 4, 3): the ring across the chord of every strip.
 
-    Same corner order as a bound ring, so its circulation is in the bound convention.
+    Front edge on the geometric leading edge, where it cancels the aft leg of the nascent
+    leading-edge ring.  Aft edge on the aft edge of the rearmost bound ring of the strip (the
+    paper's Fig. 5): `rear` (N, 2, 3) holds that strip's back-right corner (node j+1) and
+    back-left corner (node j), the line where the trailing-edge wake row attaches.  There its
+    back leg, the bound back legs and the nascent wake row's front leg are on one line and
+    cancel exactly.  Same corner order as a bound ring, so its circulation is in the bound
+    convention.
+
+    A first version put the aft edge on the geometric trailing edge, a quarter panel ahead of
+    that line.  What stays behind is a dipole of strength lambda with the arm of a quarter panel
+    right at the last collocation point, -lambda / (pi dx) there: on the rigid plate at 16 deg
+    it drove the bound trailing-edge row negative and the step-to-step force between -0.16 and
+    +1.07 (note A23, 6c).
     """
 
-    front, back = strip_pairs(leading_edge), strip_pairs(trailing_edge)
-    return torch.stack((front[:, 0], front[:, 1], back[:, 1], back[:, 0]), dim=1)
+    return torch.stack(
+        (leading_edge[:-1], leading_edge[1:], rear[:, 0], rear[:, 1]), dim=1
+    )
+
+
+def bound_rear(rings: torch.Tensor, chordwise_panels: int) -> torch.Tensor:
+    """(N, 2, 3): back-right and back-left corners of the last chordwise row of bound rings."""
+
+    return rings.reshape(chordwise_panels, -1, 4, 3)[-1, :, 2:4]
 
 
 def first_free_points(
@@ -141,13 +172,17 @@ class LevChain:
     joined: torch.Tensor
 
     @classmethod
-    def empty(cls, span_panels: int, device: torch.device) -> "LevChain":
+    def empty(
+        cls, span_panels: int, device: torch.device, rows: int = LEV_MAX_ROWS
+    ) -> "LevChain":
+        if rows < 1:
+            raise ValueError("a chain needs at least one row")
         return cls(
-            rings=torch.zeros((LEV_MAX_ROWS, span_panels, 4, 3), dtype=torch.float64, device=device),
-            gamma=torch.zeros((LEV_MAX_ROWS, span_panels), dtype=torch.float64, device=device),
+            rings=torch.zeros((rows, span_panels, 4, 3), dtype=torch.float64, device=device),
+            gamma=torch.zeros((rows, span_panels), dtype=torch.float64, device=device),
             count=torch.zeros((span_panels,), dtype=torch.int64, device=device),
             prev=torch.zeros((span_panels,), dtype=torch.float64, device=device),
-            joined=torch.zeros((LEV_MAX_ROWS - 1, span_panels), dtype=torch.bool, device=device),
+            joined=torch.zeros((rows - 1, span_panels), dtype=torch.bool, device=device),
         )
 
     def clone(self) -> "LevChain":
@@ -195,7 +230,7 @@ def push_nascent(
     corners of its previous row 0 become the free corners of the new one (the split point) and
     the two are joined; for a strip that starts again after a pause the old rows are left as
     they are.  Returns the new chain and, for the strips whose chain was already full, the row
-    that left: rings (N, 4, 3), circulation (N,), mask (N,).
+    that left: rings (N, 4, 3), circulation (N,), mask (N,).  The caller audits it.
     """
 
     rows = chain.rings.shape[0]
@@ -261,90 +296,29 @@ def active_rows(chain: LevChain) -> torch.Tensor:
     return (index < chain.count[None, :]).reshape(-1)
 
 
-def basis_rings(
-    nascent: torch.Tensor, pseudovortex: torch.Tensor, active: torch.Tensor
-) -> torch.Tensor:
-    """(2k, 4, 3): nascent ring and pseudovortex ring of the k active strips, interleaved."""
+def truncation_audit(
+    rings: torch.Tensor, circulation: torch.Tensor, left: torch.Tensor
+) -> dict[str, object]:
+    """What the rows that left the chains took with them (retention ledger).
 
-    index = torch.nonzero(active.to(torch.bool), as_tuple=False).reshape(-1)
-    return torch.stack((nascent[index], pseudovortex[index]), dim=1).reshape(-1, 4, 3)
-
-
-def release_edges(
-    rings: torch.Tensor, circulation: torch.Tensor, released: torch.Tensor, tolerance: float = 1e-12
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Filaments of the released rows as one edge list: starts, ends, circulation, strip.
-
-    Each released strip closes its own ring: the free edge, the aft edge and a streamwise leg on
-    each side.  Where the neighbouring strip is released too and the two share the corners of
-    their common node line, the two legs along that line are replaced by one with their
-    difference, so the spanwise change of the sheet is what remains.
+    Count, signed circulation, and the closed-filament linear impulse
+    0.5 * Gamma * sum_i (x_i x x_{i+1}) of every ring that left, as the trailing-edge wake's
+    truncation is audited.  Circulation that leaves the model is never dropped silently.
     """
 
-    count = rings.shape[0]
-    device = rings.device
-    released = released.to(torch.bool)
-    free_left, free_right = rings[:, 0], rings[:, 1]
-    aft_right, aft_left = rings[:, 2], rings[:, 3]
-    shared = torch.zeros((max(count - 1, 0),), dtype=torch.bool, device=device)
-    if count > 1:
-        # strip j and strip j+1 end their rows on the same two points of their common node line
-        shared = released[1:] & released[:-1] & torch.all(
-            torch.isclose(free_left[1:], free_right[:-1], atol=tolerance, rtol=0.0), dim=1
-        ) & torch.all(
-            torch.isclose(aft_left[1:], aft_right[:-1], atol=tolerance, rtol=0.0), dim=1
-        )
-    # legs of the ring in its traversal order: free edge, right leg, aft edge, left leg
-    keep = released[:, None].expand(-1, 4).clone()
-    starts = torch.stack((free_left, free_right, aft_right, aft_left), dim=1)
-    ends = torch.stack((free_right, aft_right, aft_left, free_left), dim=1)
-    strength = circulation[:, None].expand(-1, 4).clone()
-    if count > 1:
-        # left leg of strip j next to a released, coincident strip j-1: the difference
-        strength[1:, 3] = torch.where(shared, circulation[1:] - circulation[:-1], circulation[1:])
-        # right leg of strip j next to a released, coincident strip j+1 is left to strip j+1
-        keep[:-1, 1] = keep[:-1, 1] & ~shared
-    starts, ends, strength = starts[keep], ends[keep], strength[keep]
-    strip = torch.arange(count, device=device)[:, None].expand(-1, 4)[keep]
-    return starts, ends, strength, strip
-
-
-def release_particles(
-    rings: torch.Tensor,
-    circulation: torch.Tensor,
-    released: torch.Tensor,
-    *,
-    smoothing_radius: float,
-    target_spacing: float,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """The released rows as particles: positions, gamma, sigma, circulation, strip.
-
-    Same subdivision as the ribbon deposits of the particle field: each filament is cut into
-    ceil(length / spacing) segments with a particle at every segment midpoint carrying
-    circulation x segment.  One particle for a filament below the spacing.
-    """
-
-    starts, ends, strength, strip = release_edges(rings, circulation, released)
-    edge = ends - starts
-    length = torch.linalg.vector_norm(edge, dim=1)
-    keep = (strength.abs() >= 1.0e-14) & (length >= 1.0e-12)
-    starts, edge, length, strength, strip = (
-        starts[keep], edge[keep], length[keep], strength[keep], strip[keep],
-    )
-    pieces = torch.clamp(torch.ceil(length / float(target_spacing)), min=1.0).to(torch.int64)
-    owner = torch.repeat_interleave(torch.arange(pieces.shape[0], device=rings.device), pieces)
-    offset = torch.cumsum(pieces, dim=0) - pieces
-    local = torch.arange(owner.shape[0], device=rings.device) - torch.repeat_interleave(offset, pieces)
-    count = pieces[owner]
-    fraction = (local.to(torch.float64) + 0.5) / count.to(torch.float64)
-    positions = starts[owner] + fraction[:, None] * edge[owner]
-    segment = edge[owner] / count[:, None]
-    particle_circulation = strength[owner]
-    gamma = particle_circulation[:, None] * segment
-    sigma = torch.full(
-        (owner.shape[0],), float(smoothing_radius), device=rings.device, dtype=torch.float64
-    )
-    return positions, gamma, sigma, particle_circulation, strip[owner]
+    kept = left.to(torch.bool)
+    count = int(torch.count_nonzero(kept).item())
+    if count == 0:
+        return {"lev_truncate_ring_count": 0, "lev_truncate_circulation": 0.0,
+                "lev_truncate_linear_impulse": [0.0, 0.0, 0.0]}
+    corners = rings[kept].reshape(-1, 4, 3)
+    cross_sum = torch.cross(corners, torch.roll(corners, -1, dims=1), dim=2).sum(dim=1)
+    impulse = 0.5 * circulation[kept][:, None] * cross_sum
+    return {
+        "lev_truncate_ring_count": count,
+        "lev_truncate_circulation": float(circulation[kept].sum().item()),
+        "lev_truncate_linear_impulse": [float(value) for value in impulse.sum(dim=0).tolist()],
+    }
 
 
 def suction_force(
@@ -408,19 +382,17 @@ __all__ = [
     "LevChain",
     "active_rows",
     "continuing",
-    "basis_rings",
     "flat",
     "first_free_points",
     "nascent_row",
     "pseudovortex_ring",
     "push_nascent",
     "reconnect",
-    "release_edges",
-    "release_particles",
     "row_aft_pairs",
     "row_free_pairs",
     "solve_coupled",
     "split_points",
     "strip_pairs",
     "suction_force",
+    "truncation_audit",
 ]

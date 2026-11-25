@@ -1,7 +1,7 @@
 """Leading-edge vortex sheet after Hirato et al. (plan V3, stage 2): chain bookkeeping and the
 coupled circulation solve.  CPU only, no solver.
 
-The plate is the Rojratsirikul one as the solver builds it: rings from a quarter panel ahead of
+The plate is the Rojratsirikul one as the solver builds it: rings from a quarter panel behind
 the leading edge to a quarter panel behind the trailing edge, collocation at the ring centres,
 with a straight wake tied to the trailing-edge unknowns as a steady state has it.
 
@@ -28,9 +28,14 @@ AHEAD = (-0.4, 0.0, 0.6)          # free end of a test ring, in chordwise panels
 
 
 def plate():
-    """(rings (P,4,3), collocation (P,3), leading edge (NS+1,3), trailing edge (NS+1,3))."""
+    """(rings (P,4,3), collocation (P,3), leading edge (NS+1,3), aft corners (NS,2,3)).
+
+    The aft corners are the back-right and back-left corners of the last chordwise row of every
+    strip: the line where the trailing-edge wake attaches, a quarter panel behind the geometric
+    trailing edge.
+    """
     dx, ds = CHORD / NC, SPAN / NS
-    front = -0.25 * dx + torch.arange(NC, dtype=torch.float64) * dx
+    front = 0.25 * dx + torch.arange(NC, dtype=torch.float64) * dx
     back = front + dx
     y = torch.arange(NS + 1, dtype=torch.float64) * ds
 
@@ -55,7 +60,7 @@ def plate():
     base = torch.stack(
         (torch.zeros(NS + 1, dtype=torch.float64), y, torch.zeros(NS + 1)), dim=1
     )
-    return rings, collocation, base, base + torch.tensor([CHORD, 0.0, 0.0], dtype=torch.float64)
+    return rings, collocation, base, rings.reshape(NC, NS, 4, 3)[-1, :, 2:4]
 
 
 def ring_free_end(leading: torch.Tensor) -> torch.Tensor:
@@ -100,7 +105,7 @@ def lesp_scale(rings) -> torch.Tensor:
 def attached(alpha_deg: float) -> dict:
     """Everything a step needs before any strip sheds, for a plate in a steady wake."""
     free = freestream(alpha_deg)
-    rings, collocation, leading, trailing = plate()
+    rings, collocation, leading, rear = plate()
     aic = normal_influence(collocation, rings)
     wake = trailing_wake_normal(collocation, rings, free)     # (rows, P, NS)
     nascent_normal = wake[0]
@@ -113,7 +118,7 @@ def attached(alpha_deg: float) -> dict:
     scale = lesp_scale(rings)
     return {
         "free": free, "rings": rings, "collocation": collocation, "leading": leading,
-        "trailing": trailing, "system": system, "nascent_normal": nascent_normal,
+        "rear": rear, "system": system, "nascent_normal": nascent_normal,
         "rhs_known": rhs_known, "gamma": gamma, "scale": scale, "lesp": -gamma[:NS] / scale,
     }
 
@@ -121,7 +126,7 @@ def attached(alpha_deg: float) -> dict:
 def structures(state: dict):
     """Nascent rings, pseudovortex rings and their summed unit influence (P, NS)."""
     nascent = h.nascent_row(ring_free_end(state["leading"]), h.strip_pairs(state["leading"]))
-    pseudovortex = h.pseudovortex_ring(state["leading"], state["trailing"])
+    pseudovortex = h.pseudovortex_ring(state["leading"], state["rear"])
     influence = normal_influence(state["collocation"], nascent) + normal_influence(
         state["collocation"], pseudovortex
     )
@@ -132,7 +137,7 @@ def structures(state: dict):
 
 
 def test_nascent_row_lies_on_the_leading_edge_against_the_bound_front_leg():
-    rings, collocation, leading, trailing = plate()
+    rings, collocation, leading, rear = plate()
     free = ring_free_end(leading)
     nascent = h.nascent_row(free, h.strip_pairs(leading))
     # aft corners are the leading-edge nodes, node j+1 then node j
@@ -142,9 +147,12 @@ def test_nascent_row_lies_on_the_leading_edge_against_the_bound_front_leg():
     # nascent aft leg runs j+1 -> j on the leading edge: opposite directions
     first_row = rings.reshape(NC, NS, 4, 3)[0]
     assert torch.all(torch.sum((first_row[:, 1] - first_row[:, 0]) * (nascent[:, 3] - nascent[:, 2]), dim=1) < 0.0)
-    # the pseudovortex runs the other way on the same line, with its back edge on the trailing edge
-    pseudovortex = h.pseudovortex_ring(leading, trailing)
-    assert torch.allclose(pseudovortex[:, 0], leading[:-1]) and torch.allclose(pseudovortex[:, 3], trailing[:-1])
+    # the pseudovortex runs the other way on the same line; its back edge is the aft edge of the
+    # last bound ring of the strip, where the trailing-edge wake attaches
+    pseudovortex = h.pseudovortex_ring(leading, rear)
+    assert torch.allclose(pseudovortex[:, 0], leading[:-1]) and torch.allclose(pseudovortex[:, 3], rear[:, 1])
+    assert torch.allclose(pseudovortex[:, 2], rear[:, 0])
+    assert torch.allclose(rear[:, 0], rings.reshape(NC, NS, 4, 3)[-1, :, 2])
     assert torch.all(torch.sum((pseudovortex[:, 1] - pseudovortex[:, 0]) * (nascent[:, 3] - nascent[:, 2]), dim=1) < 0.0)
     del collocation
 
@@ -169,9 +177,16 @@ def shed(chain, active, nascent, strength):
     return pushed, released_rings, released_gamma, released
 
 
+SHORT = 3          # rows of a test chain; the solver keeps LEV_MAX_ROWS
+
+
+def short_chain():
+    return h.LevChain.empty(NS, torch.device("cpu"), rows=SHORT)
+
+
 def test_push_keeps_every_strength_and_splits_the_old_nascent_row():
     _, _, leading, _ = plate()
-    chain = h.LevChain.empty(NS, torch.device("cpu"))
+    chain = short_chain()
     active = torch.zeros(NS, dtype=torch.bool)
     active[7] = True
     nascent = h.nascent_row(ring_free_end(leading), h.strip_pairs(leading))
@@ -186,7 +201,7 @@ def test_push_keeps_every_strength_and_splits_the_old_nascent_row():
     assert [item[2] for item in history] == [1, 2, 3, 3]
     assert [item[0] for item in history] == [False, False, False, True]
     assert history[3][1] == pytest.approx(strengths[0])
-    assert [float(chain.gamma[m, 7]) for m in range(h.LEV_MAX_ROWS)] == pytest.approx(strengths[3:0:-1])
+    assert [float(chain.gamma[m, 7]) for m in range(SHORT)] == pytest.approx(strengths[3:0:-1])
     # the other strips were never touched, and their rows carry nothing
     assert int(chain.count[:7].sum()) == 0 and int(chain.count[8:].sum()) == 0
     assert float(chain.rings[:, 8:].abs().sum()) == 0.0
@@ -199,9 +214,9 @@ def test_push_keeps_every_strength_and_splits_the_old_nascent_row():
 
 def test_reconnect_makes_the_chain_share_edges_exactly():
     _, _, leading, _ = plate()
-    chain = h.LevChain.empty(NS, torch.device("cpu"))
+    chain = short_chain()
     nascent = h.nascent_row(ring_free_end(leading), h.strip_pairs(leading))
-    for _ in range(h.LEV_MAX_ROWS):
+    for _ in range(SHORT):
         chain, *_ = shed(chain, torch.ones(NS, dtype=torch.bool), nascent, 0.4)
     assert bool(torch.all(chain.joined))
     drifted = chain.rings.clone()
@@ -215,7 +230,7 @@ def test_a_chain_that_stopped_shedding_is_not_joined_when_the_strip_sheds_again(
     """The paper's split presumes a sheet that keeps shedding; after a pause the new ring is a
     first ring on the edge and the old rows stay where they are."""
     _, _, leading, _ = plate()
-    chain = h.LevChain.empty(NS, torch.device("cpu"))
+    chain = short_chain()
     active = torch.ones(NS, dtype=torch.bool)
     edge = h.strip_pairs(leading)
     nascent = h.nascent_row(ring_free_end(leading), edge)
@@ -239,48 +254,49 @@ def test_a_chain_that_stopped_shedding_is_not_joined_when_the_strip_sheds_again(
     assert torch.allclose(third.rings[1, :, 2], third.rings[0, :, 1])
 
 
-def test_release_edges_close_every_ring_and_merge_a_shared_node_line():
+def test_a_chain_keeps_its_rows_and_audits_the_one_that_leaves():
+    """Rows stay exact rings up to LEV_MAX_ROWS; the row that leaves is dropped and audited."""
+    _, _, leading, _ = plate()
+    chain = h.LevChain.empty(NS, torch.device("cpu"))
+    assert chain.rings.shape[0] == h.LEV_MAX_ROWS and h.LEV_MAX_ROWS > 3
+    active = torch.ones(NS, dtype=torch.bool)
+    nascent = h.nascent_row(ring_free_end(leading), h.strip_pairs(leading))
+    audits = []
+    for step in range(h.LEV_MAX_ROWS + 2):
+        pushed, leaving_rings, leaving_gamma, released = h.push_nascent(
+            chain, active, nascent, torch.full((NS,), 0.1 if step == 0 else 0.2)
+        )
+        audits.append(h.truncation_audit(leaving_rings, leaving_gamma, released))
+        chain = h.LevChain(
+            rings=pushed.rings, gamma=pushed.gamma, count=pushed.count,
+            prev=torch.where(active, torch.full((NS,), 0.2), 0.0), joined=pushed.joined,
+        )
+    assert int(chain.count.min()) == h.LEV_MAX_ROWS and int(chain.count.max()) == h.LEV_MAX_ROWS
+    assert [audit["lev_truncate_ring_count"] for audit in audits] == [0] * h.LEV_MAX_ROWS + [NS, NS]
+    assert audits[h.LEV_MAX_ROWS]["lev_truncate_circulation"] == pytest.approx(NS * 0.1)
+    assert audits[h.LEV_MAX_ROWS + 1]["lev_truncate_circulation"] == pytest.approx(NS * 0.2)
+    assert all(math.isfinite(value) for value in audits[-1]["lev_truncate_linear_impulse"])
+    # the rows in use are all joined: the sheet is one connected chain per strip
+    assert bool(torch.all(chain.joined))
+    assert torch.allclose(chain.rings[1:, :, 2], chain.rings[:-1, :, 1])
+
+
+def test_truncation_audit_of_a_unit_square():
+    """A closed ring's linear impulse is half its circulation times the sum of x_i x x_{i+1}."""
     unit = torch.eye(3, dtype=torch.float64)
     origin = torch.zeros(3, dtype=torch.float64)
-    ring = torch.stack((origin, origin + unit[1], origin + unit[0] + unit[1], origin + unit[0]))
-    # strips 0 and 1 share a node line; strip 2 is two panels further, with a gap in between
-    rings = torch.stack((ring, ring + unit[1], ring + 3.0 * unit[1]))
-    circulation = torch.tensor([0.4, 0.4, 0.6])
-
-    starts, ends, strength, strip = h.release_edges(
-        rings, circulation, torch.tensor([True, True, True])
-    )
-    # strip 0 loses its right leg to the shared line, strip 1 keeps its left leg with the
-    # difference, strip 2 is alone: 3 + 4 + 4
-    assert starts.shape[0] == 11
-    assert float(torch.linalg.vector_norm(torch.sum(strength[:, None] * (ends - starts), dim=0))) < 1.0e-14
-    assert int((strength == 0.0).sum()) == 1 and int(strip[strength == 0.0]) == 1
-
-    starts, ends, strength, strip = h.release_edges(
-        rings, circulation, torch.tensor([False, True, False])
-    )
-    assert starts.shape[0] == 4
-    assert torch.allclose(strength, torch.full((4,), 0.4))
-    assert float(torch.linalg.vector_norm(torch.sum(strength[:, None] * (ends - starts), dim=0))) < 1.0e-14
-    del strip
-
-
-def test_release_particles_subdivide_like_the_ribbon_deposit():
-    unit = torch.eye(3, dtype=torch.float64)
-    origin = torch.zeros(3, dtype=torch.float64)
-    ring = torch.stack((origin, origin + unit[1], origin + unit[0] + unit[1], origin + unit[0]))
-    positions, gamma, sigma, circulation, strip = h.release_particles(
-        ring[None], torch.tensor([0.4], dtype=torch.float64), torch.tensor([True]),
-        smoothing_radius=0.3, target_spacing=0.25,
-    )
-    # four unit legs, four segments each
-    assert positions.shape == (16, 3) and torch.allclose(sigma, torch.full((16,), 0.3, dtype=torch.float64))
-    # the tag is the edge circulation repeated per particle, as in the ribbon deposit; the vector
-    # strength is circulation x segment, so the particles of a leg add up to circulation x edge
-    assert torch.allclose(circulation, torch.full((16,), 0.4, dtype=torch.float64))
-    assert float(gamma.abs().sum()) == pytest.approx(0.4 * 4.0)
-    assert float(torch.linalg.vector_norm(torch.sum(gamma, dim=0))) < 1.0e-14
-    assert bool(torch.all(strip == 0))
+    square = torch.stack((origin, origin + unit[1], origin + unit[0] + unit[1], origin + unit[0]))
+    rings = torch.stack((square, square + 5.0 * unit[1]))
+    circulation = torch.tensor([0.4, 0.7], dtype=torch.float64)
+    audit = h.truncation_audit(rings, circulation, torch.tensor([True, False]))
+    assert audit["lev_truncate_ring_count"] == 1
+    assert audit["lev_truncate_circulation"] == pytest.approx(0.4)
+    # the sum of x_i x x_{i+1} around the square is twice its area along the normal by the
+    # right-hand rule over its traversal; this square runs y, then x, so that is -z
+    assert audit["lev_truncate_linear_impulse"] == pytest.approx([0.0, 0.0, -0.5 * 0.4 * 2.0])
+    empty = h.truncation_audit(rings, circulation, torch.tensor([False, False]))
+    assert empty == {"lev_truncate_ring_count": 0, "lev_truncate_circulation": 0.0,
+                     "lev_truncate_linear_impulse": [0.0, 0.0, 0.0]}
 
 
 # -- the conventions, with the ring kernel ----------------------------------------------------------
@@ -295,14 +311,14 @@ def test_nascent_ring_plus_pseudovortex_is_one_closed_loop():
     bend it through the leading-edge nodes.  If the leading-edge legs did not cancel, an extra
     pair of anti-parallel legs would remain and the two inductions would differ.
     """
-    rings, collocation, leading, trailing = plate()
+    rings, collocation, leading, rear = plate()
     free = ring_free_end(leading)
-    edge, back = h.strip_pairs(leading), h.strip_pairs(trailing)
+    edge, back = h.strip_pairs(leading), rear
     nascent = h.nascent_row(free, edge)
-    pseudovortex = h.pseudovortex_ring(leading, trailing)
-    direct = torch.stack((free[:, 0], free[:, 1], back[:, 1], back[:, 0]), dim=1)
-    triangle_right = torch.stack((free[:, 1], edge[:, 1], back[:, 1], back[:, 1]), dim=1)
-    triangle_left = torch.stack((back[:, 0], edge[:, 0], free[:, 0], free[:, 0]), dim=1)
+    pseudovortex = h.pseudovortex_ring(leading, rear)
+    direct = torch.stack((free[:, 0], free[:, 1], back[:, 0], back[:, 1]), dim=1)
+    triangle_right = torch.stack((free[:, 1], edge[:, 1], back[:, 0], back[:, 0]), dim=1)
+    triangle_left = torch.stack((back[:, 1], edge[:, 0], free[:, 0], free[:, 0]), dim=1)
     probe = collocation[::7] + torch.tensor([0.0, 0.0, 0.3]) * CHORD / NC
     reference = kernel.mean_chordwise_panel(rings)
 

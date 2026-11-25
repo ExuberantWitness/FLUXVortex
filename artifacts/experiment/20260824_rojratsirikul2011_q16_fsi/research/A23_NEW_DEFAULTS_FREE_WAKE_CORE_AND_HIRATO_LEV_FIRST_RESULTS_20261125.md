@@ -230,6 +230,109 @@ Two defects of the implementation, both found by reading the code after this run
 Until both are repaired the flapping table of section 5 is preliminary as well: it was obtained
 with the loads of item 2.
 
+## 6c. A third defect, the repairs, and what is still wrong at 16 deg
+
+**Third defect, read off the paper after a per-step probe.**  The pseudovortex ring's aft edge
+belongs on the aft edge of the rearmost bound ring (the paper's Fig. 5), the line where the
+trailing-edge wake attaches.  A first version put it on the geometric trailing edge, a quarter
+panel ahead of that line.  What stays behind is a dipole of strength lambda with the arm of a
+quarter panel right at the last collocation point, -lambda / (pi dx): at lambda = 0.05 about
+-3.5 m/s.  On the rigid plate at 16 deg it drove the bound trailing-edge row negative and the
+force from step to step between -0.16 and +1.07.
+
+**What was changed after 6b.**
+
+1. The rows of the chain stay exact rings (`LEV_MAX_ROWS = 96`, about one chord of sheet); a row
+   that leaves is dropped and audited (`lev_truncate_ring_count`, `lev_truncate_circulation`,
+   `lev_truncate_linear_impulse`).  No particle release.
+2. The loads are built from the bound circulation plus the strip's leading-edge strength: the
+   packet, the author pressure and the rigid Kutta-Joukowski refinement.  The unsteady term
+   already carried the rate of that sum; the trailing-edge leg carries its increment.
+3. The pseudovortex ring ends on the lattice's aft edge (`lev_hirato.bound_rear`).
+4. The chain rows carry the free-wake core in the loads as in the solve.
+5. A strip that is shedding stays in the active set until continuing would need a leading-edge
+   vortex against the bound circulation.  It changed nothing on the 16 deg plate (identical to
+   the digit), and it is left in because it is what the paper's rule means.
+6. The unit-test lattice is the production one ([0.25 dx, c + 0.25 dx]); a first version was
+   shifted by half a panel.  Tests: 13 (CPU), the solver parity 6/6.
+
+Rigid plate, alpha = 16 deg, 1500 steps:
+
+| version | Cn | window min / max |
+|---|---|---|
+| old deposit (note A22) | 0.6329 | 0.574 / 0.697 |
+| first version: 3 rows then particles, loads on the bound circulation | 0.1651 | -0.32 / +0.62 |
+| rows kept as rings, loads on the bound circulation plus lambda, pseudovortex on the geometric trailing edge | 0.3509 | +0.05 / +0.88 |
+
+With the pseudovortex on the lattice's aft edge the full 1500 steps were not run; a 330-step
+probe was (`/tmp/zcode_rigid_lev_probe.py`, every 6 steps; `lambda` is the strength of the
+nascent rings, `shed` the circulation of the newest wake row = bound trailing-edge row plus
+lambda):
+
+| step | strips shedding | lambda summed | bound trailing-edge row | shed | Cn of the step | from the shed circulation |
+|---|---|---|---|---|---|---|
+| 49 | 20 | 0.086 | 0.713 | 0.798 | 0.712 | 0.155 |
+| 97 | 24 | 0.789 | 1.735 | 2.524 | 0.563 | 0.489 |
+| 121 | 26 | 1.342 | 1.558 | 2.900 | 1.169 | 0.562 |
+| 169 | 28 | 1.668 | 1.691 | 3.360 | 0.641 | 0.651 |
+| 217 | 27 | 1.765 | 2.293 | 4.058 | 1.386 | 0.786 |
+| 253 | 28 | 1.958 | 2.262 | 4.219 | 3.831 | 0.818 |
+| 301 | 28 | 2.127 | 2.701 | 4.827 | -2.375 | 0.936 |
+| 325 | 29 | 2.413 | 2.280 | 4.693 | 0.236 | 0.910 |
+
+Per step, 203 to 216: strips shedding 26, 26, 28, 28, 26, 26, 28, 28, 27, 27, 26, 28, 26, 27;
+Cn 1.26, 1.24, 0.99, 1.28, 1.02, 0.20, 0.40, 0.91, 1.47, 1.28, 1.23, 0.32, 0.11, 0.72.
+
+Reading:
+
+* With the pseudovortex ring in the right place the circulation is large and smooth in its
+  sums: the shed circulation is 3.0 at t* = 1.3 and 4.7 at t* = 3, which by Kutta-Joukowski is
+  a lift of 0.9 against 0.74 measured and 0.63 for the old deposit.
+* The force of a single step swings between -2.4 and +3.8 while the circulation does not.  The
+  strips that shed go 26, 28, 26, 28 from step to step: the two or three strips at the edge of
+  the separated region switch on and off every step, their leading-edge strength small and of
+  changing sign.  A strip that switches adds or removes lambda along both its node lines, which
+  is about 5 m/s at the collocation points of the strips next to it; their bound circulation
+  moves with it, and the rate term turns that into the force.
+* Why the edge strips switch: the criterion is the attached suction parameter against the
+  critical value, and the pin itself holds that parameter at the critical value for every
+  shedding strip, so for a strip at the edge the criterion is decided by the fourth digit.
+* The usual remedy is a hysteresis band.  It is a new constant and it is the owner's to set.
+
+## 6d. The flapping wing with the repaired model: the first version's result was errors cancelling
+
+With the repairs of 6c the Fig. 14 run was stopped after three conditions:
+
+| point | experiment | first version (three defects) | repaired model |
+|---|---|---|---|
+| 15-015 | 0.1231, 0.1449 | 0.1374 | 0.3157 |
+| 15-030 | 0.1797 | 0.1632 | -202 820 (diverged) |
+| 15-045 | 0.2344 | 0.1879 | 0.2729 |
+
+`IZRA-15-030` in that run: the suction parameter is 0.12 to 0.13 with no strip shedding up to
+step 256; at step 320 eighteen strips shed and it is 2.96; then 50.1, 14.0, 25.7 with 24 strips
+shedding.  As soon as shedding starts, the coupled solve runs away.
+
+So the mean absolute error of 0.0206 in section 5 is not a result of the model.  It was obtained
+with the far sheet smoothed away, the leading-edge vortex's steady lift missing from the loads
+and the pseudovortex ring a quarter panel off; the three defects happened to hold the coupled
+system still and to give about the right thrust.  With them removed the system is unstable where
+shedding is at work: a step-to-step oscillation on the steady plate at 16 deg (6c), a blow-up on
+`IZRA-15-030`.
+
+What stands:
+
+* Stage A on the flapping wing (new defaults, old leading-edge vortex): 13 points within 0.08 of
+  the experiment, mean absolute error 0.032 over them, one collapse (`IZRA-15-030`).
+* The attached plate under the new defaults: 0.2197 and 0.4350 at 5 and 10 deg.
+* The solver and its tests: parity 6/6, 20 CPU tests.
+
+What does not: the leading-edge vortex after Hirato et al. as implemented.  The paper's own test
+is a pitch ramp; whether its split rule and its iteration are stable on a flapping wing or in
+steady separation is not shown there.  The instability has not been located: the per-strip
+strength of the strips at the edge of the separated region, the sensitivity of the closure
+equation to the sheet, and the path of the sheet over the wing are the candidates.
+
 ## 7. Open
 
 * Gate G-Flap of the plan (Izra 14 points: no blow-up, no collapse, mean absolute error at

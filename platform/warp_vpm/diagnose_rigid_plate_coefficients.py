@@ -227,7 +227,15 @@ def main(argv: list[str] | None = None) -> int:
     lift = float(mean_force[2]) / q_s
     streamwise = float(mean_force[0]) / q_s
     cn_formula = (streamwise * math.sin(alpha) + lift * math.cos(alpha))
-    kj = 2.0 * (te_row_sum / window_steps) * ds / (speed * chord * span)
+    # Kutta-Joukowski on what the trailing edge sheds: the newest wake row.  It is the bound
+    # trailing-edge circulation, plus the leading-edge strength of the strip under the Hirato
+    # sheet (the load integration uses that sum too).  The first step has no wake row yet.
+    newest_row_sum = 0.0
+    if proposal.trial_state.wake_gamma.numel():
+        newest_row_sum = float(
+            proposal.trial_state.wake_gamma.reshape(-1, ns)[0].sum().item()
+        )
+    kj = 2.0 * (newest_row_sum / window_steps) * ds / (speed * chord * span)
 
     # ---- shape of the wake right behind the trailing edge (diagnostic only) ----
     # Why: with the regularisation removed, the first production point (alpha = 5 deg,
