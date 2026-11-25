@@ -23,15 +23,17 @@ from fluxvortex.q16_ancf_mesh import Q16Mesh
 from fluxvortex.q16_work_conjugate_transfer import Q16SurfaceTransferMap
 
 from . import config as warp_config
+from . import lev_hirato
 from .kernels_q16_transfer import Q16CudaSurfaceTransfer
 from .kernels_ring_velocity import (
     _KERNEL_V3,
+    mean_chordwise_panel,
     native_ring_velocity_expanded,
     native_ring_velocity_fused,
 )
 
 from ldvm_source_bank_gpu import CudaLDVMSourceBank
-from pfield_torch_gpu import CudaParticleField
+from pfield_torch_gpu import TYPE_FRESH_SHED, CudaParticleField
 
 
 NATIVE_V5M_CONTRACT = "q16-flux-v5m-native-cuda-float64-v1"
@@ -133,7 +135,8 @@ _LE_SHEET_EXTENT_PANELS = float(os.environ.get("FLUXV_LE_SHEET_EXTENT_PANELS", "
 #:     the new row is a closed ring one U*dt wide whose self-induced velocity throws its
 #:     front corners off the edge (the "singular undershoot" the 1e-9 constant was hiding).
 #:
-#:   legacy  the order above, bit-for-bit.
+#:   legacy  the order above.  The behaviour before 2026-11-25; now reached only by setting
+#:           FLUXV_TE_WAKE=legacy.
 #:   v3      the new row spans [trailing edge, convected front of the previous newest row]
 #:           and is part of the linear solve: its induction enters the columns of the
 #:           trailing-edge row (its strength is the trailing-edge circulation plus the LEV
@@ -141,11 +144,14 @@ _LE_SHEET_EXTENT_PANELS = float(os.environ.get("FLUXV_LE_SHEET_EXTENT_PANELS", "
 #:           enters the right-hand side, and every load evaluation sees the same vortex
 #:           system.  The insertion then simply stores the row that was solved for, so the
 #:           wake is one continuous sheet and the trailing-edge legs cancel exactly.
+#:           Default since 2026-11-25 (the owner's decision, with FLUXV_RING_EPS_V = 1e-12):
+#:           on the rigid plate the legacy order at a small constant leaves Cn 15-25 % below
+#:           the lattice (note A22, sections 1 and 6b).
 #:
 #: Either the reopening alone or the implicit row alone makes the result worse than legacy
 #: (reopening alone: 0.1225 against 0.1364 at eps = 1e-11, plan V3 question 3), so v3
 #: always does both.
-_TE_WAKE_CHOICE = os.environ.get("FLUXV_TE_WAKE", "legacy").strip().lower()
+_TE_WAKE_CHOICE = os.environ.get("FLUXV_TE_WAKE", "v3").strip().lower()
 if _TE_WAKE_CHOICE not in {"legacy", "v3"}:
     raise ValueError(
         f"FLUXV_TE_WAKE must be 'legacy' or 'v3', got {_TE_WAKE_CHOICE!r}"
@@ -165,6 +171,68 @@ if not (math.isfinite(_WAKE_CORE_PANELS) and _WAKE_CORE_PANELS >= 0.0):
     raise ValueError(
         f"FLUXV_WAKE_CORE_PANELS must be finite and non-negative, got {_WAKE_CORE_PANELS!r}"
     )
+
+#: Core of the free wake under the legacy kernel (plan V3, Bug-4).  That kernel's core radius
+#: is `core_fraction * max(longest edge of the ring, the wing's chordwise panel)`; the author's
+#: code reaches it only through `rough=True` (0.1), which nothing ever passed, so with
+#: core_fraction 1e-6 the free wake had no core and the 1e-9 constant was doing that job.
+#:
+#: Measured 2026-11-25 on the flapping wing (Izraelevitz IZRA-15-015, 8 x 24 panels, U dt =
+#: 4.8 mm) with the constant at 1e-12 and the implicit trailing-edge row and no core: three
+#: cycles periodic and sane (suction parameter up to 0.36), then at step 329 it goes
+#: 0.17 -> 22.7 -> 459 and the force with it.  The wing passes through its own wake; a filament
+#: sweeping across the surface passes through every distance, and at 1e-12 the constant only
+#: tames those below 0.03 mm (0.2 mm at 1e-9).  With this core a filament 0.1 mm from a point
+#: is seen at 0.6 % of the raw law.  0 switches the core off.
+#:
+#: It acts wherever free material points are convected (every filament they see, the bound
+#: sheet included, so that the trailing-edge legs still cancel each other) and wherever the
+#: wake is evaluated at the collocation points and at the load midpoints.  Never in the
+#: influence matrix.
+_FREE_WAKE_CORE_FRACTION = float(os.environ.get("FLUXV_FREE_WAKE_CORE_FRACTION", "0.1"))
+if not (math.isfinite(_FREE_WAKE_CORE_FRACTION) and _FREE_WAKE_CORE_FRACTION >= 0.0):
+    raise ValueError(
+        "FLUXV_FREE_WAKE_CORE_FRACTION must be finite and non-negative, got "
+        f"{_FREE_WAKE_CORE_FRACTION!r}"
+    )
+
+#: The leading-edge vortex (plan V3, stage 2).
+#:
+#:   legacy   the 2-D source bank gives the strength of every strip's release, the 3-D
+#:            leading-edge row is pinned, and a closed ribbon 0.08 panels deep carries the
+#:            increment into the particle field.  Its induction at the first collocation row is
+#:            5.8 % of an open filament's (note A14): the wing never feels its own leading-edge
+#:            vortex, and the strength does not converge with the time step.
+#:   hirato   the sheet of Hirato et al. (lev_hirato.py): a chain of full-strength rings per
+#:            strip, the nascent ring on the geometric leading edge, a pseudovortex ring across
+#:            the chord, the new ring at one third of the way to the last one, and the strength
+#:            of the nascent ring solved in the 3-D system together with the bound circulation:
+#:            the leading-edge row is pinned at the critical suction parameter and no
+#:            penetration holds everywhere else and at that leading-edge row too.  The 2-D
+#:            source bank is not used.  The paper states that its method applies to wings of
+#:            AR 4 and higher; the wings here are below that.
+#:
+#: Default hirato since 2026-11-25 (the owner's decision).
+_LEV_CHOICE = os.environ.get("FLUXV_LEV_MODEL", "hirato").strip().lower()
+if _LEV_CHOICE not in {"legacy", "hirato"}:
+    raise ValueError(f"FLUXV_LEV_MODEL must be 'legacy' or 'hirato', got {_LEV_CHOICE!r}")
+_LEV_HIRATO = _LEV_CHOICE == "hirato"
+
+#: Hirato's leading-edge suction, pi rho c U^2 A0^2 per unit span along the chord towards the
+#: leading edge (the paper's Eq. 20), as a force on the front filament of the first panel of each
+#: strip, which is where the lattice keeps its leading-edge vortex (the geometric leading edge has
+#: no bound filament).  FLUXV_LE_SUCTION=on switches it on.
+#:
+#: Off by default, on the evidence of 2026-11-25 (Izraelevitz IZRA-15-015, experiment 0.123 and
+#: 0.145): with the ring chains of Hirato and this term the thrust coefficient is 0.385, without
+#: it 0.137; the old deposit gave 0.200.  The loads here are Kutta-Joukowski vector forces on the
+#: bound filaments evaluated in a velocity field that contains the leading-edge rings, so on a
+#: shedding strip the suction is already in the vector force and the explicit term counts it
+#: twice.  On an attached strip the picture is different: the rigid plate at 5 deg, 150 steps,
+#: has a streamwise coefficient of +0.0085 without the term and -0.0013 with it, which is the
+#: inviscid flat plate with its leading-edge suction.  Whether the term belongs on attached
+#: strips is not settled; it is left to the flag.
+_LE_SUCTION = os.environ.get("FLUXV_LE_SUCTION", "off").strip().lower() in {"1", "true", "on", "yes"}
 
 
 def _require_cuda64(name: str, value: torch.Tensor, device: torch.device) -> torch.Tensor:
@@ -441,6 +509,16 @@ class NativeV5MConfig:
                 "FLUXV_TE_WAKE=v3 is implemented on the legacy separation path only; "
                 "joint_separation_solve writes the wake row with a different rule"
             )
+        if _LEV_HIRATO and self.joint_separation_solve:
+            raise ValueError(
+                "FLUXV_LEV_MODEL=hirato solves the leading-edge vortex in the legacy "
+                "separation path; joint_separation_solve is not available with it"
+            )
+        if _LEV_HIRATO and not _TE_WAKE_V3:
+            raise ValueError(
+                "FLUXV_LEV_MODEL=hirato needs the implicit trailing-edge row: its "
+                "trailing-edge wake row carries the bound circulation plus the shed one"
+            )
         if type(self.load_derivative_active_set) is not bool:
             raise TypeError("load_derivative_active_set must be an exact bool")
         if type(self.te_leg_candidate_diagnostic) is not bool:
@@ -716,8 +794,7 @@ def native_aic(geometry: NativeV5MGeometry, *, chordwise_panels: int) -> torch.T
         # Plan V3 (P0-A): the exact law.  The closest approach in this matrix is a
         # collocation point half a panel from its own ring's sides, so no core is needed;
         # the kernel's collinear guard is all the protection there is.  The legacy
-        # reference length below, 1/chordwise_panels METRES, is the author's one-metre
-        # chord and is not used on this path.
+        # reference length below, the wing's own chordwise panel length, is then not used.
         expanded = native_ring_velocity_expanded(
             geometry.collocation,
             geometry.rings,
@@ -725,11 +802,13 @@ def native_aic(geometry: NativeV5MGeometry, *, chordwise_panels: int) -> torch.T
             reference_length=0.0,
         )
     else:
+        # Plan V3, Bug-4: the reference length of the legacy core is the wing's panel length,
+        # not 1/chordwise_panels metres (the author's one-metre chord)
         expanded = native_ring_velocity_expanded(
             geometry.collocation,
             geometry.rings,
             core_fraction=1.0e-6,
-            reference_length=1.0 / chordwise_panels,
+            reference_length=mean_chordwise_panel(geometry.rings),
         )
     result = torch.sum(expanded * geometry.normals[:, None, :], dim=2)
     if bool(torch.any(torch.diagonal(result) >= 0.0).item()):
@@ -769,6 +848,10 @@ class NativeV5MState:
     #   lev_strip_released_total -- running sum of every deposit, diagnostic.
     lev_strip_last_release: torch.Tensor | None = None
     lev_strip_released_total: torch.Tensor | None = None
+    #: The leading-edge vortex sheet of every strip under FLUXV_LEV_MODEL=hirato
+    #: (lev_hirato.LevChain: ring rows, strengths, rows in use, last step's strength);
+    #: None on the legacy model.  Unlike the two ledgers above it IS numerical state.
+    lev_chain: Any = None
 
     def clone(self) -> "NativeV5MState":
         return NativeV5MState(
@@ -799,13 +882,14 @@ class NativeV5MState:
                 if self.lev_strip_released_total is None
                 else self.lev_strip_released_total.clone()
             ),
+            lev_chain=None if self.lev_chain is None else self.lev_chain.clone(),
             diagnostics=tuple(dict(item) for item in self.diagnostics),
         )
 
     def digest(self) -> str:
         digest = hashlib.sha256(NATIVE_V5M_CONTRACT.encode("ascii"))
         digest.update(str(self.step).encode("ascii"))
-        for value in (
+        tensors = [
             self.gamma_bound,
             self.gamma_previous,
             self.wake_rings,
@@ -814,7 +898,10 @@ class NativeV5MState:
             self.particle_field.gammas_cuda,
             self.frontier_nodes,
             self.frontier_active,
-        ):
+        ]
+        if self.lev_chain is not None:
+            tensors.extend(self.lev_chain.tensors())
+        for value in tensors:
             digest.update(value.detach().contiguous().cpu().numpy().tobytes())
         digest.update(str(self.source_bank.it).encode("ascii"))
         digest.update(str(self.source_bank.nt).encode("ascii"))
@@ -833,7 +920,7 @@ class NativeV5MState:
         ``digest()`` is unchanged and remains the value recorded in the ledger.
         """
 
-        tensors = (
+        tensors = [
             self.gamma_bound,
             self.gamma_previous,
             self.wake_rings,
@@ -842,7 +929,11 @@ class NativeV5MState:
             self.particle_field.gammas_cuda,
             self.frontier_nodes,
             self.frontier_active,
-        )
+        ]
+        if self.lev_chain is not None:
+            # the leading-edge ring chains are replaced, never written in place, so a
+            # changed pointer is what a shed step leaves on the trial; the parent keeps its own
+            tensors.extend(self.lev_chain.tensors())
         return (
             self.step,
             int(self.source_bank.it),
@@ -970,6 +1061,15 @@ class Q16NativeV5MSolver:
 
         self._resolved_load_assembler = None
         self._last_resolved_vs_quadrature_relative = float("nan")
+        # Reference length of the legacy core for every `_ring_velocity` call (plan V3, Bug-4):
+        # the chordwise panel length of the current wing, refreshed at the top of propose().
+        # The value here only covers calls before the first propose().
+        self._legacy_reference_length = 1.0 / settings.chordwise_panels
+        # per-step fields the load evaluations read (plan V3 stage 2): the leading-edge ring
+        # chains with the pseudovortex rings as (rings, strengths), and the leading-edge
+        # suction as a force per panel
+        self._lev_field = None
+        self._step_suction_panel = None
         self.author_load_assembler = Q16NativeAuthorLoadAssembler(
             surface, density=settings.density
         )
@@ -1019,6 +1119,9 @@ class Q16NativeV5MSolver:
             lev_strip_released_total=torch.zeros(
                 ns, device=self.device, dtype=torch.float64
             ),
+            lev_chain=(
+                lev_hirato.LevChain.empty(ns, self.device) if _LEV_HIRATO else None
+            ),
             frontier_nodes=geometry.leading_edge.clone(),
             frontier_active=torch.zeros(ns + 1, device=self.device, dtype=torch.bool),
             diagnostics=(),
@@ -1061,7 +1164,15 @@ class Q16NativeV5MSolver:
         *,
         rough: bool,
         core_radius: float | None = None,
+        free: bool = False,
     ) -> torch.Tensor:
+        """Velocity of `rings` at `points`.  `free=True` marks a free-wake evaluation.
+
+        Under the legacy kernel a free-wake evaluation uses the physical core
+        (`FLUXV_FREE_WAKE_CORE_FRACTION`, see the note next to it); under the v3 kernel the
+        caller passes `core_radius` instead and `free` does nothing.
+        """
+
         if rings.shape[0] == 0:
             return torch.zeros_like(points)
         if _KERNEL_V3:
@@ -1078,8 +1189,14 @@ class Q16NativeV5MSolver:
                 expanded = native_ring_velocity_expanded(points, rings, **keywords)
                 return torch.sum(expanded * gamma[None, :, None], dim=1)
             return native_ring_velocity_fused(points, rings, gamma, **keywords)
-        core_fraction = 0.1 if rough else 1.0e-6
-        reference_length = 1.0 / self.settings.chordwise_panels
+        if rough:
+            core_fraction = 0.1
+        elif free and _FREE_WAKE_CORE_FRACTION > 0.0:
+            core_fraction = _FREE_WAKE_CORE_FRACTION
+        else:
+            core_fraction = 1.0e-6
+        # the wing's own panel length, set at the top of propose() (plan V3, Bug-4)
+        reference_length = self._legacy_reference_length
         full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
         if full_bytes <= self._RING_TILE_BYTES:
             expanded = native_ring_velocity_expanded(
@@ -1138,13 +1255,198 @@ class Q16NativeV5MSolver:
         trial: NativeV5MState,
         core_radius: float | None = None,
     ) -> torch.Tensor:
+        # free material points: under the legacy kernel every filament they see carries the
+        # free-wake core (FLUXV_FREE_WAKE_CORE_FRACTION), bound sheet included
         bound_velocity = self._ring_velocity(
-            points, geometry.rings, trial.gamma_bound, rough=False, core_radius=core_radius
+            points, geometry.rings, trial.gamma_bound, rough=False, core_radius=core_radius,
+            free=True,
         )
         wake_velocity = self._ring_velocity(
-            points, trial.wake_rings, trial.wake_gamma, rough=False, core_radius=core_radius
+            points, trial.wake_rings, trial.wake_gamma, rough=False, core_radius=core_radius,
+            free=True,
         )
         return self.v_inf[None, :] + bound_velocity + wake_velocity
+
+    def _lev_chain_velocity(self, points: torch.Tensor, chain) -> torch.Tensor:
+        """Induction of the leading-edge ring chains at `points` (zero rows add nothing)."""
+
+        rings, gamma = lev_hirato.flat(chain)
+        return self._ring_velocity(points, rings, gamma, rough=False, free=True)
+
+    def _convect_lev_chain(self, geometry, trial, dt: float, core: float | None):
+        """One Runge-Kutta step of the leading-edge ring chains; a new chain, the old one intact.
+
+        Every corner is a material point.  A corner lies on the lines of its own legs, which
+        give nothing there, and sees everything else: the sheet, the wake, the other rows and
+        the particles.  Afterwards the aft corners of a row are pinned again to the free
+        corners of the row in front of it, so the chain keeps sharing its edges exactly.
+        """
+
+        chain = trial.lev_chain
+        if not bool((chain.count > 0).any().item()):
+            return chain
+        rows, span_panels = chain.rings.shape[0], chain.rings.shape[1]
+        corners = chain.rings.reshape(-1, 3)
+        rings, gamma = lev_hirato.flat(chain)
+
+        def velocity(at: torch.Tensor) -> torch.Tensor:
+            value = self._external_velocity(at, geometry, trial, core)
+            value = value + self._ring_velocity(at, rings, gamma, rough=False, free=True)
+            if trial.particle_field.n:
+                value = value + trial.particle_field.velocity_at_cuda(at)
+            return value
+
+        u1 = velocity(corners)
+        u2 = velocity(corners + 0.5 * dt * u1)
+        u3 = velocity(corners + dt * (-u1 + 2.0 * u2))
+        moved = corners + (dt / 6.0) * (u1 + 4.0 * u2 + u3)
+        if not bool(torch.isfinite(moved).all().item()):
+            raise FloatingPointError("leading-edge vortex rings convected to a non-finite position")
+        return lev_hirato._mask_invalid(
+            lev_hirato.reconnect(chain.with_rings(moved.reshape(rows, span_panels, 4, 3))),
+            chain.count,
+        )
+
+    def _hirato_solve(
+        self, geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre
+    ) -> dict:
+        """The circulation solve with the nascent leading-edge vortex of every shedding strip
+        as an unknown (lev_hirato.solve_coupled).
+
+        The first ring of a strip goes where Ramesh's rule puts it; a strip that already has a
+        chain puts its new ring one third of the way to the chain's end (the paper's Eq. 7).
+        After a solve a strip that did not shed may have crossed the critical value through
+        its neighbours' induction; it joins and the solve is repeated, which is the second
+        decision of the paper's flowchart.
+        """
+
+        ns = self.settings.spanwise_panels
+        crit = self.settings.effective_lesp_crit
+        chain = trial.lev_chain
+        edge = lev_hirato.strip_pairs(geometry.leading_edge)
+        back = lev_hirato.strip_pairs(geometry.trailing_edge)
+        pseudovortex = lev_hirato.pseudovortex_ring(
+            geometry.leading_edge, geometry.trailing_edge
+        )
+        # Ramesh's first-vortex displacement in the strip's own frame: chord towards the
+        # trailing edge, suction-side normal, the geometric angle of the freestream.  The
+        # paper's A0 shares its sign with the leading-edge circulation, the solver's suction
+        # parameter is minus that circulation over `scale`.
+        chord_tangent = back.mean(dim=1) - edge.mean(dim=1)
+        chord_tangent = chord_tangent / torch.linalg.vector_norm(
+            chord_tangent, dim=1, keepdim=True
+        )
+        normal = geometry.normals[:ns]
+        speed = torch.linalg.vector_norm(self.v_inf)
+        sin_alpha = torch.sum(self.v_inf[None, :] * normal, dim=1) / speed
+        cos_alpha = torch.sum(self.v_inf[None, :] * chord_tangent, dim=1) / speed
+        first = lev_hirato.first_free_points(
+            edge, chord_tangent, normal, float(speed.item()),
+            self.settings.aerodynamic_dt, -lesp_pre, sin_alpha, cos_alpha,
+        )
+        # the paper's split applies to a chain that is still shedding; a chain that stopped
+        # has left the edge, and the strip's next ring is a first ring on the edge again
+        split = lev_hirato.split_points(edge, lev_hirato.row_aft_pairs(chain.rings[0]))
+        free = torch.where(lev_hirato.continuing(chain)[:, None, None], split, first)
+        nascent = lev_hirato.nascent_row(free, edge)
+
+        def unit_normal(rings: torch.Tensor) -> torch.Tensor:
+            # the matrix of the solve: the exact law of the selected kernel, no core
+            if _KERNEL_V3:
+                expanded = native_ring_velocity_expanded(
+                    geometry.collocation, rings, core_fraction=0.0, reference_length=0.0
+                )
+            else:
+                expanded = native_ring_velocity_expanded(
+                    geometry.collocation,
+                    rings,
+                    core_fraction=1.0e-6,
+                    reference_length=self._legacy_reference_length,
+                )
+            return torch.sum(expanded * geometry.normals[:, None, :], dim=2)
+
+        basis = unit_normal(nascent) + unit_normal(pseudovortex)      # (P, ns)
+        active = torch.abs(lesp_pre) > crit
+        target = -torch.sign(lesp_pre) * crit * scale
+        iterations = 0
+        while True:
+            iterations += 1
+            index = torch.nonzero(active, as_tuple=False).reshape(-1)
+            gamma, strength, residual = lev_hirato.solve_coupled(
+                system_aic, nascent_normal, basis[:, index], rhs, active, target
+            )
+            solved = -gamma[:ns] / scale
+            crossed = (torch.abs(solved) > crit) & ~active
+            if not bool(crossed.any().item()) or iterations >= 8:
+                break
+            active = active | crossed
+        lam = torch.zeros(ns, device=self.device, dtype=torch.float64)
+        lam[index] = strength
+        return {
+            "gamma": gamma, "lam": lam, "active": active, "residual": residual,
+            "nascent": nascent, "iterations": iterations,
+        }
+
+    def _hirato_commit(self, geometry, trial, solution: dict) -> int:
+        """Store the nascent rows, hand a leaving row to the particles, set the load fields."""
+
+        chain = trial.lev_chain
+        active, strength = solution["active"], solution["lam"]
+        pushed, leaving_rings, leaving_gamma, released = lev_hirato.push_nascent(
+            chain, active, solution["nascent"], strength
+        )
+        added = 0
+        if bool(released.any().item()):
+            mean_chord = float(torch.mean(trial.reference_cell_chord).item())
+            positions, gamma, sigma, circulation, strip = lev_hirato.release_particles(
+                leaving_rings,
+                leaving_gamma,
+                released,
+                smoothing_radius=self.settings.dvm_smoothing_radius_chord * mean_chord,
+                target_spacing=self.settings.dvm_target_spacing_chord * mean_chord,
+            )
+            if positions.shape[0]:
+                trial.particle_field.add_particles(
+                    positions, gamma, sigma, circul=circulation, ptype=TYPE_FRESH_SHED,
+                    birth_step=trial.step, source_strip=strip,
+                )
+                added = int(positions.shape[0])
+        trial.lev_chain = lev_hirato.LevChain(
+            rings=pushed.rings, gamma=pushed.gamma, count=pushed.count,
+            prev=torch.where(active, strength, 0.0), joined=pushed.joined,
+        )
+        release = torch.where(active, strength, 0.0)
+        trial.lev_strip_last_release = release.clone()
+        trial.lev_strip_released_total = trial.lev_strip_released_total + release
+        # what every load evaluation sees: the chains as they stand, the nascent rows with
+        # their solved strength included, and the pseudovortex rings at that strength
+        rings, gamma = lev_hirato.flat(trial.lev_chain)
+        pseudovortex = lev_hirato.pseudovortex_ring(
+            geometry.leading_edge, geometry.trailing_edge
+        )
+        self._lev_field = (
+            torch.cat((rings, pseudovortex), dim=0),
+            torch.cat((gamma, strength), dim=0),
+        )
+        return added
+
+    def _hirato_suction(self, geometry, gamma, scale, chord):
+        """The leading-edge suction of every strip as a force per panel, or None."""
+
+        if not _LE_SUCTION:
+            return None
+        ns = self.settings.spanwise_panels
+        leading, trailing = geometry.leading_edge, geometry.trailing_edge
+        width = torch.linalg.vector_norm(leading[1:] - leading[:-1], dim=1)
+        forward = 0.5 * (leading[:-1] + leading[1:] - trailing[:-1] - trailing[1:])
+        forward = forward / torch.linalg.vector_norm(forward, dim=1, keepdim=True)
+        lesp = -gamma[:ns] / scale
+        force = lev_hirato.suction_force(
+            self.settings.density, self.settings.freestream, chord, width, forward, lesp
+        )
+        panel = torch.zeros((gamma.shape[0], 3), device=gamma.device, dtype=torch.float64)
+        panel[:ns] = force                # the first chordwise row, panel i * ns + j
+        return panel
 
     def _advance_material_state(
         self, geometry: NativeV5MGeometry, trial: NativeV5MState
@@ -1219,8 +1521,17 @@ class Q16NativeV5MSolver:
                 u3 = wake_velocity(original + dt * (-u1 + 2.0 * u2))
                 trial.wake_rings.copy_(original + (dt / 6.0) * (u1 + 4.0 * u2 + u3))
 
+        # Plan V3 stage 2: the leading-edge ring chains convect like the wake, with the
+        # same Runge-Kutta step; the trailing-edge wake itself does not see them (they sit at
+        # the other end of the chord).
+        if trial.lev_chain is not None:
+            trial.lev_chain = self._convect_lev_chain(geometry, trial, dt, core)
+
         def particle_external(points: torch.Tensor) -> torch.Tensor:
-            return self._external_velocity(points, geometry, trial, core)
+            velocity = self._external_velocity(points, geometry, trial, core)
+            if trial.lev_chain is not None:
+                velocity = velocity + self._lev_chain_velocity(points, trial.lev_chain)
+            return velocity
 
         if trial.particle_field.n:
             if not synchronous_material:
@@ -1435,6 +1746,8 @@ class Q16NativeV5MSolver:
             # default path.
             trial.step = committed.step
         geometry = self.surface.evaluate(structural_state, structural_velocity)
+        # the legacy core's reference length follows the wing (plan V3, Bug-4)
+        self._legacy_reference_length = mean_chordwise_panel(geometry.rings)
         # This step's release is not known yet: clear the per-step record so a
         # non-releasing step cannot inherit the previous step's strength.
         trial.lev_strip_last_release = torch.zeros(
@@ -1502,7 +1815,7 @@ class Q16NativeV5MSolver:
         )
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
         wake_velocity = self._ring_velocity(
-            geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False
+            geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False, free=True
         )
         # Plan V3 (P0-B): under FLUXV_TE_WAKE=v3 the row that leaves the trailing
         # edge this step is part of the solve.  Its back edge is the trailing
@@ -1538,9 +1851,12 @@ class Q16NativeV5MSolver:
             if _KERNEL_V3:
                 nascent_kwargs = {"core_fraction": 0.0, "reference_length": 0.0}
             else:
+                # No core: this row is part of the influence matrix and its back leg must
+                # cancel the bound trailing-edge leg exactly there.  It never leaves the edge,
+                # so it cannot come close to a collocation point.
                 nascent_kwargs = {
                     "core_fraction": 1.0e-6,
-                    "reference_length": 1.0 / chord_panels,
+                    "reference_length": self._legacy_reference_length,
                 }
             # (points, strips, 3): the kernel has already summed the four legs
             nascent_unit = native_ring_velocity_expanded(
@@ -1569,6 +1885,16 @@ class Q16NativeV5MSolver:
             * geometry.normals,
             dim=1,
         )
+        # Plan V3 stage 2: the leading-edge ring chains as convected by the previous step are
+        # known sources here.  Two per-step fields the load evaluations read further down.
+        hirato = trial.lev_chain is not None
+        self._lev_field = None
+        self._step_suction_panel = None
+        if hirato:
+            rhs = rhs - torch.sum(
+                self._lev_chain_velocity(geometry.collocation, trial.lev_chain) * geometry.normals,
+                dim=1,
+            )
         gamma_pre = torch.linalg.solve(system_aic, rhs)
         ns, nc = self.settings.spanwise_panels, self.settings.chordwise_panels
         chord = 0.5 * (
@@ -1614,15 +1940,23 @@ class Q16NativeV5MSolver:
         # bank's un-gated 2D opinion survives only as the returned
         # ``raw_shed_lev`` diagnostic (counted in ``release_gate_overrides``
         # below).
-        source_result = trial.source_bank.step(
-            alpha,
-            alpha_rate,
-            heave,
-            node_topology_from_cell_count=ns,
-            cell_release_mask=surface_separated,
-        )
         trial.alpha_previous = alpha.clone()
         particle_start = trial.particle_field.n
+        if hirato:
+            # Plan V3 stage 2: no 2-D source bank and no ribbon deposit.  The strength of the
+            # leading-edge vortex is solved with the bound circulation further down and the
+            # sheet is a chain of rings, not particles.
+            source_result = None
+            gamma_lev = torch.zeros(ns, device=self.device, dtype=torch.float64)
+            released = surface_separated.clone()
+        else:
+            source_result = trial.source_bank.step(
+                alpha,
+                alpha_rate,
+                heave,
+                node_topology_from_cell_count=ns,
+                cell_release_mask=surface_separated,
+            )
         # P1: on the joint path the ribbon deposit moves AFTER the solve
         # (newborn strength from the 3D system); the legacy path keeps the
         # original order so the newborn-particle induction below matches
@@ -1630,7 +1964,7 @@ class Q16NativeV5MSolver:
         joint_solve_early = bool(
             getattr(self.settings, "joint_separation_solve", False)
         )
-        if not joint_solve_early:
+        if not joint_solve_early and not hirato:
             gamma_lev, released = self._deposit_dvm_ribbon(
                 geometry, trial, source_result
             )
@@ -1665,7 +1999,11 @@ class Q16NativeV5MSolver:
         # Observability (not a gate): how often the single-owner gate
         # suppressed a 2D strip-theory LESP release vote this step (the
         # bank wanted to shed a strip the 3D solve says is attached).
-        raw_2d_release = source_result["raw_shed_lev"][:ns]
+        if hirato:
+            # there is no second owner: the 3-D mask is the whole release decision
+            raw_2d_release = surface_separated.clone()
+        else:
+            raw_2d_release = source_result["raw_shed_lev"][:ns]
         release_gate_overrides = int(
             torch.count_nonzero(raw_2d_release & ~surface_separated).item()
         )
@@ -1682,9 +2020,12 @@ class Q16NativeV5MSolver:
             if committed.separated_previous is not None
             else torch.zeros_like(surface_separated)
         )
-        has_existing_lev_circulation = (
-            torch.count_nonzero(committed.source_bank.lg[:ns], dim=1) > 0
-        )
+        if hirato:
+            has_existing_lev_circulation = committed.lev_chain.count > 0
+        else:
+            has_existing_lev_circulation = (
+                torch.count_nonzero(committed.source_bank.lg[:ns], dim=1) > 0
+            )
         release_3d_only_count = int(
             torch.count_nonzero(surface_separated & ~raw_2d_release).item()
         )
@@ -1729,7 +2070,26 @@ class Q16NativeV5MSolver:
         use_active_set = bool(
             getattr(self.settings, "load_derivative_active_set", False)
         )
-        if joint_solve and active_indices.numel():
+        hirato_solution = None
+        if hirato:
+            # Plan V3 stage 2: the nascent leading-edge vortex of every shedding strip is an
+            # unknown of the circulation solve, next to the bound circulation.
+            hirato_solution = self._hirato_solve(
+                geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre_3d
+            )
+            gamma = hirato_solution["gamma"]
+            # the active set may have grown while iterating (the paper's flowchart)
+            pin_active = hirato_solution["active"]
+            active_indices = le_indices[pin_active]
+            residual_max = torch.max(torch.abs(hirato_solution["residual"]))
+            residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
+            if bool((residual_max > self.settings.gate_rtol * residual_scale).item()):
+                raise RuntimeError(
+                    "native V5M leading-edge vortex: no-penetration rows failed: "
+                    f"{float(residual_max.item()):.9e} m/s"
+                )
+            load_derivative_scope = "hirato_coupled"
+        elif joint_solve and active_indices.numel():
             # P1-2 REAL-operator joint solve: the newborn-LEV basis is the
             # induction of the material vortex-sheet ribbon that will
             # actually be deposited (same frontier geometry, spacing and
@@ -1968,7 +2328,12 @@ class Q16NativeV5MSolver:
             gamma = torch.linalg.solve(system_aic, system_rhs)
         # Acceptance: joint path checks the FULL surface (LE included);
         # legacy path checks the retained rows exactly as before.
-        total_residual = system_aic @ gamma - system_rhs
+        if hirato:
+            # the residual of all P no-penetration rows with the nascent leading-edge
+            # vortex at its solved strength, the pinned leading-edge rows included
+            total_residual = hirato_solution["residual"]
+        else:
+            total_residual = system_aic @ gamma - system_rhs
         if joint_solve and active_indices.numel():
             # REAL ribbon operator (per-unit-strength deposited-sheet
             # induction), consistent with the closure equations above.
@@ -1998,7 +2363,8 @@ class Q16NativeV5MSolver:
                 raise RuntimeError("native V5M full-surface Neumann rows failed")
         else:
             retained = torch.ones_like(rhs, dtype=torch.bool)
-            retained[active_indices] = False
+            if not hirato:
+                retained[active_indices] = False
             retained_max = torch.max(torch.abs(total_residual[retained]))
             retained_scale = torch.clamp(torch.max(torch.abs(rhs[retained])), min=1.0)
             residual_max = retained_max
@@ -2010,7 +2376,19 @@ class Q16NativeV5MSolver:
         # excess is not part of LESP, on the legacy path it is the full pin.
         solved_lesp = -gamma[:ns] / scale
         pin_error = torch.zeros((), device=self.device, dtype=torch.float64)
-        if active_indices.numel() and not joint_solve:
+        if hirato:
+            # every shedding strip sits at the critical suction parameter, with its sign
+            pin_error = torch.zeros((), device=self.device, dtype=torch.float64)
+            if active_indices.numel():
+                pin_error = torch.max(
+                    torch.abs(
+                        solved_lesp[pin_active]
+                        - torch.sign(lesp_pre_3d[pin_active]) * self.settings.effective_lesp_crit
+                    )
+                )
+            if bool((pin_error > 1.0e-6).item()):
+                raise RuntimeError("native V5M LESP pin failed")
+        elif active_indices.numel() and not joint_solve:
             source_a0 = source_result["A0"][:ns]
             if _LE_PIN == "legacy":
                 # The legacy convention, consistently: LESP is -Gamma/scale and the pin
@@ -2063,6 +2441,14 @@ class Q16NativeV5MSolver:
             gamma_lev, released = self._deposit_dvm_ribbon(
                 geometry, trial, joint_source_result
             )
+        elif hirato:
+            # the chains take this step's nascent rows, a row may leave for the particle
+            # field, and the two per-step fields for the loads are set
+            hirato_solution["released_particles"] = self._hirato_commit(
+                geometry, trial, hirato_solution
+            )
+            gamma_lev = hirato_solution["lam"]
+            released = pin_active
         elif not joint_solve:
             pass  # legacy path deposited before the solve (original order)
 
@@ -2142,6 +2528,14 @@ class Q16NativeV5MSolver:
                 wake_velocity = wake_velocity + torch.sum(
                     nascent_unit * gamma_tev[None, :, None], dim=1
                 )
+            if self._lev_field is not None:
+                # the leading-edge ring chains as they stand and the pseudovortex rings
+                wake_velocity = wake_velocity + self._ring_velocity(
+                    geometry.collocation, *self._lev_field, rough=False
+                )
+            if hirato and hirato_solution["released_particles"]:
+                # rows handed to the particle field this step are particles from here on
+                particle_velocity = trial.particle_field.velocity_at_cuda(geometry.collocation)
         external_flow = self.v_inf + wake_velocity + particle_velocity + bound_velocity
         grid = gamma.reshape(nc, ns)
         dx = torch.linalg.vector_norm(
@@ -2224,6 +2618,15 @@ class Q16NativeV5MSolver:
         else:
             wake_vertex_velocity = None
             mf2_history = torch.zeros_like(gamma)
+        if hirato:
+            # The paper's Eq. (17): the unsteady term carries d/dt of the bound circulation
+            # together with that of the strip's leading-edge vortex, which is zero on a strip
+            # that is not shedding.
+            lev_rate = (
+                trial.lev_chain.prev - committed.lev_chain.prev
+            ) / self.settings.aerodynamic_dt
+            mf2_history = mf2_history + lev_rate[None, :].expand(nc, ns).reshape(-1)
+            self._step_suction_panel = self._hirato_suction(geometry, gamma, scale, chord)
         author_load = self.author_load_assembler.assemble(
             structural_state=structural_state,
             geometry=geometry,
@@ -2234,7 +2637,22 @@ class Q16NativeV5MSolver:
             mf2_history=mf2_history,
         )
         pressure = author_load.constant_pressure
-        panel_forces = pressure[:, None] * geometry.areas[:, None] * geometry.normals
+        pressure_forces = pressure[:, None] * geometry.areas[:, None] * geometry.normals
+        # Hirato's leading-edge suction (the paper's Eq. 20) acts on the front filament of
+        # each strip's first panel; it is a chordwise force and enters the streamwise
+        # coefficient, never the normal one.
+        suction = self._step_suction_panel
+        panel_forces = pressure_forces if suction is None else pressure_forces + suction
+        extra_moment = (
+            torch.zeros(3, device=self.device, dtype=torch.float64)
+            if suction is None
+            else torch.sum(
+                torch.linalg.cross(
+                    0.5 * (geometry.rings[:ns, 0] + geometry.rings[:ns, 1]), suction[:ns], dim=1
+                ),
+                dim=0,
+            )
+        )
         generalized = wp.clone(author_load.constant_generalized_force)
         # M1-3: publish the unified resolved packet from the SAME solver
         # state (shared NativeResolvedLoadAssembler; induction via this
@@ -2281,6 +2699,7 @@ class Q16NativeV5MSolver:
                     trial.wake_gamma,
                     rough=False,
                     core_radius=core,
+                    free=True,
                 )
                 + self._ring_velocity(
                     mids_flat,
@@ -2295,11 +2714,16 @@ class Q16NativeV5MSolver:
                 solution_velocity_flat
                 + trial.particle_field.velocity_at_cuda(mids_flat)
             )
+        if self._lev_field is not None:
+            solution_velocity_flat = solution_velocity_flat + self._ring_velocity(
+                mids_flat, *self._lev_field, rough=False
+            )
         packet = resolved.assemble_packet(
             geometry=geometry,
             gamma=gamma,
             solution_velocity_flat=solution_velocity_flat.contiguous(),
             mf2_history=mf2_history,
+            front_extra_force=self._step_suction_panel,
             component_ledger={
                 "author_constant_pressure": author_load.constant_pressure,
             },
@@ -2355,8 +2779,11 @@ class Q16NativeV5MSolver:
             panel_forces=panel_forces.clone(),
             pressure=pressure.clone(),
             total_force=torch.sum(panel_forces, dim=0),
-            total_moment=torch.sum(
-                torch.linalg.cross(geometry.collocation, panel_forces, dim=1), dim=0
+            total_moment=(
+                torch.sum(
+                    torch.linalg.cross(geometry.collocation, pressure_forces, dim=1), dim=0
+                )
+                + extra_moment
             ),
             surface_load_packet=packet,
         )
@@ -2488,9 +2915,27 @@ class Q16NativeV5MSolver:
             newborn_host,
         ) = batch
         lev_release_count_host, separated_strip_host, owner_conflicts_host = batch_ints
+        lev_hirato_record = None
+        if hirato:
+            strength = hirato_solution["lam"]
+            lev_hirato_record = {
+                "active_strips": int(torch.count_nonzero(hirato_solution["active"]).item()),
+                "iterations": int(hirato_solution["iterations"]),
+                "strength_max_abs": float(strength.abs().max().item()),
+                "strength_sum": float(strength.sum().item()),
+                "released_particles": int(hirato_solution["released_particles"]),
+                "chain_rows": int(trial.lev_chain.count.sum().item()),
+                "suction_max_abs": (
+                    float(self._step_suction_panel.abs().max().item())
+                    if self._step_suction_panel is not None
+                    else 0.0
+                ),
+            }
         trial.diagnostics = trial.diagnostics + (
             {
                 "step": trial.step,
+                "lev_model": "hirato" if hirato else "legacy",
+                "lev_hirato": lev_hirato_record,
                 "lev_release_count": lev_release_count_host,
                 "separated_strip_count": separated_strip_host,
                 "release_owner_conflicts": owner_conflicts_host,

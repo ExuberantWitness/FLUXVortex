@@ -27,6 +27,7 @@ import torch
 
 from fluxvortex.warp_fsi.kernels_ring_velocity import (
     _KERNEL_V3,
+    mean_chordwise_panel,
     native_ring_velocity_expanded,
 )
 
@@ -197,7 +198,7 @@ class NativeResolvedLoadAssembler:
 
     # -- velocity kernels (mirrors Q16NativeV5MSolver._ring_velocity) -----
     def bound_velocity(
-        self, points: torch.Tensor, rings: torch.Tensor, gamma: torch.Tensor, nc: int
+        self, points: torch.Tensor, rings: torch.Tensor, gamma: torch.Tensor
     ) -> torch.Tensor:
         if rings.shape[0] == 0:
             return torch.zeros_like(points)
@@ -207,7 +208,9 @@ class NativeResolvedLoadAssembler:
             reference_length = 0.0
         else:
             core_fraction = 1.0e-6
-            reference_length = 1.0 / nc
+            # the wing's own panel length, as the solver's `_ring_velocity` uses it (plan V3,
+            # Bug-4); it was 1/nc, the author's one-metre chord
+            reference_length = mean_chordwise_panel(rings)
         full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
         if full_bytes <= _RING_TILE_BYTES:
             expanded = native_ring_velocity_expanded(
@@ -287,6 +290,7 @@ class NativeResolvedLoadAssembler:
         mf2_history: torch.Tensor,
         component_ledger: Mapping[str, torch.Tensor] | None = None,
         te_leg_strength_override: torch.Tensor | None = None,
+        front_extra_force: torch.Tensor | None = None,
     ) -> NativeV5MSurfaceLoadPacket:
         """Assemble the resolved point-load packet.
 
@@ -294,6 +298,11 @@ class NativeResolvedLoadAssembler:
         + bound + wake + particles) at the 4P filament midpoints in
         front/right/back/left order — exactly what the solver's
         ``refine_kj_with_solution_velocity`` path evaluates.
+
+        ``front_extra_force`` (P, 3), if given, is added to the force of the front
+        filament of each panel, where it acts: Hirato's leading-edge suction
+        (plan V3, stage 2).  It is not a Kutta-Joukowski force and depends on no
+        velocity, so it enters the packet directly.
         """
         if self.aerodynamic_dt is None:
             raise ValueError("resolved load assembly requires aerodynamic_dt")
@@ -336,6 +345,13 @@ class NativeResolvedLoadAssembler:
                 * strength.reshape(-1, 1)
                 * torch.linalg.cross(velocity + movement, length, dim=1)
             )
+            if leg == 0 and front_extra_force is not None:
+                if tuple(front_extra_force.shape) != (count, 3):
+                    raise ValueError(
+                        f"front_extra_force must have shape ({count}, 3), "
+                        f"got {tuple(front_extra_force.shape)}"
+                    )
+                force = force + front_extra_force
             point_forces.append(force)
             total_moment += torch.sum(torch.linalg.cross(mid, force, dim=1), dim=0)
         unsteady = (

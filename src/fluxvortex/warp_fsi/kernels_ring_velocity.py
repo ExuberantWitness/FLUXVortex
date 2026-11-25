@@ -27,23 +27,26 @@ RING_BS_BLOCK_SIZE = 256
 _C_INV_4PI = 1.0 / (4.0 * math.pi)
 _C_FP64_EPS = 2.220446049250313e-16  # torch.finfo(float64).eps
 #: Denominator regularisation of the filament law, |a x b|^2 -> |a x b|^2 + EPS_V.
-#: Frozen at 1e-9 from the author's MATLAB (Yamano: "eps_v = 1e-9, in squared
-#: denominator").
+#: The author's MATLAB froze it at 1e-9 (Yamano: "eps_v = 1e-9, in squared denominator").
 #:
 #: It carries UNITS: |a x b| is m^2, so EPS_V is m^4, and the exact law is recovered only
-#: where |a x b|^2 >> EPS_V.  That holds on metre-scale wings.  On the Rojratsirikul et
-#: al. (2011) wing (chord 68.8 mm, panels 4.6 mm) the near field has |a x b|^2 ~ 1e-10
-#: and the constant dominates it -- measured with
-#: platform/warp_vpm/diagnose_ring_kernel_scale_invariance.py, the self term is 10% of
-#: Biot-Savart and the nearest-neighbour term changes sign (note A19).
+#: where |a x b|^2 >> EPS_V.  1e-9 holds on metre-scale wings.  On the Rojratsirikul et al.
+#: (2011) wing (chord 68.8 mm, panels 4.6 mm) the near field has |a x b|^2 ~ 1e-10 and that
+#: value dominates it: the self term is 10% of Biot-Savart and the nearest-neighbour term
+#: changes sign (platform/warp_vpm/diagnose_ring_kernel_scale_invariance.py, note A19).
 #:
-#: `FLUXV_RING_EPS_V` overrides the constant for BOTH copies on this path: this one,
-#: behind the fused kernel, and the torch function `native_ring_velocity_expanded`
-#: behind the influence matrix.  The default is the frozen value, so the production
-#: path is unchanged.  A value for a small wing should be set relative to its panel
-#: size, not copied from another model; `diagnose_ring_kernel_scale_invariance.py`
-#: shows where a candidate becomes inert.
-_EPS_V = float(os.environ.get("FLUXV_RING_EPS_V", "1.0e-9"))
+#: The default is 1e-12 since 2026-11-25 (the owner's decision).  The cut-off length
+#: sqrt(EPS_V)/L is then 0.22 mm on a 4.6 mm panel, the steady lattice is within 0.4% of the
+#: unregularised one (0.2203 against 0.2194 at alpha = 5 deg), and a point that leaves a
+#: filament line under a Runge-Kutta stage still meets the regularised law at the
+#: trailing-edge junction.  It must stay positive: it is what keeps the denominator off zero.
+#:
+#: `FLUXV_RING_EPS_V` overrides the constant for BOTH copies on this path: this one, behind
+#: the fused kernel, and the torch function `native_ring_velocity_expanded` behind the
+#: influence matrix.  A value for another wing is chosen relative to its panel size, never
+#: copied from another model; `diagnose_ring_kernel_scale_invariance.py` shows where a
+#: candidate becomes inert.
+_EPS_V = float(os.environ.get("FLUXV_RING_EPS_V", "1.0e-12"))
 if not (math.isfinite(_EPS_V) and _EPS_V > 0.0):
     raise ValueError(
         f"FLUXV_RING_EPS_V must be a finite positive number, got {_EPS_V!r}"
@@ -52,8 +55,9 @@ _C_EPS_V = _EPS_V                     # the same constant, as the fused kernel s
 
 #: FLUXV_RING_KERNEL selects the filament law (plan V3, P0-A).
 #:
-#:   legacy  |a x b|^2 + EPS_V in the denominator, EPS_V = FLUXV_RING_EPS_V (1e-9 m^4 by
-#:           default).  Kept bit-for-bit; what that constant does is documented above.
+#:   legacy  |a x b|^2 + EPS_V in the denominator, EPS_V = FLUXV_RING_EPS_V (1e-12 m^4 by
+#:           default, 1e-9 before 2026-11-25).  The form the author wrote; what the
+#:           constant does is documented above.
 #:   v3      exact Biot-Savart with a dimensionless collinear guard.  |a x b| = |e| h, the
 #:           filament length times the perpendicular distance, so cross_sq / |e|^4 =
 #:           (h/|e|)^2 is dimensionless.  A filament whose evaluation point lies on its line
@@ -218,6 +222,24 @@ def _ring_bs_partials_v3(
     partials[t, b, 0] = accx
     partials[t, b, 1] = accy
     partials[t, b, 2] = accz
+
+
+def mean_chordwise_panel(rings: torch.Tensor) -> float:
+    """Mean chordwise length, in metres, of rings stored (R, 4, 3).
+
+    The corners are front-left, front-right, back-right, back-left, so the length of a ring
+    is half of |back-left + back-right - front-left - front-right|.  This is the reference
+    length of the legacy core, `core_fraction * reference_length`.  The author's code wrote
+    `1 / chordwise_panels`, which is this length for a chord of one metre and is wrong by the
+    chord for any other wing (plan V3, Bug-4).  One device synchronisation per call.
+    """
+
+    if rings.shape[0] == 0:
+        return 0.0
+    length = 0.5 * torch.linalg.vector_norm(
+        rings[:, 2] + rings[:, 3] - rings[:, 0] - rings[:, 1], dim=1
+    )
+    return float(length.mean().item())
 
 
 def native_ring_velocity_fused(

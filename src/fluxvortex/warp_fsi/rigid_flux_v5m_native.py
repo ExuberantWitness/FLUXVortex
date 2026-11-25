@@ -350,7 +350,7 @@ class RigidAuthorLoadAssembler:
         # points and the far field (freestream + wake + particles), then
         # re-evaluate the bound part at the filament midpoints.
         bound_collocation = self._resolved.bound_velocity(
-            geometry.collocation, geometry.rings, gamma, nc
+            geometry.collocation, geometry.rings, gamma
         )
         far_field = external_flow - bound_collocation
         mids, movements, lengths = self._resolved.leg_layout(geometry)
@@ -359,7 +359,7 @@ class RigidAuthorLoadAssembler:
             far_value = 0.5 * (far_field + far_field[neighbour])
             leg_velocities.append(far_value)
         bound_mids = self._resolved.bound_velocity(
-            torch.cat(mids, dim=0), geometry.rings, gamma, nc
+            torch.cat(mids, dim=0), geometry.rings, gamma
         )
         for leg in range(4):
             leg_velocities[leg] = (
@@ -622,6 +622,7 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
                     trial.wake_gamma,
                     rough=False,
                     core_radius=self._core_radius(geometry),
+                    free=True,
                 )
         elif trial.wake_rings.shape[0] > ns:
             # The load was assembled BEFORE this step's TEV row was shed;
@@ -634,11 +635,25 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             )
         if trial.particle_field.n:
             velocity = velocity + trial.particle_field.velocity_at_cuda(mids)
+        # Plan V3 stage 2: the leading-edge ring chains and the pseudovortex rings
+        if self._lev_field is not None:
+            velocity = velocity + self._ring_velocity(mids, *self._lev_field, rough=False)
         panel_forces, total_force, total_moment = (
             assembler.refine_kj_with_solution_velocity(
                 geometry, gamma, gamma_rate, velocity
             )
         )
+        # Hirato's leading-edge suction (the paper's Eq. 20): a force on the front filament
+        # of each strip's first panel.  It changes the streamwise force and the moment, never
+        # the force normal to the chord.
+        suction = self._step_suction_panel
+        if suction is not None:
+            front_mid = 0.5 * (geometry.rings[:, 0] + geometry.rings[:, 1])
+            panel_forces = panel_forces + suction
+            total_force = total_force + torch.sum(suction, dim=0)
+            total_moment = total_moment + torch.sum(
+                torch.linalg.cross(front_mid, suction, dim=1), dim=0
+            )
         # M1-1: publish the unified surface-load packet from the SAME
         # integration inputs; consumers project it, never re-integrate.
         packet = assembler._resolved.assemble_packet(
@@ -646,6 +661,7 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             gamma=gamma,
             solution_velocity_flat=velocity,
             mf2_history=gamma_rate,
+            front_extra_force=suction,
             component_ledger={
                 "lift1_pressure": author.lift1_pressure,
                 "wake_history_pressure": author.wake_history_pressure,

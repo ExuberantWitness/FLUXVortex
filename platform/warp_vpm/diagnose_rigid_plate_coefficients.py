@@ -125,11 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     )[None]
     centre = torch.tensor([[0.5 * dx, 0.5 * ds, 0.0]], dtype=torch.float64, device=device)
     torch_path = ring_kernel.native_ring_velocity_expanded(
-        centre, ring, core_fraction=1.0e-6, reference_length=1.0 / nc
+        centre, ring, core_fraction=1.0e-6, reference_length=ring_kernel.mean_chordwise_panel(ring),
     )[0, 0, 2]
     fused_path = ring_kernel.native_ring_velocity_fused(
         centre, ring, torch.ones(1, dtype=torch.float64, device=device),
-        core_fraction=1.0e-6, reference_length=1.0 / nc,
+        core_fraction=1.0e-6, reference_length=ring_kernel.mean_chordwise_panel(ring),
     )[0, 2]
     exact = _textbook_self(ring[0].cpu(), centre[0].cpu())
     kernel_check = {
