@@ -53,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--average-last", type=int, default=100,
                         help="average the flow over the last N committed steps")
+    parser.add_argument("--sample-stride", type=int, default=1,
+                        help="sample every Nth step inside the averaging window.  A time "
+                             "average over a long window does not need every step, and the "
+                             "sampling is what costs: each sample evaluates four induction "
+                             "terms at nx*nz points against the whole particle field.")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--nx", type=int, default=96)
     parser.add_argument("--nz", type=int, default=48)
@@ -132,7 +137,9 @@ def main(argv: list[str] | None = None) -> int:
         if last_sampled["step"] != step:
             previous = step - 1
             last_sampled["step"] = step
-            if previous >= start_average:
+            if previous >= start_average and (
+                previous - start_average
+            ) % arguments.sample_stride == 0:
                 sample()
                 time_stars.append(previous * dt_star)
 

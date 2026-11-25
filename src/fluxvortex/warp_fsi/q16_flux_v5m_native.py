@@ -25,6 +25,7 @@ from fluxvortex.q16_work_conjugate_transfer import Q16SurfaceTransferMap
 from . import config as warp_config
 from .kernels_q16_transfer import Q16CudaSurfaceTransfer
 from .kernels_ring_velocity import (
+    _KERNEL_V3,
     native_ring_velocity_expanded,
     native_ring_velocity_fused,
 )
@@ -67,6 +68,102 @@ _LE_PIN = os.environ.get("FLUXV_LE_PIN", "legacy").strip().lower()
 if _LE_PIN not in {"legacy", "signed", "signed_mag"}:
     raise ValueError(
         f"FLUXV_LE_PIN must be 'legacy', 'signed' or 'signed_mag', got {_LE_PIN!r}"
+    )
+
+#: Where the NEWBORN leading-edge sheet sits relative to the leading edge.
+#:
+#: The deposit is a closed ribbon anchored on the physical leading-edge line, so its
+#: first-row induction is set by how far AFT its return leg reaches -- closing the
+#: sheet at the leading edge makes it a sliver whose two legs cancel.  Measured on the
+#: real A16 geometry (platform/warp_vpm/diagnose_lev_ribbon_cancellation.py, note A14),
+#: as a fraction of the monopole an open filament of the same strength induces at the
+#: first collocation row:
+#:
+#:     chordwise d/c   0.001   0.005   0.01    0.02    1/30    0.05
+#:     survives         2.1%   11.5%   24.8%   56.0%  103.6%  162.2%
+#:     normal   d/c     0.0%    0.4%    1.5%    5.7%   14.8%   29.4%
+#:
+#: The production arm sits at 5.8% of the field average, i.e. in the chordwise-sliver
+#: column.  Extending the return leg along the NORMAL direction does not help -- the
+#: first collocation row is 0.5*dx AFT of the edge, so only chordwise extent changes
+#: the distance difference between the two legs.
+#:
+#:   off    frontier = LE + reference_node_chord * (2-D birth displacement).  The
+#:          historical behaviour: the sheet is a chordwise sliver, 0.08 panels deep
+#:          on A16 (diagnose_roj_lev_feed.py prints it).
+#:   chord  the same, with the CHORDWISE reach replaced by FLUXV_LE_SHEET_EXTENT_PANELS
+#:          panels along the chord.  The normal offset of the 2-D birth point is kept.
+#:
+#: `chord` is a controlled sweep of ONE geometric quantity of the existing deposit.  It
+#: is NOT the leading-edge vortex of Hirato et al. (Journal of Aircraft, doi:10.2514/1.C035124,
+#: Sec. II.D), and an earlier version of this comment wrongly said it was.  That paper
+#: does not widen a per-step loop: its new ring goes one third of the way from the
+#: leading edge to the LAST SHED RING (x_n = 2/3 x_LE + 1/3 x_{n-2}, its Eq. 7), the
+#: ring next to the edge is split, every ring keeps its FULL shedding-time strength,
+#: and a pseudovortex ring spanning the chord cancels the filament on the edge.  The
+#: steady sheet is therefore one loop from the edge to the rolled-up core, not a stack
+#: of slivers.  A widened loop lying in the surface plane is bound vorticity, so
+#: `chord` cannot be expected to produce a recirculation region; it exists to measure
+#: how far the deposit's own extent carries, and to show that geometry alone is not the
+#: fix.  Selection is by the error against the digitised experiment, never by
+#: self-consistency.
+_LE_SHEET_EXTENT = os.environ.get("FLUXV_LE_SHEET_EXTENT", "off").strip().lower()
+if _LE_SHEET_EXTENT not in {"off", "chord"}:
+    raise ValueError(
+        "FLUXV_LE_SHEET_EXTENT must be 'off' or 'chord', "
+        f"got {_LE_SHEET_EXTENT!r}"
+    )
+#: Chordwise reach of the `chord` arm in PANEL units (divided by chordwise_panels
+#: where it is applied: `reference_node_chord` is the FULL chord, see the trap noted in
+#: `_lev_sheet_frontier`).
+_LE_SHEET_EXTENT_PANELS = float(os.environ.get("FLUXV_LE_SHEET_EXTENT_PANELS", "2.0"))
+
+#: How the new trailing-edge wake row meets the circulation solve (plan V3, P0-B).
+#:
+#: The legacy order inside one step is: convect the wake, solve the bound circulation
+#: against that convected wake, THEN insert the new row [rear, rear + U dt] and re-rivet the
+#: previous newest row's front back to the trailing edge.  Two things follow, both measured
+#: (diagnose_ring_lattice_steady_cpu.py --wake-layout, FLUX_V5M_PLAN_AUTHOR_REPLY_AND_V3
+#: _20261125.md question 3):
+#:
+#:   * at the moment of the solve there is NO wake filament at the trailing edge: the bound
+#:     trailing-edge leg stands uncancelled with a 1*U*dt gap behind it (layout "gap1",
+#:     which alone is worth -35% of Cn at alpha = 5 deg once the kernel constant is gone);
+#:   * after insertion rows 0 and 1 both start at the trailing edge (layout "overlap"):
+#:     the new row is a closed ring one U*dt wide whose self-induced velocity throws its
+#:     front corners off the edge (the "singular undershoot" the 1e-9 constant was hiding).
+#:
+#:   legacy  the order above, bit-for-bit.
+#:   v3      the new row spans [trailing edge, convected front of the previous newest row]
+#:           and is part of the linear solve: its induction enters the columns of the
+#:           trailing-edge row (its strength is the trailing-edge circulation plus the LEV
+#:           release), the part of it that is known before the solve (the LEV release)
+#:           enters the right-hand side, and every load evaluation sees the same vortex
+#:           system.  The insertion then simply stores the row that was solved for, so the
+#:           wake is one continuous sheet and the trailing-edge legs cancel exactly.
+#:
+#: Either the reopening alone or the implicit row alone makes the result worse than legacy
+#: (reopening alone: 0.1225 against 0.1364 at eps = 1e-11, plan V3 question 3), so v3
+#: always does both.
+_TE_WAKE_CHOICE = os.environ.get("FLUXV_TE_WAKE", "legacy").strip().lower()
+if _TE_WAKE_CHOICE not in {"legacy", "v3"}:
+    raise ValueError(
+        f"FLUXV_TE_WAKE must be 'legacy' or 'v3', got {_TE_WAKE_CHOICE!r}"
+    )
+_TE_WAKE_V3 = _TE_WAKE_CHOICE == "v3"
+
+#: Core radius of the free-wake filaments, in chordwise panel lengths.  Used only under
+#: FLUXV_RING_KERNEL=v3, and only where free vorticity is evaluated close to filaments: the
+#: convection of free material points (wake nodes, particles), where it acts on every
+#: filament they see, bound sheet included, and the wake filaments of the load evaluation.
+#: The influence matrix is never cored.  Tied to the panel size, never to U*dt and never to
+#: a fixed number of metres, so that it scales with the wing.  The plan's range is 0.25-0.5
+#: panel (G-Flap chooses within it); 0 switches the core off.  Why the bound sheet needs it
+#: at the trailing-edge junction: `Q16NativeV5MSolver._core_radius`.
+_WAKE_CORE_PANELS = float(os.environ.get("FLUXV_WAKE_CORE_PANELS", "0.25"))
+if not (math.isfinite(_WAKE_CORE_PANELS) and _WAKE_CORE_PANELS >= 0.0):
+    raise ValueError(
+        f"FLUXV_WAKE_CORE_PANELS must be finite and non-negative, got {_WAKE_CORE_PANELS!r}"
     )
 
 
@@ -339,6 +436,11 @@ class NativeV5MConfig:
                 "le_open_deposit requires joint_separation_solve "
                 "(the closure basis and the deposit must agree)"
             )
+        if _TE_WAKE_V3 and self.joint_separation_solve:
+            raise ValueError(
+                "FLUXV_TE_WAKE=v3 is implemented on the legacy separation path only; "
+                "joint_separation_solve writes the wake row with a different rule"
+            )
         if type(self.load_derivative_active_set) is not bool:
             raise TypeError("load_derivative_active_set must be an exact bool")
         if type(self.te_leg_candidate_diagnostic) is not bool:
@@ -610,12 +712,25 @@ def _read_device_scalars(
 
 
 def native_aic(geometry: NativeV5MGeometry, *, chordwise_panels: int) -> torch.Tensor:
-    expanded = native_ring_velocity_expanded(
-        geometry.collocation,
-        geometry.rings,
-        core_fraction=1.0e-6,
-        reference_length=1.0 / chordwise_panels,
-    )
+    if _KERNEL_V3:
+        # Plan V3 (P0-A): the exact law.  The closest approach in this matrix is a
+        # collocation point half a panel from its own ring's sides, so no core is needed;
+        # the kernel's collinear guard is all the protection there is.  The legacy
+        # reference length below, 1/chordwise_panels METRES, is the author's one-metre
+        # chord and is not used on this path.
+        expanded = native_ring_velocity_expanded(
+            geometry.collocation,
+            geometry.rings,
+            core_fraction=0.0,
+            reference_length=0.0,
+        )
+    else:
+        expanded = native_ring_velocity_expanded(
+            geometry.collocation,
+            geometry.rings,
+            core_fraction=1.0e-6,
+            reference_length=1.0 / chordwise_panels,
+        )
     result = torch.sum(expanded * geometry.normals[:, None, :], dim=2)
     if bool(torch.any(torch.diagonal(result) >= 0.0).item()):
         raise RuntimeError("native AIC orientation drift")
@@ -938,9 +1053,31 @@ class Q16NativeV5MSolver:
     # intermediate tensors.
     _RING_TILE_BYTES = 64 * 1024 * 1024
 
-    def _ring_velocity(self, points: torch.Tensor, rings: torch.Tensor, gamma: torch.Tensor, *, rough: bool) -> torch.Tensor:
+    def _ring_velocity(
+        self,
+        points: torch.Tensor,
+        rings: torch.Tensor,
+        gamma: torch.Tensor,
+        *,
+        rough: bool,
+        core_radius: float | None = None,
+    ) -> torch.Tensor:
         if rings.shape[0] == 0:
             return torch.zeros_like(points)
+        if _KERNEL_V3:
+            # Plan V3 (P0-A): the exact law, or the fourth-order core of one fixed radius
+            # where the caller asks for it (the free wake close to other filaments).
+            # `rough` and the legacy reference length do not apply on this path.
+            keywords = {
+                "core_fraction": 0.0,
+                "reference_length": 0.0,
+                "core_radius": core_radius,
+            }
+            full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
+            if full_bytes <= self._RING_TILE_BYTES:
+                expanded = native_ring_velocity_expanded(points, rings, **keywords)
+                return torch.sum(expanded * gamma[None, :, None], dim=1)
+            return native_ring_velocity_fused(points, rings, gamma, **keywords)
         core_fraction = 0.1 if rough else 1.0e-6
         reference_length = 1.0 / self.settings.chordwise_panels
         full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
@@ -965,17 +1102,49 @@ class Q16NativeV5MSolver:
             reference_length=reference_length,
         )
 
+    def _core_radius(self, geometry: NativeV5MGeometry) -> float | None:
+        """Core radius of the v3 kernel, or None where no core applies.
+
+        FLUXV_WAKE_CORE_PANELS chordwise panel lengths, and only under the v3 kernel.  It is
+        tied to the panel size so that it scales with the wing; the legacy kernel had no
+        physical core at all (core_fraction 1e-6 times a reference length in metres) and
+        leaned on the 1e-9 constant instead.
+
+        It is applied wherever FREE material points are convected (wake nodes, particles),
+        to every filament they see, and to the wake filaments at the load evaluation; the
+        influence matrix stays exact.  The bound sheet needs it at the trailing-edge
+        junction: the upstream corners of the newest wake row lie ON the lines of the
+        bound trailing-edge and streamwise legs.  The collinear guard covers a point that
+        is exactly on such a line; one Runge-Kutta stage later the point is a distance h
+        off it, and the exact law then returns (Gamma_j - Gamma_j+1) / (4 pi h) from the
+        two anti-parallel streamwise legs that meet there.  Measured on the rigid plate at
+        alpha = 5 deg with the core on the wake only: a normal velocity of about 1.4 m/s
+        at a freestream of 0.022 m/s (third step of the startup ramp).
+        """
+
+        if not _KERNEL_V3 or _WAKE_CORE_PANELS <= 0.0:
+            return None
+        panel = 0.5 * torch.linalg.vector_norm(
+            geometry.rings[:, 2] + geometry.rings[:, 3]
+            - geometry.rings[:, 0] - geometry.rings[:, 1],
+            dim=1,
+        )
+        return _WAKE_CORE_PANELS * float(torch.mean(panel).item())
+
     def _external_velocity(
         self,
         points: torch.Tensor,
         geometry: NativeV5MGeometry,
         trial: NativeV5MState,
+        core_radius: float | None = None,
     ) -> torch.Tensor:
-        return (
-            self.v_inf[None, :]
-            + self._ring_velocity(points, geometry.rings, trial.gamma_bound, rough=False)
-            + self._ring_velocity(points, trial.wake_rings, trial.wake_gamma, rough=False)
+        bound_velocity = self._ring_velocity(
+            points, geometry.rings, trial.gamma_bound, rough=False, core_radius=core_radius
         )
+        wake_velocity = self._ring_velocity(
+            points, trial.wake_rings, trial.wake_gamma, rough=False, core_radius=core_radius
+        )
+        return self.v_inf[None, :] + bound_velocity + wake_velocity
 
     def _advance_material_state(
         self, geometry: NativeV5MGeometry, trial: NativeV5MState
@@ -994,6 +1163,7 @@ class Q16NativeV5MSolver:
         }
         dt = self.settings.aerodynamic_dt
         synchronous_material = self.settings.joint_separation_solve
+        core = self._core_radius(geometry)
         if synchronous_material:
             from .native_material_convection import advance_material_positions_rk3
 
@@ -1012,7 +1182,9 @@ class Q16NativeV5MSolver:
                 active = original[: freeze_rows * ns]
 
                 def active_velocity(at: torch.Tensor) -> torch.Tensor:
-                    return self._external_velocity(at.reshape(-1, 3), geometry, trial).reshape_as(at)
+                    return self._external_velocity(
+                        at.reshape(-1, 3), geometry, trial, core
+                    ).reshape_as(at)
 
                 u1 = active_velocity(active)
                 if trial.particle_field.n:
@@ -1037,7 +1209,7 @@ class Q16NativeV5MSolver:
 
                 def wake_velocity(at: torch.Tensor) -> torch.Tensor:
                     flat = at.reshape(-1, 3)
-                    velocity = self._external_velocity(flat, geometry, trial)
+                    velocity = self._external_velocity(flat, geometry, trial, core)
                     if trial.particle_field.n:
                         velocity = velocity + trial.particle_field.velocity_at_cuda(flat)
                     return velocity.reshape_as(at)
@@ -1048,7 +1220,7 @@ class Q16NativeV5MSolver:
                 trial.wake_rings.copy_(original + (dt / 6.0) * (u1 + 4.0 * u2 + u3))
 
         def particle_external(points: torch.Tensor) -> torch.Tensor:
-            return self._external_velocity(points, geometry, trial)
+            return self._external_velocity(points, geometry, trial, core)
 
         if trial.particle_field.n:
             if not synchronous_material:
@@ -1122,6 +1294,49 @@ class Q16NativeV5MSolver:
         heave = torch.cat((0.5 * (node_heave[:-1] + node_heave[1:]), node_heave))
         return alpha, alpha_rate, heave, node_x, node_normal
 
+    def _lev_sheet_frontier(
+        self,
+        geometry: NativeV5MGeometry,
+        trial: NativeV5MState,
+        source_result: dict[str, torch.Tensor | bool],
+        node_x: torch.Tensor,
+        node_normal: torch.Tensor,
+        node_active: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Aft edge of the newborn leading-edge sheet, per span node.
+
+        ONE definition shared by the production deposit and the joint solve's ribbon
+        basis.  The two sites used to compute this inline and they had drifted apart a
+        sign once before (the leading-edge pin), so the placement lives here.
+        """
+
+        ns = self.settings.spanwise_panels
+        birth_2d = source_result["lev_birth_position"][ns:]
+        anchor_2d = source_result["lev_edge_position"][ns:]
+        displacement = birth_2d - anchor_2d
+        frontier = geometry.leading_edge + trial.reference_node_chord[:, None] * (
+            displacement[:, :1] * node_x + displacement[:, 1:] * node_normal
+        )
+        if _LE_SHEET_EXTENT != "off":
+            # A controlled sweep of the deposit's chordwise reach -- NOT a literature
+            # placement; the flag comment says exactly what it is and is not.  The 2-D
+            # birth displacement keeps its NORMAL component (that is what lifts the
+            # sheet off the surface); only the chordwise extent is replaced.
+            #
+            # UNITS: `reference_node_chord` is |trailing_edge - leading_edge|, i.e. the
+            # FULL chord (initialize()), while the reach is given in PANELS.  Writing
+            # `_LE_SHEET_EXTENT_PANELS * node_x` directly would put the sheet two chords
+            # aft, so the panel count is divided by the chordwise panel count here.
+            reach_fraction = _LE_SHEET_EXTENT_PANELS / self.settings.chordwise_panels
+            frontier = geometry.leading_edge + trial.reference_node_chord[:, None] * (
+                reach_fraction * node_x + displacement[:, 1:] * node_normal
+            )
+        if node_active is not None:
+            frontier = torch.where(
+                node_active[:, None], frontier, geometry.leading_edge
+            )
+        return frontier
+
     def _deposit_dvm_ribbon(
         self,
         geometry: NativeV5MGeometry,
@@ -1147,13 +1362,9 @@ class Q16NativeV5MSolver:
         )
         alpha, _, _, node_x, node_normal = self._dvm_kinematics(geometry, trial)
         del alpha
-        birth_2d = result["lev_birth_position"][ns:]
-        anchor_2d = result["lev_edge_position"][ns:]
-        displacement = birth_2d - anchor_2d
-        frontier = geometry.leading_edge + trial.reference_node_chord[:, None] * (
-            displacement[:, :1] * node_x + displacement[:, 1:] * node_normal
+        frontier = self._lev_sheet_frontier(
+            geometry, trial, result, node_x, node_normal, node_active
         )
-        frontier = torch.where(node_active[:, None], frontier, geometry.leading_edge)
         if self.settings.le_open_deposit:
             # Route A: a single-signed spanwise filament ON the physical leading
             # edge.  Net vorticity is -gamma_lev (not zero), so the deposited field
@@ -1293,6 +1504,53 @@ class Q16NativeV5MSolver:
         wake_velocity = self._ring_velocity(
             geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False
         )
+        # Plan V3 (P0-B): under FLUXV_TE_WAKE=v3 the row that leaves the trailing
+        # edge this step is part of the solve.  Its back edge is the trailing
+        # edge and its front edge is where the newest convected row's front
+        # corners are (one U*dt downstream on the first step), so the chain
+        # stays connected and no row overlaps its neighbour.  Its strength is
+        # the trailing-edge unknown of its strip, so its unit influence joins
+        # the trailing-edge columns; the leading-edge part of the row is
+        # deposited later at a known strength and goes to the right-hand side.
+        # On the legacy path none of this exists and `system_aic` is `aic`.
+        nascent_rings = None
+        nascent_unit = None
+        nascent_normal = None
+        system_aic = aic
+        if _TE_WAKE_V3:
+            span_panels, chord_panels = (
+                self.settings.spanwise_panels,
+                self.settings.chordwise_panels,
+            )
+            last_row = geometry.rings.reshape(chord_panels, span_panels, 4, 3)[-1]
+            if trial.wake_rings.shape[0]:
+                newest_front = trial.wake_rings[:span_panels, 0:2]       # (ns, 2, 3)
+            else:
+                newest_front = (
+                    torch.stack((last_row[:, 3], last_row[:, 2]), dim=1)
+                    + self.v_inf[None, :] * self.settings.aerodynamic_dt
+                )
+            # corners front-left, front-right, back-right, back-left, as everywhere else
+            nascent_rings = torch.stack(
+                (last_row[:, 3], last_row[:, 2], newest_front[:, 1], newest_front[:, 0]),
+                dim=1,
+            )
+            if _KERNEL_V3:
+                nascent_kwargs = {"core_fraction": 0.0, "reference_length": 0.0}
+            else:
+                nascent_kwargs = {
+                    "core_fraction": 1.0e-6,
+                    "reference_length": 1.0 / chord_panels,
+                }
+            # (points, strips, 3): the kernel has already summed the four legs
+            nascent_unit = native_ring_velocity_expanded(
+                geometry.collocation, nascent_rings, **nascent_kwargs
+            )
+            nascent_normal = torch.sum(
+                nascent_unit * geometry.normals[:, None, :], dim=2
+            )                                                      # (P, ns)
+            system_aic = aic.clone()
+            system_aic[:, (chord_panels - 1) * span_panels :] += nascent_normal
         particle_velocity = (
             trial.particle_field.velocity_at_cuda(geometry.collocation)
             if trial.particle_field.n
@@ -1302,12 +1560,16 @@ class Q16NativeV5MSolver:
             particle_velocity = torch.zeros_like(particle_velocity)
         if _ZERO_INDUCED in {"wake", "both"}:
             wake_velocity = torch.zeros_like(wake_velocity)
+            if nascent_normal is not None:
+                # the attribution diagnostic counts the nascent row as wake
+                nascent_normal = torch.zeros_like(nascent_normal)
+                system_aic = aic
         rhs = torch.sum(
             (geometry.collocation_velocity - self.v_inf - wake_velocity - particle_velocity)
             * geometry.normals,
             dim=1,
         )
-        gamma_pre = torch.linalg.solve(aic, rhs)
+        gamma_pre = torch.linalg.solve(system_aic, rhs)
         ns, nc = self.settings.spanwise_panels, self.settings.chordwise_panels
         chord = 0.5 * (
             torch.linalg.vector_norm(
@@ -1333,6 +1595,8 @@ class Q16NativeV5MSolver:
         surface_separated = unified_separation_mask(
             lesp_pre_3d, self.settings.effective_lesp_crit
         )
+        if _LESP_MASK_OFF:
+            surface_separated = torch.zeros_like(surface_separated)
         alpha, alpha_rate, heave, _, _ = self._dvm_kinematics(geometry, trial)
         # Single separation owner (plan §8.3): the 3D mask computed above is
         # passed INTO the source bank as a gate on its own 2D LESP trigger,
@@ -1377,6 +1641,10 @@ class Q16NativeV5MSolver:
                 source_stop=trial.particle_field.n,
             )
             rhs = rhs - torch.sum(newborn_velocity * geometry.normals, dim=1)
+        # Plan V3 (P0-B): the nascent row's leading-edge part is a known strength.
+        system_rhs = rhs
+        if nascent_normal is not None:
+            system_rhs = rhs - nascent_normal @ gamma_lev
         # Reconcile the source bank's release mask with the 3D truth (plan
         # §8.3): pin_active IS the 3D mask — never the union of two owners.
         # Because the 3D mask gated the bank's release above, ``released``
@@ -1453,8 +1721,10 @@ class Q16NativeV5MSolver:
         # linearize the SAME bound system that produced gamma.  The assembler
         # receives `aic` and stores it for velocity_force(), so this is the
         # single place to redirect them.  Off by default: the production path
-        # keeps the historical unconstrained operator bit-for-bit.
-        load_derivative_aic = aic
+        # keeps the historical unconstrained operator bit-for-bit.  Under plan V3
+        # (P0-B) the system that produced gamma includes the nascent row, so that
+        # is the matrix handed over (`system_aic` is `aic` on the legacy path).
+        load_derivative_aic = system_aic
         load_derivative_scope = "unconstrained"
         use_active_set = bool(
             getattr(self.settings, "load_derivative_active_set", False)
@@ -1482,11 +1752,8 @@ class Q16NativeV5MSolver:
                 geometry, trial
             )
             del alpha_rate
-            birth_2d = source_result["lev_birth_position"][ns:]
-            anchor_2d = source_result["lev_edge_position"][ns:]
-            displacement = birth_2d - anchor_2d
-            frontier = geometry.leading_edge + trial.reference_node_chord[:, None] * (
-                displacement[:, :1] * node_x + displacement[:, 1:] * node_normal
+            frontier = self._lev_sheet_frontier(
+                geometry, trial, source_result, node_x, node_normal
             )
             smoothing = (
                 self.settings.dvm_smoothing_radius_chord
@@ -1672,8 +1939,8 @@ class Q16NativeV5MSolver:
                 load_derivative_scope = "pinned_ignores_newborn_coupling"
         elif active_indices.numel():
             # legacy production path: pin row replaces the LE no-penetration
-            separated_aic = aic.clone()
-            separated_rhs = rhs.clone()
+            separated_aic = system_aic.clone()
+            separated_rhs = system_rhs.clone()
             source_a0 = source_result["A0"][:ns]
             separated_aic[active_indices] = 0.0
             separated_aic[active_indices, active_indices] = 1.0
@@ -1698,10 +1965,10 @@ class Q16NativeV5MSolver:
                 load_derivative_aic = separated_aic
                 load_derivative_scope = "separated_pinned_exact"
         else:
-            gamma = torch.linalg.solve(aic, rhs)
+            gamma = torch.linalg.solve(system_aic, system_rhs)
         # Acceptance: joint path checks the FULL surface (LE included);
         # legacy path checks the retained rows exactly as before.
-        total_residual = aic @ gamma - rhs
+        total_residual = system_aic @ gamma - system_rhs
         if joint_solve and active_indices.numel():
             # REAL ribbon operator (per-unit-strength deposited-sheet
             # induction), consistent with the closure equations above.
@@ -1870,6 +2137,11 @@ class Q16NativeV5MSolver:
             bound_velocity = self._ring_velocity(
                 geometry.collocation, geometry.rings, gamma, rough=False
             )
+            if nascent_unit is not None:
+                # the nascent row at its final strength, the state the step ends in
+                wake_velocity = wake_velocity + torch.sum(
+                    nascent_unit * gamma_tev[None, :, None], dim=1
+                )
         external_flow = self.v_inf + wake_velocity + particle_velocity + bound_velocity
         grid = gamma.reshape(nc, ns)
         dx = torch.linalg.vector_norm(
@@ -1948,7 +2220,7 @@ class Q16NativeV5MSolver:
             wake_normal_rate = torch.sum(
                 wake_velocity_rate * geometry.normals, dim=1
             )
-            mf2_history = torch.linalg.solve(aic, -wake_normal_rate)
+            mf2_history = torch.linalg.solve(system_aic, -wake_normal_rate)
         else:
             wake_vertex_velocity = None
             mf2_history = torch.zeros_like(gamma)
@@ -1984,15 +2256,40 @@ class Q16NativeV5MSolver:
             )
         resolved = self._resolved_load_assembler
         mids_flat = resolved.leg_midpoints_flat(geometry)
-        solution_velocity_flat = (
-            self.v_inf[None, :].expand(mids_flat.shape[0], 3)
-            + self._ring_velocity(
-                mids_flat, geometry.rings, gamma, rough=False
+        if nascent_rings is None:
+            solution_velocity_flat = (
+                self.v_inf[None, :].expand(mids_flat.shape[0], 3)
+                + self._ring_velocity(
+                    mids_flat, geometry.rings, gamma, rough=False
+                )
+                + self._ring_velocity(
+                    mids_flat, trial.wake_rings, trial.wake_gamma, rough=False
+                )
             )
-            + self._ring_velocity(
-                mids_flat, trial.wake_rings, trial.wake_gamma, rough=False
+        else:
+            # Plan V3 (P0-A/B): the free wake as it stands at the end of the step,
+            # nascent row included, with the wake core.
+            core = self._core_radius(geometry)
+            solution_velocity_flat = (
+                self.v_inf[None, :].expand(mids_flat.shape[0], 3)
+                + self._ring_velocity(
+                    mids_flat, geometry.rings, gamma, rough=False
+                )
+                + self._ring_velocity(
+                    mids_flat,
+                    trial.wake_rings,
+                    trial.wake_gamma,
+                    rough=False,
+                    core_radius=core,
+                )
+                + self._ring_velocity(
+                    mids_flat,
+                    nascent_rings,
+                    gamma_tev,
+                    rough=False,
+                    core_radius=core,
+                )
             )
-        )
         if trial.particle_field.n:
             solution_velocity_flat = (
                 solution_velocity_flat
@@ -2080,9 +2377,11 @@ class Q16NativeV5MSolver:
         #   r[k, 3] == r[k+1, 0],  r[k, 2] == r[k+1, 1]
         # so the shared edge vectors are exact negatives.
         downstream = rear + self.v_inf * self.settings.aerodynamic_dt
+        # Plan V3 (P0-B): the connected chain is unconditional there; the nascent
+        # row built for the solve IS the row inserted, corners and all.
         reconnect_wake = bool(
             getattr(self.settings, "joint_separation_solve", False)
-        )
+        ) or nascent_rings is not None
         if trial.wake_rings.shape[0]:
             chain = trial.wake_rings.reshape(-1, ns, 4, 3)
             # Captured BEFORE any mutation: the previous newest row's
@@ -2107,15 +2406,18 @@ class Q16NativeV5MSolver:
                 # downstream segment.
                 chain[0, :, 0] = rear[:, 1]
                 chain[0, :, 1] = rear[:, 0]
-        new_wake = torch.stack(
-            (
-                rear[:, 1],
-                rear[:, 0],
-                downstream[:, 0],
-                downstream[:, 1],
-            ),
-            dim=1,
-        )
+        if nascent_rings is not None:
+            new_wake = nascent_rings
+        else:
+            new_wake = torch.stack(
+                (
+                    rear[:, 1],
+                    rear[:, 0],
+                    downstream[:, 0],
+                    downstream[:, 1],
+                ),
+                dim=1,
+            )
         combined_rings = torch.cat((new_wake, trial.wake_rings), dim=0)
         combined_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)
         wake_capacity = self.settings.wake_max_rows * ns
@@ -2275,6 +2577,18 @@ if _ZERO_INDUCED not in {"", "particles", "wake", "both"}:
     raise ValueError(
         f"FLUXV_ZERO_INDUCED must be '', 'particles', 'wake' or 'both', got {_ZERO_INDUCED!r}"
     )
+
+#: A18 diagnostic (2026-11-24, default OFF): force the 3-D separation mask to "attached"
+#: on every strip, i.e. solve the SAME ring lattice with no leading-edge pin and no
+#: leading-edge shedding.  It exists to price the pin at an incidence where no
+#: leading-edge vortex is shed anyway: on the rigid plate at alpha = 5 deg the run ends
+#: with 0 particles while 30 of 30 strips are pinned.  Against the attached thin-wing
+#: value it says whether the lattice itself carries the excess normal force or the pin
+#: does.  It removes the leading-edge separation model and is therefore never a
+#: candidate for the production path.
+_LESP_MASK_OFF = os.environ.get("FLUXV_LESP_MASK_OFF", "").strip().lower() in {
+    "1", "true", "on", "yes",
+}
 
 
 class Q16NativeV5MOwner:

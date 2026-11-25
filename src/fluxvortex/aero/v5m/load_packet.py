@@ -19,12 +19,38 @@ here so there is exactly one implementation.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Mapping
 
 import torch
 
-from fluxvortex.warp_fsi.kernels_ring_velocity import native_ring_velocity_expanded
+from fluxvortex.warp_fsi.kernels_ring_velocity import (
+    _KERNEL_V3,
+    native_ring_velocity_expanded,
+)
+
+#: What the packet's closure tolerances are measured against (2026-11-24).
+#:
+#:   "net"  (the historical behaviour, the default)  rtol x |net resultant|.  The moment
+#:          check has no absolute floor, so at a NEAR-ZERO load the floating-point noise of
+#:          the recomputed sum (about 1e-19 N m over 2250 points) can exceed rtol x |M|:
+#:          observed on the rigid plate at alpha = 10 deg in the first steps of the startup
+#:          ramp, "moment closure 1.212e-19 exceeds 1e-12 x |M|", i.e. |M| below 1.2e-7 N m.
+#:          The same step passes with a slightly different leading-edge regularisation
+#:          constant: the trip is noise, not a load inconsistency.
+#:   "l1"   rtol x (|net| + sum of |each point's contribution|), the floating-point
+#:          forward-error bound of the reduction.  This is how the spanwise impulse ledger
+#:          was already repaired (fluxv_v5m_four_case_20260822/execution.md): a closure
+#:          error is judged against the L1 size of what is being summed, never against the
+#:          cancelled result alone.
+#:
+#: Default "net" leaves every existing verdict unchanged.
+_PACKET_CLOSURE_SCALE = os.environ.get("FLUXV_PACKET_CLOSURE_SCALE", "net").strip().lower()
+if _PACKET_CLOSURE_SCALE not in {"net", "l1"}:
+    raise ValueError(
+        f"FLUXV_PACKET_CLOSURE_SCALE must be 'net' or 'l1', got {_PACKET_CLOSURE_SCALE!r}"
+    )
 
 # Geometry objects are duck-typed (``.rings``/``.ring_velocity``/
 # ``.collocation``/``.areas``/``.normals``) to avoid an aero<->warp_fsi
@@ -91,24 +117,33 @@ class NativeV5MSurfaceLoadPacket:
         )
 
 
-def validate_packet(packet: NativeV5MSurfaceLoadPacket, *, rtol: float = 1e-12) -> None:
-    scale = max(
-        float(torch.linalg.vector_norm(packet.total_force_I).item()),
-        1e-30,
+def closure_scales(packet: NativeV5MSurfaceLoadPacket) -> tuple[float, float]:
+    """(force scale, moment scale) that `validate_packet` measures its tolerances against."""
+
+    force_net = float(torch.linalg.vector_norm(packet.total_force_I).item())
+    moment_net = float(torch.linalg.vector_norm(packet.total_moment_I).item())
+    if _PACKET_CLOSURE_SCALE == "net":
+        return max(force_net, 1e-30), max(moment_net, 1e-30)
+    force_l1 = float(torch.linalg.vector_norm(packet.point_forces_I, dim=1).sum().item())
+    moment_l1 = float(
+        torch.linalg.vector_norm(
+            torch.linalg.cross(packet.point_positions_I, packet.point_forces_I, dim=1), dim=1
+        ).sum().item()
     )
+    return max(force_net + force_l1, 1e-30), max(moment_net + moment_l1, 1e-30)
+
+
+def validate_packet(packet: NativeV5MSurfaceLoadPacket, *, rtol: float = 1e-12) -> None:
+    scale, scale_m = closure_scales(packet)
     if packet.force_closure_error() > rtol * scale:
         raise ValueError(
             f"surface-load packet force closure {packet.force_closure_error():.3e} "
             f"exceeds {rtol:.0e} x |F|"
         )
-    scale_m = max(
-        float(torch.linalg.vector_norm(packet.total_moment_I).item()),
-        1e-30,
-    )
     if packet.moment_closure_error() > rtol * scale_m:
         raise ValueError(
             f"surface-load packet moment closure {packet.moment_closure_error():.3e} "
-            f"exceeds {rtol:.0e} x |M|"
+            f"exceeds {rtol:.0e} x |M| (scale {_PACKET_CLOSURE_SCALE}, {scale_m:.3e} N m)"
         )
 
 
@@ -166,8 +201,13 @@ class NativeResolvedLoadAssembler:
     ) -> torch.Tensor:
         if rings.shape[0] == 0:
             return torch.zeros_like(points)
-        core_fraction = 1.0e-6
-        reference_length = 1.0 / nc
+        if _KERNEL_V3:
+            # plan V3 (P0-A): the exact law, as the solver's `_ring_velocity` uses it
+            core_fraction = 0.0
+            reference_length = 0.0
+        else:
+            core_fraction = 1.0e-6
+            reference_length = 1.0 / nc
         full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
         if full_bytes <= _RING_TILE_BYTES:
             expanded = native_ring_velocity_expanded(

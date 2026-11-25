@@ -443,8 +443,30 @@ def run_one_condition(
         )
         wake_ring_counts.append(int(diag["wake_ring_count"]))
         particle_counts.append(int(diag["particle_count"]))
-        kelvin_max.append(float(diag["kelvin_max_abs"]))
-        neumann_max.append(float(diag["retained_neumann_max_abs"]))
+        kelvin_max.append(
+            float(
+                diag["kelvin_identity_residual"]
+                if "kelvin_identity_residual" in diag
+                else diag["kelvin_max_abs"]
+            )
+        )
+        # 2026-11-24: two diagnostics were renamed in the solver after this benchmark was
+        # last run (2026-08-28), which made the runner fail with KeyError:
+        #   kelvin_max_abs            -> kelvin_identity_residual   (the same algebraic
+        #       identity; the solver now says in so many words that it is zero by
+        #       construction and is NOT a conservation check)
+        #   retained_neumann_max_abs  -> full_surface_neumann_max_abs  (on the legacy
+        #       path the solver sets residual_max = retained_max: the same max
+        #       no-penetration residual over the retained rows)
+        # Both names are accepted; the output keys keep their historical spelling so
+        # manifests stay comparable.
+        neumann_max.append(
+            float(
+                diag["full_surface_neumann_max_abs"]
+                if "full_surface_neumann_max_abs" in diag
+                else diag["retained_neumann_max_abs"]
+            )
+        )
         lesp_pin_max.append(float(diag["lesp_pin_max_abs"]))
         if step % report_every == 0 or step == total_steps:
             log.info(

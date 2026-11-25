@@ -1420,11 +1420,23 @@ class RojratsirikulCaseRunner:
             # 2026-11-23: the three force-coefficient conventions, because which one the
             # PAPER reports decides whether we pass or fail.  `mean_cn` above is the force
             # along global z divided by q*c*b, i.e. LIFT for a freestream along x; the
-            # membrane-wing literature's Cn is the force along the wing NORMAL
-            # n = (-sin(alpha), 0, cos(alpha)).  At alpha=16 deg the two differ by 11
-            # percentage points on A16 (1.2472 lift vs 1.1255 normal), which is a third of
-            # the reported +37% gap.  Both are recorded and the paper-aligned NORMAL one
-            # gets its own gate, so the headline number can never again be a convention.
+            # membrane-wing literature's Cn is the force along the wing NORMAL.  Both are
+            # recorded and the paper-aligned NORMAL one gets its own gate, so the headline
+            # number can never again be a convention.
+            #
+            # 2026-11-24 CORRECTION (note A17).  This block first used the normal
+            # n = (-sin a, 0, cos a) and so reported 1.1255 on A16.  That normal is tilted
+            # UPSTREAM; it belongs to a chord whose trailing edge is UP.  The freestream is
+            # along +x and the incidence is baked into the mesh with the trailing edge DOWN
+            # (chord = (cos a, 0, -sin a)), so the upper-surface normal is
+            # n = (+sin a, 0, cos a), tilted DOWNSTREAM, and
+            #     Cn = (Fx sin a + Fz cos a)/(q c b) = CL cos a + Cx sin a,
+            # the usual N = L cos a + D sin a.  The force itself settles which normal is
+            # right: on A16 F = (0.0380, 0, 0.1782) N leans 12.05 deg DOWNSTREAM from
+            # vertical, and a flat wing's pressure resultant can only lie near its surface
+            # normal.  The paper-convention value is therefore 1.2724 (lift 1.2472,
+            # streamwise 0.2663), not 1.1255: the earlier "a third of the gap is
+            # definition" statement was this sign error.
             window_records = [
                 record
                 for record in records
@@ -1442,7 +1454,9 @@ class RojratsirikulCaseRunner:
             coefficient_conventions = {
                 "definition_note": (
                     "mean_cn (existing) = Fz/(q c b) = LIFT; mean_cn_normal = "
-                    "(-Fx sin a + Fz cos a)/(q c b) = the membrane-literature Cn; "
+                    "(Fx sin a + Fz cos a)/(q c b) = the membrane-literature Cn "
+                    "(force along the wing normal; trailing edge is DOWN, so the "
+                    "streamwise term ADDS); mean_c_streamwise = Fx/(q c b); "
                     "mean_cl = same as mean_cn but named honestly"
                 ),
                 "sample_count": len(window_records),
@@ -1462,7 +1476,8 @@ class RojratsirikulCaseRunner:
                 fx = sum(r["total_aerodynamic_force_n"][0] for r in window_records) / len(window_records)
                 fz = sum(r["total_aerodynamic_force_n"][2] for r in window_records) / len(window_records)
                 lift = fz / q_s
-                normal = (-fx * _math.sin(alpha) + fz * _math.cos(alpha)) / q_s
+                streamwise = fx / q_s
+                normal = (fx * _math.sin(alpha) + fz * _math.cos(alpha)) / q_s
                 coefficient_conventions.update(
                     {
                         "q_times_s": q_s,
@@ -1470,6 +1485,8 @@ class RojratsirikulCaseRunner:
                         "mean_force_z_n": fz,
                         "mean_cn_normal": normal,
                         "mean_cl": lift,
+                        "mean_c_streamwise": streamwise,
+                        "normal_formula": "(Fx sin a + Fz cos a)/(q c b) = CL cos a + Cx sin a",
                         "normal_minus_lift_relative": (normal - lift) / lift,
                     }
                 )

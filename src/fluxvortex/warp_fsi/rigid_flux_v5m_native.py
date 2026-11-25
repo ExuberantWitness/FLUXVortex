@@ -53,6 +53,7 @@ from .q16_flux_v5m_native import (
     NativeV5MGeometry,
     NativeV5MLoad,
     Q16NativeV5MSolver,
+    _TE_WAKE_V3,
     _require_cuda64,
     freestream_vector,
     native_ring_velocity_expanded,
@@ -610,7 +611,19 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             mids, geometry.rings, gamma, rough=False
         )
         ns = self.settings.spanwise_panels
-        if trial.wake_rings.shape[0] > ns:
+        if _TE_WAKE_V3:
+            # Plan V3 (P0-A/B): the base solve already carries this step's
+            # trailing-edge row, so the load-time wake is the whole stored
+            # wake, nascent row included, with its core.
+            if trial.wake_rings.shape[0]:
+                velocity = velocity + self._ring_velocity(
+                    mids,
+                    trial.wake_rings,
+                    trial.wake_gamma,
+                    rough=False,
+                    core_radius=self._core_radius(geometry),
+                )
+        elif trial.wake_rings.shape[0] > ns:
             # The load was assembled BEFORE this step's TEV row was shed;
             # skip the newest ns rings so the field matches that state.
             velocity = velocity + self._ring_velocity(
