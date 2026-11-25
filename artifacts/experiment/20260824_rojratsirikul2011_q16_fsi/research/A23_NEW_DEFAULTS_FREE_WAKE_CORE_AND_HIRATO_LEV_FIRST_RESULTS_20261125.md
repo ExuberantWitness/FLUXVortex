@@ -186,6 +186,50 @@ a streamwise coefficient of +0.0085 without the term and -0.0013 with it, which 
 flat plate with its leading-edge suction.  Whether the term belongs on attached strips is not
 settled; the flag is there for it.
 
+## 6b. The rigid plate under the new default path: 16 deg is a regression
+
+Rigid plate, 1500 steps, window t* 3-15, the default path (1e-12, implicit trailing-edge row,
+free-wake core, leading-edge vortex after Hirato, no explicit suction):
+
+| alpha | Cn | window min / max | Kutta-Joukowski | against experiment | against Helmbold | particles | seconds |
+|---|---|---|---|---|---|---|---|
+| 5 | 0.2197 | 0.2190 / 0.2198 | 0.2201 | +10.7 % (0.1985) | -3.1 % | 0 | 589 |
+| 10 | 0.4350 | 0.4336 / 0.4353 | 0.4392 | -3.5 % (0.4508) | -3.7 % | 0 | 589 |
+| 16 | **0.1651** | -0.3215 / +0.6227 | 0.1536 | **-77.8 %** (0.7431) | -77.0 % | 26955 | 2804 |
+
+5 and 10 deg do not shed and are the attached plate: 0.2189 and 0.4358 under the exact kernel
+(note A22), 0.2197 and 0.4350 here.  The wake spacing is one U dt.
+
+16 deg sheds, and there the new leading-edge vortex is far worse than the old one:
+
+| every 100 steps | Cn |
+|---|---|
+| old deposit (note A22, exact kernel) | 0.62 0.59 0.65 0.58 0.65 0.62 0.64 0.64 0.63 0.63 0.59 0.65 0.61 0.64 |
+| new (this run) | 0.38 0.21 0.22 0.15 0.03 0.01 0.25 0.24 0.08 0.17 0.18 0.17 -0.02 |
+
+The old one settles into a periodic shedding; the new one never settles.  At the last step the
+trailing-edge row is at -0.005 m^2/s at mid-span while the newest wake row carries 1.91 against
+the trailing-edge row's 0.82: almost all of what is shed is the leading-edge part, and the near
+wake is disordered (row spacing between -0.085 and +0.107 chord).
+
+Two defects of the implementation, both found by reading the code after this run:
+
+1. **Rows that leave the buffer are smoothed away.**  The chain keeps 3 rows as exact rings and
+   hands the rest to the particle field.  In continuous shedding a row is 1-3 U dt long, and the
+   particles it becomes have the smoothing radius of the old deposit, 0.04 chord = 4 U dt of this
+   wing.  The front and back edges of such a ring cancel within that radius, and the streamwise
+   legs of the sheet, once particles, act on the collocation points of the next strip (2.3 mm
+   from the node line) at 13 % of the filament law.  So the sheet is 3 rows long and nothing more:
+   the defect of the old deposit (note A14) in a new place.
+2. **The steady lift of the leading-edge vortex is not in the loads.**  The pseudovortex ring is
+   bound vorticity: the trailing edge sheds the bound circulation plus lambda, and the unsteady
+   term carries d/dt of the sum.  But the Kutta-Joukowski forces are integrated on the bound
+   filaments only; the pseudovortex ring's own filaments get no force.  On the flapping wing the
+   unsteady term dominates and the gap was invisible there.
+
+Until both are repaired the flapping table of section 5 is preliminary as well: it was obtained
+with the loads of item 2.
+
 ## 7. Open
 
 * Gate G-Flap of the plan (Izra 14 points: no blow-up, no collapse, mean absolute error at

@@ -1,0 +1,24 @@
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Module fluxvortex.warp_fsi.kernels_ring_velocity 63be46f load on device 'cuda:0' took 0.58 ms  (cached)
+ring kernel constant: torch path 1e-12, fused kernel 1e-12; one panel-sized ring at its centre, over the unregularised law: torch 0.9910, fused 0.9910
+Module pfield_torch_gpu 4944927 load on device 'cuda:0' took 0.62 ms  (cached)
+final state written to artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/stageB/rigid_a16_newdefault.npz (solve-time wake captured on 1500 influence-matrix calls)
+
+=== rigid plate alpha=16 deg, 1500 steps, eps 1e-12, 2804 s ===
+Cn along the wing normal, window mean : +0.1651   (min -0.3215, max +0.6227; max|cn| whole run 0.8326)
+  lift +0.1815  streamwise -0.0338  Cn by Fx sin a + Fz cos a +0.1651  Kutta-Joukowski +0.1536
+  paper Fig. 9, rigid U=5 : 0.7431  -> model / experiment -77.8%
+  attached thin wing, elliptic AR=1.99855 : 0.8656  -> model / theory -80.9%
+  attached thin wing, Helmbold AR=1.99855 : 0.7170  -> model / theory -77.0%
+trailing-edge row: centre -0.00462 m^2/s = -0.016 of 2-D; tip/centre -8.015 (elliptic 0.256); mean/centre -5.924 (elliptic 0.787); outer-20% 0.369 (elliptic 0.105)
+leading-edge row: mean |Gamma_1| 0.03273 m^2/s, signs [1.0];  particles at the last step 26955 (max 27768)
+wake at the last step: 300 rows; first rows, chord aft of the edge: 0.0167 0.0300 0.0363 0.0434 0.0524 0.0583; normal offset: -0.0000 -0.0051 -0.0093 -0.0121 -0.0124 -0.0106
+  row spacing over the first 20 rows (nominal 0.0100): mean 0.0098, min -0.0849, max 0.1068;  nodes upstream of the edge: 0;  largest normal offset over all rows: 0.940 chord
+  wake circulation: newest row +1.91454, oldest row +1.89751, total +580.1530;  trailing-edge row now +0.82124, so a steady wake would total +246.3716
+wrote artifacts/experiment/20260824_rojratsirikul2011_q16_fsi/stageB/rigid_a16_newdefault.json
