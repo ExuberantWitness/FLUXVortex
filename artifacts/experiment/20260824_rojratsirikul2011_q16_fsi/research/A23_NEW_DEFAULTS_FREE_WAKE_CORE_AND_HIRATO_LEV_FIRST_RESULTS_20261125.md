@@ -333,6 +333,56 @@ steady separation is not shown there.  The instability has not been located: the
 strength of the strips at the edge of the separated region, the sensitivity of the closure
 equation to the sheet, and the path of the sheet over the wing are the candidates.
 
+## 6e. A minimal model, and where the instability sits
+
+`/tmp/zcode_lev_minimal.py`: the production ring kernel and the production chain functions
+(`lev_hirato`) in a time march written for this purpose (a flat lattice, the start-up ramp, a
+trailing-edge wake of connected rows solved implicitly, and per strip the leading-edge chain with
+its strength solved together with the bound circulation, the solver's active-set rule included).
+No loads; the coefficient is the Kutta-Joukowski one on what the trailing edge sheds.  Run on the
+GPU for 30 strips (4 minutes for 600 steps), on the CPU for fewer.
+
+**It does what the solver does.**  30 strips, crit 0.11: all strips stop shedding at the end of
+the ramp (step 100, attached suction parameter 0.08), then within fifty steps that parameter is
+0.65, all thirty strips shed at a strength of 0.23, the bound trailing-edge row swings from +2.3
+to -2.2, and from there the state wanders (coefficient between 0.25 and 0.52 to step 900) without
+a steady state.  So the trouble is in the formulation of the coupled leading-edge solve, not in
+the solver's plumbing.
+
+**Two hypotheses refuted.**
+
+* The truncation of the chain.  The transient starts when the 96-row chains fill, so they were
+  given 300 rows: same transient at the same step (0.239 against 0.305 at step 150).
+* The aspect ratio alone.  3 strips (AR 0.2, crit 0.02) settle: strength 0.0335 at step 100,
+  0.0295 from step 200 on.  9 strips (AR 0.6, crit 0.04) do not settle but do not run away:
+  strength 0.13 at step 125, 0.08 at step 275, bound trailing-edge row -0.63 at step 125 and
+  -0.33 at step 275.  The strength grows with the number of strips, because interior strips do
+  not feel the tip legs of their own sheet.
+
+**What it is.**  With the strength prescribed and the solve linear, the system is steady:
+
+| prescribed strength per strip | attached suction parameter | bound trailing-edge row (summed) | shed | coefficient |
+|---|---|---|---|---|
+| 0.02 | 0.19, steady | +0.69 at step 150, +0.32 at step 550 | 1.25, 0.88 | 0.24, 0.17 |
+| 0.06 | 0.29, steady | -1.06, -1.66 | 0.62, about 0 | 0.12, about 0 |
+| solved | 0.65 to 0.27, wandering | -2.2 to +0.2 | 2.2 to 1.4 | 0.25 to 0.52 |
+
+So the instability is in how the strength is determined, and two facts about that equation:
+
+1. The lift depends on the strength more than anything else in the model: 0.02 gives a lift of
+   0.17 to 0.24, 0.06 gives none, because the bound trailing-edge row falls by more than the
+   leading-edge part rises.
+2. The rings ahead of the edge raise the attached suction parameter (0.19 at 0.02, 0.29 at
+   0.06), and the closure row (no penetration at the leading-edge row, that row pinned at the
+   critical value) answers a higher attached parameter with a larger strength.  That is a loop
+   with gain: larger strength, more rings, higher attached parameter, larger strength.
+
+In the unit test the sensitivity of the closure row to the strength is 0.757 against 9.5 for the
+leading-edge row's own coefficient: the strength is a small difference between the induction of
+the rings ahead of the edge and that of the pseudovortex ring.  Ramesh's two-dimensional
+discrete-vortex method, which this is the three-dimensional form of, has no such difference: the
+new vortex sits where its induction on the leading-edge control point is direct and strong.
+
 ## 7. Open
 
 * Gate G-Flap of the plan (Izra 14 points: no blow-up, no collapse, mean absolute error at
