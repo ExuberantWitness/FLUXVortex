@@ -27,6 +27,7 @@ from . import lev_hirato
 from .kernels_q16_transfer import Q16CudaSurfaceTransfer
 from .kernels_ring_velocity import (
     _KERNEL_V3,
+    _MIXED_PRECISION as _RING_MIXED_PRECISION,
     mean_chordwise_panel,
     native_ring_velocity_expanded,
     native_ring_velocity_fused,
@@ -152,11 +153,97 @@ _LE_SHEET_EXTENT_PANELS = float(os.environ.get("FLUXV_LE_SHEET_EXTENT_PANELS", "
 #: (reopening alone: 0.1225 against 0.1364 at eps = 1e-11, plan V3 question 3), so v3
 #: always does both.
 _TE_WAKE_CHOICE = os.environ.get("FLUXV_TE_WAKE", "v3").strip().lower()
-if _TE_WAKE_CHOICE not in {"legacy", "v3"}:
+if _TE_WAKE_CHOICE not in {"legacy", "v3", "v4"}:
     raise ValueError(
-        f"FLUXV_TE_WAKE must be 'legacy' or 'v3', got {_TE_WAKE_CHOICE!r}"
+        f"FLUXV_TE_WAKE must be 'legacy', 'v3' or 'v4', got {_TE_WAKE_CHOICE!r}"
     )
-_TE_WAKE_V3 = _TE_WAKE_CHOICE == "v3"
+_TE_WAKE_V4 = _TE_WAKE_CHOICE == "v4"
+_TE_WAKE_V3 = _TE_WAKE_CHOICE in {"v3", "v4"}
+#: Connected Katz-Plotkin Sec. 13.12 split fraction under FLUXV_TE_WAKE=v4:
+#: split_te = te_edge + beta * (convected_front - te_edge), keeping wake_rings[0]
+#: CONNECTED to split_te (zero gaps, exact div(omega) = 0, exact G-VLM).
+_TE_SPLIT_BETA = float(os.environ.get("FLUXV_TE_SPLIT_BETA", "0.3"))
+if not (math.isfinite(_TE_SPLIT_BETA) and 0.0 < _TE_SPLIT_BETA <= 1.0):
+    raise ValueError(
+        f"FLUXV_TE_SPLIT_BETA must be in (0, 1], got {_TE_SPLIT_BETA!r}"
+    )
+#: Plan V4 Track A-1: synchronized t^{n-1} convection using bound_rings_previous,
+#: unique structured wake vertices (3.9x fewer targets), live LEV compaction,
+#: unified wake+LEV+pseudovortex velocity field, and non-frozen stage-2 positions.
+_CONVECTION_V4 = os.environ.get("FLUXV_CONVECTION_V4", "0").strip().lower() in {
+    "1", "true", "on", "yes",
+}
+#: Plan V4 Track A-2: optional wake core multiplier at wing collocation points
+#: (0 / false = uncored for exact G-VLM cancellation at split_te; 1 / true = full
+#: _core_radius; or a positive float fraction like 0.25).
+_WAKE_CORE_AT_COLLOCATION_RAW = os.environ.get(
+    "FLUXV_WAKE_CORE_AT_COLLOCATION", "0"
+).strip().lower()
+if _WAKE_CORE_AT_COLLOCATION_RAW in {"0", "false", "off", "no", ""}:
+    _WAKE_CORE_AT_COLLOCATION = 0.0
+elif _WAKE_CORE_AT_COLLOCATION_RAW in {"1", "true", "on", "yes"}:
+    _WAKE_CORE_AT_COLLOCATION = 1.0
+else:
+    _WAKE_CORE_AT_COLLOCATION = float(_WAKE_CORE_AT_COLLOCATION_RAW)
+if not (math.isfinite(_WAKE_CORE_AT_COLLOCATION) and _WAKE_CORE_AT_COLLOCATION >= 0.0):
+    raise ValueError(
+        f"FLUXV_WAKE_CORE_AT_COLLOCATION must be finite and >= 0, got {_WAKE_CORE_AT_COLLOCATION!r}"
+    )
+#: Multiplier on _core_radius(geometry) for LEV chain + pseudovortex at wing
+#: collocation points and load midpoints under FLUXV_LEV_MODEL=hirato_v2.
+#: 1.0 = same uniform v3 core as convection; 0.0 = singular (unregularized).
+_LEV_CORE_RHS_FRACTION = float(os.environ.get("FLUXV_LEV_CORE_RHS_FRACTION", "1.0"))
+if not (math.isfinite(_LEV_CORE_RHS_FRACTION) and _LEV_CORE_RHS_FRACTION >= 0.0):
+    raise ValueError(
+        f"FLUXV_LEV_CORE_RHS_FRACTION must be finite and >= 0, got {_LEV_CORE_RHS_FRACTION!r}"
+    )
+#: Wing-impenetrability slip-wall clearance in chordwise panel lengths dx (Hirato PhD
+#: dissertation Sec. 4.8.3 / Ramesh 2014 / Bird 2021).  0.0 = disabled (default, bit-identical
+#: production path); > 0 (e.g. 0.25) projects any free wake/LEV/particle vertex that crosses
+#: or approaches within `clearance * dx` of the solid wing surface back onto its incoming side.
+_WING_SLIP_WALL = float(os.environ.get("FLUXV_WING_SLIP_WALL", "0.0"))
+if not (math.isfinite(_WING_SLIP_WALL) and _WING_SLIP_WALL >= 0.0):
+    raise ValueError(
+        f"FLUXV_WING_SLIP_WALL must be finite and >= 0, got {_WING_SLIP_WALL!r}"
+    )
+#: Stage 3 opt-in rigid-solver load deduplication: in bound_rate mode, skip the unused
+#: material_ring_velocity_derivative + mf2_1 LU + discarded super().propose() packet pass
+#: that RigidNativeV5MSolver immediately replaces.  Default OFF (bit-identical production).
+_FAST_RIGID_LOADS = os.environ.get("FLUXV_FAST_RIGID_LOADS", "0").strip().lower() in {
+    "1", "true", "on", "yes",
+}
+#: Stage 2B Squire/Ramasamy-Leishman dimensionless turbulent core growth coefficient
+#: c_sq = 4 * alpha_LO * a_1: r_c(age)^2 = r_0^2 + c_sq * |Gamma| * age_s.
+#: Scale-invariant across wing sizes and Re; row 0 (age=0) stays sharp at r_0 so
+#: nascent LESP shedding and G-VLM steady lift are untouched while older rolled-up
+#: LEV/wake cores spread physically instead of suffering K-H filament-stretching chaos.
+#: Default 0.0 (OFF, bit-identical production).
+_SQUIRE_CORE = float(os.environ.get("FLUXV_SQUIRE_CORE", "0.0"))
+if not (math.isfinite(_SQUIRE_CORE) and _SQUIRE_CORE >= 0.0):
+    raise ValueError(
+        f"FLUXV_SQUIRE_CORE must be finite and >= 0, got {_SQUIRE_CORE!r}"
+    )
+#: Galilean-invariant leading-edge relative speed U_rel = |v_inf - v_LE| in LESP scaling
+#: (Ramesh 2014 Eq. 2.11 / Izraelevitz 2017): reduces identically to U_inf on stationary
+#: wings and remains exact under large plunge/flapping velocity and hover.  Default OFF.
+_LESP_UREL = os.environ.get("FLUXV_LESP_UREL", "0").strip().lower() in {
+    "1", "true", "on", "yes",
+}
+#: Hirato et al. (2019) Eqs. (16)-(20) Bernoulli surface pressure + Eq. (20) LESP-limited
+#: leading-edge suction on RigidNativeV5MSolver (eliminates LEV-induced phantom suction on
+#: panel 0's Kutta-Joukowski front filament during separated flow).  Default OFF.
+_HIRATO_PRESSURE_LOADS = os.environ.get(
+    "FLUXV_HIRATO_PRESSURE_LOADS", "0"
+).strip().lower() in {"1", "true", "on", "yes"}
+#: First-principles LESP-consistent Kutta-Joukowski loads (default OFF): uses exact
+#: Kutta-Joukowski filament forces everywhere the leading edge is attached, and on strips
+#: with an active/continuing LEV sheet (`lev_chain.prev != 0`) replaces panel 0's front
+#: filament tangential component with Hirato Eq. (20) LESP-limited leading-edge suction
+#: while keeping its normal KJ component (eliminates phantom near-LE LEV suction without
+#: losing 1/4-panel filament accuracy on attached/interior panels; exact packet closure).
+_LEV_SEP_SUCTION = os.environ.get(
+    "FLUXV_LEV_SEP_SUCTION", "0"
+).strip().lower() in {"1", "true", "on", "yes"}
 
 #: Core radius of the free-wake filaments, in chordwise panel lengths.  Used only under
 #: FLUXV_RING_KERNEL=v3, and only where free vorticity is evaluated close to filaments: the
@@ -196,6 +283,51 @@ if not (math.isfinite(_FREE_WAKE_CORE_FRACTION) and _FREE_WAKE_CORE_FRACTION >= 
         f"{_FREE_WAKE_CORE_FRACTION!r}"
     )
 
+#: Core radius of the free wake taken from the time step instead of from the panel size
+#: (2026-11-26, default OFF: 0).  Positive values are in U_inf * aerodynamic_dt, and the value
+#: replaces `FLUXV_WAKE_CORE_PANELS` wherever the v3 kernel cores the free wake.
+#:
+#: The two papers that state a core for a shed sheet both scale it with the step, not with the
+#: wing's panel:
+#:   * Li et al., JFM 972, A30, Sec. 3: every free vortex carries the Vatistas core of radius
+#:     r_core = U_inf * dt; only the vortices fixed on the plate use Rankine.
+#:   * Hirato et al., Eq. (25): the Lamb-Oseen radius "is set to a small fraction, typically
+#:     less than 0.5, of the anticipated smallest vortex-ring dimension"; a wake whose rows are
+#:     one convection step apart has 0.5 U_inf dt as that bound.
+#: The panel rule (`FLUXV_WAKE_CORE_PANELS` = 0.25, and the 0.1 of `FLUXV_FREE_WAKE_CORE_FRACTION`
+#: on the legacy kernel) is a fraction of the panel and says nothing about how far the wake moves
+#: per step.  On the published flapping cases the step is 0.88 chordwise panels (U = 11 m/s,
+#: dt = 1 ms, c = 0.1 m, 8 panels), so the panel rule gives 0.11-0.28 U_inf dt against Li's 1.0
+#: and Hirato's 0.5, and the tip vortex then winds up inside its own filaments: K2 at alpha = 0
+#: with the panel rule diverges at step 102 (note A24, section 4.1), and with a core of
+#: 0.5 * U_inf dt it is periodic for ten cycles.  0 keeps the panel rule, bit for bit.
+_FREE_WAKE_CORE_STEPS = float(os.environ.get("FLUXV_FREE_WAKE_CORE_STEPS", "0.0"))
+if not (math.isfinite(_FREE_WAKE_CORE_STEPS) and _FREE_WAKE_CORE_STEPS >= 0.0):
+    raise ValueError(
+        "FLUXV_FREE_WAKE_CORE_STEPS must be finite and non-negative, got "
+        f"{_FREE_WAKE_CORE_STEPS!r}"
+    )
+
+#: The shed-vortex distance of the wake, in U_inf * dt (2026-11-26, default OFF: 0).
+#:
+#: Both Kumar papers state it in so many words and both cite Katz and Plotkin for it:
+#:   * Kumar et al., arXiv 2309.14832, Sec. 3.1: "At each time step, a wake vortex is shed at a
+#:     distance of 0.3 U_inf dt from the wing tip".
+#:   * Kumar et al., Sadhana 51:103 (2026), Sec. 3: "with a wake vortex being released at a
+#:     distance of 0.3 U_inf dt from the wing tip at each time step [12]".
+#: A positive value sheds the newborn row as its own ring, from the trailing edge downstream by
+#: that distance, with the rows no longer sharing their corners: the classical discrete wake,
+#: in which every ring is a separate vortex element that drifts with the flow.  The connected
+#: material sheet (rows sharing an edge exactly, the front one anchored on the wing) is what this
+#: solver does by default; the flag is here to measure the difference, and it is NOT the
+#: production path.
+_SHED_DISTANCE_FRACTION = float(os.environ.get("FLUXV_SHED_DISTANCE_FRACTION", "0.0"))
+if not (math.isfinite(_SHED_DISTANCE_FRACTION) and _SHED_DISTANCE_FRACTION >= 0.0):
+    raise ValueError(
+        "FLUXV_SHED_DISTANCE_FRACTION must be finite and non-negative, got "
+        f"{_SHED_DISTANCE_FRACTION!r}"
+    )
+
 #: The leading-edge vortex (plan V3, stage 2).
 #:
 #:   legacy   the 2-D source bank gives the strength of every strip's release, the 3-D
@@ -214,10 +346,92 @@ if not (math.isfinite(_FREE_WAKE_CORE_FRACTION) and _FREE_WAKE_CORE_FRACTION >= 
 #:            AR 4 and higher; the wings here are below that.
 #:
 #: Default hirato since 2026-11-25 (the owner's decision).
+#:   hirato_v2  the same sheet with the five defects of note A24 section 5 repaired, each one
+#:            written as an identity in `tests/test_lev_hirato_equations_cpu.py`:
+#:              B1  the previous ring is split BEFORE the right-hand side is built, and the
+#:                  previous step's pseudovortex rings are in that right-hand side and in the
+#:                  convection (`lev_hirato.split_row0`, `free_ring_sources`), so the geometry the
+#:                  solve sees is the geometry that gets committed;
+#:              B2  the pseudovortex rings are part of every free-material convection
+#:                  (`free_ring_sources`), instead of leaving an uncancelled +-Gamma_L filament
+#:                  on the leading and trailing edges;
+#:              B3  Eq. (7) measures one third of the way to the sheet's FREE end
+#:                  (`split_row0`), not to its leading-edge-side end, which made every new ring a
+#:                  third of one convection step long whatever the sheet's age;
+#:              B4  cessation is decided on the increment and adds nothing, so the strip keeps its
+#:                  Gamma_L and the unsteady term sees no step (`cessation_delta`);
+#:              B5  the leading-edge chordwise difference carries Gamma_0 and not Gamma_0 + Gamma_L
+#:                  (`leading_edge_chordwise_difference`);
+#:              B6  the row count comes from FLUXV_LEV_MAX_ROWS (`max_rows`).
+#:            Switches on: FLUXV_RING_KERNEL=v3 (one core radius for the shared edges).
 _LEV_CHOICE = os.environ.get("FLUXV_LEV_MODEL", "hirato").strip().lower()
-if _LEV_CHOICE not in {"legacy", "hirato"}:
-    raise ValueError(f"FLUXV_LEV_MODEL must be 'legacy' or 'hirato', got {_LEV_CHOICE!r}")
-_LEV_HIRATO = _LEV_CHOICE == "hirato"
+if _LEV_CHOICE not in {"legacy", "hirato", "hirato_v2"}:
+    raise ValueError(
+        f"FLUXV_LEV_MODEL must be 'legacy', 'hirato' or 'hirato_v2', got {_LEV_CHOICE!r}"
+    )
+_LEV_HIRATO = _LEV_CHOICE in {"hirato", "hirato_v2"}
+#: The repaired sheet (note A24 section 5).  Everything the old `hirato` path does stays
+#: bit-identical when this is False.
+_LEV_HIRATO_V2 = _LEV_CHOICE == "hirato_v2"
+#: B5 also changes the loads of the repaired path only.
+_LEV_HIRATO_V2_LOADS = _LEV_HIRATO_V2
+
+#: How the repaired sheet decides how much circulation a strip sheds (note A24, section 5).
+#:
+#:   pin   Hirato et al.'s own rule: the nascent strength is solved so that the strip's suction
+#:         parameter equals the critical value.  Measured on their own pitch ramp this is a loop
+#:         with gain: the sheet's induction raises the attached suction parameter and the pin
+#:         answers with a larger strength; the sheet reached 53 m^2/s (177 U c) and the run ended.
+#:   flux  the sharp-edge vorticity-flux law instead (Kaden/Didden, `dGamma = 1/2 U_s^2 dt`;
+#:         `lev_hirato.flux_shedding_strength`): bounded by construction, and the suction
+#:         parameter is then free to fall below its critical value, as Martinez-Carmena et al.
+#:         show it must (their Eqs. 8-12).
+_LEV_SHED_LAW = os.environ.get("FLUXV_LEV_SHED_LAW", "pin").strip().lower()
+if _LEV_SHED_LAW not in {"pin", "flux"}:
+    raise ValueError(
+        f"FLUXV_LEV_SHED_LAW must be 'pin' or 'flux', got {_LEV_SHED_LAW!r}"
+    )
+_LEV_FLUX = _LEV_HIRATO_V2 and _LEV_SHED_LAW == "flux"
+
+#: The sheet detaches from the leading edge (2026-11-26, default OFF; needs FLUXV_LEV_MODEL=hirato_v2).
+#:
+#: Hirato et al. stop the shedding when the suction parameter falls below its critical value.
+#: Measured on their own pitch ramp, that never happens in this ring discretisation: the sheet's
+#: induction at its own leading-edge row starts out against the freestream (at onset, t* = 1.71,
+#: -0.09 of the freestream's normal component, 82 % of the strips) and turns WITH it as the sheet
+#: grows (+0.42, 87 % of the strips at t* = 2.04, with the sheet carrying 108 U c inside a quarter
+#: chord).  A negative contribution relieves the leading edge and lowers the suction parameter; a
+#: positive one raises it, so the strip sheds more and the loop closes -- which is why both the
+#: pinned closure and the flux law ended the same way (note A25, section 4).
+#:
+#: With this switch a strip stops being fed the moment its own sheet's induction at its
+#: leading-edge row acts WITH the freestream instead of against it -- the measured mechanism,
+#: threshold zero, no new constant.  The strip's existing rings keep convecting; the strip itself
+#: returns to the attached solve, which is the state Hirato et al. leave a strip in once its
+#: shedding stops.
+#: Circulation a strip's sheet may carry before it stops being fed, in U_inf * chord.  The value is
+#: the detachment cap already cited in these notes (note A23, L2-4: "a literature detachment cap of
+#: 4.2"); a leading-edge vortex detaches at 4-5 U c, and a sheet that keeps growing past it has
+#: nothing to do with the flow it is meant to represent (measured here: 108 U c, note A25).
+_LEV_CAP = float(os.environ.get("FLUXV_LEV_CAP", "4.2"))
+
+#: How close to the leading edge (in chords) a detached strip's sheet has to come before the strip
+#: is allowed to shed again.  This is the latch of the criterion below: without it the sign test
+#: toggles the strip on and off every few steps.
+_LEV_DETACH_CHORDS = float(os.environ.get("FLUXV_LEV_DETACH_CHORDS", "1.0"))
+#: The third state of a strip (2026-11-26, default OFF; needs FLUXV_LEV_DETACH): separated but no
+#: longer feeding a sheet.  A detached strip's leading-edge row stops being a no-penetration row --
+#: a separated leading edge does not satisfy no-penetration -- and carries the strength of the sheet
+#: that left it instead (continuity of the vortex sheet across the separation point).  Without this
+#: third state the strip returns to the fully attached solve, which at 45 deg incidence, with a
+#: strong sheet still overhead, has no steady answer: measured on the H case, CL swung between
+#: -4.6 and +8.4 from step to step while the sheet was frozen (note A25, section 4).
+_LEV_SEPARATED_STATE = os.environ.get("FLUXV_LEV_SEPARATED_STATE", "off").strip().lower() in {
+    "1", "true", "on", "yes",
+}
+_LEV_DETACH = os.environ.get("FLUXV_LEV_DETACH", "off").strip().lower() in {
+    "1", "true", "on", "yes",
+} and _LEV_HIRATO_V2
 
 #: Hirato's leading-edge suction, pi rho c U^2 A0^2 per unit span along the chord towards the
 #: leading edge (the paper's Eq. 20), as a force on the front filament of the first panel of each
@@ -514,6 +728,12 @@ class NativeV5MConfig:
             raise ValueError(
                 "FLUXV_LEV_MODEL=hirato solves the leading-edge vortex in the legacy "
                 "separation path; joint_separation_solve is not available with it"
+            )
+        if _LEV_HIRATO_V2 and not _KERNEL_V3:
+            raise ValueError(
+                "FLUXV_LEV_MODEL=hirato_v2 needs FLUXV_RING_KERNEL=v3: the shared-edge "
+                "cancellations of the sheet (defect B2b of note A24) only hold when the free "
+                "rings and their unit influences are evaluated under one core radius"
             )
         if _LEV_HIRATO and not _TE_WAKE_V3:
             raise ValueError(
@@ -853,6 +1073,11 @@ class NativeV5MState:
     #: (lev_hirato.LevChain: ring rows, strengths, rows in use, last step's strength);
     #: None on the legacy model.  Unlike the two ledgers above it IS numerical state.
     lev_chain: Any = None
+    #: History metadata for synchronized t^{n-1} convection (Plan V4 Track A-1 / hirato_v2):
+    #: bound vortex rings and Hirato pseudovortex committed at step n-1 so step n convects
+    #: wake/LEV using consistent t^{n-1} geometry and strengths (NOT hashed by digest()).
+    bound_rings_previous: torch.Tensor | None = None
+    pseudovortex_previous: tuple[torch.Tensor, torch.Tensor] | None = None
 
     def clone(self) -> "NativeV5MState":
         return NativeV5MState(
@@ -884,6 +1109,19 @@ class NativeV5MState:
                 else self.lev_strip_released_total.clone()
             ),
             lev_chain=None if self.lev_chain is None else self.lev_chain.clone(),
+            bound_rings_previous=(
+                None
+                if self.bound_rings_previous is None
+                else self.bound_rings_previous.clone()
+            ),
+            pseudovortex_previous=(
+                None
+                if self.pseudovortex_previous is None
+                else (
+                    self.pseudovortex_previous[0].clone(),
+                    self.pseudovortex_previous[1].clone(),
+                )
+            ),
             diagnostics=tuple(dict(item) for item in self.diagnostics),
         )
 
@@ -1073,6 +1311,12 @@ class Q16NativeV5MSolver:
         self._lev_pseudovortex = None
         self._lev_bound_extra = None
         self._step_suction_panel = None
+        self._step_suction_replace_mask = None
+        # the pseudovortex rings of the step that has been committed: the repaired sheet puts
+        # them in the right-hand side and in the convection (note A24, B1/B2)
+        self._lev_pseudovortex_previous = None
+        # which strips' sheets are detached (note A25): the next convection freezes their rings
+        self._lev_detached = None
         self.author_load_assembler = Q16NativeAuthorLoadAssembler(
             surface, density=settings.density
         )
@@ -1123,7 +1367,9 @@ class Q16NativeV5MSolver:
                 ns, device=self.device, dtype=torch.float64
             ),
             lev_chain=(
-                lev_hirato.LevChain.empty(ns, self.device) if _LEV_HIRATO else None
+                lev_hirato.LevChain.empty(ns, self.device, rows=lev_hirato.max_rows())
+                if _LEV_HIRATO
+                else None
             ),
             frontier_nodes=geometry.leading_edge.clone(),
             frontier_active=torch.zeros(ns + 1, device=self.device, dtype=torch.bool),
@@ -1168,6 +1414,7 @@ class Q16NativeV5MSolver:
         rough: bool,
         core_radius: float | None = None,
         free: bool = False,
+        mixed_precision: bool = False,
     ) -> torch.Tensor:
         """Velocity of `rings` at `points`.  `free=True` marks a free-wake evaluation.
 
@@ -1187,6 +1434,14 @@ class Q16NativeV5MSolver:
                 "reference_length": 0.0,
                 "core_radius": core_radius,
             }
+            if (
+                mixed_precision
+                and points.device.type == "cuda"
+                and points.shape[0] * rings.shape[0] >= 4096
+            ):
+                return native_ring_velocity_fused(
+                    points, rings, gamma, **keywords, mixed_precision=True
+                )
             full_bytes = points.shape[0] * rings.shape[0] * 3 * 8
             if full_bytes <= self._RING_TILE_BYTES:
                 expanded = native_ring_velocity_expanded(points, rings, **keywords)
@@ -1194,6 +1449,15 @@ class Q16NativeV5MSolver:
             return native_ring_velocity_fused(points, rings, gamma, **keywords)
         if rough:
             core_fraction = 0.1
+        elif free and _FREE_WAKE_CORE_STEPS > 0.0:
+            # the step-scaled core of the papers, expressed in the legacy kernel's own terms:
+            # its radius is core_fraction * max(longest edge of the ring, reference_length), so
+            # this gives that radius for a ring no longer than one panel (see the flag's note)
+            core_fraction = (
+                _FREE_WAKE_CORE_STEPS
+                * float(self.settings.freestream * self.settings.aerodynamic_dt)
+                / self._legacy_reference_length
+            )
         elif free and _FREE_WAKE_CORE_FRACTION > 0.0:
             core_fraction = _FREE_WAKE_CORE_FRACTION
         else:
@@ -1242,7 +1506,15 @@ class Q16NativeV5MSolver:
         at a freestream of 0.022 m/s (third step of the startup ramp).
         """
 
-        if not _KERNEL_V3 or _WAKE_CORE_PANELS <= 0.0:
+        if not _KERNEL_V3:
+            return None
+        if _FREE_WAKE_CORE_STEPS > 0.0:
+            # the core of the papers that state one: a fraction of one convection step
+            # (Li et al.: r_core = U dt; Hirato et al.: below 0.5 of the smallest ring dimension)
+            return _FREE_WAKE_CORE_STEPS * float(
+                self.settings.freestream * self.settings.aerodynamic_dt
+            )
+        if _WAKE_CORE_PANELS <= 0.0:
             return None
         panel = 0.5 * torch.linalg.vector_norm(
             geometry.rings[:, 2] + geometry.rings[:, 3]
@@ -1250,6 +1522,108 @@ class Q16NativeV5MSolver:
             dim=1,
         )
         return _WAKE_CORE_PANELS * float(torch.mean(panel).item())
+
+    def _lev_rhs_core_radius(self, geometry: NativeV5MGeometry) -> float | None:
+        """Uniform core radius for LEV chain + pseudovortex on RHS, LHS basis, and loads."""
+
+        if not _KERNEL_V3 or _LEV_CORE_RHS_FRACTION <= 0.0:
+            return None
+        core = self._core_radius(geometry)
+        return None if core is None else core * _LEV_CORE_RHS_FRACTION
+
+    def _lev_live_core_radii(
+        self,
+        chain,
+        base_core: float | None,
+        *,
+        row_age_offset: int = 0,
+        continuing_mask: torch.Tensor | None = None,
+    ) -> float | torch.Tensor | None:
+        """Per-ring Squire turbulent core radii for live LEV rings (or scalar `base_core`).
+
+        r_c(m, j) = sqrt(r_0^2 + _SQUIRE_CORE * |Gamma(m, j)| * age_steps * dt).
+        Using `row_age_offset=1` (on continuing strips) before commit matches `row_age_offset=0`
+        after `push_nascent` bit-for-bit, preserving exact ~1e-14 post-commit Neumann parity.
+        """
+
+        if base_core is None or _SQUIRE_CORE <= 0.0 or not _KERNEL_V3:
+            return base_core
+        rows, ns = chain.rings.shape[0], chain.rings.shape[1]
+        row_idx = torch.arange(rows, device=self.device, dtype=torch.float64)[:, None]
+        if row_age_offset and continuing_mask is not None:
+            offset = continuing_mask.to(torch.float64)[None, :] * float(row_age_offset)
+        else:
+            offset = float(row_age_offset)
+        age_s = (row_idx + offset) * float(self.settings.aerodynamic_dt)
+        r0_sq = float(base_core) * float(base_core)
+        rc_grid = torch.sqrt(r0_sq + _SQUIRE_CORE * torch.abs(chain.gamma) * age_s)
+        mask = lev_hirato.active_rows(chain)
+        return rc_grid.reshape(-1)[mask]
+
+    def _wake_core_radii(
+        self,
+        wake_gamma: torch.Tensor,
+        base_core: float | None,
+        *,
+        row_age_offset: int = 1,
+    ) -> float | torch.Tensor | None:
+        """Per-ring Squire turbulent core radii for free TE wake rings (or scalar `base_core`)."""
+
+        if base_core is None or _SQUIRE_CORE <= 0.0 or not _KERNEL_V3 or wake_gamma.numel() == 0:
+            return base_core
+        ns = self.settings.spanwise_panels
+        total_rows = wake_gamma.shape[0] // ns
+        row_idx = (
+            torch.arange(total_rows, device=self.device, dtype=torch.float64) + float(row_age_offset)
+        )[:, None].expand(total_rows, ns).reshape(-1)
+        age_s = row_idx * float(self.settings.aerodynamic_dt)
+        r0_sq = float(base_core) * float(base_core)
+        return torch.sqrt(r0_sq + _SQUIRE_CORE * torch.abs(wake_gamma) * age_s)
+
+    def _wake_collocation_core_radius(self, geometry: NativeV5MGeometry) -> float | None:
+        """Optional uniform core radius for free TE wake evaluated at wing collocation points."""
+
+        if not _KERNEL_V3 or _WAKE_CORE_AT_COLLOCATION <= 0.0:
+            return None
+        core = self._core_radius(geometry)
+        return None if core is None else core * _WAKE_CORE_AT_COLLOCATION
+
+    def _ring_unit_normal(
+        self,
+        geometry: NativeV5MGeometry,
+        rings: torch.Tensor,
+        *,
+        core_radius: float | None = None,
+        free: bool = False,
+    ) -> torch.Tensor:
+        """(P, M) normal velocity induced per unit strength by `rings` at `geometry.collocation`."""
+
+        if _KERNEL_V3:
+            expanded = native_ring_velocity_expanded(
+                geometry.collocation,
+                rings,
+                core_fraction=0.0,
+                reference_length=0.0,
+                core_radius=core_radius,
+            )
+        else:
+            if free and _FREE_WAKE_CORE_STEPS > 0.0:
+                core_fraction = (
+                    _FREE_WAKE_CORE_STEPS
+                    * float(self.settings.freestream * self.settings.aerodynamic_dt)
+                    / self._legacy_reference_length
+                )
+            elif free and _FREE_WAKE_CORE_FRACTION > 0.0:
+                core_fraction = _FREE_WAKE_CORE_FRACTION
+            else:
+                core_fraction = 1.0e-6
+            expanded = native_ring_velocity_expanded(
+                geometry.collocation,
+                rings,
+                core_fraction=core_fraction,
+                reference_length=self._legacy_reference_length,
+            )
+        return torch.sum(expanded * geometry.normals[:, None, :], dim=2)
 
     def _external_velocity(
         self,
@@ -1270,11 +1644,350 @@ class Q16NativeV5MSolver:
         )
         return self.v_inf[None, :] + bound_velocity + wake_velocity
 
-    def _lev_chain_velocity(self, points: torch.Tensor, chain) -> torch.Tensor:
-        """Induction of the leading-edge ring chains at `points` (zero rows add nothing)."""
+    def _lev_chain_velocity(
+        self, points: torch.Tensor, chain, core_radius: float | None = None
+    ) -> torch.Tensor:
+        """Induction of the leading-edge ring chains at `points` (skips zero rows)."""
 
-        rings, gamma = lev_hirato.flat(chain)
-        return self._ring_velocity(points, rings, gamma, rough=False, free=True)
+        rings, gamma = lev_hirato.flat_live(chain)
+        return self._ring_velocity(
+            points, rings, gamma, rough=False, core_radius=core_radius, free=True
+        )
+
+    def _advance_material_state_v4(
+        self,
+        geometry: NativeV5MGeometry,
+        trial: NativeV5MState,
+        dt: float,
+        core: float | None,
+        retention: dict[str, float | int],
+    ) -> dict[str, float | int]:
+        """Synchronized t^{n-1} Heun (RK2) material convection (Plan V4 Track A-1 + hirato_v2).
+
+        Fixes four defects of the legacy sequential convection simultaneously:
+          1. Uses `bound_rings_previous` paired with `gamma_bound` (consistent t^{n-1} time level).
+          2. Evaluates ONE unified velocity field (v_inf + bound + wake + live LEV + previous
+             pseudovortex + particles) with uniform `core_radius=core`, so TE wake and LEV see
+             each other with exact leading/trailing-edge cancellation and zero singularity.
+          3. Deduplicates connected structured wake corners into (R_free+1)*(ns+1) unique vertices
+             (3.9x fewer targets) and compacts LEV chains to live rows only (up to 99% fewer).
+          4. Updates stage-2 wake/LEV/particle source positions (non-frozen RK2 predictor-corrector).
+        """
+
+        ns = self.settings.spanwise_panels
+        has_wake = trial.wake_rings.shape[0] > 0
+        chain = trial.lev_chain
+        has_lev = chain is not None and bool((chain.count > 0).any().item())
+        n_part = int(trial.particle_field.n)
+        if not (has_wake or has_lev or n_part):
+            return retention
+
+        bound_src = (
+            trial.bound_rings_previous
+            if trial.bound_rings_previous is not None
+            else geometry.rings
+        )
+        bound_gamma = trial.gamma_bound
+
+        pv_src = (
+            trial.pseudovortex_previous
+            if trial.pseudovortex_previous is not None
+            else getattr(self, "_lev_pseudovortex_previous", None)
+        )
+        has_pv = (
+            chain is not None
+            and pv_src is not None
+            and pv_src[0].shape[0] > 0
+            and bool((chain.prev != 0.0).any().item())
+        )
+        pv_rings = pv_src[0] if has_pv else None
+        pv_gamma = chain.prev if has_pv else None
+
+        free_rows = 0
+        use_unique_wake = False
+        wake_frozen_0 = None
+        wake_pts_0 = None
+        if has_wake:
+            total_rows = trial.wake_rings.shape[0] // ns
+            freeze_rows = self.settings.wake_free_rows
+            free_rows = (
+                min(total_rows, freeze_rows)
+                if (freeze_rows and total_rows > freeze_rows)
+                else total_rows
+            )
+            wake_all_0 = trial.wake_rings.clone()
+            wake_active_0 = wake_all_0[: free_rows * ns]
+            wake_frozen_0 = wake_all_0[free_rows * ns :]
+            if _SHED_DISTANCE_FRACTION == 0.0:
+                w_grid = wake_active_0.reshape(free_rows, ns, 4, 3)
+                verts_0 = torch.empty(
+                    (free_rows + 1, ns + 1, 3), device=self.device, dtype=torch.float64
+                )
+                verts_0[0, :-1] = w_grid[0, :, 0]
+                verts_0[0, -1] = w_grid[0, -1, 1]
+                verts_0[1:, :-1] = w_grid[:, :, 3]
+                verts_0[1:, -1] = w_grid[:, -1, 2]
+                recon_0 = torch.stack(
+                    (verts_0[:-1, :-1], verts_0[:-1, 1:], verts_0[1:, 1:], verts_0[1:, :-1]),
+                    dim=2,
+                ).reshape(free_rows * ns, 4, 3)
+                if bool((torch.max(torch.abs(recon_0 - wake_active_0)) <= 1.0e-12).item()):
+                    use_unique_wake = True
+                    wake_pts_0 = verts_0.reshape(-1, 3)
+            if not use_unique_wake:
+                wake_pts_0 = wake_active_0.reshape(-1, 3)
+
+        live_mask = None
+        lev_gamma = None
+        lev_pts_0 = None
+        if has_lev:
+            live_mask = lev_hirato.active_rows(chain)
+            lev_rings_0 = chain.rings.reshape(-1, 4, 3)[live_mask].clone()
+            lev_gamma = chain.gamma.reshape(-1)[live_mask]
+            lev_pts_0 = lev_rings_0.reshape(-1, 3)
+
+        part_pts_0 = trial.particle_field.pos[:n_part].clone() if n_part else None
+
+        def _reconstruct_active_wake(w_pts: torch.Tensor) -> torch.Tensor:
+            if use_unique_wake:
+                v = w_pts.reshape(free_rows + 1, ns + 1, 3)
+                return torch.stack(
+                    (v[:-1, :-1], v[:-1, 1:], v[1:, 1:], v[1:, :-1]), dim=2
+                ).reshape(free_rows * ns, 4, 3)
+            return w_pts.reshape(free_rows * ns, 4, 3)
+
+        def _eval_stage(
+            w_pts: torch.Tensor | None,
+            l_pts: torch.Tensor | None,
+            p_pts: torch.Tensor | None,
+            stage_dt: float,
+        ) -> tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+            src_rings_list = [bound_src]
+            src_gamma_list = [bound_gamma]
+            use_squire = _SQUIRE_CORE > 0.0 and _KERNEL_V3 and core is not None
+            src_core_list = (
+                [torch.full((bound_src.shape[0],), float(core), device=self.device, dtype=torch.float64)]
+                if use_squire
+                else None
+            )
+            if has_wake and w_pts is not None:
+                w_act = _reconstruct_active_wake(w_pts)
+                if wake_frozen_0 is not None and wake_frozen_0.shape[0] > 0:
+                    w_src = torch.cat((w_act, wake_frozen_0 + stage_dt * self.v_inf), dim=0)
+                else:
+                    w_src = w_act
+                src_rings_list.append(w_src)
+                src_gamma_list.append(trial.wake_gamma)
+                if use_squire:
+                    src_core_list.append(self._wake_core_radii(trial.wake_gamma, core, row_age_offset=1))
+            if has_lev and l_pts is not None:
+                src_rings_list.append(l_pts.reshape(-1, 4, 3))
+                src_gamma_list.append(lev_gamma)
+                if use_squire:
+                    src_core_list.append(self._lev_live_core_radii(chain, core, row_age_offset=1))
+            if has_pv:
+                src_rings_list.append(pv_rings)
+                src_gamma_list.append(pv_gamma)
+                if use_squire:
+                    src_core_list.append(
+                        torch.full((pv_rings.shape[0],), float(core), device=self.device, dtype=torch.float64)
+                    )
+            src_rings = torch.cat(src_rings_list, dim=0)
+            src_gamma = torch.cat(src_gamma_list, dim=0)
+            src_cores = torch.cat(src_core_list, dim=0) if use_squire else core
+
+            target_parts = []
+            n_w = w_pts.shape[0] if w_pts is not None else 0
+            n_l = l_pts.shape[0] if l_pts is not None else 0
+            n_p = p_pts.shape[0] if p_pts is not None else 0
+            if n_w:
+                target_parts.append(w_pts)
+            if n_l:
+                target_parts.append(l_pts)
+            if n_p:
+                target_parts.append(p_pts)
+            targets = (
+                target_parts[0]
+                if len(target_parts) == 1
+                else torch.cat(target_parts, dim=0)
+            )
+            vel = self.v_inf[None, :] + self._ring_velocity(
+                targets,
+                src_rings,
+                src_gamma,
+                rough=False,
+                core_radius=src_cores,
+                free=True,
+                mixed_precision=_RING_MIXED_PRECISION,
+            )
+            if n_part:
+                if stage_dt > 0.0 and p_pts is not None:
+                    trial.particle_field.pos[:n_part].copy_(p_pts)
+                vel = vel + trial.particle_field.velocity_at_cuda(targets)
+            offset = 0
+            u_w = vel[offset : offset + n_w] if n_w else None
+            offset += n_w
+            u_l = vel[offset : offset + n_l] if n_l else None
+            offset += n_l
+            u_p = vel[offset : offset + n_p] if n_p else None
+            return u_w, u_l, u_p
+
+        u1_w, u1_l, u1_p = _eval_stage(wake_pts_0, lev_pts_0, part_pts_0, 0.0)
+        w_pred = None if wake_pts_0 is None else wake_pts_0 + dt * u1_w
+        l_pred = None if lev_pts_0 is None else lev_pts_0 + dt * u1_l
+        p_pred = None if part_pts_0 is None else part_pts_0 + dt * u1_p
+        if _WING_SLIP_WALL > 0.0:
+            if w_pred is not None:
+                w_pred = self._apply_wing_slip_wall(geometry, bound_src, wake_pts_0, w_pred)
+            if l_pred is not None:
+                l_pred = self._apply_wing_slip_wall(geometry, bound_src, lev_pts_0, l_pred)
+            if p_pred is not None:
+                p_pred = self._apply_wing_slip_wall(geometry, bound_src, part_pts_0, p_pred)
+        u2_w, u2_l, u2_p = _eval_stage(w_pred, l_pred, p_pred, dt)
+
+        if has_wake and wake_pts_0 is not None:
+            w_new_pts = wake_pts_0 + 0.5 * dt * (u1_w + u2_w)
+            if not bool(torch.isfinite(w_new_pts).all().item()):
+                raise FloatingPointError("wake rings convected to a non-finite position")
+            if _WING_SLIP_WALL > 0.0:
+                w_new_pts = self._apply_wing_slip_wall(geometry, bound_src, wake_pts_0, w_new_pts)
+            updated_active = _reconstruct_active_wake(w_new_pts)
+            if wake_frozen_0 is not None and wake_frozen_0.shape[0] > 0:
+                trial.wake_rings = torch.cat(
+                    (updated_active, wake_frozen_0 + dt * self.v_inf), dim=0
+                )
+            else:
+                trial.wake_rings = updated_active
+
+        if has_lev and lev_pts_0 is not None:
+            l_new_pts = lev_pts_0 + 0.5 * dt * (u1_l + u2_l)
+            if not bool(torch.isfinite(l_new_pts).all().item()):
+                raise FloatingPointError(
+                    "leading-edge vortex rings convected to a non-finite position"
+                )
+            if _WING_SLIP_WALL > 0.0:
+                l_new_pts = self._apply_wing_slip_wall(geometry, bound_src, lev_pts_0, l_new_pts)
+            rows = chain.rings.shape[0]
+            rings_full = torch.zeros_like(chain.rings).reshape(-1, 4, 3)
+            rings_full[live_mask] = l_new_pts.reshape(-1, 4, 3)
+            moved_grid = rings_full.reshape(rows, ns, 4, 3)
+            if _LEV_DETACH and getattr(self, "_lev_detached", None) is not None:
+                mask = self._lev_detached.reshape(1, ns, 1, 1)
+                moved_grid = torch.where(
+                    mask, chain.rings + dt * self.v_inf[None, None, None, :], moved_grid
+                )
+            trial.lev_chain = lev_hirato._mask_invalid(
+                lev_hirato.reconnect(chain.with_rings(moved_grid)), chain.count
+            )
+
+        if n_part and part_pts_0 is not None:
+            p_new = part_pts_0 + 0.5 * dt * (u1_p + u2_p)
+            if not bool(torch.isfinite(p_new).all().item()):
+                raise FloatingPointError("vortex particles convected to a non-finite position")
+            if _WING_SLIP_WALL > 0.0:
+                p_new = self._apply_wing_slip_wall(geometry, bound_src, part_pts_0, p_new)
+            trial.particle_field.pos[:n_part].copy_(p_new)
+            if self.settings.particle_max_age_steps > 0:
+                horizon = trial.step - self.settings.particle_max_age_steps
+                if horizon > 0:
+                    alive = trial.particle_field.n
+                    stale = trial.particle_field.birth_step[:alive] < horizon
+                    removed = int(torch.count_nonzero(stale).item())
+                    if removed:
+                        retention["particle_cull_count"] = removed
+                        retention["particle_cull_circulation"] = float(
+                            trial.particle_field.circul[:alive][stale].sum().item()
+                        )
+                        impulse = 0.5 * torch.cross(
+                            trial.particle_field.pos[:alive][stale],
+                            trial.particle_field.gamma[:alive][stale],
+                            dim=1,
+                        ).sum(dim=0)
+                        retention["particle_cull_linear_impulse"] = [
+                            float(value) for value in impulse.tolist()
+                        ]
+                        trial.particle_field.remove_mask(
+                            trial.particle_field.birth_step[: trial.particle_field.n]
+                            < horizon
+                        )
+        return retention
+
+    def _apply_wing_slip_wall(
+        self,
+        geometry: NativeV5MGeometry,
+        bound_rings_prev: torch.Tensor,
+        pts_old: torch.Tensor,
+        pts_new: torch.Tensor,
+    ) -> torch.Tensor:
+        """Wing-impenetrability slip-wall projection (Hirato §4.8.3 / Ramesh 2014 / Bird 2021).
+
+        Prevents free vortex vertices (LEV rings, TE wake, or rVPM particles) from tunneling
+        through the solid wing surface between discrete collocation points, sliding them
+        tangentially at clearance `d_wall = _WING_SLIP_WALL * mean_dx` on their incoming side.
+        General for flat, cambered, hinged, flapping, and flexible FSI wings.
+        """
+
+        if pts_new.shape[0] == 0:
+            return pts_new
+        nc = self.settings.chordwise_panels
+        ns = self.settings.spanwise_panels
+        r_now = geometry.rings
+        c_now = 0.5 * (r_now[:, 2] + r_now[:, 3] - r_now[:, 0] - r_now[:, 1])
+        dx_now = torch.linalg.vector_norm(c_now, dim=1).clamp(min=1.0e-12)
+        tx_now = c_now / dx_now[:, None]
+        s_now = 0.5 * (r_now[:, 1] + r_now[:, 2] - r_now[:, 0] - r_now[:, 3])
+        dy_now = torch.linalg.vector_norm(s_now, dim=1).clamp(min=1.0e-12)
+        ty_now = s_now / dy_now[:, None]
+        n_now = geometry.normals
+        # Shift bound-ring centre forward by 0.25*dx to recover the physical solid panel centre
+        phys_now = 0.25 * (r_now[:, 0] + r_now[:, 1] + r_now[:, 2] + r_now[:, 3]) - 0.25 * c_now
+
+        r_prev = bound_rings_prev
+        c_prev = 0.5 * (r_prev[:, 2] + r_prev[:, 3] - r_prev[:, 0] - r_prev[:, 1])
+        phys_prev = 0.25 * (r_prev[:, 0] + r_prev[:, 1] + r_prev[:, 2] + r_prev[:, 3]) - 0.25 * c_prev
+        n_prev_raw = torch.linalg.cross(r_prev[:, 2] - r_prev[:, 0], r_prev[:, 3] - r_prev[:, 1], dim=1)
+        n_prev_norm = torch.linalg.vector_norm(n_prev_raw, dim=1, keepdim=True).clamp(min=1.0e-12)
+        n_prev = n_prev_raw / n_prev_norm
+        flip = torch.sum(n_prev * n_now, dim=1) < 0.0
+        n_prev = torch.where(flip[:, None], -n_prev, n_prev)
+
+        d_wall = _WING_SLIP_WALL * float(torch.mean(dx_now).item())
+        out = pts_new.clone()
+        tile = 4096
+        n_pts = pts_new.shape[0]
+        for start in range(0, n_pts, tile):
+            stop = min(start + tile, n_pts)
+            p_new = pts_new[start:stop]
+            p_old = pts_old[start:stop]
+            diff = p_new[:, None, :] - phys_now[None, :, :]
+            idx = torch.argmin(torch.sum(diff * diff, dim=2), dim=1)
+            rel_new = p_new - phys_now[idx]
+            xi = torch.sum(rel_new * tx_now[idx], dim=1)
+            eta = torch.sum(rel_new * ty_now[idx], dim=1)
+            h_new = torch.sum(rel_new * n_now[idx], dim=1)
+            dx_i = dx_now[idx]
+            dy_i = dy_now[idx]
+            row_i = idx // ns
+            # Leave a 0.05*dx margin at sharp LE and TE so nascent edge attachment is undisturbed
+            in_chord = (
+                ((row_i > 0) | (xi > -0.45 * dx_i))
+                & ((row_i < nc - 1) | (xi < 0.45 * dx_i))
+                & (torch.abs(xi) <= 0.55 * dx_i)
+            )
+            in_span = torch.abs(eta) <= 0.55 * dy_i
+            inside = in_chord & in_span
+            h_old = torch.sum((p_old - phys_prev[idx]) * n_prev[idx], dim=1)
+            ones = torch.ones_like(h_new)
+            side = torch.where(
+                torch.abs(h_old) > 1.0e-12,
+                torch.where(h_old >= 0.0, ones, -ones),
+                torch.where(h_new >= 0.0, ones, -ones),
+            )
+            violated = inside & ((side * h_new) < d_wall)
+            if bool(violated.any().item()):
+                shift = torch.where(violated, side * d_wall - h_new, torch.zeros_like(h_new))
+                out[start:stop] = p_new + shift[:, None] * n_now[idx]
+        return out
 
     def _convect_lev_chain(self, geometry, trial, dt: float, core: float | None):
         """One Runge-Kutta step of the leading-edge ring chains; a new chain, the old one intact.
@@ -1290,11 +2003,29 @@ class Q16NativeV5MSolver:
             return chain
         rows, span_panels = chain.rings.shape[0], chain.rings.shape[1]
         corners = chain.rings.reshape(-1, 3)
-        rings, gamma = lev_hirato.flat(chain)
+        rings, gamma = lev_hirato.flat_live(chain)
+
+        # B2 (note A24): the convection must see the pseudovortex rings as well as the chain
+        # rows, or the leading and trailing edges keep an uncancelled +-Gamma_L filament that the
+        # first RK3 stage then winds into the wake.
+        if _LEV_HIRATO_V2:
+            previous = getattr(self, "_lev_pseudovortex_previous", None)
+            sources = lev_hirato.free_ring_sources(
+                chain,
+                previous[0] if previous is not None
+                else torch.zeros((0, 4, 3), device=self.device, dtype=torch.float64),
+                chain.prev,
+            )
+            lev_core = core
+        else:
+            sources = (rings, gamma)
+            lev_core = None
 
         def velocity(at: torch.Tensor) -> torch.Tensor:
             value = self._external_velocity(at, geometry, trial, core)
-            value = value + self._ring_velocity(at, rings, gamma, rough=False, free=True)
+            value = value + self._ring_velocity(
+                at, *sources, rough=False, core_radius=lev_core, free=True
+            )
             if trial.particle_field.n:
                 value = value + trial.particle_field.velocity_at_cuda(at)
             return value
@@ -1303,6 +2034,20 @@ class Q16NativeV5MSolver:
         u2 = velocity(corners + 0.5 * dt * u1)
         u3 = velocity(corners + dt * (-u1 + 2.0 * u2))
         moved = corners + (dt / 6.0) * (u1 + 4.0 * u2 + u3)
+        if _LEV_DETACH and getattr(self, "_lev_detached", None) is not None:
+            # A detached strip's sheet is no longer attached to the edge: it drifts with the
+            # freestream instead of being held there by its own induction, exactly as the frozen
+            # far wake does beyond `wake_free_rows`.  Without this the sheet stays within a
+            # quarter chord of the edge, keeps its adverse induction at the leading-edge row, and
+            # the strip's attached solve (which resumes on detachment) has to fight it: measured
+            # on the H case, CL = -2.1 at step 187 and 150 at step 195.
+            mask = (
+                self._lev_detached.reshape(1, span_panels, 1, 1)
+                .expand(rows, span_panels, 4, 1)
+                .reshape(-1, 1)
+            )
+            frozen = corners + dt * self.v_inf[None, :]
+            moved = torch.where(mask, frozen, moved)
         if not bool(torch.isfinite(moved).all().item()):
             raise FloatingPointError("leading-edge vortex rings convected to a non-finite position")
         return lev_hirato._mask_invalid(
@@ -1311,7 +2056,12 @@ class Q16NativeV5MSolver:
         )
 
     def _hirato_solve(
-        self, geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre
+        self, geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre,
+        split_from_rhs=None, chain_normal_at_le=None,
+        *,
+        chain_split=None,
+        pv_norm_cached=None,
+        pseudovortex_cached=None,
     ) -> dict:
         """The circulation solve with the nascent leading-edge vortex of every shedding strip
         as an unknown (lev_hirato.solve_coupled).
@@ -1326,12 +2076,17 @@ class Q16NativeV5MSolver:
         ns = self.settings.spanwise_panels
         crit = self.settings.effective_lesp_crit
         chain = trial.lev_chain
+        was_shedding = lev_hirato.continuing(chain)
         edge = lev_hirato.strip_pairs(geometry.leading_edge)
         rear = lev_hirato.bound_rear(geometry.rings, self.settings.chordwise_panels)
         back = rear                                   # (N, 2, 3): the strip's two aft corners
-        pseudovortex = lev_hirato.pseudovortex_ring(geometry.leading_edge, rear)
+        pseudovortex = (
+            pseudovortex_cached
+            if pseudovortex_cached is not None
+            else lev_hirato.pseudovortex_ring(geometry.leading_edge, rear)
+        )
         # Ramesh's first-vortex displacement in the strip's own frame: chord towards the
-        # trailing edge, suction-side normal, the geometric angle of the freestream.  The
+        # trailing edge, suction-side normal, the geometric angle of the flow.  The
         # paper's A0 shares its sign with the leading-edge circulation, the solver's suction
         # parameter is minus that circulation over `scale`.
         chord_tangent = back.mean(dim=1) - edge.mean(dim=1)
@@ -1339,6 +2094,188 @@ class Q16NativeV5MSolver:
             chord_tangent, dim=1, keepdim=True
         )
         normal = geometry.normals[:ns]
+        if _LEV_HIRATO_V2:
+            # Relative LE velocity v_inf - v_LE handles plunging, pitching, and flapping wings
+            # (reduces identically to v_inf on a stationary wing).
+            le_vel = 0.5 * (geometry.leading_velocity[:-1] + geometry.leading_velocity[1:])
+            v_rel = self.v_inf[None, :] - le_vel
+            speed_rel = torch.linalg.vector_norm(v_rel, dim=1)
+            v_inf_speed = torch.linalg.vector_norm(self.v_inf).clamp(min=1.0e-12)
+            valid_rel = speed_rel > 1.0e-12
+            safe_v_rel = torch.where(
+                valid_rel[:, None], v_rel, self.v_inf[None, :].expand_as(v_rel)
+            )
+            safe_speed = torch.where(valid_rel, speed_rel, v_inf_speed)
+            sin_alpha = torch.sum(safe_v_rel * normal, dim=1) / safe_speed
+            cos_alpha = torch.sum(safe_v_rel * chord_tangent, dim=1) / safe_speed
+            first = lev_hirato.first_free_points(
+                edge, chord_tangent, normal, safe_speed,
+                self.settings.aerodynamic_dt, -lesp_pre, sin_alpha, cos_alpha,
+            )
+            if chain_split is None:
+                if bool(was_shedding.any().item()):
+                    chain_split, split = lev_hirato.split_row0(
+                        chain, geometry.leading_edge, was_shedding
+                    )
+                else:
+                    chain_split = chain
+                    split = first
+            else:
+                split = split_from_rhs if split_from_rhs is not None else first
+            free = torch.where(was_shedding[:, None, None], split, first)
+            nascent = lev_hirato.nascent_row(free, edge)
+            lev_core_rhs = self._lev_rhs_core_radius(geometry)
+            nascent_norm = self._ring_unit_normal(
+                geometry, nascent, core_radius=lev_core_rhs, free=True
+            )
+            pv_norm = (
+                pv_norm_cached
+                if pv_norm_cached is not None
+                else self._ring_unit_normal(
+                    geometry, pseudovortex, core_radius=lev_core_rhs, free=False
+                )
+            )
+            basis = nascent_norm + pv_norm                              # (P, ns)
+            # Zero-shedding test gamma_pre already carried chain.prev on continuing strips,
+            # so only strips whose |lesp_pre| exceeds crit shed new vorticity (dGamma_L != 0).
+            # Continuing strips below crit stay in `held` (lam = chain.prev, dGamma_L = 0).
+            active = torch.abs(lesp_pre) > crit
+            detached = None
+            if _LEV_DETACH and chain_normal_at_le is not None:
+                freestream_normal = torch.sum(self.v_inf[None, :] * geometry.normals[:ns], dim=1)
+                own = self._own_sheet_normal_at_leading_edge(
+                    geometry, chain_split, pseudovortex=pseudovortex, core_radius=lev_core_rhs
+                )
+                adverse = (own * freestream_normal) > 0.0
+                chain_rows = chain_split.rings.reshape(-1, ns, 4, 3)
+                live = (
+                    torch.arange(chain_rows.shape[0], device=self.device)[:, None]
+                    < chain_split.count[None, :]
+                )
+                centres = chain_rows.mean(dim=2)
+                strip_chord = 0.5 * (
+                    geometry.trailing_edge[:-1] + geometry.trailing_edge[1:]
+                    - geometry.leading_edge[:-1] - geometry.leading_edge[1:]
+                )
+                strip_length = torch.linalg.vector_norm(strip_chord, dim=1)
+                if bool(live.any().item()):
+                    chord_hat = strip_chord / strip_length[:, None]
+                    strip_leading = 0.5 * (
+                        geometry.leading_edge[:-1] + geometry.leading_edge[1:]
+                    )
+                    along = torch.sum(
+                        (centres - strip_leading[None, :, :]) * chord_hat[None, :, :], dim=2
+                    )
+                    along = torch.where(live, along, torch.full_like(along, 1.0e9))
+                    nearest = along.min(dim=0).values
+                else:
+                    nearest = torch.full((ns,), 1.0e9, device=self.device, dtype=torch.float64)
+                near = (chain_split.count > 0) & (nearest < _LEV_DETACH_CHORDS * strip_length)
+                prev_det = getattr(self, "_lev_detached", None)
+                near_latch = (
+                    (prev_det & near)
+                    if prev_det is not None
+                    else torch.zeros(ns, device=self.device, dtype=torch.bool)
+                )
+                carried = torch.sum(
+                    torch.where(live, chain_split.gamma, torch.zeros_like(chain_split.gamma)),
+                    dim=0,
+                )
+                over_cap = carried.abs() >= _LEV_CAP * self.settings.freestream * strip_length
+                detached = adverse | near_latch | over_cap
+                active = active & ~detached
+            imposed = None
+            if _LEV_SEPARATED_STATE and detached is not None and bool(detached.any().item()):
+                front = torch.where(
+                    chain_split.count > 0, chain_split.gamma[0], torch.zeros_like(chain_split.gamma[0])
+                )
+                imposed = (detached, front)
+            pin_sign = torch.where(
+                lesp_pre >= 0.0, torch.ones_like(lesp_pre), -torch.ones_like(lesp_pre)
+            )
+            lam = torch.zeros(ns, device=self.device, dtype=torch.float64)
+            if _LEV_FLUX:
+                leading_edge_panel = 0.5 * (
+                    torch.linalg.vector_norm(
+                        geometry.rings[:ns, 3] - geometry.rings[:ns, 0], dim=1
+                    )
+                    + torch.linalg.vector_norm(
+                        geometry.rings[:ns, 2] - geometry.rings[:ns, 1], dim=1
+                    )
+                )
+                dgamma = lev_hirato.flux_shedding_strength(
+                    lesp_pre, scale, leading_edge_panel, self.settings.aerodynamic_dt
+                )
+                prescribed = torch.where(was_shedding, chain.prev + dgamma, dgamma)
+                held_base = torch.where(was_shedding, chain.prev, torch.zeros_like(chain.prev))
+                iterations = 0
+                for iterations in range(1, 9):
+                    lam = torch.where(active, prescribed, held_base)
+                    push_mask = active | was_shedding
+                    gamma, residual = lev_hirato.solve_prescribed(
+                        system_aic, nascent_normal, basis, rhs, push_mask, lam
+                    )
+                    solved = -gamma[:ns] / scale
+                    crossed = (torch.abs(solved) > crit) & ~active
+                    if detached is not None:
+                        crossed = crossed & ~detached
+                    if not bool(crossed.any().item()):
+                        break
+                    active = active | crossed
+                return {
+                    "gamma": gamma, "lam": lam, "active": active,
+                    "push_mask": active | was_shedding, "chain_split": chain_split,
+                    "pin_sign": pin_sign, "residual": residual,
+                    "nascent": nascent, "iterations": iterations, "shed_law": "flux",
+                    "detached_strips": int(detached.sum().item()) if detached is not None else 0,
+                    "imposed_strips": imposed[0] if imposed is not None else None,
+                }
+            iterations = 0
+            while True:
+                iterations += 1
+                target = -pin_sign * crit * scale
+                held = was_shedding & ~active
+                held_idx = torch.nonzero(held, as_tuple=False).reshape(-1)
+                if held_idx.numel():
+                    rhs_iter = rhs - (
+                        nascent_normal[:, held_idx] + basis[:, held_idx]
+                    ) @ chain.prev[held_idx]
+                else:
+                    rhs_iter = rhs
+                index = torch.nonzero(active, as_tuple=False).reshape(-1)
+                gamma, strength, residual = lev_hirato.solve_coupled(
+                    system_aic, nascent_normal, basis[:, index], rhs_iter, active, target,
+                    imposed=imposed,
+                )
+                lam.zero_()
+                if held_idx.numel():
+                    lam[held_idx] = chain.prev[held_idx]
+                if index.numel():
+                    lam[index] = strength
+                solved = -gamma[:ns] / scale
+                crossed = (torch.abs(solved) > crit) & ~active
+                if detached is not None:
+                    crossed = crossed & ~detached
+                dlam = lam - chain.prev
+                wrong_dir = active & ((dlam * torch.sign(target)) < 0.0)
+                if not (bool(crossed.any().item()) or bool(wrong_dir.any().item())) or iterations >= 8:
+                    break
+                pin_sign = torch.where(
+                    crossed,
+                    torch.where(solved >= 0.0, torch.ones_like(solved), -torch.ones_like(solved)),
+                    pin_sign,
+                )
+                active = (active | crossed) & ~wrong_dir
+            self._lev_detached = detached
+            return {
+                "gamma": gamma, "lam": lam, "active": active,
+                "push_mask": active | was_shedding, "chain_split": chain_split,
+                "pin_sign": pin_sign, "residual": residual,
+                "nascent": nascent, "iterations": iterations,
+                "detached_strips": int(detached.sum().item()) if detached is not None else 0,
+                "imposed_strips": imposed[0] if imposed is not None else None,
+            }
+
         speed = torch.linalg.vector_norm(self.v_inf)
         sin_alpha = torch.sum(self.v_inf[None, :] * normal, dim=1) / speed
         cos_alpha = torch.sum(self.v_inf[None, :] * chord_tangent, dim=1) / speed
@@ -1348,7 +2285,16 @@ class Q16NativeV5MSolver:
         )
         # the paper's split applies to a chain that is still shedding; a chain that stopped
         # has left the edge, and the strip's next ring is a first ring on the edge again
-        split = lev_hirato.split_points(edge, lev_hirato.row_aft_pairs(chain.rings[0]))
+        # B3 (note A24): Eq. (7) measures one third of the way to the sheet's FREE end; the old
+        # call measured to its leading-edge-side end, which is one convection step from the edge
+        # whatever the sheet's age, so every new ring came out a third of a step long.  Under
+        # hirato_v2 the split was already taken when the right-hand side was built and the same
+        # one is used here, so the solve and the commit agree (B1).
+        split = (
+            split_from_rhs
+            if split_from_rhs is not None
+            else lev_hirato.split_points(edge, lev_hirato.row_aft_pairs(chain.rings[0]))
+        )
         free = torch.where(lev_hirato.continuing(chain)[:, None, None], split, first)
         nascent = lev_hirato.nascent_row(free, edge)
 
@@ -1372,32 +2318,192 @@ class Q16NativeV5MSolver:
         # value, and one that was shedding stays in until the rule below takes it out
         was_shedding = lev_hirato.continuing(chain)
         active = (torch.abs(lesp_pre) > crit) | was_shedding
+        detached = None
+        if _LEV_DETACH and chain_normal_at_le is not None:
+            # The sheet's induction at its own leading-edge row against the freestream's: when the
+            # two share a sign the sheet no longer relieves the edge, so the strip stops being fed.
+            # A strip that has detached stays detached while its sheet is still in the near field
+            # (`FLUXV_LEV_DETACH_CHORDS` chords of the leading edge): without that latch the sign
+            # flips back as soon as the sheet moves a little, the strip sheds again, and the result
+            # is the on/off switching this criterion exists to remove -- measured on the H case:
+            # 14, 8, 4, 26, 9 strips in five samples, then the runaway at step 214.
+            freestream_normal = torch.sum(self.v_inf[None, :] * geometry.normals[:ns], dim=1)
+            # Only a strip's OWN sheet can detach it.  The total chain induction at a strip's
+            # leading-edge row is dominated by its neighbours' sheets across the span, so using it
+            # detached all 48 strips the moment 14 began to shed (measured: step 162 -> 163, note
+            # A25).  Each strip's own rows are evaluated at its own leading-edge point instead.
+            own = self._own_sheet_normal_at_leading_edge(geometry, trial.lev_chain)
+            adverse = (own * freestream_normal) > 0.0
+            chain_rows = trial.lev_chain.rings.reshape(-1, ns, 4, 3)
+            live = (
+                torch.arange(chain_rows.shape[0], device=self.device)[:, None]
+                < trial.lev_chain.count[None, :]
+            )
+            # how far the nearest ring of every strip is downstream of its leading edge
+            centres = chain_rows.mean(dim=2)
+            if bool(live.any().item()):
+                # the strip's own chord direction, from the leading edge to the trailing edge
+                strip_chord = 0.5 * (
+                    geometry.trailing_edge[:-1] + geometry.trailing_edge[1:]
+                    - geometry.leading_edge[:-1] - geometry.leading_edge[1:]
+                )
+                chord_hat = strip_chord / torch.linalg.vector_norm(
+                    strip_chord, dim=1, keepdim=True
+                )
+                strip_leading = 0.5 * (
+                    geometry.leading_edge[:-1] + geometry.leading_edge[1:]
+                )
+                along = torch.sum(
+                    (centres - strip_leading[None, :, :]) * chord_hat[None, :, :], dim=2
+                )
+                along = torch.where(live, along, torch.full_like(along, 1.0e9))
+                nearest = along.min(dim=0).values
+            else:
+                nearest = torch.full((ns,), 1.0e9, device=self.device, dtype=torch.float64)
+            strip_length = torch.linalg.vector_norm(strip_chord, dim=1)
+            near = (trial.lev_chain.count > 0) & (
+                nearest < _LEV_DETACH_CHORDS * strip_length
+            )
+            # what the strip's sheet already carries, against the detachment cap
+            carried = torch.sum(
+                torch.where(live, trial.lev_chain.gamma, torch.zeros_like(trial.lev_chain.gamma)),
+                dim=0,
+            )
+            chord_length = torch.linalg.vector_norm(geometry.trailing_edge[:-1]
+                                                    - geometry.leading_edge[:-1], dim=1)
+            over_cap = carried.abs() >= _LEV_CAP * self.settings.freestream * chord_length
+            detached = adverse | near | over_cap
+            active = active & ~detached
         target = -torch.sign(lesp_pre) * crit * scale
+        imposed = None
+        if _LEV_SEPARATED_STATE and detached is not None and bool(detached.any().item()):
+            # the sheet that left the strip: its newest ring carries the strength the bound row
+            # takes over, so the loading a separated strip holds is the one it separated at
+            front = torch.where(
+                chain.count > 0, chain.gamma[0], torch.zeros_like(chain.gamma[0])
+            )
+            imposed = (detached, front)
         lam = torch.zeros(ns, device=self.device, dtype=torch.float64)
+        if _LEV_FLUX:
+            # the flux law prescribes the strength; nothing is pinned, every row keeps its
+            # no-penetration equation
+            leading_edge_panel = 0.5 * (
+                torch.linalg.vector_norm(
+                    geometry.rings[:ns, 3] - geometry.rings[:ns, 0], dim=1
+                )
+                + torch.linalg.vector_norm(
+                    geometry.rings[:ns, 2] - geometry.rings[:ns, 1], dim=1
+                )
+            )
+            prescribed = lev_hirato.flux_shedding_strength(
+                lesp_pre, scale, leading_edge_panel, self.settings.aerodynamic_dt
+            )
+            for _ in range(8):
+                lam = torch.where(active, prescribed, torch.zeros_like(prescribed))
+                gamma, residual = lev_hirato.solve_prescribed(
+                    system_aic, nascent_normal, basis, rhs, active, lam
+                )
+                solved = -gamma[:ns] / scale
+                crossed = (torch.abs(solved) > crit) & ~active
+                if detached is not None:
+                    # a detached strip's row carries the sheet's strength, not the pin; putting it
+                    # back in the active set would give that row two equations at once
+                    crossed = crossed & ~detached
+                if not bool(crossed.any().item()):
+                    break
+                active = active | crossed
+            return {
+                "gamma": gamma, "lam": lam, "active": active, "residual": residual,
+                "nascent": nascent, "iterations": _, "shed_law": "flux",
+            }
         iterations = 0
         while True:
             iterations += 1
             index = torch.nonzero(active, as_tuple=False).reshape(-1)
             gamma, strength, residual = lev_hirato.solve_coupled(
-                system_aic, nascent_normal, basis[:, index], rhs, active, target
+                system_aic, nascent_normal, basis[:, index], rhs, active, target,
+                imposed=imposed,
             )
             lam.zero_()
             lam[index] = strength
             solved = -gamma[:ns] / scale
             crossed = (torch.abs(solved) > crit) & ~active
+            if detached is not None:
+                # a detached strip's row carries the sheet's strength, not the pin; putting it back
+                # in the active set would give that row two equations at once
+                crossed = crossed & ~detached
             # A strip that was shedding goes on shedding until continuing would need a
             # leading-edge vortex against the bound circulation: then it stops.  Without this a
             # strip whose suction sits at the critical value switches on and off every step, its
             # pseudovortex ring appears and disappears at full strength, and the rate term turns
             # that into a force swinging by the whole load (rigid plate at 16 deg, note A23, 6c).
-            reversed_sign = was_shedding & active & (lam * torch.sign(target) < 0.0)
+            if _LEV_HIRATO_V2:
+                # B4 (note A24): a strip stops only when the pin asks for a leading-edge vortex of
+                # the opposite sign to the one it carries; that is the paper's rule and it does
+                # not fire on a mere decrease of magnitude, which switched the edge strips on and
+                # off every step (H case: 14/20/18/24/20/30 strips in six steps).
+                _, keeps_shedding = lev_hirato.cessation_delta(active, lam, chain.prev)
+                reversed_sign = was_shedding & active & ~keeps_shedding
+            else:
+                reversed_sign = was_shedding & active & (lam * torch.sign(target) < 0.0)
             if not (bool(crossed.any().item()) or bool(reversed_sign.any().item())) or iterations >= 8:
                 break
             active = (active | crossed) & ~reversed_sign
+        # A detached strip never entered the active set, so it never received a column in the
+        # solve and its strength is already zero: zeroing it again here would break the pairing
+        # between gamma and lam (measured: with the zeroing the run went to CL = -78 at step 175
+        # with no strip shedding at all).
+        # the next step's convection reads this: a detached strip's rings stop deforming and drift
+        # with the freestream, like the frozen far wake (`wake_free_rows`)
+        self._lev_detached = detached
         return {
             "gamma": gamma, "lam": lam, "active": active, "residual": residual,
             "nascent": nascent, "iterations": iterations,
+            "detached_strips": int(detached.sum().item()) if detached is not None else 0,
+            "imposed_strips": imposed[0] if imposed is not None else None,
         }
+
+    def _own_sheet_normal_at_leading_edge(
+        self,
+        geometry,
+        chain,
+        *,
+        pseudovortex: torch.Tensor | None = None,
+        core_radius: float | None = None,
+    ) -> torch.Tensor:
+        """(ns,) the leading-edge normal velocity each strip's OWN sheet (+ pseudovortex) induces
+        on its own edge.
+
+        The criterion for detachment is about the sheet that a strip feeds, so the neighbours'
+        sheets must not enter it (note A25, section 4).
+        """
+
+        from .kernels_ring_velocity import native_ring_velocity_expanded
+
+        strips = self.settings.spanwise_panels
+        leading = 0.5 * (geometry.leading_edge[:-1] + geometry.leading_edge[1:])
+        normals = geometry.normals[:strips]
+        result = torch.zeros(strips, device=self.device, dtype=torch.float64)
+        keywords = (
+            {"core_fraction": 0.0, "reference_length": 0.0, "core_radius": core_radius}
+            if _KERNEL_V3
+            else {"core_fraction": 1.0e-6, "reference_length": self._legacy_reference_length}
+        )
+        for strip in range(strips):
+            count = int(chain.count[strip].item())
+            if count == 0:
+                continue
+            rings = chain.rings[:count, strip].contiguous()
+            gammas = chain.gamma[:count, strip]
+            if pseudovortex is not None and float(chain.prev[strip].item()) != 0.0:
+                rings = torch.cat((rings, pseudovortex[strip : strip + 1]), dim=0)
+                gammas = torch.cat((gammas, chain.prev[strip : strip + 1]), dim=0)
+            unit = native_ring_velocity_expanded(
+                leading[strip][None, :], rings, **keywords
+            )                                                        # (1, count(+1), 3)
+            value = torch.sum(unit[0] * gammas[:, None], dim=0)
+            result[strip] = torch.sum(value * normals[strip])
+        return result
 
     def _hirato_commit(self, geometry, trial, solution: dict) -> dict:
         """Store the nascent rows, audit the rows that leave, set the load fields.
@@ -1410,6 +2516,35 @@ class Q16NativeV5MSolver:
 
         chain = trial.lev_chain
         active, strength = solution["active"], solution["lam"]
+        pseudovortex = lev_hirato.pseudovortex_ring(
+            geometry.leading_edge,
+            lev_hirato.bound_rear(geometry.rings, self.settings.chordwise_panels),
+        )
+        if _LEV_HIRATO_V2:
+            base_chain = solution.get("chain_split", chain)
+            push_mask = solution.get("push_mask", active)
+            pushed, leaving_rings, leaving_gamma, released = lev_hirato.push_nascent(
+                base_chain, push_mask, solution["nascent"], strength
+            )
+            audit = lev_hirato.truncation_audit(leaving_rings, leaving_gamma, released)
+            delta = torch.where(active, strength - chain.prev, torch.zeros_like(strength))
+            new_prev = torch.where(push_mask, strength, chain.prev)
+            trial.lev_chain = lev_hirato.LevChain(
+                rings=pushed.rings, gamma=pushed.gamma, count=pushed.count,
+                prev=new_prev, joined=pushed.joined,
+            )
+            trial.lev_strip_last_release = new_prev.clone()
+            trial.lev_strip_released_total = trial.lev_strip_released_total + delta
+            rings, gamma = lev_hirato.flat_live(trial.lev_chain)
+            self._lev_field = (rings, gamma)
+            self._lev_field_cores = self._lev_live_core_radii(
+                trial.lev_chain, self._lev_rhs_core_radius(geometry), row_age_offset=0
+            )
+            self._lev_pseudovortex = (pseudovortex, new_prev)
+            trial.pseudovortex_previous = (pseudovortex.clone(), new_prev.clone())
+            self._lev_pseudovortex_previous = (pseudovortex.clone(), new_prev.clone())
+            return audit
+
         pushed, leaving_rings, leaving_gamma, released = lev_hirato.push_nascent(
             chain, active, solution["nascent"], strength
         )
@@ -1423,11 +2558,7 @@ class Q16NativeV5MSolver:
         trial.lev_strip_released_total = trial.lev_strip_released_total + release
         # what every load evaluation sees: the chains as they stand, the nascent rows with
         # their solved strength included, and the pseudovortex rings at that strength
-        rings, gamma = lev_hirato.flat(trial.lev_chain)
-        pseudovortex = lev_hirato.pseudovortex_ring(
-            geometry.leading_edge,
-            lev_hirato.bound_rear(geometry.rings, self.settings.chordwise_panels),
-        )
+        rings, gamma = lev_hirato.flat_live(trial.lev_chain)
         # two fields, not one: the chain rows are free vorticity and carry the free-wake core
         # wherever they are evaluated, in the loads as in the solve; the pseudovortex rings are
         # bound and are evaluated with the exact law
@@ -1435,10 +2566,12 @@ class Q16NativeV5MSolver:
         self._lev_pseudovortex = (pseudovortex, strength)
         return audit
 
-    def _hirato_suction(self, geometry, gamma, scale, chord):
+    def _hirato_suction(
+        self, geometry, gamma, scale, chord, *, speed=None, force_enable: bool = False
+    ):
         """The leading-edge suction of every strip as a force per panel, or None."""
 
-        if not _LE_SUCTION:
+        if not (_LE_SUCTION or force_enable):
             return None
         ns = self.settings.spanwise_panels
         leading, trailing = geometry.leading_edge, geometry.trailing_edge
@@ -1446,8 +2579,9 @@ class Q16NativeV5MSolver:
         forward = 0.5 * (leading[:-1] + leading[1:] - trailing[:-1] - trailing[1:])
         forward = forward / torch.linalg.vector_norm(forward, dim=1, keepdim=True)
         lesp = -gamma[:ns] / scale
+        u_eff = self.settings.freestream if speed is None else speed
         force = lev_hirato.suction_force(
-            self.settings.density, self.settings.freestream, chord, width, forward, lesp
+            self.settings.density, u_eff, chord, width, forward, lesp
         )
         panel = torch.zeros((gamma.shape[0], 3), device=gamma.device, dtype=torch.float64)
         panel[:ns] = force                # the first chordwise row, panel i * ns + j
@@ -1471,6 +2605,8 @@ class Q16NativeV5MSolver:
         dt = self.settings.aerodynamic_dt
         synchronous_material = self.settings.joint_separation_solve
         core = self._core_radius(geometry)
+        if (_CONVECTION_V4 or _LEV_HIRATO_V2) and not synchronous_material:
+            return self._advance_material_state_v4(geometry, trial, dt, core, retention)
         if synchronous_material:
             from .native_material_convection import advance_material_positions_rk3
 
@@ -1819,14 +2955,33 @@ class Q16NativeV5MSolver:
             else None
         )
         aic = native_aic(geometry, chordwise_panels=self.settings.chordwise_panels)
+        # Plan V4 Track A-1: under FLUXV_TE_WAKE=v4, split row 0 of the convected wake at
+        # split_te = te_edge + beta * (conv_front - te_edge) BEFORE evaluating wake_velocity
+        # so the RHS, nascent_rings on LHS, loads, and committed wake all see one continuous,
+        # gap-free, non-overlapping vortex sheet with exact cancellation at split_te.
+        if _TE_WAKE_V4 and _SHED_DISTANCE_FRACTION == 0.0 and trial.wake_rings.shape[0]:
+            span_panels = self.settings.spanwise_panels
+            chord_panels = self.settings.chordwise_panels
+            last_row_v4 = geometry.rings.reshape(chord_panels, span_panels, 4, 3)[-1]
+            te_edge_v4 = torch.stack((last_row_v4[:, 3], last_row_v4[:, 2]), dim=1)
+            conv_front_v4 = trial.wake_rings[:span_panels, 0:2]
+            split_te_v4 = te_edge_v4 + _TE_SPLIT_BETA * (conv_front_v4 - te_edge_v4)
+            trial.wake_rings[:span_panels, 0] = split_te_v4[:, 0]
+            trial.wake_rings[:span_panels, 1] = split_te_v4[:, 1]
+        wake_col_core = self._wake_collocation_core_radius(geometry)
         wake_velocity = self._ring_velocity(
-            geometry.collocation, trial.wake_rings, trial.wake_gamma, rough=False, free=True
+            geometry.collocation,
+            trial.wake_rings,
+            trial.wake_gamma,
+            rough=False,
+            core_radius=wake_col_core,
+            free=True,
         )
-        # Plan V3 (P0-B): under FLUXV_TE_WAKE=v3 the row that leaves the trailing
+        # Plan V3 (P0-B): under FLUXV_TE_WAKE=v3/v4 the row that leaves the trailing
         # edge this step is part of the solve.  Its back edge is the trailing
         # edge and its front edge is where the newest convected row's front
-        # corners are (one U*dt downstream on the first step), so the chain
-        # stays connected and no row overlaps its neighbour.  Its strength is
+        # corners are (one U*dt downstream on the first step, or beta*U_rel*dt under v4),
+        # so the chain stays connected and no row overlaps its neighbour.  Its strength is
         # the trailing-edge unknown of its strip, so its unit influence joins
         # the trailing-edge columns; the leading-edge part of the row is
         # deposited later at a known strength and goes to the right-hand side.
@@ -1843,10 +2998,31 @@ class Q16NativeV5MSolver:
             last_row = geometry.rings.reshape(chord_panels, span_panels, 4, 3)[-1]
             if trial.wake_rings.shape[0]:
                 newest_front = trial.wake_rings[:span_panels, 0:2]       # (ns, 2, 3)
+            elif _TE_WAKE_V4:
+                te_vel = torch.stack(
+                    (geometry.trailing_velocity[:-1], geometry.trailing_velocity[1:]), dim=1
+                )
+                newest_front = (
+                    torch.stack((last_row[:, 3], last_row[:, 2]), dim=1)
+                    + _TE_SPLIT_BETA
+                    * (self.v_inf[None, None, :] - te_vel)
+                    * self.settings.aerodynamic_dt
+                )
             else:
                 newest_front = (
                     torch.stack((last_row[:, 3], last_row[:, 2]), dim=1)
                     + self.v_inf[None, :] * self.settings.aerodynamic_dt
+                )
+            if _SHED_DISTANCE_FRACTION > 0.0:
+                # the shed-vortex distance of Kumar et al. (both papers, after Katz and Plotkin):
+                # the newborn row is its own ring, from the trailing edge downstream by this
+                # fraction of one convection step, and it is not tied to the rows behind it
+                newest_front = torch.stack((last_row[:, 3], last_row[:, 2]), dim=1) + (
+                    _SHED_DISTANCE_FRACTION
+                    * self.settings.freestream
+                    * self.settings.aerodynamic_dt
+                    * self.v_inf[None, None, :]
+                    / torch.linalg.vector_norm(self.v_inf)
                 )
             # corners front-left, front-right, back-right, back-left, as everywhere else
             nascent_rings = torch.stack(
@@ -1897,13 +3073,80 @@ class Q16NativeV5MSolver:
         self._lev_pseudovortex = None
         self._lev_bound_extra = None
         self._step_suction_panel = None
-        if hirato:
-            rhs = rhs - torch.sum(
-                self._lev_chain_velocity(geometry.collocation, trial.lev_chain) * geometry.normals,
-                dim=1,
-            )
-        gamma_pre = torch.linalg.solve(system_aic, rhs)
+        self._step_suction_replace_mask = None
+        chain_normal_at_le = None
+        split_from_rhs = None
+        hirato_chain_split = None
+        hirato_pv_norm = None
+        hirato_pseudovortex = None
         ns, nc = self.settings.spanwise_panels, self.settings.chordwise_panels
+        if hirato:
+            if _LEV_HIRATO_V2:
+                # Clean hirato_v2 (Stage 1): split ONLY continuing strips, put ONLY the split
+                # free LEV chain (NO pseudovortex!) into `rhs` so the coupled solve carries the
+                # pseudovortex strictly ONCE on the LHS.  Evaluate the zero-shedding pre-solve
+                # (`gamma_pre`) at dGamma_L = 0 (continuing strips hold `chain.prev`).
+                lev_core_rhs = self._lev_rhs_core_radius(geometry)
+                was_shedding_pre = lev_hirato.continuing(trial.lev_chain)
+                hirato_pseudovortex = lev_hirato.pseudovortex_ring(
+                    geometry.leading_edge, lev_hirato.bound_rear(geometry.rings, nc)
+                )
+                if bool((trial.lev_chain.count > 0).any().item()):
+                    if bool(was_shedding_pre.any().item()):
+                        hirato_chain_split, split_from_rhs = lev_hirato.split_row0(
+                            trial.lev_chain, geometry.leading_edge, was_shedding_pre
+                        )
+                    else:
+                        hirato_chain_split = trial.lev_chain
+                    live_rings, live_gamma = lev_hirato.flat_live(hirato_chain_split)
+                    live_cores = self._lev_live_core_radii(
+                        hirato_chain_split,
+                        lev_core_rhs,
+                        row_age_offset=1,
+                        continuing_mask=was_shedding_pre,
+                    )
+                    chain_velocity = self._ring_velocity(
+                        geometry.collocation,
+                        live_rings,
+                        live_gamma,
+                        rough=False,
+                        core_radius=live_cores,
+                        free=True,
+                    )
+                    rhs = rhs - torch.sum(chain_velocity * geometry.normals, dim=1)
+                    chain_normal_at_le = torch.sum(
+                        chain_velocity[:ns] * geometry.normals[:ns], dim=1
+                    )
+                else:
+                    hirato_chain_split = trial.lev_chain
+                if bool(was_shedding_pre.any().item()):
+                    edge_pre = lev_hirato.strip_pairs(geometry.leading_edge)
+                    nascent_cont = lev_hirato.nascent_row(split_from_rhs, edge_pre)
+                    nascent_cont_norm = self._ring_unit_normal(
+                        geometry, nascent_cont, core_radius=lev_core_rhs, free=True
+                    )
+                    hirato_pv_norm = self._ring_unit_normal(
+                        geometry, hirato_pseudovortex, core_radius=lev_core_rhs, free=False
+                    )
+                    held_prev = torch.where(
+                        was_shedding_pre,
+                        trial.lev_chain.prev,
+                        torch.zeros_like(trial.lev_chain.prev),
+                    )
+                    rhs_pre = rhs - (
+                        nascent_normal + nascent_cont_norm + hirato_pv_norm
+                    ) @ held_prev
+                else:
+                    rhs_pre = rhs
+                gamma_pre = torch.linalg.solve(system_aic, rhs_pre)
+            else:
+                rhs = rhs - torch.sum(
+                    self._lev_chain_velocity(geometry.collocation, trial.lev_chain) * geometry.normals,
+                    dim=1,
+                )
+                gamma_pre = torch.linalg.solve(system_aic, rhs)
+        else:
+            gamma_pre = torch.linalg.solve(system_aic, rhs)
         chord = 0.5 * (
             torch.linalg.vector_norm(
                 geometry.trailing_edge[:-1] - geometry.leading_edge[:-1], dim=1
@@ -1921,7 +3164,16 @@ class Q16NativeV5MSolver:
             )
         )
         theta = torch.acos(torch.clamp(1.0 - 2.0 * first_dx / chord, -1.0, 1.0))
-        scale = chord * self.settings.freestream * (theta + torch.sin(theta)) / LESP_FACTOR
+        if _LESP_UREL:
+            le_vel_strip = 0.5 * (
+                geometry.leading_velocity[:-1] + geometry.leading_velocity[1:]
+            )
+            lesp_speed = torch.linalg.vector_norm(
+                self.v_inf[None, :] - le_vel_strip, dim=1
+            ).clamp(min=1.0e-12)
+        else:
+            lesp_speed = self.settings.freestream
+        scale = chord * lesp_speed * (theta + torch.sin(theta)) / LESP_FACTOR
         lesp_pre_3d = -gamma_pre[:ns] / scale
         # Single separation owner (plan §8.3): the 3D actual-surface LESP is
         # the ONLY truth for whether a strip is separated.
@@ -2082,13 +3334,27 @@ class Q16NativeV5MSolver:
             # Plan V3 stage 2: the nascent leading-edge vortex of every shedding strip is an
             # unknown of the circulation solve, next to the bound circulation.
             hirato_solution = self._hirato_solve(
-                geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre_3d
+                geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre_3d,
+                split_from_rhs, chain_normal_at_le,
+                chain_split=hirato_chain_split,
+                pv_norm_cached=hirato_pv_norm,
+                pseudovortex_cached=hirato_pseudovortex,
             )
             gamma = hirato_solution["gamma"]
             # the active set may have grown while iterating (the paper's flowchart)
             pin_active = hirato_solution["active"]
             active_indices = le_indices[pin_active]
-            residual_max = torch.max(torch.abs(hirato_solution["residual"]))
+            residual_rows = torch.abs(hirato_solution["residual"])
+            imposed = hirato_solution.get("imposed_strips")
+            if _LEV_SEPARATED_STATE and imposed is not None and bool(imposed.any().item()):
+                # A separated leading edge does not satisfy no-penetration, so the rows this model
+                # imposes a circulation on are not equations: their residual is recorded and not
+                # gated, the same downgrade the prescribed-strength flux mode documents.
+                residual_rows = residual_rows.clone()
+                residual_rows[:ns] = torch.where(
+                    imposed, torch.zeros_like(residual_rows[:ns]), residual_rows[:ns]
+                )
+            residual_max = torch.max(residual_rows)
             residual_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
             if bool((residual_max > self.settings.gate_rtol * residual_scale).item()):
                 raise RuntimeError(
@@ -2372,6 +3638,13 @@ class Q16NativeV5MSolver:
             retained = torch.ones_like(rhs, dtype=torch.bool)
             if not hirato:
                 retained[active_indices] = False
+            if _LEV_SEPARATED_STATE and hirato_solution is not None:
+                # a separated leading edge does not satisfy no-penetration: the imposed rows are
+                # not equations, so they are excluded here as they are from the gate in the
+                # hirato branch above
+                imposed_rows = hirato_solution.get("imposed_strips")
+                if imposed_rows is not None and bool(imposed_rows.any().item()):
+                    retained[:ns] = retained[:ns] & ~imposed_rows
             retained_max = torch.max(torch.abs(total_residual[retained]))
             retained_scale = torch.clamp(torch.max(torch.abs(rhs[retained])), min=1.0)
             residual_max = retained_max
@@ -2387,13 +3660,18 @@ class Q16NativeV5MSolver:
             # every shedding strip sits at the critical suction parameter, with its sign
             pin_error = torch.zeros((), device=self.device, dtype=torch.float64)
             if active_indices.numel():
+                pin_sign = hirato_solution.get("pin_sign", torch.sign(lesp_pre_3d))
                 pin_error = torch.max(
                     torch.abs(
                         solved_lesp[pin_active]
-                        - torch.sign(lesp_pre_3d[pin_active]) * self.settings.effective_lesp_crit
+                        - pin_sign[pin_active] * self.settings.effective_lesp_crit
                     )
                 )
-            if bool((pin_error > 1.0e-6).item()):
+            if bool((pin_error > 1.0e-6).item()) and not _LEV_FLUX:
+                # the flux law prescribes the strength instead of pinning the suction
+                # parameter, so a strip's solved suction parameter is expected to leave the
+                # critical value; the departure stays in `lesp_pin_max_abs` and is not a gate
+                # (note A24, section 5)
                 raise RuntimeError("native V5M LESP pin failed")
         elif active_indices.numel() and not joint_solve:
             source_a0 = source_result["A0"][:ns]
@@ -2542,13 +3820,50 @@ class Q16NativeV5MSolver:
                 )
             if self._lev_field is not None:
                 # the leading-edge ring chains as they stand, and the pseudovortex rings
-                wake_velocity = wake_velocity + self._ring_velocity(
-                    geometry.collocation, *self._lev_field, rough=False, free=True
+                lev_core_load = self._lev_rhs_core_radius(geometry) if _LEV_HIRATO_V2 else None
+                lev_field_cores = (
+                    getattr(self, "_lev_field_cores", lev_core_load)
+                    if _LEV_HIRATO_V2
+                    else None
                 )
                 wake_velocity = wake_velocity + self._ring_velocity(
-                    geometry.collocation, *self._lev_pseudovortex, rough=False
+                    geometry.collocation,
+                    *self._lev_field,
+                    rough=False,
+                    core_radius=lev_field_cores,
+                    free=True,
+                )
+                wake_velocity = wake_velocity + self._ring_velocity(
+                    geometry.collocation,
+                    *self._lev_pseudovortex,
+                    rough=False,
+                    core_radius=lev_core_load,
                 )
         external_flow = self.v_inf + wake_velocity + particle_velocity + bound_velocity
+        if hirato and _LEV_HIRATO_V2 and not joint_solve:
+            # Physical post-commit Neumann verification on the ACTUAL 1x-pseudovortex committed
+            # vortex system: catches any double-counting, core mismatch, or split drift immediately.
+            post_neumann = torch.sum(
+                (external_flow - geometry.collocation_velocity) * geometry.normals, dim=1
+            )
+            imposed_rows = hirato_solution.get("imposed_strips")
+            if _LEV_SEPARATED_STATE and imposed_rows is not None and bool(imposed_rows.any().item()):
+                check_mask = torch.ones_like(post_neumann, dtype=torch.bool)
+                check_mask[:ns] = ~imposed_rows
+                post_neumann_max = torch.max(torch.abs(post_neumann[check_mask]))
+            else:
+                post_neumann_max = torch.max(torch.abs(post_neumann))
+            residual_max = post_neumann_max
+            post_scale = torch.clamp(torch.max(torch.abs(rhs)), min=1.0)
+            if (
+                int(retention.get("lev_truncate_ring_count", 0)) == 0
+                and bool((post_neumann_max > self.settings.gate_rtol * post_scale).item())
+            ):
+                raise RuntimeError(
+                    "native V5M hirato_v2 post-commit physical Neumann check failed: "
+                    f"actual={float(post_neumann_max.item()):.9e} m/s, "
+                    f"algebraic={float(algebraic_neumann_max.item()):.9e} m/s"
+                )
         # Plan V3 stage 2: the circulation the loads are built from.  `gamma` stays the solved
         # bound circulation for the state, for the trailing-edge row and for the rate; the loads
         # see it plus the leading-edge strength of every shedding strip (its pseudovortex ring).
@@ -2560,9 +3875,18 @@ class Q16NativeV5MSolver:
         dy = torch.linalg.vector_norm(
             0.5 * (geometry.rings[:, 1] + geometry.rings[:, 2] - geometry.rings[:, 0] - geometry.rings[:, 3]), dim=1
         ).reshape(nc, ns)
-        dx_gamma = torch.empty_like(grid)
-        dx_gamma[0] = grid[0] / dx[0]
-        dx_gamma[1:] = (grid[1:] - grid[:-1]) / dx[1:]
+        if _LEV_HIRATO_V2_LOADS:
+            # B5 (note A24): the leading-edge chordwise difference is one-sided, so a
+            # chordwise-constant offset (the strip's Gamma_L, written into every row by
+            # `_lev_bound_extra`) would appear there as a slope Gamma_L / dx_0.  The potential
+            # jump already holds Gamma_L at the leading edge (Eq. 13, 16, 17), so its chordwise
+            # derivative there is zero: the first row's difference carries the bound circulation
+            # `gamma` alone.  The Gamma_L part stays in the spanwise differences and unsteady term.
+            dx_gamma = lev_hirato.leading_edge_chordwise_difference(gamma.reshape(nc, ns), dx)
+        else:
+            dx_gamma = torch.empty_like(grid)
+            dx_gamma[0] = grid[0] / dx[0]
+            dx_gamma[1:] = (grid[1:] - grid[:-1]) / dx[1:]
         padded = torch.nn.functional.pad(grid, (1, 1))
         dy_gamma = (padded[:, 2:] - padded[:, :-2]) / (2.0 * dy)
         dy_gamma[:, 0] = grid[:, 0] / dy[:, 0]
@@ -2642,7 +3966,16 @@ class Q16NativeV5MSolver:
                 trial.lev_chain.prev - committed.lev_chain.prev
             ) / self.settings.aerodynamic_dt
             mf2_history = mf2_history + lev_rate[None, :].expand(nc, ns).reshape(-1)
-            self._step_suction_panel = self._hirato_suction(geometry, gamma, scale, chord)
+            self._step_suction_panel = self._hirato_suction(
+                geometry,
+                gamma,
+                scale,
+                chord,
+                speed=lesp_speed,
+                force_enable=(_HIRATO_PRESSURE_LOADS or _LEV_SEP_SUCTION),
+            )
+            if _LEV_SEP_SUCTION and not _HIRATO_PRESSURE_LOADS:
+                self._step_suction_replace_mask = (trial.lev_chain.prev != 0.0) | pin_active
         author_load = self.author_load_assembler.assemble(
             structural_state=structural_state,
             geometry=geometry,
@@ -2657,7 +3990,11 @@ class Q16NativeV5MSolver:
         # Hirato's leading-edge suction (the paper's Eq. 20) acts on the front filament of
         # each strip's first panel; it is a chordwise force and enters the streamwise
         # coefficient, never the normal one.
-        suction = self._step_suction_panel
+        suction = (
+            None
+            if (_LEV_SEP_SUCTION and not (_LE_SUCTION or _HIRATO_PRESSURE_LOADS))
+            else self._step_suction_panel
+        )
         panel_forces = pressure_forces if suction is None else pressure_forces + suction
         extra_moment = (
             torch.zeros(3, device=self.device, dtype=torch.float64)
@@ -2675,124 +4012,156 @@ class Q16NativeV5MSolver:
         # solver's own kernels, wake state as advanced for this solve).
         # The pressure-quadrature totals above stay in place during
         # migration; the recorded discrepancy becomes the M1-4 hard gate.
-        if self._resolved_load_assembler is None:
-            from fluxvortex.aero.v5m.load_packet import (
-                NativeResolvedLoadAssembler,
-            )
-
-            self._resolved_load_assembler = NativeResolvedLoadAssembler(
-                density=self.settings.density,
-                device=self.settings.device,
-                chordwise_panels=self.settings.chordwise_panels,
-                spanwise_panels=self.settings.spanwise_panels,
-                aerodynamic_dt=self.settings.aerodynamic_dt,
-                wake_history_mode="bound_rate",
-            )
-        resolved = self._resolved_load_assembler
-        mids_flat = resolved.leg_midpoints_flat(geometry)
-        if nascent_rings is None:
-            solution_velocity_flat = (
-                self.v_inf[None, :].expand(mids_flat.shape[0], 3)
-                + self._ring_velocity(
-                    mids_flat, geometry.rings, gamma, rough=False
-                )
-                + self._ring_velocity(
-                    mids_flat, trial.wake_rings, trial.wake_gamma, rough=False
-                )
-            )
+        if getattr(self, "_skip_super_resolved_packet", False):
+            packet = None
+            te_leg_candidate = {}
+            self._last_resolved_vs_quadrature_relative = 0.0
         else:
-            # Plan V3 (P0-A/B): the free wake as it stands at the end of the step,
-            # nascent row included, with the wake core.
-            core = self._core_radius(geometry)
-            solution_velocity_flat = (
-                self.v_inf[None, :].expand(mids_flat.shape[0], 3)
-                + self._ring_velocity(
-                    mids_flat, geometry.rings, gamma, rough=False
+            if self._resolved_load_assembler is None:
+                from fluxvortex.aero.v5m.load_packet import (
+                    NativeResolvedLoadAssembler,
                 )
-                + self._ring_velocity(
+
+                self._resolved_load_assembler = NativeResolvedLoadAssembler(
+                    density=self.settings.density,
+                    device=self.settings.device,
+                    chordwise_panels=self.settings.chordwise_panels,
+                    spanwise_panels=self.settings.spanwise_panels,
+                    aerodynamic_dt=self.settings.aerodynamic_dt,
+                    wake_history_mode="bound_rate",
+                )
+            resolved = self._resolved_load_assembler
+            mids_flat = resolved.leg_midpoints_flat(geometry)
+            if nascent_rings is None:
+                solution_velocity_flat = (
+                    self.v_inf[None, :].expand(mids_flat.shape[0], 3)
+                    + self._ring_velocity(
+                        mids_flat, geometry.rings, gamma, rough=False
+                    )
+                    + self._ring_velocity(
+                        mids_flat, trial.wake_rings, trial.wake_gamma, rough=False
+                    )
+                )
+            else:
+                # Plan V3 (P0-A/B): the free wake as it stands at the end of the step,
+                # nascent row included, with the wake core.
+                core = self._core_radius(geometry)
+                solution_velocity_flat = (
+                    self.v_inf[None, :].expand(mids_flat.shape[0], 3)
+                    + self._ring_velocity(
+                        mids_flat, geometry.rings, gamma, rough=False
+                    )
+                    + self._ring_velocity(
+                        mids_flat,
+                        trial.wake_rings,
+                        trial.wake_gamma,
+                        rough=False,
+                        core_radius=core,
+                        free=True,
+                        mixed_precision=_RING_MIXED_PRECISION,
+                    )
+                    + self._ring_velocity(
+                        mids_flat,
+                        nascent_rings,
+                        gamma_tev,
+                        rough=False,
+                        core_radius=core,
+                    )
+                )
+            if trial.particle_field.n:
+                solution_velocity_flat = (
+                    solution_velocity_flat
+                    + trial.particle_field.velocity_at_cuda(mids_flat)
+                )
+            if self._lev_field is not None:
+                lev_core_load = self._lev_rhs_core_radius(geometry) if _LEV_HIRATO_V2_LOADS else None
+                lev_field_cores = (
+                    getattr(self, "_lev_field_cores", lev_core_load)
+                    if _LEV_HIRATO_V2_LOADS
+                    else None
+                )
+                solution_velocity_flat = solution_velocity_flat + self._ring_velocity(
                     mids_flat,
-                    trial.wake_rings,
-                    trial.wake_gamma,
+                    *self._lev_field,
                     rough=False,
-                    core_radius=core,
+                    core_radius=lev_field_cores,
                     free=True,
+                    mixed_precision=_RING_MIXED_PRECISION,
                 )
-                + self._ring_velocity(
+                solution_velocity_flat = solution_velocity_flat + self._ring_velocity(
                     mids_flat,
-                    nascent_rings,
-                    gamma_tev,
+                    *self._lev_pseudovortex,
                     rough=False,
-                    core_radius=core,
+                    core_radius=lev_core_load,
                 )
+            packet_gamma = (
+                gamma
+                if (_LEV_HIRATO_V2_LOADS and self._lev_pseudovortex is not None)
+                else gamma_load
             )
-        if trial.particle_field.n:
-            solution_velocity_flat = (
-                solution_velocity_flat
-                + trial.particle_field.velocity_at_cuda(mids_flat)
+            packet_pseudo = (
+                self._lev_pseudovortex[1]
+                if (_LEV_HIRATO_V2_LOADS and self._lev_pseudovortex is not None)
+                else None
             )
-        if self._lev_field is not None:
-            solution_velocity_flat = solution_velocity_flat + self._ring_velocity(
-                mids_flat, *self._lev_field, rough=False, free=True
-            )
-            solution_velocity_flat = solution_velocity_flat + self._ring_velocity(
-                mids_flat, *self._lev_pseudovortex, rough=False
-            )
-        packet = resolved.assemble_packet(
-            geometry=geometry,
-            gamma=gamma_load,
-            solution_velocity_flat=solution_velocity_flat.contiguous(),
-            mf2_history=mf2_history,
-            front_extra_force=self._step_suction_panel,
-            component_ledger={
-                "author_constant_pressure": author_load.constant_pressure,
-            },
-        )
-        # B2 diagnostic (U2, off by default): the TE leg of the last chordwise
-        # row currently carries (Gamma_n - Gamma_{n-1}) from the bound-rate
-        # history, while the wake row actually inserted carries
-        # gamma_tev = Gamma_TE + gamma_lev.  Quantify the two candidates on
-        # the SAME state instead of guessing which one the load should use.
-        te_leg_candidate: dict[str, object] = {}
-        if bool(getattr(self.settings, "te_leg_candidate_diagnostic", False)):
-            packet_alt = resolved.assemble_packet(
+            packet = resolved.assemble_packet(
                 geometry=geometry,
-                gamma=gamma,
+                gamma=packet_gamma,
                 solution_velocity_flat=solution_velocity_flat.contiguous(),
                 mf2_history=mf2_history,
-                te_leg_strength_override=gamma_tev.reshape(-1),
+                front_extra_force=self._step_suction_panel,
+                front_suction_replace_mask=self._step_suction_replace_mask,
+                pseudovortex_strip=packet_pseudo,
+                component_ledger={
+                    "author_constant_pressure": author_load.constant_pressure,
+                },
             )
-            delta = packet_alt.total_force_I - packet.total_force_I
-            force_norm = max(
-                float(torch.linalg.vector_norm(packet.total_force_I).item()), 1e-30
+            # B2 diagnostic (U2, off by default): the TE leg of the last chordwise
+            # row currently carries (Gamma_n - Gamma_{n-1}) from the bound-rate
+            # history, while the wake row actually inserted carries
+            # gamma_tev = Gamma_TE + gamma_lev.  Quantify the two candidates on
+            # the SAME state instead of guessing which one the load should use.
+            te_leg_candidate: dict[str, object] = {}
+            if bool(getattr(self.settings, "te_leg_candidate_diagnostic", False)):
+                packet_alt = resolved.assemble_packet(
+                    geometry=geometry,
+                    gamma=gamma,
+                    solution_velocity_flat=solution_velocity_flat.contiguous(),
+                    mf2_history=mf2_history,
+                    te_leg_strength_override=gamma_tev.reshape(-1),
+                )
+                delta = packet_alt.total_force_I - packet.total_force_I
+                force_norm = max(
+                    float(torch.linalg.vector_norm(packet.total_force_I).item()), 1e-30
+                )
+                bound_rate_te = (
+                    (gamma - trial.gamma_bound).reshape(
+                        self.settings.chordwise_panels, self.settings.spanwise_panels
+                    )[-1]
+                )
+                te_leg_candidate = {
+                    "te_leg_baseline_strength_max_abs": float(
+                        bound_rate_te.abs().max().item()
+                    ),
+                    "te_leg_shed_strength_max_abs": float(gamma_tev.abs().max().item()),
+                    "te_leg_candidate_force_delta_norm_n": float(
+                        torch.linalg.vector_norm(delta).item()
+                    ),
+                    "te_leg_candidate_force_delta_relative": float(
+                        torch.linalg.vector_norm(delta).item() / force_norm
+                    ),
+                    "te_leg_candidate_delta_n": delta.detach().cpu().tolist(),
+                }
+            quadrature_force = torch.sum(panel_forces, dim=0)
+            force_scale = max(
+                float(torch.linalg.vector_norm(quadrature_force).item()), 1e-30
             )
-            bound_rate_te = (
-                (gamma - trial.gamma_bound).reshape(
-                    self.settings.chordwise_panels, self.settings.spanwise_panels
-                )[-1]
+            self._last_resolved_vs_quadrature_relative = float(
+                torch.linalg.vector_norm(
+                    packet.total_force_I - quadrature_force
+                ).item()
+                / force_scale
             )
-            te_leg_candidate = {
-                "te_leg_baseline_strength_max_abs": float(
-                    bound_rate_te.abs().max().item()
-                ),
-                "te_leg_shed_strength_max_abs": float(gamma_tev.abs().max().item()),
-                "te_leg_candidate_force_delta_norm_n": float(
-                    torch.linalg.vector_norm(delta).item()
-                ),
-                "te_leg_candidate_force_delta_relative": float(
-                    torch.linalg.vector_norm(delta).item() / force_norm
-                ),
-                "te_leg_candidate_delta_n": delta.detach().cpu().tolist(),
-            }
-        quadrature_force = torch.sum(panel_forces, dim=0)
-        force_scale = max(
-            float(torch.linalg.vector_norm(quadrature_force).item()), 1e-30
-        )
-        self._last_resolved_vs_quadrature_relative = float(
-            torch.linalg.vector_norm(
-                packet.total_force_I - quadrature_force
-            ).item()
-            / force_scale
-        )
         load = NativeV5MLoad(
             panel_positions=geometry.collocation.clone(),
             panel_forces=panel_forces.clone(),
@@ -2828,44 +4197,68 @@ class Q16NativeV5MSolver:
         reconnect_wake = bool(
             getattr(self.settings, "joint_separation_solve", False)
         ) or nascent_rings is not None
-        if trial.wake_rings.shape[0]:
-            chain = trial.wake_rings.reshape(-1, ns, 4, 3)
-            # Captured BEFORE any mutation: the previous newest row's
-            # convected front edge.
-            convected_front = torch.stack(
-                (chain[0, :, 0].clone(), chain[0, :, 1].clone()), dim=1
-            )
-            chain[1:, :, 0] = chain[:-1, :, 3]
-            chain[1:, :, 1] = chain[:-1, :, 2]
-            if reconnect_wake:
-                # Continuous material sheet: the downstream edge of the
-                # newborn row IS the previous row's convected front edge,
-                # traversed in the OPPOSITE direction:
-                #   new[2] = old[1],  new[3] = old[0]
-                # The previous front is NOT re-anchored to the wing TE.
-                downstream = torch.stack(
-                    (convected_front[:, 1], convected_front[:, 0]), dim=1
+        separate_rows = _SHED_DISTANCE_FRACTION > 0.0
+        if separate_rows:
+            # the shed-vortex distance of Kumar et al. (after Katz and Plotkin): the newborn row
+            # is its own ring, `FLUXV_SHED_DISTANCE_FRACTION * U dt` long behind the trailing
+            # edge, and every stored row keeps the position it was convected to.  No row is tied
+            # to its neighbour and none is re-anchored to the wing.  Under TE_WAKE=v3 the row is
+            # already built on the solve side (`nascent_rings`); on the legacy path it is built
+            # here, with the length the papers state instead of one convection step.
+            if nascent_rings is None:
+                downstream = rear + (
+                    _SHED_DISTANCE_FRACTION
+                    * self.settings.freestream
+                    * self.settings.aerodynamic_dt
+                    * self.v_inf[None, :]
+                    / torch.linalg.vector_norm(self.v_inf)
+                )
+                new_wake = torch.stack(
+                    (rear[:, 1], rear[:, 0], downstream[:, 0], downstream[:, 1]), dim=1
                 )
             else:
-                # Legacy default, bit-for-bit: re-anchor the newest row's
-                # front to the current trailing edge and keep the U*dt
-                # downstream segment.
-                chain[0, :, 0] = rear[:, 1]
-                chain[0, :, 1] = rear[:, 0]
-        if nascent_rings is not None:
-            new_wake = nascent_rings
+                new_wake = nascent_rings
+            combined_rings = torch.cat((new_wake, trial.wake_rings), dim=0)
+            combined_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)
         else:
-            new_wake = torch.stack(
-                (
-                    rear[:, 1],
-                    rear[:, 0],
-                    downstream[:, 0],
-                    downstream[:, 1],
-                ),
-                dim=1,
-            )
-        combined_rings = torch.cat((new_wake, trial.wake_rings), dim=0)
-        combined_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)
+            if trial.wake_rings.shape[0]:
+                chain = trial.wake_rings.reshape(-1, ns, 4, 3)
+                # Captured BEFORE any mutation: the previous newest row's
+                # convected front edge.
+                convected_front = torch.stack(
+                    (chain[0, :, 0].clone(), chain[0, :, 1].clone()), dim=1
+                )
+                chain[1:, :, 0] = chain[:-1, :, 3]
+                chain[1:, :, 1] = chain[:-1, :, 2]
+                if reconnect_wake:
+                    # Continuous material sheet: the downstream edge of the
+                    # newborn row IS the previous row's convected front edge,
+                    # traversed in the OPPOSITE direction:
+                    #   new[2] = old[1],  new[3] = old[0]
+                    # The previous front is NOT re-anchored to the wing TE.
+                    downstream = torch.stack(
+                        (convected_front[:, 1], convected_front[:, 0]), dim=1
+                    )
+                else:
+                    # Legacy default, bit-for-bit: re-anchor the newest row's
+                    # front to the current trailing edge and keep the U*dt
+                    # downstream segment.
+                    chain[0, :, 0] = rear[:, 1]
+                    chain[0, :, 1] = rear[:, 0]
+            if nascent_rings is not None:
+                new_wake = nascent_rings
+            else:
+                new_wake = torch.stack(
+                    (
+                        rear[:, 1],
+                        rear[:, 0],
+                        downstream[:, 0],
+                        downstream[:, 1],
+                    ),
+                    dim=1,
+                )
+            combined_rings = torch.cat((new_wake, trial.wake_rings), dim=0)
+            combined_gamma = torch.cat((gamma_tev, trial.wake_gamma), dim=0)
         wake_capacity = self.settings.wake_max_rows * ns
         if combined_rings.shape[0] > wake_capacity:
             # Audit the truncated oldest rows BEFORE the slice (retention
@@ -2895,6 +4288,8 @@ class Q16NativeV5MSolver:
         trial.wake_gamma = combined_gamma[:wake_capacity]
         trial.gamma_previous = trial.gamma_bound.clone()
         trial.gamma_bound = gamma.clone()
+        if _CONVECTION_V4 or _LEV_HIRATO_V2:
+            trial.bound_rings_previous = geometry.rings.clone()
         trial.separated_previous = surface_separated.clone()
         trial.step += 1
         # One device->host read for the whole diagnostics block: 14 independent
@@ -2943,6 +4338,7 @@ class Q16NativeV5MSolver:
                 "strength_max_abs": float(strength.abs().max().item()),
                 "strength_sum": float(strength.sum().item()),
                 "chain_rows": int(trial.lev_chain.count.sum().item()),
+                "detached_strips": int(hirato_solution.get("detached_strips", 0)),
                 "suction_max_abs": (
                     float(self._step_suction_panel.abs().max().item())
                     if self._step_suction_panel is not None
@@ -2952,7 +4348,9 @@ class Q16NativeV5MSolver:
         trial.diagnostics = trial.diagnostics + (
             {
                 "step": trial.step,
-                "lev_model": "hirato" if hirato else "legacy",
+                "lev_model": (
+                    ("hirato_v2_" + _LEV_SHED_LAW) if _LEV_HIRATO_V2 else "hirato"
+                ) if hirato else "legacy",
                 "lev_hirato": lev_hirato_record,
                 "lev_release_count": lev_release_count_host,
                 "separated_strip_count": separated_strip_host,

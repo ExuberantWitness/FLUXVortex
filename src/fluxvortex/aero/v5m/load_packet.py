@@ -247,14 +247,34 @@ class NativeResolvedLoadAssembler:
 
     @staticmethod
     def effective_leg_strengths(
-        grid: torch.Tensor, delta_grid: torch.Tensor | None
+        grid: torch.Tensor,
+        delta_grid: torch.Tensor | None,
+        *,
+        pseudovortex_strip: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, ...]:
-        right = grid.clone()
-        right[:, :-1] = 0.5 * (grid[:, :-1] - grid[:, 1:])
+        """Effective Kutta-Joukowski leg strengths (front, right, back, left).
+
+        When ``pseudovortex_strip`` (shape ``(ns,)``) is supplied (Hirato Eq. 13/16/17,
+        defect B5), ``grid`` holds ``gamma_bound`` ONLY:
+          - spanwise legs (front/back) depend only on chordwise jumps of ``gamma_bound``
+            (the pseudovortex is chordwise-constant; its LE front leg cancels the nascent
+            LEV ring's aft leg, so panel 0's front leg carries ``gamma_bound[0]`` alone);
+          - streamwise legs (right/left) carry the spanwise jump of
+            ``gamma_bound + pseudovortex_strip`` (the streamwise side legs of the
+            pseudovortex ring running along each strip).
+        When ``pseudovortex_strip`` is None, behavior is bit-identical to legacy.
+        """
+        span_grid = (
+            grid
+            if pseudovortex_strip is None
+            else grid + pseudovortex_strip.reshape(1, -1)
+        )
+        right = span_grid.clone()
+        right[:, :-1] = 0.5 * (span_grid[:, :-1] - span_grid[:, 1:])
         front = grid.clone()
         front[1:, :] = 0.5 * (grid[1:, :] - grid[:-1, :])
-        left = grid.clone()
-        left[:, 1:] = 0.5 * (grid[:, 1:] - grid[:, :-1])
+        left = span_grid.clone()
+        left[:, 1:] = 0.5 * (span_grid[:, 1:] - span_grid[:, :-1])
         back = grid.clone()
         back[:-1, :] = 0.5 * (grid[:-1, :] - grid[1:, :])
         if delta_grid is not None:
@@ -291,6 +311,8 @@ class NativeResolvedLoadAssembler:
         component_ledger: Mapping[str, torch.Tensor] | None = None,
         te_leg_strength_override: torch.Tensor | None = None,
         front_extra_force: torch.Tensor | None = None,
+        front_suction_replace_mask: torch.Tensor | None = None,
+        pseudovortex_strip: torch.Tensor | None = None,
     ) -> NativeV5MSurfaceLoadPacket:
         """Assemble the resolved point-load packet.
 
@@ -303,6 +325,10 @@ class NativeResolvedLoadAssembler:
         filament of each panel, where it acts: Hirato's leading-edge suction
         (plan V3, stage 2).  It is not a Kutta-Joukowski force and depends on no
         velocity, so it enters the packet directly.
+
+        ``pseudovortex_strip`` (ns,), if given (Hirato v2, defect B5), adds the
+        streamwise side legs of each strip's pseudovortex ring without inventing
+        a phantom +Gamma_L spanwise filament on panel 0's front leg.
         """
         if self.aerodynamic_dt is None:
             raise ValueError("resolved load assembly requires aerodynamic_dt")
@@ -315,7 +341,9 @@ class NativeResolvedLoadAssembler:
             )
         delta_grid, gamma_rate = self.delta_grid(gamma, mf2_history, nc, ns)
         leg_strengths = self.effective_leg_strengths(
-            gamma.reshape(nc, ns), delta_grid
+            gamma.reshape(nc, ns),
+            delta_grid,
+            pseudovortex_strip=pseudovortex_strip,
         )
         if te_leg_strength_override is not None:
             # B2 diagnostic only: the trailing-edge leg of the last chordwise
@@ -336,6 +364,16 @@ class NativeResolvedLoadAssembler:
         mids, movements, lengths = self.leg_layout(geometry)
         point_forces: list[torch.Tensor] = []
         total_moment = torch.zeros(3, device=self.device, dtype=torch.float64)
+        replace_mask = None
+        if front_suction_replace_mask is not None:
+            replace_mask = front_suction_replace_mask.reshape(-1).to(torch.bool)
+            if replace_mask.shape != (ns,):
+                raise ValueError(
+                    f"front_suction_replace_mask must have shape ({ns},), "
+                    f"got {tuple(replace_mask.shape)}"
+                )
+            if not bool(replace_mask.any().item()):
+                replace_mask = None
         for leg, (strength, movement, length, mid) in enumerate(
             zip(leg_strengths, movements, lengths, mids, strict=True)
         ):
@@ -345,7 +383,26 @@ class NativeResolvedLoadAssembler:
                 * strength.reshape(-1, 1)
                 * torch.linalg.cross(velocity + movement, length, dim=1)
             )
-            if leg == 0 and front_extra_force is not None:
+            if replace_mask is not None:
+                # On leading-edge separated strips (Hirato Eq. 20 / Ramesh Eq. 2.24),
+                # panel 0's total tangential force is governed strictly by LESP-limited
+                # leading-edge suction (placed on its front leg) while all four legs of
+                # panel 0 retain their exact normal Kutta-Joukowski components.
+                n0 = geometry.normals[:ns]
+                f0 = force[:ns]
+                f0_normal = torch.sum(f0 * n0, dim=1, keepdim=True) * n0
+                if leg == 0 and front_extra_force is not None:
+                    if tuple(front_extra_force.shape) != (count, 3):
+                        raise ValueError(
+                            f"front_extra_force must have shape ({count}, 3), "
+                            f"got {tuple(front_extra_force.shape)}"
+                        )
+                    f0_replaced = f0_normal + front_extra_force[:ns]
+                else:
+                    f0_replaced = f0_normal
+                force = force.clone()
+                force[:ns] = torch.where(replace_mask[:, None], f0_replaced, f0)
+            elif leg == 0 and front_extra_force is not None and front_suction_replace_mask is None:
                 if tuple(front_extra_force.shape) != (count, 3):
                     raise ValueError(
                         f"front_extra_force must have shape ({count}, 3), "

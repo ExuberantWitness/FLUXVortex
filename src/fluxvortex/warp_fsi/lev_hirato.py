@@ -46,6 +46,7 @@ solver.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 import torch
@@ -56,6 +57,17 @@ import torch
 LEV_MAX_ROWS = 96
 #: the paper's Eq. (7): the split point is this fraction of the way from the leading edge
 SPLIT_FRACTION = 1.0 / 3.0
+
+
+def max_rows() -> int:
+    """Ring rows kept per strip: `FLUXV_LEV_MAX_ROWS`, or `LEV_MAX_ROWS` (note A24, defect B6).
+
+    The rows are read at call time so that a long validation run can raise the limit without a
+    second constant in the code.  A row that leaves is reported by `truncation_audit`; with the
+    limit raised past the number of steps nothing leaves at all.
+    """
+
+    return int(os.environ.get("FLUXV_LEV_MAX_ROWS", str(LEV_MAX_ROWS)))
 
 
 def strip_pairs(nodes: torch.Tensor) -> torch.Tensor:
@@ -147,6 +159,153 @@ def split_points(leading_edge_pairs: torch.Tensor, aft_pairs: torch.Tensor) -> t
     """(N, 2, 3): the paper's Eq. (7), one third of the way from the edge to the aft end."""
 
     return leading_edge_pairs + SPLIT_FRACTION * (aft_pairs - leading_edge_pairs)
+
+
+def split_row0(
+    chain: LevChain,
+    leading_edge: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> tuple[LevChain, torch.Tensor]:
+    """The chain as the solve must see it, and the split point the new ring will take.
+
+    Hirato et al. Eq. (7): the new ring's free end is `x_{L,n-1} = (2/3) x_LE + (1/3) x_{L,n-2}`,
+    where `x_{L,n-2}` is where the sheet's previous far end is — `row_free_pairs`, the end away
+    from the wing.  The previous ring is split at that point: its leading-edge-side corners move
+    there, so it spans the split point to its old far end.  Doing this BEFORE the right-hand side
+    is built is what makes the geometry the solve sees the geometry that gets committed (defect
+    B1); taking the split from the free end rather than from the leading-edge-side end keeps the
+    new ring's length a third of the sheet rather than a third of one convection step (defect B3).
+
+    Only strips in `mask` (default: `continuing(chain)`) have their row 0 split; empty or stopped
+    strips keep their rows untouched.
+    """
+
+    edge = strip_pairs(leading_edge)
+    split = split_points(edge, row_free_pairs(chain.rings[0]))
+    rings = chain.rings.clone()
+    if rings.shape[0] > 0:
+        apply_mask = continuing(chain) if mask is None else mask.to(torch.bool)
+        rings[0, :, 2] = torch.where(apply_mask[:, None], split[:, 1], rings[0, :, 2])
+        rings[0, :, 3] = torch.where(apply_mask[:, None], split[:, 0], rings[0, :, 3])
+    return chain.with_rings(rings), split
+
+
+def anchor_row0_to_edge(
+    chain: LevChain,
+    leading_edge: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> LevChain:
+    """Stretch continuing row 0's aft corners back to `leading_edge` for the zero-shedding test.
+
+    At step n before deciding whether a continuing strip sheds new vorticity (dGamma_L = 0),
+    its continuous sheet spans from its convected free edge back to the current leading edge,
+    where its aft leg cancels the current pseudovortex's front leg exactly (Hirato Fig. 4b).
+    """
+
+    edge = strip_pairs(leading_edge)
+    rings = chain.rings.clone()
+    if rings.shape[0] > 0:
+        apply_mask = continuing(chain) if mask is None else mask.to(torch.bool)
+        rings[0, :, 2] = torch.where(apply_mask[:, None], edge[:, 1], rings[0, :, 2])
+        rings[0, :, 3] = torch.where(apply_mask[:, None], edge[:, 0], rings[0, :, 3])
+    return chain.with_rings(rings)
+
+
+def flat_live(chain: LevChain) -> tuple[torch.Tensor, torch.Tensor]:
+    """Only the live (count > row) rings (L, 4, 3) and strengths (L,) of `chain`.
+
+    Skips zero-padded rows in the fixed-size buffer (`LEV_MAX_ROWS`), avoiding O(max_rows^2)
+    wasted Biot-Savart evaluations when only a fraction of the buffer is populated.
+    """
+
+    mask = active_rows(chain)
+    rings, gamma = flat(chain)
+    return rings[mask], gamma[mask]
+
+
+def free_ring_sources(
+    chain: LevChain,
+    pseudovortex: torch.Tensor,
+    strength: torch.Tensor,
+    *,
+    live_only: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Every ring a free-material convection must see: the chain rows and the pseudovortex rings.
+
+    The pseudovortex closes the leading edge (its front leg cancels the nascent ring's aft leg) and
+    the trailing edge (its back leg cancels the bound trailing-edge legs).  A convection that leaves
+    it out carries an uncancelled +-Gamma_L filament on both lines and winds it into the wake
+    (defect B2).  `strength` is the per-strip pseudovortex circulation, `chain.prev` at the time of
+    the convection.
+    """
+
+    rings, gamma = flat_live(chain) if live_only else flat(chain)
+    if pseudovortex.shape[0] == 0:
+        return rings, gamma
+    return torch.cat((rings, pseudovortex), dim=0), torch.cat((gamma, strength))
+
+
+def cessation_delta(
+    active: torch.Tensor,
+    lam: torch.Tensor,
+    previous: torch.Tensor,
+    target: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The strength a strip ADDS this step, and the strips that go on shedding.
+
+    A strip stops when the strength the pin asks for would reverse the one it already carries, and
+    then it adds nothing: its leading-edge circulation stays what it was, so the unsteady term
+    (`dGamma_L/dt`) sees no step.  The test is on the increment `lam - previous`, not on `lam`
+    itself, which is what the first version did (defect B4); and because the increment is zero on
+    cessation, `prev` is no longer reset to zero in one step.
+    """
+
+    delta = lam - previous
+    # The strip stops when the pin asks for a leading-edge vortex of the OPPOSITE SIGN to the one
+    # the strip already carries (A23 section 6c: "until continuing would need a leading-edge vortex
+    # against the bound circulation").  A test on the increment against the pin's sign fires on any
+    # decrease in magnitude instead, which switches the edge strips on and off every step: measured
+    # on the H case, 14/20/18/24/20/30/26/30/34/34/26/36 shedding strips in twelve steps and a
+    # step-to-step lift swing of 2.6 to 5.0 (note A24, section 5).
+    reversal = active.to(torch.bool) & (previous != 0.0) & (lam * previous < 0.0)
+    if target is not None:
+        reversal = reversal | (active.to(torch.bool) & (previous == 0.0) & (lam * target < 0.0))
+    delta = torch.where(reversal, torch.zeros_like(delta), delta)
+    return delta, active.to(torch.bool) & ~reversal
+
+
+def leading_edge_chordwise_difference(
+    gamma_bound: torch.Tensor, chord_panel_length: torch.Tensor
+) -> torch.Tensor:
+    """The chordwise difference of the bound circulation, per row, one-sided in the first row.
+
+    Hirato et al. Eq. (13), (16) and (17): the potential jump is `Gamma_L + Gamma_{b,x}` for every
+    panel while a strip sheds, because the sheet's leading edge coincides with the wing's, so the
+    `Gamma_L` part has no chordwise derivative anywhere — in particular not at the leading edge,
+    where the difference is one-sided.  The leading-edge filament of the closed loop (nascent ring
+    + pseudovortex + bound front leg) carries `Gamma_0` alone.  Adding the strip's `Gamma_L` here
+    invents a slope `Gamma_L / dx_0`, which on the H case made the first panel's steady load 4.4
+    times too large (defect B5).  The `Gamma_L` part stays in the spanwise differences and in the
+    unsteady term.
+    """
+
+    length = torch.as_tensor(
+        chord_panel_length, dtype=gamma_bound.dtype, device=gamma_bound.device
+    )
+    if length.shape != gamma_bound.shape:
+        if length.numel() == gamma_bound.numel():
+            length = length.reshape(gamma_bound.shape)          # one length per panel
+        elif length.numel() == gamma_bound.shape[0]:
+            length = length.reshape(gamma_bound.shape[0], 1)     # one length per row
+        else:
+            raise ValueError(
+                f"chord panel lengths of shape {tuple(length.shape)} do not describe a "
+                f"circulation grid of shape {tuple(gamma_bound.shape)}"
+            )
+    dx_gamma = torch.empty_like(gamma_bound)
+    dx_gamma[0] = gamma_bound[0] / length[0]
+    dx_gamma[1:] = (gamma_bound[1:] - gamma_bound[:-1]) / length[1:]
+    return dx_gamma
 
 
 @dataclass(frozen=True)
@@ -335,6 +494,58 @@ def suction_force(
     return magnitude[:, None] * forward
 
 
+def flux_shedding_strength(
+    lesp: torch.Tensor, scale: torch.Tensor, leading_edge_panel: torch.Tensor,
+    delta_time: float,
+) -> torch.Tensor:
+    """The sharp-edge vorticity-flux law: the circulation a strip sheds in one step.
+
+    Kaden/Didden slug model, `dGamma = 1/2 U_s^2 dt`, with `U_s` the slip speed of the attaching
+    flow at the leading edge, which for a vortex sheet is the sheet strength there: the attached
+    solve's leading-edge circulation over the first panel's chord,
+    `U_s = |Gamma_pre| / dx_le = |LESP| * scale / dx_le`.  The result is proportional to `dt` and
+    to `U_s^2`, so it is bounded by construction, and the suction parameter is no longer held at
+    its critical value (Martinez-Carmena et al., Eqs. 8-12; the same law as
+    `FLUXV_FLUX_CONSISTENT_SHEDDING` uses on the joint path).
+
+    Why the pin has to go: measured on Hirato et al.'s own pitch ramp, the pinned closure is a
+    loop with gain — the sheet's own induction raises the attached suction parameter, and the pin
+    answers a higher parameter with a larger strength.  The sheet's total circulation reached
+    53 m^2/s (177 U c, against 4-5 U c at detachment) by step 200 and the run ended 4 steps later
+    (note A24, section 5).
+    """
+
+    slip = torch.abs(lesp) * scale / torch.clamp(leading_edge_panel, min=1.0e-30)
+    # The sheet's strength is written in the BOUND convention: the pin sets
+    # Gamma_L = -sign(LESP) * crit * scale (the same sign as the bound leading-edge circulation),
+    # so the flux law must carry that sign too.  Measured the other way round on the H case the
+    # sheet sheds against the bound circulation (recorded lambda -0.23 where the pin gives +0.10).
+    return -torch.sign(lesp) * 0.5 * slip**2 * float(delta_time)
+
+
+def solve_prescribed(
+    aic: torch.Tensor,
+    nascent_normal: torch.Tensor,
+    basis_normal: torch.Tensor,
+    rhs: torch.Tensor,
+    active: torch.Tensor,
+    strength: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """The circulation solve with the nascent leading-edge strength PRESCRIBED.
+
+    Every no-penetration row stays an equation (the leading-edge rows of shedding strips
+    included): the sheet's strength is known, so its induction moves to the right-hand side and
+    nothing is pinned.  Returns the bound circulation and the residual of all rows.
+    """
+
+    index = torch.nonzero(active.to(torch.bool), as_tuple=False).reshape(-1)
+    if index.numel() == 0:
+        return torch.linalg.solve(aic, rhs), torch.zeros_like(rhs)
+    columns = nascent_normal[:, index] + basis_normal[:, index]
+    gamma = torch.linalg.solve(aic, rhs - columns @ strength[index])
+    return gamma, aic @ gamma + columns @ strength[index] - rhs
+
+
 def solve_coupled(
     aic: torch.Tensor,
     nascent_normal: torch.Tensor,
@@ -342,6 +553,7 @@ def solve_coupled(
     rhs: torch.Tensor,
     active: torch.Tensor,
     pin_target: torch.Tensor,
+    imposed: tuple[torch.Tensor, torch.Tensor] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The circulation solve with the nascent leading-edge vortex of the active strips unknown.
 
@@ -372,12 +584,35 @@ def solve_coupled(
         matrix[index] = 0.0
         matrix[index, index] = 1.0
         right[index] = pin_target[index]
+    if imposed is not None and count:
+        # Strips whose sheet has detached: their leading-edge row carries the strength of the sheet
+        # that left it (continuity of the vortex sheet across the separation point), so the row is
+        # an identity row instead of a no-penetration one and it has no unknown of its own.  A
+        # separated leading edge does not satisfy no-penetration, so enforcing it there is what
+        # made the strip return to a violent attached solve (note A25, section 4).
+        mask, values = imposed
+        rows = torch.nonzero(mask.to(torch.bool), as_tuple=False).reshape(-1)
+        if rows.numel():
+            matrix[rows] = 0.0
+            matrix[rows, rows] = 1.0
+            right[rows] = values[rows]
+            # the closure rows are the leading-edge rows of the ACTIVE strips only, so the identity
+            # rows above never coincide with them
     solution = torch.linalg.solve(matrix, right)
     return solution[:size], solution[size:], full @ solution - rhs
 
 
 __all__ = [
     "LEV_MAX_ROWS",
+    "anchor_row0_to_edge",
+    "cessation_delta",
+    "flat_live",
+    "flux_shedding_strength",
+    "free_ring_sources",
+    "leading_edge_chordwise_difference",
+    "max_rows",
+    "solve_prescribed",
+    "split_row0",
     "SPLIT_FRACTION",
     "LevChain",
     "active_rows",

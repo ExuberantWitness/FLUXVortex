@@ -53,6 +53,11 @@ from .q16_flux_v5m_native import (
     NativeV5MGeometry,
     NativeV5MLoad,
     Q16NativeV5MSolver,
+    _FAST_RIGID_LOADS,
+    _HIRATO_PRESSURE_LOADS,
+    _LEV_HIRATO_V2_LOADS,
+    _LEV_SEP_SUCTION,
+    _RING_MIXED_PRECISION,
     _TE_WAKE_V3,
     _require_cuda64,
     freestream_vector,
@@ -381,6 +386,8 @@ class RigidAuthorLoadAssembler:
         gamma: torch.Tensor,
         gamma_rate: torch.Tensor,
         solution_velocity: torch.Tensor,
+        *,
+        pseudovortex_strip: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Pterra ``_calculate_loads`` with EXACT filament velocities.
 
@@ -398,7 +405,9 @@ class RigidAuthorLoadAssembler:
             )
         delta_grid = (gamma_rate * self.aerodynamic_dt).reshape(nc, ns)
         leg_strengths = self._resolved.effective_leg_strengths(
-            gamma.reshape(nc, ns), delta_grid
+            gamma.reshape(nc, ns),
+            delta_grid,
+            pseudovortex_strip=pseudovortex_strip,
         )
         mids, movements, lengths = self._resolved.leg_layout(geometry)
         count = nc * ns
@@ -440,6 +449,33 @@ class RigidAuthorLoadAssembler:
         lift2 = -self.density * torch.sum(
             geometry.collocation_velocity * gamma_gradient, dim=1
         )
+        if _FAST_RIGID_LOADS and self.wake_history_mode == "bound_rate":
+            # In bound_rate mode, RigidNativeV5MSolver._refine_load_with_filament_velocity
+            # immediately replaces panel_forces/total_force/total_moment/packet using
+            # wake_history_pressure (= rho * mf2_history) and exact filament velocities;
+            # skip the unused O(P^2) material derivative, O(P^3) LU solve, and discarded KJ pass.
+            mf2_1 = torch.zeros_like(lift1)
+            pressure = lift1 + wake_history + lift2
+            panel_forces = torch.zeros(
+                (gamma.shape[0], 3), device=self.device, dtype=torch.float64
+            )
+            total_force = torch.zeros(3, device=self.device, dtype=torch.float64)
+            total_moment = torch.zeros(3, device=self.device, dtype=torch.float64)
+            wrench = torch.zeros((1, 6), device=self.device, dtype=torch.float64)
+            self._previous_gamma = gamma.detach().clone()
+            return RigidAuthorLoad(
+                lift1_pressure=lift1.detach().clone(),
+                wake_history_pressure=wake_history.detach().clone(),
+                lift2_pressure=lift2.detach().clone(),
+                mf2_1_pressure=mf2_1,
+                constant_pressure=pressure.detach().clone(),
+                panel_forces=panel_forces,
+                total_force=total_force,
+                total_moment=total_moment,
+                constant_generalized_force=wp.from_torch(
+                    wrench, dtype=warp_config.DTYPE, requires_grad=False
+                ),
+            )
         diagonal_31 = geometry.rings[:, 3] - geometry.rings[:, 1]
         diagonal_24 = geometry.rings[:, 2] - geometry.rings[:, 0]
         diagonal_31_rate = geometry.ring_velocity[:, 3] - geometry.ring_velocity[:, 1]
@@ -539,6 +575,9 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
         # M1 hooks (this __init__ intentionally skips super().__init__).
         self._resolved_load_assembler = None
         self._last_resolved_vs_quadrature_relative = float("nan")
+        self._skip_super_resolved_packet = bool(
+            _FAST_RIGID_LOADS and settings.wake_history_mode == "bound_rate"
+        )
         self.author_load_assembler = RigidAuthorLoadAssembler(
             density=settings.density,
             device=self.device,
@@ -564,6 +603,11 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
                 "the rigid native V5M solver received a non-rigid author load"
             )
         if self.settings.wake_history_mode == "bound_rate":
+            if _HIRATO_PRESSURE_LOADS:
+                # Hirato et al. (2019) Eqs. (16)-(20): Bernoulli surface pressure normal force
+                # (with B5 chordwise difference and d(Gamma_b+Gamma_L)/dt) plus Eq. (20)
+                # LESP-limited leading-edge suction (already combined in proposal.load).
+                return proposal
             author, load = self._refine_load_with_filament_velocity(
                 proposal, author
             )
@@ -605,10 +649,16 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
         geometry = self.surface.evaluate(None, None)
         assembler = self.author_load_assembler
         gamma = trial.gamma_bound  # the base propose() stored Gamma_n here
-        if self._lev_bound_extra is not None:
-            # plan V3 stage 2: the pseudovortex ring of a shedding strip is bound vorticity,
-            # and the loads are integrated with its strength on the strip (the base propose()
-            # does the same for its packet)
+        pseudo_strip = None
+        if _LEV_HIRATO_V2_LOADS and self._lev_pseudovortex is not None:
+            # B5 (Hirato Eq. 13/16/17): keep gamma = gamma_bound so (1) panel 0's front
+            # Kutta-Joukowski leg carries gamma_bound[0] alone (no phantom +Gamma_L),
+            # (2) bound-ring velocity at filament midpoints does NOT double-count the
+            # pseudovortex ring, and (3) pseudovortex_strip supplies only the streamwise
+            # side legs along the chord.
+            pseudo_strip = self._lev_pseudovortex[1]
+        elif self._lev_bound_extra is not None:
+            # legacy hirato path (bit-identical): add Gamma_L to all bound panels
             gamma = gamma + self._lev_bound_extra
         gamma_rate = author.wake_history_pressure / self.settings.density
         mids = assembler.leg_midpoints_flat(geometry)
@@ -621,13 +671,17 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             # trailing-edge row, so the load-time wake is the whole stored
             # wake, nascent row included, with its core.
             if trial.wake_rings.shape[0]:
+                wake_load_cores = self._wake_core_radii(
+                    trial.wake_gamma, self._core_radius(geometry), row_age_offset=0
+                )
                 velocity = velocity + self._ring_velocity(
                     mids,
                     trial.wake_rings,
                     trial.wake_gamma,
                     rough=False,
-                    core_radius=self._core_radius(geometry),
+                    core_radius=wake_load_cores,
                     free=True,
+                    mixed_precision=_RING_MIXED_PRECISION,
                 )
         elif trial.wake_rings.shape[0] > ns:
             # The load was assembled BEFORE this step's TEV row was shed;
@@ -642,24 +696,25 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             velocity = velocity + trial.particle_field.velocity_at_cuda(mids)
         # Plan V3 stage 2: the leading-edge ring chains and the pseudovortex rings
         if self._lev_field is not None:
-            velocity = velocity + self._ring_velocity(mids, *self._lev_field, rough=False, free=True)
-            velocity = velocity + self._ring_velocity(mids, *self._lev_pseudovortex, rough=False)
-        panel_forces, total_force, total_moment = (
-            assembler.refine_kj_with_solution_velocity(
-                geometry, gamma, gamma_rate, velocity
+            lev_core = self._lev_rhs_core_radius(geometry) if _LEV_HIRATO_V2_LOADS else None
+            lev_field_cores = (
+                getattr(self, "_lev_field_cores", lev_core)
+                if _LEV_HIRATO_V2_LOADS
+                else None
             )
-        )
-        # Hirato's leading-edge suction (the paper's Eq. 20): a force on the front filament
-        # of each strip's first panel.  It changes the streamwise force and the moment, never
-        # the force normal to the chord.
+            velocity = velocity + self._ring_velocity(
+                mids,
+                *self._lev_field,
+                rough=False,
+                core_radius=lev_field_cores,
+                free=True,
+                mixed_precision=_RING_MIXED_PRECISION,
+            )
+            velocity = velocity + self._ring_velocity(
+                mids, *self._lev_pseudovortex, rough=False, core_radius=lev_core
+            )
         suction = self._step_suction_panel
-        if suction is not None:
-            front_mid = 0.5 * (geometry.rings[:, 0] + geometry.rings[:, 1])
-            panel_forces = panel_forces + suction
-            total_force = total_force + torch.sum(suction, dim=0)
-            total_moment = total_moment + torch.sum(
-                torch.linalg.cross(front_mid, suction, dim=1), dim=0
-            )
+        replace_mask = getattr(self, "_step_suction_replace_mask", None)
         # M1-1: publish the unified surface-load packet from the SAME
         # integration inputs; consumers project it, never re-integrate.
         packet = assembler._resolved.assemble_packet(
@@ -668,6 +723,8 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
             solution_velocity_flat=velocity,
             mf2_history=gamma_rate,
             front_extra_force=suction,
+            front_suction_replace_mask=replace_mask,
+            pseudovortex_strip=pseudo_strip,
             component_ledger={
                 "lift1_pressure": author.lift1_pressure,
                 "wake_history_pressure": author.wake_history_pressure,
@@ -675,6 +732,28 @@ class RigidNativeV5MSolver(Q16NativeV5MSolver):
                 "mf2_1_pressure": author.mf2_1_pressure,
             },
         )
+        if replace_mask is not None:
+            # Single source of truth: project panel forces/total force/moment directly
+            # from the validated surface-load packet (exact closure to 1e-15).
+            panel_forces = packet.point_forces_I.reshape(5, gamma.shape[0], 3).sum(dim=0)
+            total_force = packet.total_force_I
+            total_moment = packet.total_moment_I
+        else:
+            panel_forces, total_force, total_moment = (
+                assembler.refine_kj_with_solution_velocity(
+                    geometry, gamma, gamma_rate, velocity, pseudovortex_strip=pseudo_strip
+                )
+            )
+            # Hirato's leading-edge suction (the paper's Eq. 20): a force on the front filament
+            # of each strip's first panel.  It changes the streamwise force and the moment, never
+            # the force normal to the chord.
+            if suction is not None:
+                front_mid = 0.5 * (geometry.rings[:, 0] + geometry.rings[:, 1])
+                panel_forces = panel_forces + suction
+                total_force = total_force + torch.sum(suction, dim=0)
+                total_moment = total_moment + torch.sum(
+                    torch.linalg.cross(front_mid, suction, dim=1), dim=0
+                )
         wrench = torch.cat((total_force, total_moment)).unsqueeze(0).contiguous()
         refined = replace(
             author,

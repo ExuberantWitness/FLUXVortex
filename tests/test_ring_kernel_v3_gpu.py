@@ -203,3 +203,32 @@ def test_legacy_pair_unchanged(kernel_legacy):
         * gamma[None, :, None], dim=1
     )
     assert float((fused - torch_path).abs().max() / fused.abs().max()) < 1.0e-12
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU-only")
+def test_v3_per_ring_core_and_mixed_precision_fp32(kernel_v3):
+    """Per-ring Squire core tensor matches torch reference to <1e-12, and coalesced FP32 cored
+    kernel matches FP64 to <5e-5 relative error."""
+
+    size = CHORD / NC
+    rings, gamma, points = _case(size, 64, 900)
+    per_ring_core = (0.25 + 0.5 * torch.linspace(0.0, 1.0, rings.shape[0], dtype=torch.float64, device=DEVICE)) * size
+    fused_fp64 = kernel_v3.native_ring_velocity_fused(
+        points, rings, gamma, core_fraction=0.0, reference_length=0.0,
+        core_radius=per_ring_core, mixed_precision=False,
+    )
+    torch_fp64 = torch.sum(
+        kernel_v3.native_ring_velocity_expanded(
+            points, rings, core_fraction=0.0, reference_length=0.0, core_radius=per_ring_core
+        )
+        * gamma[None, :, None],
+        dim=1,
+    )
+    fused_fp32 = kernel_v3.native_ring_velocity_fused(
+        points, rings, gamma, core_fraction=0.0, reference_length=0.0,
+        core_radius=per_ring_core, mixed_precision=True,
+    )
+    assert torch.isfinite(fused_fp64).all() and torch.isfinite(fused_fp32).all()
+    scale = float(fused_fp64.abs().max().item())
+    assert float((fused_fp64 - torch_fp64).abs().max().item()) / scale < 1.0e-12
+    assert float((fused_fp32 - fused_fp64).abs().max().item()) / scale < 5.0e-5

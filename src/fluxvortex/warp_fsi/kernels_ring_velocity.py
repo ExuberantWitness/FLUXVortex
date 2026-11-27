@@ -90,6 +90,13 @@ if not (math.isfinite(_COLLINEAR_REL) and 0.0 < _COLLINEAR_REL < 1.0):
     raise ValueError(
         f"FLUXV_RING_COLLINEAR_REL must be finite and in (0, 1), got {_COLLINEAR_REL!r}"
     )
+#: Stage 3 (S5-1) opt-in mixed-precision Biot-Savart for free-wake/LEV convection and load
+#: midpoints under FLUXV_RING_KERNEL=v3: origin-shifted cancellation-free FP32 in the far field
+#: (r > 4*max(|e|, r_c)), exact FP64 in the near field / near-collinear cone, FP64 accumulation.
+#: AIC and collocation Neumann solves stay pure FP64.  Default OFF (bit-identical production).
+_MIXED_PRECISION = os.environ.get("FLUXV_RING_MIXED_PRECISION", "0").strip().lower() in {
+    "1", "true", "on", "yes",
+}
 
 
 @wp.kernel
@@ -224,6 +231,190 @@ def _ring_bs_partials_v3(
     partials[t, b, 2] = accz
 
 
+@wp.kernel
+def _ring_bs_partials_v3_mixed(
+    targets64: wp.array2d(dtype=wp.float64),
+    starts64: wp.array2d(dtype=wp.float64),
+    ends64: wp.array2d(dtype=wp.float64),
+    gamma64: wp.array1d(dtype=wp.float64),
+    core4_64: wp.array1d(dtype=wp.float64),
+    targets32: wp.array2d(dtype=wp.float32),
+    starts32: wp.array2d(dtype=wp.float32),
+    edges32: wp.array2d(dtype=wp.float32),
+    edge_sq32: wp.array1d(dtype=wp.float32),
+    inv_edge_sq32: wp.array1d(dtype=wp.float32),
+    near_r2_32: wp.array1d(dtype=wp.float32),
+    gamma32: wp.array1d(dtype=wp.float32),
+    core4_32: wp.array1d(dtype=wp.float32),
+    collinear_rel: float,
+    block_size: int,
+    partials: wp.array3d(dtype=wp.float64),
+):
+    """Stage 3 (S5-0 + S5-1) mixed-precision v3 ring Biot-Savart kernel.
+
+    Launched with dim=(n_blocks, n_targets) so consecutive warp lanes share the same
+    source block `b` (100% warp-broadcast on filament loads, coalesced target/partial IO).
+    """
+
+    b, t = wp.tid()
+    n_s = int(core4_32.shape[0])
+    start = b * block_size
+    stop = wp.min(start + block_size, n_s)
+    inv_4pi32 = wp.float32(_C_INV_4PI)
+    one32 = wp.float32(1.0)
+    col_cone32 = wp.float32(1.0e-5)
+
+    inv_4pi64 = wp.float64(_C_INV_4PI)
+    eps64 = wp.float64(_C_FP64_EPS)
+    rel64 = wp.float64(collinear_rel)
+    rel_sq64 = rel64 * rel64
+    one64 = wp.float64(1.0)
+    zero64 = wp.float64(0.0)
+    tiny64 = wp.float64(1.0e-300)
+
+    accx = zero64
+    accy = zero64
+    accz = zero64
+    accx32 = wp.float32(0.0)
+    accy32 = wp.float32(0.0)
+    accz32 = wp.float32(0.0)
+    tx32 = targets32[t, 0]
+    ty32 = targets32[t, 1]
+    tz32 = targets32[t, 2]
+    tx64 = targets64[t, 0]
+    ty64 = targets64[t, 1]
+    tz64 = targets64[t, 2]
+
+    for s in range(start, stop):
+        ax32 = tx32 - starts32[s, 0]
+        ay32 = ty32 - starts32[s, 1]
+        az32 = tz32 - starts32[s, 2]
+        ex32 = edges32[s, 0]
+        ey32 = edges32[s, 1]
+        ez32 = edges32[s, 2]
+        bx32 = ax32 - ex32
+        by32 = ay32 - ey32
+        bz32 = az32 - ez32
+        a2_32 = ax32 * ax32 + ay32 * ay32 + az32 * az32
+        b2_32 = bx32 * bx32 + by32 * by32 + bz32 * bz32
+        cx32 = ey32 * az32 - ez32 * ay32
+        cy32 = ez32 * ax32 - ex32 * az32
+        cz32 = ex32 * ay32 - ey32 * ax32
+        csq32 = cx32 * cx32 + cy32 * cy32 + cz32 * cz32
+        e2_32 = edge_sq32[s]
+
+        if wp.min(a2_32, b2_32) > near_r2_32[s] and csq32 > col_cone32 * e2_32 * a2_32:
+            ra32 = wp.sqrt(a2_32)
+            rb32 = wp.sqrt(b2_32)
+            inv_a32 = one32 / ra32
+            inv_b32 = one32 / rb32
+            ea32 = ex32 * ax32 + ey32 * ay32 + ez32 * az32
+            eb32 = ea32 - e2_32
+            scalar32 = (e2_32 - ea32 * (ea32 + eb32) * inv_a32 / (ra32 + rb32)) * inv_b32
+            h_sq32 = csq32 * inv_edge_sq32[s]
+            kv32 = h_sq32 / wp.sqrt(h_sq32 * h_sq32 + core4_32[s])
+            w32 = scalar32 * inv_4pi32 / csq32 * kv32 * gamma32[s]
+            accx32 += w32 * cx32
+            accy32 += w32 * cy32
+            accz32 += w32 * cz32
+        else:
+            ax = tx64 - starts64[s, 0]
+            ay = ty64 - starts64[s, 1]
+            az = tz64 - starts64[s, 2]
+            bx = tx64 - ends64[s, 0]
+            by = ty64 - ends64[s, 1]
+            bz = tz64 - ends64[s, 2]
+            ex = ax - bx
+            ey = ay - by
+            ez = az - bz
+            cx = ay * bz - az * by
+            cy = az * bx - ax * bz
+            cz = ax * by - ay * bx
+            cross_sq = cx * cx + cy * cy + cz * cz
+            inv_a = one64 / wp.max(wp.sqrt(ax * ax + ay * ay + az * az), eps64)
+            inv_b = one64 / wp.max(wp.sqrt(bx * bx + by * by + bz * bz), eps64)
+            edge_sq = ex * ex + ey * ey + ez * ez
+            inv_e = one64 / wp.max(wp.sqrt(edge_sq), eps64)
+            ux = ax * inv_a - bx * inv_b
+            uy = ay * inv_a - by * inv_b
+            uz = az * inv_a - bz * inv_b
+            scalar = ex * ux + ey * uy + ez * uz
+            keep = cross_sq > rel_sq64 * edge_sq * edge_sq
+            den = wp.max(cross_sq, tiny64)
+            h_sq = cross_sq * inv_e * inv_e
+            kv = h_sq / wp.sqrt(h_sq * h_sq + core4_64[s])
+            w = wp.where(keep, scalar * inv_4pi64 / den * kv * gamma64[s], zero64)
+            accx += w * cx
+            accy += w * cy
+            accz += w * cz
+    partials[b, t, 0] = accx + wp.float64(accx32)
+    partials[b, t, 1] = accy + wp.float64(accy32)
+    partials[b, t, 2] = accz + wp.float64(accz32)
+
+
+@wp.kernel
+def _ring_bs_partials_v3_cored_fp32(
+    targets32: wp.array2d(dtype=wp.float32),
+    starts32: wp.array2d(dtype=wp.float32),
+    edges32: wp.array2d(dtype=wp.float32),
+    edge_sq32: wp.array1d(dtype=wp.float32),
+    inv_edge_sq32: wp.array1d(dtype=wp.float32),
+    gamma32: wp.array1d(dtype=wp.float32),
+    core4_32: wp.array1d(dtype=wp.float32),
+    block_size: int,
+    partials: wp.array3d(dtype=wp.float64),
+):
+    """Branch-free, singularity-free FP32 Biot-Savart kernel for cored v3 filaments.
+
+    Supports both uniform and per-filament Squire viscous core radii (`core4_32[s]`).
+    Launched with dim=(n_blocks, n_targets): all 32 lanes of a CUDA warp share the exact
+    same filament index `s` (100% L1 broadcast on source loads, coalesced target/partial IO).
+    """
+
+    b, t = wp.tid()
+    n_s = int(gamma32.shape[0])
+    start = b * block_size
+    stop = wp.min(start + block_size, n_s)
+    inv_4pi = wp.float32(_C_INV_4PI)
+    eps = wp.float32(1.0e-12)
+    accx = wp.float32(0.0)
+    accy = wp.float32(0.0)
+    accz = wp.float32(0.0)
+    tx = targets32[t, 0]
+    ty = targets32[t, 1]
+    tz = targets32[t, 2]
+    for s in range(start, stop):
+        ax = tx - starts32[s, 0]
+        ay = ty - starts32[s, 1]
+        az = tz - starts32[s, 2]
+        ex = edges32[s, 0]
+        ey = edges32[s, 1]
+        ez = edges32[s, 2]
+        bx = ax - ex
+        by = ay - ey
+        bz = az - ez
+        a2 = ax * ax + ay * ay + az * az
+        b2 = bx * bx + by * by + bz * bz
+        ra = wp.sqrt(a2) + eps
+        rb = wp.sqrt(b2) + eps
+        e2 = edge_sq32[s]
+        inv_e2 = inv_edge_sq32[s]
+        ea = ex * ax + ey * ay + ez * az
+        eb = ea - e2
+        scalar = (e2 - ea * (ea + eb) / (ra * (ra + rb))) / rb
+        cx = ey * az - ez * ay
+        cy = ez * ax - ex * az
+        cz = ex * ay - ey * ax
+        h_sq = (cx * cx + cy * cy + cz * cz) * inv_e2
+        w = (scalar * inv_4pi * inv_e2 * gamma32[s]) / wp.sqrt(h_sq * h_sq + core4_32[s])
+        accx += w * cx
+        accy += w * cy
+        accz += w * cz
+    partials[b, t, 0] = wp.float64(accx)
+    partials[b, t, 1] = wp.float64(accy)
+    partials[b, t, 2] = wp.float64(accz)
+
+
 def mean_chordwise_panel(rings: torch.Tensor) -> float:
     """Mean chordwise length, in metres, of rings stored (R, 4, 3).
 
@@ -250,7 +441,8 @@ def native_ring_velocity_fused(
     core_fraction: float,
     reference_length: float,
     block_size: int = RING_BS_BLOCK_SIZE,
-    core_radius: float | None = None,
+    core_radius: float | torch.Tensor | None = None,
+    mixed_precision: bool = False,
 ) -> torch.Tensor:
     """Velocity at ``points`` induced by ``rings`` with per-ring ``gamma``.
 
@@ -261,7 +453,7 @@ def native_ring_velocity_fused(
 
     Under FLUXV_RING_KERNEL=v3 the launch uses the v3 kernel (see _KERNEL_V3):
     `core_fraction` and `reference_length` are ignored, `core_radius` is the
-    fixed core radius of every filament (None = exact law).  Under the default
+    fixed or per-ring core radius (None = exact law).  Under the default
     the historical kernel and arguments are used unchanged.
     """
 
@@ -270,31 +462,87 @@ def native_ring_velocity_fused(
     device = points.device
     starts = rings.reshape(-1, 3)
     ends = torch.roll(rings, shifts=-1, dims=1).reshape(-1, 3)
-    edge_lengths = torch.linalg.vector_norm(
-        torch.roll(rings, shifts=-1, dims=1) - rings, dim=2
-    )
-    source_scale = torch.maximum(
-        torch.max(edge_lengths, dim=1).values,
-        torch.full(
-            (rings.shape[0],),
-            float(reference_length),
-            device=device,
-            dtype=torch.float64,
-        ),
-    )
-    core = source_scale * float(core_fraction)
-    core4 = (core * core * core * core).repeat_interleave(4)
     filament_gamma = gamma.repeat_interleave(4)
-    n_filament = int(core4.shape[0])
-    n_blocks = (n_filament + block_size - 1) // block_size
-    partials = torch.zeros(
-        (points.shape[0], n_blocks, 3), device=device, dtype=torch.float64
-    )
+    n_filament = int(filament_gamma.shape[0])
     if _KERNEL_V3:
-        core4 = (
-            torch.zeros_like(core4)
-            if core_radius is None
-            else torch.full_like(core4, float(core_radius) ** 4)
+        is_tensor_core = isinstance(core_radius, torch.Tensor)
+        if is_tensor_core:
+            rc_ring = core_radius.to(device=device, dtype=torch.float64).reshape(-1)
+            core4 = (rc_ring * rc_ring * rc_ring * rc_ring).repeat_interleave(4)
+            has_pos_core = True
+        elif core_radius is not None and float(core_radius) > 0.0:
+            core4 = torch.full(
+                (n_filament,), float(core_radius) ** 4, device=device, dtype=torch.float64
+            )
+            has_pos_core = True
+        else:
+            core4 = torch.zeros((n_filament,), device=device, dtype=torch.float64)
+            has_pos_core = False
+        if mixed_precision:
+            bs_mx = max(block_size, 512)
+            n_blocks_mx = (n_filament + bs_mx - 1) // bs_mx
+            partials_mx = torch.empty(
+                (n_blocks_mx, points.shape[0], 3), device=device, dtype=torch.float64
+            )
+            origin = points.mean(dim=0, keepdim=True)
+            pts32 = (points - origin).to(torch.float32).contiguous()
+            starts32 = (starts - origin).to(torch.float32).contiguous()
+            edges64 = ends - starts
+            edges32 = edges64.to(torch.float32).contiguous()
+            edge_sq64 = torch.sum(edges64 * edges64, dim=1)
+            edge_sq32 = edge_sq64.to(torch.float32).contiguous()
+            inv_edge_sq32 = (1.0 / torch.clamp(edge_sq64, min=1.0e-300)).to(torch.float32).contiguous()
+            gamma32 = filament_gamma.to(torch.float32).contiguous()
+            core4_32 = core4.to(torch.float32).contiguous()
+            if has_pos_core:
+                wp.launch(
+                    _ring_bs_partials_v3_cored_fp32,
+                    dim=(n_blocks_mx, points.shape[0]),
+                    inputs=[
+                        wp.from_torch(pts32, dtype=wp.float32),
+                        wp.from_torch(starts32, dtype=wp.float32),
+                        wp.from_torch(edges32, dtype=wp.float32),
+                        wp.from_torch(edge_sq32, dtype=wp.float32),
+                        wp.from_torch(inv_edge_sq32, dtype=wp.float32),
+                        wp.from_torch(gamma32, dtype=wp.float32),
+                        wp.from_torch(core4_32, dtype=wp.float32),
+                        bs_mx,
+                    ],
+                    outputs=[wp.from_torch(partials_mx, dtype=wp.float64)],
+                    device="cuda:0",
+                )
+                return torch.sum(partials_mx, dim=0)
+            near_r2_32 = torch.clamp(
+                16.0 * edge_sq64,
+                min=1.0e-12,
+            ).to(torch.float32).contiguous()
+            wp.launch(
+                _ring_bs_partials_v3_mixed,
+                dim=(n_blocks_mx, points.shape[0]),
+                inputs=[
+                    wp.from_torch(points.contiguous(), dtype=wp.float64),
+                    wp.from_torch(starts.contiguous(), dtype=wp.float64),
+                    wp.from_torch(ends.contiguous(), dtype=wp.float64),
+                    wp.from_torch(filament_gamma.contiguous(), dtype=wp.float64),
+                    wp.from_torch(core4.contiguous(), dtype=wp.float64),
+                    wp.from_torch(pts32, dtype=wp.float32),
+                    wp.from_torch(starts32, dtype=wp.float32),
+                    wp.from_torch(edges32, dtype=wp.float32),
+                    wp.from_torch(edge_sq32, dtype=wp.float32),
+                    wp.from_torch(inv_edge_sq32, dtype=wp.float32),
+                    wp.from_torch(near_r2_32, dtype=wp.float32),
+                    wp.from_torch(gamma32, dtype=wp.float32),
+                    wp.from_torch(core4_32, dtype=wp.float32),
+                    float(_COLLINEAR_REL),
+                    bs_mx,
+                ],
+                outputs=[wp.from_torch(partials_mx, dtype=wp.float64)],
+                device="cuda:0",
+            )
+            return torch.sum(partials_mx, dim=0)
+        n_blocks = (n_filament + block_size - 1) // block_size
+        partials = torch.zeros(
+            (points.shape[0], n_blocks, 3), device=device, dtype=torch.float64
         )
         wp.launch(
             _ring_bs_partials_v3,
@@ -312,6 +560,24 @@ def native_ring_velocity_fused(
             device="cuda:0",
         )
         return torch.sum(partials, dim=1)
+    n_blocks = (n_filament + block_size - 1) // block_size
+    partials = torch.zeros(
+        (points.shape[0], n_blocks, 3), device=device, dtype=torch.float64
+    )
+    edge_lengths = torch.linalg.vector_norm(
+        torch.roll(rings, shifts=-1, dims=1) - rings, dim=2
+    )
+    source_scale = torch.maximum(
+        torch.max(edge_lengths, dim=1).values,
+        torch.full(
+            (rings.shape[0],),
+            float(reference_length),
+            device=device,
+            dtype=torch.float64,
+        ),
+    )
+    core = source_scale * float(core_fraction)
+    core4 = (core * core * core * core).repeat_interleave(4)
     wp.launch(
         _ring_bs_partials,
         dim=(points.shape[0], n_blocks),
@@ -344,7 +610,7 @@ def native_ring_velocity_expanded(
     *,
     core_fraction: float,
     reference_length: float,
-    core_radius: float | None = None,
+    core_radius: float | torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Finite-ring influence (per leg, before the gamma-weighted sum).
 
@@ -385,7 +651,13 @@ def native_ring_velocity_expanded(
         if core_radius is None:
             return base.reshape(points.shape[0], rings.shape[0], 4, 3).sum(dim=2)
         h_sq = cross_sq / torch.clamp(edge_sq, min=eps)
-        kv = h_sq / torch.sqrt(h_sq * h_sq + float(core_radius) ** 4)
+        if isinstance(core_radius, torch.Tensor):
+            rc4 = (
+                core_radius.to(device=points.device, dtype=torch.float64).reshape(-1) ** 4
+            ).repeat_interleave(4)[None, :]
+        else:
+            rc4 = float(core_radius) ** 4
+        kv = h_sq / torch.sqrt(h_sq * h_sq + rc4)
         return (kv[:, :, None] * base).reshape(
             points.shape[0], rings.shape[0], 4, 3
         ).sum(dim=2)
