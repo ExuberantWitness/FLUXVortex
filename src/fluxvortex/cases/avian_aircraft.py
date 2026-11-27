@@ -39,8 +39,47 @@ class PublishedPowerPoint:
 
 
 @dataclass(frozen=True)
+class TailGeometrySpec:
+    """Published horizontal/fan/inverted-T tail geometry for 3D modeling & pitch/lift trim."""
+
+    tail_kind: Literal["none", "inverted_t", "fan_tail", "morphing_fan_tail", "v_tail"] = "none"
+    span_m: float = 0.0
+    chord_m: float = 0.0
+    area_m2: float = 0.0
+    tail_arm_m: float = 0.0
+    vertical_fin_height_m: float = 0.0
+    incidence_deg: float = 0.0
+
+
+@dataclass(frozen=True)
+class ArticulatedFSFSpec:
+    """Two-segment articulated Flap-Sweep-Fold (FSF) wrist-hinge mechanism (RoboFalcon 2.0)."""
+
+    enabled: bool = False
+    wrist_eta: float = 0.40
+    wrist_fold_downstroke_deg: float = 8.0
+    wrist_fold_upstroke_deg: float = -55.0
+    wrist_sweep_downstroke_deg: float = -20.0
+    wrist_sweep_upstroke_deg: float = 18.0
+    fold_phase_lag_deg: float = 0.0
+
+
+@dataclass(frozen=True)
+class WingFlexibilitySpec:
+    """Physical structural properties for 2-way GPU modal-membrane FSI coupling."""
+
+    enabled: bool = False
+    spar_ei_root_nm2: float = 1.0          # carbon LE spar EI [N*m^2]
+    torsion_gj_nm2: float = 0.15           # diagonal carbon-rib + film torsional stiffness GJ [N*m^2]
+    membrane_pretension_n_m: float = 12.0  # fabric/Mylar membrane pretension T0 [N/m]
+    membrane_eh_n_m: float = 3500.0        # nonlinear membrane stretching stiffness E*h [N/m]
+    wing_areal_density_kg_m2: float = 0.16 # carbon ribs + polyester skin areal density [kg/m^2]
+    structural_damping_ratio: float = 0.10
+
+
+@dataclass(frozen=True)
 class AvianAircraftSpec:
-    """Complete aerodynamic + propulsion specification for cruise-trim benchmarking."""
+    """Complete aerodynamic + structural + propulsion specification for cruise-trim benchmarking."""
 
     aircraft_id: str
     name: str
@@ -53,14 +92,18 @@ class AvianAircraftSpec:
     taper_ratio: float = 0.65          # c_tip / c_root
     quarter_chord_sweep_deg: float = 0.0
     camber_zero_lift_deg: float = 0.0  # effective airfoil camber shift (SD7080 / cambered bio-wing)
+    planform_kind: Literal["tapered", "avian_elliptic", "falcon_segmented"] = "tapered"
     cd0_body_and_profile: float = 0.045  # parasitic fuselage + tail + viscous profile drag ref S
     cruise_speed_m_s: float = 8.0
     rho_kg_m3: float = 1.225
     # Flapping-wing parameters (ignored for fixed_prop)
     flap_amplitude_half_deg: float = 25.0  # half of peak-to-peak stroke Phi/2
     flap_dihedral_deg: float = 5.0
-    twist_tip_deg: float = 15.0            # passive/aeroelastic tip pitch twist (+90 deg phase lead)
-    upstroke_span_fold: float = 0.0        # RoboFalcon 2.0 FSF upstroke span folding fraction
+    twist_tip_deg: float = 15.0            # passive/aeroelastic tip pitch twist (used if FSI disabled)
+    upstroke_span_fold: float = 0.0        # legacy scalar fold (superseded by articulated fsf)
+    fsf: ArticulatedFSFSpec = field(default_factory=ArticulatedFSFSpec)
+    flexibility: WingFlexibilitySpec = field(default_factory=WingFlexibilitySpec)
+    tail: TailGeometrySpec = field(default_factory=TailGeometrySpec)
     nominal_frequency_hz: float = 5.0
     frequency_bounds_hz: tuple[float, float] = (2.0, 16.0)
     alpha_bounds_deg: tuple[float, float] = (-2.0, 22.0)
@@ -114,23 +157,42 @@ def build_avian_aircraft_registry() -> dict[str, AvianAircraftSpec]:
             propulsion_kind="flapping",
             mass_kg=0.980,
             span_m=1.82,
-            area_m2=0.480,
+            area_m2=0.484,                  # verified: b=1.82 m, c_avg=0.266 m -> S=0.484 m^2
             taper_ratio=0.58,
             quarter_chord_sweep_deg=4.0,
-            camber_zero_lift_deg=2.0,
+            camber_zero_lift_deg=2.2,
+            planform_kind="avian_elliptic",
             # Ornithopter total parasitic + flexible membrane + 0.50m H-tail + 0.25m V-tail drag
             cd0_body_and_profile=0.095,
             cruise_speed_m_s=7.5,
             flap_amplitude_half_deg=22.5,   # Phi = 45 deg peak-to-peak
             flap_dihedral_deg=5.0,
             twist_tip_deg=8.0,
+            flexibility=WingFlexibilitySpec(
+                enabled=True,
+                spar_ei_root_nm2=26.0,      # 8 mm OD x 6 mm ID carbon LE spar
+                torsion_gj_nm2=3.60,        # carbon diagonal ribs + polyester skin
+                membrane_pretension_n_m=20.0,
+                membrane_eh_n_m=4800.0,
+                wing_areal_density_kg_m2=0.18,
+                structural_damping_ratio=0.16,
+            ),
+            tail=TailGeometrySpec(
+                tail_kind="inverted_t",
+                span_m=0.50,                # published 0.50 m horizontal stabilizer
+                chord_m=0.16,
+                area_m2=0.080,
+                tail_arm_m=0.54,
+                vertical_fin_height_m=0.25, # published 0.25 m vertical fin
+                incidence_deg=-1.0,
+            ),
             nominal_frequency_hz=3.5,
             frequency_bounds_hz=(2.2, 6.0),
             alpha_bounds_deg=(0.0, 16.0),
             wing_inertia_kg_m2=0.022,
             inertial_elastic_recovery=0.55,
             chordwise_panels=5,
-            spanwise_panels=18,
+            spanwise_panels=20,
             steps_per_cycle=64,
             trim_cycles=3,
             lesp_crit=0.145,
@@ -167,23 +229,50 @@ def build_avian_aircraft_registry() -> dict[str, AvianAircraftSpec]:
             propulsion_kind="flapping",
             mass_kg=0.800,
             span_m=1.20,
-            area_m2=0.220,                  # wing loading 3.64 kg/m^2 -> S = 0.220 m^2
+            area_m2=0.220,                  # verified: wing loading 3.64 kg/m^2 -> S = 0.220 m^2
             taper_ratio=0.52,
-            quarter_chord_sweep_deg=6.0,
+            quarter_chord_sweep_deg=8.0,
             camber_zero_lift_deg=2.5,
+            planform_kind="falcon_segmented",
             cd0_body_and_profile=0.115,     # fuselage + conical-rocker FSF mechanism + tail + feathers
             cruise_speed_m_s=8.0,
             flap_amplitude_half_deg=42.5,   # Phi = 85 deg peak-to-peak
             flap_dihedral_deg=2.0,
             twist_tip_deg=8.0,
-            upstroke_span_fold=0.22,        # Flap-Sweep-Fold (FSF) outer-wing folding on upstroke
-            nominal_frequency_hz=5.2,
-            frequency_bounds_hz=(3.2, 7.5),
-            alpha_bounds_deg=(0.0, 20.0),
+            upstroke_span_fold=0.22,        # legacy field (superseded by articulated FSF wrist below)
+            fsf=ArticulatedFSFSpec(
+                enabled=True,
+                wrist_eta=0.40,             # exact humerus/radius wrist joint on span node 4/10
+                wrist_fold_downstroke_deg=8.0,    # extended/arched on downstroke (within +25 deg)
+                wrist_fold_upstroke_deg=-55.0,    # Science Advances exact -11*pi/36 (-55 deg) upstroke fold
+                wrist_sweep_downstroke_deg=-20.0, # Science Advances forward sweep ~20-25 deg on downstroke
+                wrist_sweep_upstroke_deg=18.0,    # aft tucking sweep on upstroke
+                fold_phase_lag_deg=0.0,
+            ),
+            flexibility=WingFlexibilitySpec(
+                enabled=True,
+                spar_ei_root_nm2=16.5,      # 6-7 mm carbon humerus/radius spar + conical-rocker wrist linkage
+                torsion_gj_nm2=3.20,        # articulated falcon feather/membrane torsional stiffness
+                membrane_pretension_n_m=22.0,
+                membrane_eh_n_m=5200.0,
+                wing_areal_density_kg_m2=0.20,
+                structural_damping_ratio=0.18,
+            ),
+            tail=TailGeometrySpec(
+                tail_kind="fan_tail",
+                span_m=0.26,
+                chord_m=0.14,
+                area_m2=0.026,
+                tail_arm_m=0.36,
+                incidence_deg=-1.5,
+            ),
+            nominal_frequency_hz=4.0,
+            frequency_bounds_hz=(2.6, 7.5),
+            alpha_bounds_deg=(-2.0, 18.0),
             wing_inertia_kg_m2=0.0080,
             inertial_elastic_recovery=0.55,
             chordwise_panels=5,
-            spanwise_panels=18,
+            spanwise_panels=20,             # 10 strips/half-span -> exact wrist hinge node at eta=0.40
             steps_per_cycle=64,
             trim_cycles=3,
             lesp_crit=0.145,
@@ -227,23 +316,41 @@ def build_avian_aircraft_registry() -> dict[str, AvianAircraftSpec]:
             propulsion_kind="flapping",
             mass_kg=0.090,
             span_m=0.45,
-            area_m2=0.0420,                 # wing loading 21 N/m^2, AR~5.0
+            area_m2=0.0420,                 # verified: wing loading 21 N/m^2, AR~4.8
             taper_ratio=0.58,
             quarter_chord_sweep_deg=3.0,
             camber_zero_lift_deg=2.0,
+            planform_kind="avian_elliptic",
             # Anchored to NPU-Sparrow Fig. 5 wind-tunnel net thrust (CT=+0.049 @ 10 deg, 8 Hz, 7 m/s)
             cd0_body_and_profile=0.098,
             cruise_speed_m_s=7.0,
             flap_amplitude_half_deg=40.0,   # Phi = 80 deg peak-to-peak
             flap_dihedral_deg=4.0,
             twist_tip_deg=6.5,
+            flexibility=WingFlexibilitySpec(
+                enabled=True,
+                spar_ei_root_nm2=0.16,      # 2.0 mm carbon LE spar
+                torsion_gj_nm2=0.028,       # thin carbon-rib + polyester film membrane
+                membrane_pretension_n_m=10.0,
+                membrane_eh_n_m=2200.0,
+                wing_areal_density_kg_m2=0.11,
+                structural_damping_ratio=0.16,
+            ),
+            tail=TailGeometrySpec(
+                tail_kind="morphing_fan_tail",
+                span_m=0.19,
+                chord_m=0.11,
+                area_m2=0.01775,            # exact published morphing fan tail area
+                tail_arm_m=0.20,
+                incidence_deg=0.0,
+            ),
             nominal_frequency_hz=8.0,
             frequency_bounds_hz=(4.5, 16.0),
             alpha_bounds_deg=(-1.0, 26.0),
             wing_inertia_kg_m2=2.2e-4,      # carbon-frame wings + crank-rocker pushrods
             inertial_elastic_recovery=0.55,
             chordwise_panels=5,
-            spanwise_panels=18,
+            spanwise_panels=20,
             steps_per_cycle=64,
             trim_cycles=3,
             lesp_crit=0.142,                # thin carbon-spar film leading edge
@@ -292,22 +399,40 @@ def build_avian_aircraft_registry() -> dict[str, AvianAircraftSpec]:
             propulsion_kind="flapping",
             mass_kg=0.220,
             span_m=0.50,
-            area_m2=0.0360,                 # b=0.50 m, AR~7.0-7.4 -> S=0.034-0.038 m^2
-            taper_ratio=0.60,
+            area_m2=0.0390,                 # corrected to verified literature: b=0.50m, c_root~0.10m, AR=6.41
+            taper_ratio=0.58,
             quarter_chord_sweep_deg=4.0,
             camber_zero_lift_deg=2.5,
+            planform_kind="avian_elliptic",
             cd0_body_and_profile=0.098,
             cruise_speed_m_s=9.5,           # cruise envelope 8-12 m/s
             flap_amplitude_half_deg=27.0,   # Phi ~ 54 deg
             flap_dihedral_deg=4.0,
-            twist_tip_deg=3.0,              # stiff carbon-rib 50 cm Dove wing
+            twist_tip_deg=3.0,
+            flexibility=WingFlexibilitySpec(
+                enabled=True,
+                spar_ei_root_nm2=0.34,      # 2.5 mm carbon-fiber LE spar
+                torsion_gj_nm2=0.056,       # carbon ribs + flexible polyester membrane
+                membrane_pretension_n_m=14.0,
+                membrane_eh_n_m=3000.0,
+                wing_areal_density_kg_m2=0.14,
+                structural_damping_ratio=0.16,
+            ),
+            tail=TailGeometrySpec(
+                tail_kind="fan_tail",
+                span_m=0.15,
+                chord_m=0.09,
+                area_m2=0.0095,
+                tail_arm_m=0.22,
+                incidence_deg=-1.0,
+            ),
             nominal_frequency_hz=10.5,      # 8-12 Hz
             frequency_bounds_hz=(8.0, 12.5),
-            alpha_bounds_deg=(4.0, 18.0),
+            alpha_bounds_deg=(2.0, 18.0),
             wing_inertia_kg_m2=7.5e-4,      # carbon-framed wings + crank-rocker arms
             inertial_elastic_recovery=0.55,
             chordwise_panels=5,
-            spanwise_panels=18,
+            spanwise_panels=20,
             steps_per_cycle=64,
             trim_cycles=3,
             lesp_crit=0.14,
@@ -344,22 +469,40 @@ def build_avian_aircraft_registry() -> dict[str, AvianAircraftSpec]:
             propulsion_kind="flapping",
             mass_kg=0.235,
             span_m=0.50,
-            area_m2=0.0380,
-            taper_ratio=0.60,
+            area_m2=0.0390,                 # verified 50 cm Dove platform (AR=6.41)
+            taper_ratio=0.58,
             quarter_chord_sweep_deg=4.0,
             camber_zero_lift_deg=2.0,
+            planform_kind="avian_elliptic",
             cd0_body_and_profile=0.096,
             cruise_speed_m_s=13.3,          # published high-speed flight 13.3 m/s
             flap_amplitude_half_deg=27.0,
             flap_dihedral_deg=3.0,
-            twist_tip_deg=3.0,              # reinforced stiff high-speed wing
+            twist_tip_deg=3.0,
+            flexibility=WingFlexibilitySpec(
+                enabled=True,
+                spar_ei_root_nm2=0.48,      # reinforced 3.0 mm high-speed carbon spar
+                torsion_gj_nm2=0.085,       # stiffer carbon-rib layup for 15 Hz flight
+                membrane_pretension_n_m=18.0,
+                membrane_eh_n_m=3600.0,
+                wing_areal_density_kg_m2=0.16,
+                structural_damping_ratio=0.12,
+            ),
+            tail=TailGeometrySpec(
+                tail_kind="fan_tail",
+                span_m=0.15,
+                chord_m=0.09,
+                area_m2=0.0095,
+                tail_arm_m=0.22,
+                incidence_deg=-1.0,
+            ),
             nominal_frequency_hz=15.0,      # published 15 Hz driven system
-            frequency_bounds_hz=(12.5, 16.5),
-            alpha_bounds_deg=(2.0, 14.0),
+            frequency_bounds_hz=(12.0, 17.0),
+            alpha_bounds_deg=(0.5, 14.0),
             wing_inertia_kg_m2=8.5e-4,      # reinforced high-speed carbon wing + upgraded rocker arm
             inertial_elastic_recovery=0.55,
             chordwise_panels=5,
-            spanwise_panels=18,
+            spanwise_panels=20,
             steps_per_cycle=64,
             trim_cycles=3,
             lesp_crit=0.14,
@@ -563,7 +706,10 @@ AVIAN_AIRCRAFT_REGISTRY: dict[str, AvianAircraftSpec] = build_avian_aircraft_reg
 
 __all__ = [
     "AVIAN_AIRCRAFT_REGISTRY",
+    "ArticulatedFSFSpec",
     "AvianAircraftSpec",
     "PublishedPowerPoint",
+    "TailGeometrySpec",
+    "WingFlexibilitySpec",
     "build_avian_aircraft_registry",
 ]

@@ -173,6 +173,22 @@ if not (math.isfinite(_TE_SPLIT_BETA) and 0.0 < _TE_SPLIT_BETA <= 1.0):
 _CONVECTION_V4 = os.environ.get("FLUXV_CONVECTION_V4", "0").strip().lower() in {
     "1", "true", "on", "yes",
 }
+#: Stage-2 RK2 TE/LE closure bridge under FLUXV_CONVECTION_V4=1 (default ON when v4 is
+#: enabled; production default has _CONVECTION_V4=False so bit-identical).  Prevents the
+#: uncancelled -Gamma_TE / +Gamma_LE filaments torn open when w_pred/l_pred advance away
+#: from frozen t^{n-1} bound_src + pseudovortex at RK2 stage 2.
+_CONVECTION_V4_STAGE2_BRIDGE = os.environ.get(
+    "FLUXV_CONVECTION_V4_STAGE2_BRIDGE", "1"
+).strip().lower() in {"1", "true", "on", "yes"}
+#: Matched-horizon gauge-shift rebasing for Hirato v2 LEV chains during multi-cycle
+#: asymmetric lift-producing flapping (default OFF, bit-identical production).  When enabled
+#: (`FLUXV_LEV_GAUGE_REBASE=1`), once a strip's LEV chain reaches `wake_max_rows`, its
+#: truncated tail circulation `g_drop` is subtracted simultaneously from the remaining LEV
+#: chain, pseudovortex (`chain.prev`), and TE wake of that strip — preserving exact Kelvin
+#: / LE / TE cancellations while eliminating secular cross-cycle `chain.prev` ratcheting.
+_LEV_GAUGE_REBASE = os.environ.get("FLUXV_LEV_GAUGE_REBASE", "0").strip().lower() in {
+    "1", "true", "on", "yes",
+}
 #: Plan V4 Track A-2: optional wake core multiplier at wing collocation points
 #: (0 / false = uncored for exact G-VLM cancellation at split_te; 1 / true = full
 #: _core_radius; or a positive float fraction like 0.25).
@@ -1675,6 +1691,7 @@ class Q16NativeV5MSolver:
         """
 
         ns = self.settings.spanwise_panels
+        nc = self.settings.chordwise_panels
         has_wake = trial.wake_rings.shape[0] > 0
         chain = trial.lev_chain
         has_lev = chain is not None and bool((chain.count > 0).any().item())
@@ -1688,6 +1705,7 @@ class Q16NativeV5MSolver:
             else geometry.rings
         )
         bound_gamma = trial.gamma_bound
+        bound_last = bound_src.reshape(nc, ns, 4, 3)[-1]
 
         pv_src = (
             trial.pseudovortex_previous
@@ -1740,11 +1758,13 @@ class Q16NativeV5MSolver:
         live_mask = None
         lev_gamma = None
         lev_pts_0 = None
+        cont_mask = None
         if has_lev:
             live_mask = lev_hirato.active_rows(chain)
             lev_rings_0 = chain.rings.reshape(-1, 4, 3)[live_mask].clone()
             lev_gamma = chain.gamma.reshape(-1)[live_mask]
             lev_pts_0 = lev_rings_0.reshape(-1, 3)
+            cont_mask = lev_hirato.continuing(chain)
 
         part_pts_0 = trial.particle_field.pos[:n_part].clone() if n_part else None
 
@@ -1780,11 +1800,51 @@ class Q16NativeV5MSolver:
                 src_gamma_list.append(trial.wake_gamma)
                 if use_squire:
                     src_core_list.append(self._wake_core_radii(trial.wake_gamma, core, row_age_offset=1))
+                if stage_dt > 0.0 and _CONVECTION_V4_STAGE2_BRIDGE:
+                    w_front = w_act[:ns]
+                    te_bridge = torch.stack(
+                        (bound_last[:, 3], bound_last[:, 2], w_front[:, 1], w_front[:, 0]),
+                        dim=1,
+                    )
+                    src_rings_list.append(te_bridge)
+                    src_gamma_list.append(trial.wake_gamma[:ns])
+                    if use_squire:
+                        src_core_list.append(
+                            torch.full((ns,), float(core), device=self.device, dtype=torch.float64)
+                        )
             if has_lev and l_pts is not None:
-                src_rings_list.append(l_pts.reshape(-1, 4, 3))
+                l_live = l_pts.reshape(-1, 4, 3)
+                src_rings_list.append(l_live)
                 src_gamma_list.append(lev_gamma)
                 if use_squire:
                     src_core_list.append(self._lev_live_core_radii(chain, core, row_age_offset=1))
+                if (
+                    stage_dt > 0.0
+                    and _CONVECTION_V4_STAGE2_BRIDGE
+                    and has_pv
+                    and cont_mask is not None
+                    and bool(cont_mask.any().item())
+                ):
+                    rows = chain.rings.shape[0]
+                    l_full = torch.zeros_like(chain.rings).reshape(-1, 4, 3)
+                    l_full[live_mask] = l_live
+                    l0 = l_full.reshape(rows, ns, 4, 3)[0, cont_mask]
+                    pv_c = pv_rings[cont_mask]
+                    le_bridge = torch.stack(
+                        (l0[:, 3], l0[:, 2], pv_c[:, 1], pv_c[:, 0]),
+                        dim=1,
+                    )
+                    src_rings_list.append(le_bridge)
+                    src_gamma_list.append(pv_gamma[cont_mask])
+                    if use_squire:
+                        src_core_list.append(
+                            torch.full(
+                                (le_bridge.shape[0],),
+                                float(core),
+                                device=self.device,
+                                dtype=torch.float64,
+                            )
+                        )
             if has_pv:
                 src_rings_list.append(pv_rings)
                 src_gamma_list.append(pv_gamma)
@@ -4295,6 +4355,54 @@ class Q16NativeV5MSolver:
             retention["wake_truncate_linear_impulse"] = [0.0, 0.0, 0.0]
         trial.wake_rings = combined_rings[:wake_capacity]
         trial.wake_gamma = combined_gamma[:wake_capacity]
+        if (
+            _LEV_GAUGE_REBASE
+            and hirato
+            and _LEV_HIRATO_V2
+            and trial.lev_chain is not None
+            and self.settings.wake_max_rows > 0
+        ):
+            ch_rb = trial.lev_chain
+            cap_rb = min(int(self.settings.wake_max_rows), int(ch_rb.rings.shape[0]) - 1)
+            if cap_rb >= 1:
+                over_rb = ch_rb.count > cap_rb
+                if bool(over_rb.any().item()):
+                    g_drop = torch.where(
+                        over_rb, ch_rb.gamma[cap_rb - 1], torch.zeros_like(ch_rb.prev)
+                    )
+                    new_count = torch.clamp(ch_rb.count, max=cap_rb)
+                    row_idx = torch.arange(
+                        ch_rb.rings.shape[0], device=ch_rb.rings.device
+                    )[:, None]
+                    valid_rb = row_idx < new_count[None, :]
+                    new_gamma = torch.where(
+                        valid_rb,
+                        ch_rb.gamma - g_drop[None, :],
+                        torch.zeros_like(ch_rb.gamma),
+                    )
+                    new_rings = torch.where(
+                        valid_rb[:, :, None, None],
+                        ch_rb.rings,
+                        torch.zeros_like(ch_rb.rings),
+                    )
+                    new_prev = ch_rb.prev - g_drop
+                    new_joined = ch_rb.joined & valid_rb[:-1] & valid_rb[1:]
+                    trial.lev_chain = lev_hirato.LevChain(
+                        rings=new_rings,
+                        gamma=new_gamma,
+                        count=new_count,
+                        prev=new_prev,
+                        joined=new_joined,
+                    )
+                    if trial.pseudovortex_previous is not None:
+                        pv_r, pv_g = trial.pseudovortex_previous
+                        trial.pseudovortex_previous = (pv_r, pv_g - g_drop)
+                    if trial.wake_gamma.shape[0] > 0:
+                        n_wrows = trial.wake_gamma.shape[0] // ns
+                        trial.wake_gamma = (
+                            trial.wake_gamma.reshape(n_wrows, ns) - g_drop[None, :]
+                        ).reshape(-1)
+                    retention["lev_gauge_rebase_max_abs"] = float(g_drop.abs().max().item())
         trial.gamma_previous = trial.gamma_bound.clone()
         trial.gamma_bound = gamma.clone()
         if _CONVECTION_V4 or _LEV_HIRATO_V2:

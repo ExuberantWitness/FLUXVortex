@@ -345,11 +345,18 @@ def evaluate_flapping_operating_point(
     steps_per_cycle: int | None = None,
     cfl_target: float = 0.85,
     wing_profile_cd0: float = 0.045,
+    use_flexible_fsi: bool | None = None,
     device: str = "cuda:0",
 ) -> OperatingPointResult:
-    """Run multi-cycle 3D GPU UVLM + Hirato v2 LEV and evaluate 1st-order motor power."""
+    """Run multi-cycle 3D GPU UVLM + Hirato v2 LEV (with optional 2-way FSI & FSF wrist) and motor."""
 
     import time as _time
+    from fluxvortex.propulsion.flexible_avian_fsi import (
+        FlexibleArticulatedWingKinematics,
+        TwoWayNewmarkAitkenFSI,
+        build_tail_geometry_and_aero,
+        build_wing_structural_model,
+    )
 
     u_inf = float(spec.cruise_speed_m_s if airspeed_m_s is None else airspeed_m_s)
     area_eff = float(spec.area_m2 if area_override is None else area_override)
@@ -380,23 +387,52 @@ def evaluate_flapping_operating_point(
     q_dyn = 0.5 * spec.rho_kg_m3 * u_inf * u_inf
     d_body_tail = q_dyn * spec.area_m2 * cd0_body
 
-    kin = MorphingFlappingWingKinematics(
-        span_m=spec.span_m,
-        area_m2=area_eff,
-        alpha_deg=alpha_deg,
-        taper_ratio=spec.taper_ratio,
-        quarter_chord_sweep_deg=spec.quarter_chord_sweep_deg,
-        camber_zero_lift_deg=spec.camber_zero_lift_deg,
-        flap_amplitude_half_deg=spec.flap_amplitude_half_deg,
-        flap_dihedral_deg=spec.flap_dihedral_deg,
-        twist_tip_deg=spec.twist_tip_deg,
-        upstroke_span_fold=spec.upstroke_span_fold,
-        omega_rad_s=omega,
-        start_ramp_s=0.20 / freq,
-        chordwise_panels=spec.chordwise_panels,
-        spanwise_panels=spec.spanwise_panels,
-        device=device,
-    )
+    fsi_active = bool(spec.flexibility.enabled) if use_flexible_fsi is None else bool(use_flexible_fsi)
+    use_articulated = fsi_active or bool(spec.fsf.enabled) or (spec.planform_kind != "tapered")
+
+    if use_articulated:
+        kin: Any = FlexibleArticulatedWingKinematics(
+            span_m=spec.span_m,
+            area_m2=area_eff,
+            alpha_deg=alpha_deg,
+            taper_ratio=spec.taper_ratio,
+            quarter_chord_sweep_deg=spec.quarter_chord_sweep_deg,
+            camber_zero_lift_deg=spec.camber_zero_lift_deg,
+            planform_kind=spec.planform_kind,
+            flap_amplitude_half_deg=spec.flap_amplitude_half_deg,
+            flap_dihedral_deg=spec.flap_dihedral_deg,
+            omega_rad_s=omega,
+            start_ramp_s=0.20 / freq,
+            fsf=spec.fsf,
+            prescribed_twist_tip_deg=0.0 if fsi_active else spec.twist_tip_deg,
+            chordwise_panels=spec.chordwise_panels,
+            spanwise_panels=spec.spanwise_panels,
+            device=device,
+        )
+    else:
+        kin = MorphingFlappingWingKinematics(
+            span_m=spec.span_m,
+            area_m2=area_eff,
+            alpha_deg=alpha_deg,
+            taper_ratio=spec.taper_ratio,
+            quarter_chord_sweep_deg=spec.quarter_chord_sweep_deg,
+            camber_zero_lift_deg=spec.camber_zero_lift_deg,
+            flap_amplitude_half_deg=spec.flap_amplitude_half_deg,
+            flap_dihedral_deg=spec.flap_dihedral_deg,
+            twist_tip_deg=spec.twist_tip_deg,
+            upstroke_span_fold=spec.upstroke_span_fold,
+            omega_rad_s=omega,
+            start_ramp_s=0.20 / freq,
+            chordwise_panels=spec.chordwise_panels,
+            spanwise_panels=spec.spanwise_panels,
+            device=device,
+        )
+
+    fsi_integrator = None
+    if fsi_active:
+        struct_model = build_wing_structural_model(kin, spec.flexibility)
+        fsi_integrator = TwoWayNewmarkAitkenFSI(kin, struct_model, dt=dt)
+
     _, stepper = _make_rigid_stepper(
         nc=spec.chordwise_panels,
         ns=spec.spanwise_panels,
@@ -434,36 +470,55 @@ def evaluate_flapping_operating_point(
 
     for step in range(1, total_steps + 1):
         t_now = step * dt
-        frame = kin.evaluate(t_now)
-        proposal = stepper.propose(owner, (frame,), dt)
-        stepper.commit(owner, proposal)
+        if fsi_integrator is not None:
+            proposal, frame, _, f_visc, v_rigid_panel, _ = fsi_integrator.step_coupled(
+                t_now=t_now,
+                stepper=stepper,
+                owner=owner,
+                v_inf_t=v_inf_t,
+                rho=spec.rho_kg_m3,
+                cd0_wing=cd0_wing,
+                max_subiters=3,
+                tol=1.0e-3,
+            )
+            panel_f = proposal.load.panel_forces
+            panel_r = frame.collocation_I
+            f_total_panel = panel_f + f_visc
+        else:
+            frame = kin.evaluate(t_now)
+            proposal = stepper.propose(owner, (frame,), dt)
+            stepper.commit(owner, proposal)
+            panel_f = proposal.load.panel_forces
+            panel_v = frame.collocation_velocity_I
+            panel_r = frame.collocation_I
+            v_rel = v_inf_t[None, :] - panel_v
+            v_rel_mag = torch.linalg.vector_norm(v_rel, dim=1, keepdim=True)
+            f_visc = (
+                0.5 * spec.rho_kg_m3 * cd0_wing * frame.areas[:, None] * v_rel_mag * v_rel
+            )
+            f_total_panel = panel_f + f_visc
+            v_rigid_panel = None
+
         diag = owner.state.diagnostics[-1]
 
-        panel_f = proposal.load.panel_forces          # (P, 3) inviscid KJ + unsteady
-        panel_v = frame.collocation_velocity_I        # (P, 3) wing panel velocity
-        panel_r = frame.collocation_I                 # (P, 3) panel collocation position
-        v_rel = v_inf_t[None, :] - panel_v            # (P, 3) flow velocity rel to panel
-        v_rel_mag = torch.linalg.vector_norm(v_rel, dim=1, keepdim=True)
-        # Viscous skin-friction/profile force vector acting on each wing panel
-        f_visc = (
-            0.5 * spec.rho_kg_m3 * cd0_wing * frame.areas[:, None] * v_rel_mag * v_rel
-        )
-        f_total_panel = panel_f + f_visc
-
-        # Exact root-hinge aerodynamic torque opposing actuator flapping rate phidot:
-        # M_hinge(t) = -sum_p sign(y_p) * ((r_p x F_p) . e_hinge).
-        # Using root-hinge mechanical power M_hinge * phidot ensures passive aeroelastic
-        # trailing-edge twist never injects spurious negative/regenerative power into the motor.
-        panel_side = torch.sign(panel_r[:, 1])
-        r_cross_f = torch.linalg.cross(panel_r, f_total_panel, dim=1)
-        m_hinge = -float(torch.sum(panel_side * torch.sum(r_cross_f * hinge_axis[None, :], dim=1)).item())
+        _, phidot, phiddot = kin.flap_state(t_now)
+        if v_rigid_panel is not None and bool(spec.fsf.enabled):
+            # Exact virtual work of single-motor conical-rocker FSF actuator (root + wrist joints),
+            # excluding passive elastic modal velocities qdot.
+            p_inst = -float(torch.sum(f_total_panel * v_rigid_panel).item())
+            m_hinge = p_inst / phidot if abs(phidot) > 1.0e-6 else 0.0
+        else:
+            # Exact root-hinge aerodynamic torque opposing actuator flapping rate phidot:
+            # M_hinge(t) = -sum_p sign(y_p) * ((r_p x F_p) . e_hinge).
+            panel_side = torch.sign(panel_r[:, 1])
+            r_cross_f = torch.linalg.cross(panel_r, f_total_panel, dim=1)
+            m_hinge = -float(torch.sum(panel_side * torch.sum(r_cross_f * hinge_axis[None, :], dim=1)).item())
+            p_inst = m_hinge * phidot
 
         tot_invisc = proposal.load.total_force
         tot_visc = torch.sum(f_visc, dim=0)
         tot_my = float(proposal.load.total_moment[1].item())
 
-        _, phidot, phiddot = kin.flap_state(t_now)
-        p_inst = m_hinge * phidot
         idx = step - 1
         t_hist[idx] = t_now
         lift_hist[idx] = float(tot_invisc[2].item() + tot_visc[2].item())
@@ -485,17 +540,27 @@ def evaluate_flapping_operating_point(
     torch.cuda.synchronize(torch.device(device))
     wall_s = _time.perf_counter() - t0
 
-    # Last complete cycle statistics
+    # Last complete cycle statistics + physical tail lift contribution
     sl = slice(total_steps - spc, total_steps)
-    mean_lift = float(np.mean(lift_hist[sl]))
+    mean_wing_lift = float(np.mean(lift_hist[sl]))
+    q_s = max(q_dyn * spec.area_m2, 1.0e-9)
+    tail_aero = build_tail_geometry_and_aero(
+        spec.tail,
+        alpha_deg=alpha_deg,
+        airspeed_m_s=u_inf,
+        rho=spec.rho_kg_m3,
+        wing_cl_mean=mean_wing_lift / q_s,
+        wing_ar=spec.aspect_ratio,
+    )
+    mean_lift = mean_wing_lift + float(tail_aero["lift_n"])
     mean_invisc_t = float(np.mean(wing_thrust_invisc_hist[sl]))
     mean_visc_d = float(np.mean(visc_drag_hist[sl]))
     mean_wing_t = mean_invisc_t - mean_visc_d
     net_thrust = mean_wing_t - d_body_tail
-    mean_my = float(np.mean(my_hist[sl]))
+    mean_my = float(np.mean(my_hist[sl])) + float(tail_aero["moment_y_nm"])
 
     if n_cyc >= 2:
-        prev_lift = float(np.mean(lift_hist[total_steps - 2 * spc : total_steps - spc]))
+        prev_lift = float(np.mean(lift_hist[total_steps - 2 * spc : total_steps - spc])) + float(tail_aero["lift_n"])
         drift_rel = abs(mean_lift - prev_lift) / max(abs(mean_lift), spec.weight_n, 1.0e-6)
     else:
         drift_rel = 0.0
@@ -512,7 +577,6 @@ def evaluate_flapping_operating_point(
         flap_accel_rad_s2=phiddot_hist[sl],
         inertial_elastic_recovery=spec.inertial_elastic_recovery,
     )
-    q_s = max(q_dyn * spec.area_m2, 1.0e-9)
     return OperatingPointResult(
         airspeed_m_s=u_inf,
         alpha_deg=float(alpha_deg),
