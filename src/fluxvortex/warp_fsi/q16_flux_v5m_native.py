@@ -2969,6 +2969,10 @@ class Q16NativeV5MSolver:
             trial.wake_rings[:span_panels, 0] = split_te_v4[:, 0]
             trial.wake_rings[:span_panels, 1] = split_te_v4[:, 1]
         wake_col_core = self._wake_collocation_core_radius(geometry)
+        if wake_col_core is not None and _SQUIRE_CORE > 0.0 and trial.wake_rings.shape[0]:
+            wake_col_core = self._wake_core_radii(
+                trial.wake_gamma, wake_col_core, row_age_offset=1
+            )
         wake_velocity = self._ring_velocity(
             geometry.collocation,
             trial.wake_rings,
@@ -4046,6 +4050,11 @@ class Q16NativeV5MSolver:
                 # Plan V3 (P0-A/B): the free wake as it stands at the end of the step,
                 # nascent row included, with the wake core.
                 core = self._core_radius(geometry)
+                wake_pkt_cores = (
+                    self._wake_core_radii(trial.wake_gamma, core, row_age_offset=1)
+                    if trial.wake_rings.shape[0]
+                    else core
+                )
                 solution_velocity_flat = (
                     self.v_inf[None, :].expand(mids_flat.shape[0], 3)
                     + self._ring_velocity(
@@ -4056,7 +4065,7 @@ class Q16NativeV5MSolver:
                         trial.wake_rings,
                         trial.wake_gamma,
                         rough=False,
-                        core_radius=core,
+                        core_radius=wake_pkt_cores,
                         free=True,
                         mixed_precision=_RING_MIXED_PRECISION,
                     )
