@@ -155,16 +155,32 @@ def first_free_points(
     return leading_edge_pairs + displacement[:, None, :]
 
 
-def split_points(leading_edge_pairs: torch.Tensor, aft_pairs: torch.Tensor) -> torch.Tensor:
-    """(N, 2, 3): the paper's Eq. (7), one third of the way from the edge to the aft end."""
+def split_points(
+    leading_edge_pairs: torch.Tensor,
+    aft_pairs: torch.Tensor,
+    max_length: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """(N, 2, 3): the paper's Eq. (7), one third of the way from the edge to the aft end.
 
-    return leading_edge_pairs + SPLIT_FRACTION * (aft_pairs - leading_edge_pairs)
+    When ``max_length`` (N,) is given (opt-in tapered-wingtip limiter), scales the split
+    fraction downward on strips where ``(1/3) |aft - LE| > max_length`` so the nascent
+    LEV filament stays strictly ahead of the leading-edge panel's collocation point while
+    remaining on the exact segment ``(LE, aft)`` for exact Helmholtz cancellation.
+    """
+
+    raw = SPLIT_FRACTION * (aft_pairs - leading_edge_pairs)
+    if max_length is not None:
+        mid_len = torch.linalg.vector_norm(raw.mean(dim=1), dim=1).clamp(min=1.0e-12)
+        scale = torch.clamp(max_length / mid_len, max=1.0)
+        raw = raw * scale[:, None, None]
+    return leading_edge_pairs + raw
 
 
 def split_row0(
     chain: LevChain,
     leading_edge: torch.Tensor,
     mask: torch.Tensor | None = None,
+    max_length: torch.Tensor | None = None,
 ) -> tuple[LevChain, torch.Tensor]:
     """The chain as the solve must see it, and the split point the new ring will take.
 
@@ -181,7 +197,7 @@ def split_row0(
     """
 
     edge = strip_pairs(leading_edge)
-    split = split_points(edge, row_free_pairs(chain.rings[0]))
+    split = split_points(edge, row_free_pairs(chain.rings[0]), max_length=max_length)
     rings = chain.rings.clone()
     if rings.shape[0] > 0:
         apply_mask = continuing(chain) if mask is None else mask.to(torch.bool)

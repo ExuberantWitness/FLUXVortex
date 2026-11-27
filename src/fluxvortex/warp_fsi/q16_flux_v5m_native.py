@@ -189,6 +189,16 @@ _CONVECTION_V4_STAGE2_BRIDGE = os.environ.get(
 _LEV_GAUGE_REBASE = os.environ.get("FLUXV_LEV_GAUGE_REBASE", "0").strip().lower() in {
     "1", "true", "on", "yes",
 }
+#: Optional tapered-wingtip nascent LEV split cap in local leading-edge panel lengths dx_0(j)
+#: (default 0.0 = OFF for bit-identical Hirato Eq. 7 on rectangular wings).  On sharply tapered
+#: or rounded bird wingtips where U_rel * dt / 3 > 0.75 * dx_0(j), capping the split length at
+#: e.g. 0.40 * dx_0(j) keeps the nascent LEV filament strictly ahead of panel 0's collocation
+#: point while remaining on the exact (LE, old_free) segment for exact Helmholtz cancellation.
+_LEV_SPLIT_CAP_DX = float(os.environ.get("FLUXV_LEV_SPLIT_CAP_DX", "0.0"))
+if not (math.isfinite(_LEV_SPLIT_CAP_DX) and _LEV_SPLIT_CAP_DX >= 0.0):
+    raise ValueError(
+        f"FLUXV_LEV_SPLIT_CAP_DX must be finite and >= 0, got {_LEV_SPLIT_CAP_DX!r}"
+    )
 #: Plan V4 Track A-2: optional wake core multiplier at wing collocation points
 #: (0 / false = uncored for exact G-VLM cancellation at split_te; 1 / true = full
 #: _core_radius; or a positive float fraction like 0.25).
@@ -2115,6 +2125,17 @@ class Q16NativeV5MSolver:
             chain.count,
         )
 
+    def _lev_split_max_length(self, geometry: NativeV5MGeometry) -> torch.Tensor | None:
+        """Optional per-strip nascent LEV length cap ``_LEV_SPLIT_CAP_DX * dx_0(j)``."""
+
+        if _LEV_SPLIT_CAP_DX <= 0.0:
+            return None
+        ns = self.settings.spanwise_panels
+        dx_left = torch.linalg.vector_norm(geometry.rings[:ns, 3] - geometry.rings[:ns, 0], dim=1)
+        dx_right = torch.linalg.vector_norm(geometry.rings[:ns, 2] - geometry.rings[:ns, 1], dim=1)
+        dx_local = 0.5 * (dx_left + dx_right)
+        return (_LEV_SPLIT_CAP_DX * dx_local).clamp(min=1.0e-6)
+
     def _hirato_solve(
         self, geometry, trial, system_aic, nascent_normal, rhs, scale, lesp_pre,
         split_from_rhs=None, chain_normal_at_le=None,
@@ -2172,10 +2193,15 @@ class Q16NativeV5MSolver:
                 edge, chord_tangent, normal, safe_speed,
                 self.settings.aerodynamic_dt, -lesp_pre, sin_alpha, cos_alpha,
             )
+            split_cap = self._lev_split_max_length(geometry)
+            if split_cap is not None:
+                disp0 = first - edge
+                len0 = torch.linalg.vector_norm(disp0.mean(dim=1), dim=1).clamp(min=1.0e-12)
+                first = edge + disp0 * torch.clamp(split_cap / len0, max=1.0)[:, None, None]
             if chain_split is None:
                 if bool(was_shedding.any().item()):
                     chain_split, split = lev_hirato.split_row0(
-                        chain, geometry.leading_edge, was_shedding
+                        chain, geometry.leading_edge, was_shedding, max_length=split_cap
                     )
                 else:
                     chain_split = chain
@@ -3158,7 +3184,10 @@ class Q16NativeV5MSolver:
                 if bool((trial.lev_chain.count > 0).any().item()):
                     if bool(was_shedding_pre.any().item()):
                         hirato_chain_split, split_from_rhs = lev_hirato.split_row0(
-                            trial.lev_chain, geometry.leading_edge, was_shedding_pre
+                            trial.lev_chain,
+                            geometry.leading_edge,
+                            was_shedding_pre,
+                            max_length=self._lev_split_max_length(geometry),
                         )
                     else:
                         hirato_chain_split = trial.lev_chain

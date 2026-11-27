@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Generate 6-panel 3D + Front/Top Geometry + 2D Slice + FSI + Motor animations for 5 flapping aircraft.
 
-Upgraded full-fidelity visualization pipeline featuring:
+Stage-4 full-fidelity ground-truth visualization pipeline featuring:
   1. Stage-2 RK2 TE/LE closure bridge + matched-horizon Hirato v2 LEV gauge rebasing
      (zero TE-trapped LEV spikes, zero cross-cycle pseudovortex ratcheting).
-  2. Verified bio-inspired planforms + tails (Cloud Owl inverted-T, RoboFalcon 2.0
-     falcon fan tail, NPU-Sparrow morphing fan tail, Dove pigeon tail).
-  3. True two-segment articulated Flap-Sweep-Fold (FSF) wrist hinge for RoboFalcon 2.0
-     (+8 deg downstroke -> -55 deg upstroke downward wrist fold, -20 deg <-> +18 deg sweep).
+  2. Ground-truth digitized wing planforms & UIUC airfoil cambers (E378 / GOE225) +
+     exact tails (Cloud Owl inverted-T 500/350/250 mm -4 deg, RoboFalcon 2.0 diamond
+     kite tail, NPU-Sparrow morphing fan tail -10 deg, Dove pigeon tail + vfin).
+  3. Exact RoboFalcon 2.0 Science Advances Eq. S1 in-plane 3-segment Humerus-Radius-Manus
+     FSF folding (600 mm -> 327 mm semispan) + whole-wing forward sweep (+2.9..+23.6 deg) +
+     asymmetric flapping (-46.5..+38.3 deg), rendered with color-coded Humerus (red),
+     Radius (green), Manus (blue), and Fingers (purple) skeleton bars in 3D, Top & Front views.
   4. Added-mass-preconditioned 2-way GPU FSI coupling (spar bending + passive aeroelastic
      torsional twist + nonlinear Foppl-von Karman chordwise membrane camber billowing).
-  5. Unobstructed Front View (y-z) and Top View (x-y) panels so wrist folding, forward/aft
-     sweep, spar bending, and planform/tail outlines are unmistakable to the human eye.
+  5. Unobstructed Front View (y-z) & Top View (x-y) panels + 4-row x 4-column high-res
+     verification contact sheet (3D + Top + Front + 2D Slice across all 4 stroke phases).
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ _UNIFIED_V4_ENV = {
     "FLUXV_CONVECTION_V4_STAGE2_BRIDGE": "1",
     "FLUXV_LEV_GAUGE_REBASE": "1",
     "FLUXV_RING_KERNEL": "v3",
-    "FLUXV_WAKE_CORE_PANELS": "0.25",
+    "FLUXV_WAKE_CORE_PANELS": "0.35",
     "FLUXV_WAKE_CORE_AT_COLLOCATION": "1",
     "FLUXV_WING_SLIP_WALL": "0.50",
     "FLUXV_SQUIRE_CORE": "0.02",
@@ -43,7 +46,7 @@ _UNIFIED_V4_ENV = {
     "FLUXV_LEV_SEP_SUCTION": "1",
     "FLUXV_RING_MIXED_PRECISION": "1",
     "FLUXV_FAST_RIGID_LOADS": "1",
-    "FLUXV_LEV_MAX_ROWS": "512",
+    "FLUXV_LEV_MAX_ROWS": "128",
     "FLUXV_PACKET_CLOSURE_SCALE": "l1",
 }
 for _k, _v in _UNIFIED_V4_ENV.items():
@@ -97,7 +100,7 @@ def simulate_and_capture_cycle(
     n_frames: int = 48,
     device: str = "cuda:0",
 ) -> dict[str, Any]:
-    """Run 3D GPU UVLM + 2-way FSI + articulated FSF + rebased LEV and capture the final cycle."""
+    """Run 3D GPU UVLM + 2-way FSI + exact digitized planforms/FSF + rebased LEV and capture final cycle."""
 
     u_inf = float(airspeed_m_s)
     freq = float(frequency_hz)
@@ -130,6 +133,9 @@ def simulate_and_capture_cycle(
         quarter_chord_sweep_deg=spec.quarter_chord_sweep_deg,
         camber_zero_lift_deg=spec.camber_zero_lift_deg,
         planform_kind=spec.planform_kind,
+        planform_id=spec.planform_id,
+        airfoil_camber_id=spec.airfoil_camber_id,
+        airfoil_camber_scale=spec.airfoil_camber_scale,
         flap_amplitude_half_deg=spec.flap_amplitude_half_deg,
         flap_dihedral_deg=spec.flap_dihedral_deg,
         omega_rad_s=omega,
@@ -180,13 +186,15 @@ def simulate_and_capture_cycle(
     q_camber_cyc: list[float] = []
     wrist_fold_deg_cyc: list[float] = []
     wrist_sweep_deg_cyc: list[float] = []
+    semispan_wp_pct_cyc: list[float] = []
     frames: list[dict[str, Any]] = []
 
     ns = spec.spanwise_panels
     nc = spec.chordwise_panels
     j_slice = int(ns // 2 + round(0.70 * (ns // 2)))
     j_slice = min(max(j_slice, ns // 2 + 1), ns - 1)
-    j_wrist_node = (ns // 2) + int(round(kin._wrist_eta * (ns // 2))) if kin._fsf_enabled else -1
+    j_wrist_node = (ns // 2) + kin._j_wrist_half if kin._fsf_enabled else -1
+    fsf_mode = kin._fsf_mode
 
     for step in range(1, total_steps + 1):
         t_now = step * dt
@@ -234,6 +242,14 @@ def simulate_and_capture_cycle(
             lift_val = float(tot_invisc[2].item() + tot_visc[2].item())
             wing_t_val = -float(tot_invisc[0].item()) - float(tot_visc[0].item())
 
+            if fsf_mode == "robofalcon2_eqs1":
+                rf_st = kin.robofalcon2_eqs1_state(t_now)
+                y_ss_m = rf_st["semispan_wing_plane_m"]
+                semispan_pct = 100.0 * y_ss_m / max(0.5 * spec.span_m, 1.0e-9)
+            else:
+                y_ss_m = 0.5 * spec.span_m
+                semispan_pct = 100.0
+
             t_cyc.append(t_now)
             lift_cyc.append(lift_val)
             thrust_cyc.append(wing_t_val)
@@ -246,14 +262,16 @@ def simulate_and_capture_cycle(
             q_camber_cyc.append(float(q_now[2]) * 100.0)
             wrist_fold_deg_cyc.append(math.degrees(gw_rad))
             wrist_sweep_deg_cyc.append(math.degrees(sw_rad))
+            semispan_wp_pct_cyc.append(semispan_pct)
 
             if step in sample_steps:
                 st = owner.state
-                pos_np = _to_np(pos_grid)  # (nc+2, ns+1, 3)
+                pos_np = _to_np(pos_grid)
                 strip_chord_xz = 0.5 * (pos_np[:, j_slice, :] + pos_np[:, j_slice + 1, :])
                 le_np = pos_np[0]
                 te_np = pos_np[-1]
                 span_eff = float(np.max(le_np[:, 1]) - np.min(le_np[:, 1]))
+                skel = kin.robofalcon_skeleton_3d(t_now, q_now)
 
                 wake_r = _to_np(st.wake_rings)
                 wake_g = _to_np(st.wake_gamma)
@@ -309,12 +327,15 @@ def simulate_and_capture_cycle(
                         "cyc_idx": step - last_start,
                         "phase": (step - last_start) / float(spc),
                         "phi_deg": math.degrees(phi),
+                        "phidot_rad_s": phidot,
                         "wrist_fold_deg": math.degrees(gw_rad),
                         "wrist_sweep_deg": math.degrees(sw_rad),
+                        "semispan_wp_m": y_ss_m,
                         "q_bend_pct": float(q_now[0]) * 100.0,
                         "q_twist_deg": math.degrees(float(q_now[1])),
                         "q_camber_pct": float(q_now[2]) * 100.0,
                         "span_eff_m": span_eff,
+                        "skeleton_3d": skel,
                         "bound_rings": _to_np(frame.panel_rings_I),
                         "gamma_bound": _to_np(st.gamma_bound),
                         "le_line": le_np,
@@ -387,6 +408,7 @@ def simulate_and_capture_cycle(
         "alpha_deg": alpha_deg,
         "frequency_hz": freq,
         "fsf_enabled": bool(spec.fsf.enabled),
+        "fsf_mode": fsf_mode,
         "flex_enabled": bool(spec.flexibility.enabled),
         "tail_info": tail_info,
         "j_wrist_node": j_wrist_node,
@@ -405,6 +427,7 @@ def simulate_and_capture_cycle(
         "q_camber_trace": np.asarray(q_camber_cyc, dtype=np.float64),
         "wrist_fold_deg_trace": np.asarray(wrist_fold_deg_cyc, dtype=np.float64),
         "wrist_sweep_deg_trace": np.asarray(wrist_sweep_deg_cyc, dtype=np.float64),
+        "semispan_wp_pct_trace": np.asarray(semispan_wp_pct_cyc, dtype=np.float64),
         "mean_elec_power_w": power.total_elec_power_w,
         "frames": frames,
     }
@@ -488,7 +511,7 @@ def _compute_global_bounds(data: dict[str, Any]) -> dict[str, Any]:
         "xlim": (x_min, x_max),
         "ylim": (-y_lim, y_lim),
         "zlim": (z_mid - 0.5 * z_span, z_mid + 0.5 * z_span),
-        "wing_xlim": (float(np.min(wx)) - 0.25 * c, float(np.max(wx)) + 0.25 * c),
+        "wing_xlim": (float(np.min(wx)) - 0.22 * c, float(np.max(wx)) + 0.22 * c),
         "wing_ylim": (-wy_lim, wy_lim),
         "wing_zlim": (-wz_lim, wz_lim),
         "w_vmax": max(w_vmax, 1.0e-4),
@@ -529,6 +552,38 @@ def _draw_tail_3d(ax, tail_info: dict[str, Any]) -> None:
         )
 
 
+def _draw_rf2_skeleton_2d(ax, skel: dict[str, np.ndarray], c0: int, c1: int, show_labels: bool = True) -> None:
+    """Draw exact color-coded RoboFalcon 2.0 Humerus/Radius/Manus/Fingers skeleton on a 2D projection."""
+
+    for s_idx in (0, 1):
+        hum = skel["humerus"][s_idx]
+        rad = skel["radius"][s_idx]
+        man = skel["manus"][s_idx]
+        ax.plot(hum[:, c0], hum[:, c1], color="#dc2626", lw=3.0, zorder=10, label="Humerus (110mm)" if (show_labels and s_idx == 1) else None)
+        ax.plot(rad[:, c0], rad[:, c1], color="#16a34a", lw=3.0, zorder=10, label="Radius (180mm)" if (show_labels and s_idx == 1) else None)
+        ax.plot(man[:, c0], man[:, c1], color="#2563eb", lw=3.0, zorder=10, label="Manus (325mm)" if (show_labels and s_idx == 1) else None)
+        for f_idx, fg in enumerate(skel["fingers"][s_idx]):
+            ax.plot(fg[:, c0], fg[:, c1], color="#9333ea", lw=1.8, zorder=9, label="Fingers" if (show_labels and s_idx == 1 and f_idx == 0) else None)
+        jts = skel["joints"][s_idx]
+        # Highlight Elbow (green/red) & Wrist (bright red)
+        ax.scatter([jts[1, c0]], [jts[1, c1]], color="#16a34a", edgecolor="#ffffff", s=38, zorder=12)
+        ax.scatter([jts[2, c0]], [jts[2, c1]], color="#ef4444", edgecolor="#ffffff", s=58, zorder=12)
+
+
+def _draw_rf2_skeleton_3d(ax, skel: dict[str, np.ndarray]) -> None:
+    for s_idx in (0, 1):
+        hum = skel["humerus"][s_idx]
+        rad = skel["radius"][s_idx]
+        man = skel["manus"][s_idx]
+        ax.plot(hum[:, 0], hum[:, 1], hum[:, 2], color="#dc2626", lw=3.0, zorder=12)
+        ax.plot(rad[:, 0], rad[:, 1], rad[:, 2], color="#16a34a", lw=3.0, zorder=12)
+        ax.plot(man[:, 0], man[:, 1], man[:, 2], color="#2563eb", lw=3.0, zorder=12)
+        for fg in skel["fingers"][s_idx]:
+            ax.plot(fg[:, 0], fg[:, 1], fg[:, 2], color="#9333ea", lw=1.7, zorder=11)
+        jts = skel["joints"][s_idx]
+        ax.scatter([jts[2, 0]], [jts[2, 1]], [jts[2, 2]], color="#ef4444", edgecolor="#ffffff", s=48, zorder=13)
+
+
 def _draw_3d_scene(
     ax,
     fr: dict[str, Any],
@@ -540,7 +595,7 @@ def _draw_3d_scene(
     title: str,
     show_legend: bool = False,
 ) -> None:
-    """Draw 3D wing + fuselage + tail + connected TEV + clean Hirato v2 LEV."""
+    """Draw 3D wing + fuselage + exact tail + connected TEV + clean Hirato v2 LEV."""
 
     xlim, ylim, zlim = bounds["xlim"], bounds["ylim"], bounds["zlim"]
     x_max = xlim[1]
@@ -555,9 +610,9 @@ def _draw_3d_scene(
         keep = wr[:, :, 0].mean(axis=1) <= x_max + 0.05 * (x_max - xlim[0])
         if np.any(keep):
             fc = cmap_tev(norm_tev(wg[keep]))
-            fc[:, 3] = 0.48
+            fc[:, 3] = 0.46
             ax.add_collection3d(
-                Poly3DCollection(wr[keep], facecolors=fc, edgecolors=(0.18, 0.26, 0.42, 0.26), linewidths=0.32)
+                Poly3DCollection(wr[keep], facecolors=fc, edgecolors=(0.18, 0.26, 0.42, 0.24), linewidths=0.30)
             )
 
     # 2. Clean Hirato v2 LEV sheet (honestly showing active cores + translucent held connectors)
@@ -585,23 +640,26 @@ def _draw_3d_scene(
                 Poly3DCollection(lr_c, facecolors=lev_c, edgecolors=(0.62, 0.0, 0.45, 0.55), linewidths=0.48)
             )
 
-    # 3. Wing surface + LE spar + wrist hinge markers + tail
+    # 3. Wing surface + LE spar + skeleton + tail
     w_quads = _wing_quads_from_grid(fr["pos_grid"])
+    wing_alpha = 0.72 if fr["skeleton_3d"] is not None else 0.90
     ax.add_collection3d(
         Poly3DCollection(
             w_quads,
-            facecolors=(0.14, 0.20, 0.30, 0.92),
+            facecolors=(0.14, 0.20, 0.30, wing_alpha),
             edgecolors=(0.82, 0.88, 0.96, 0.78),
-            linewidths=0.60,
+            linewidths=0.58,
         )
     )
     le, te = fr["le_line"], fr["te_line"]
-    ax.plot(le[:, 0], le[:, 1], le[:, 2], color="#f59e0b", linewidth=2.5, zorder=10)
+    ax.plot(le[:, 0], le[:, 1], le[:, 2], color="#f59e0b", linewidth=2.2, zorder=10)
     ax.plot(te[:, 0], te[:, 1], te[:, 2], color="#06b6d4", linewidth=1.3, zorder=9)
     sc = fr["strip_chord_xyz"]
-    ax.plot(sc[:, 0], sc[:, 1], sc[:, 2], color="#22c55e", linewidth=2.6, zorder=11)
+    ax.plot(sc[:, 0], sc[:, 1], sc[:, 2], color="#22c55e", linewidth=2.4, zorder=11)
 
-    if data["fsf_enabled"] and data["j_wrist_node"] > 0:
+    if fr["skeleton_3d"] is not None:
+        _draw_rf2_skeleton_3d(ax, fr["skeleton_3d"])
+    elif data["fsf_enabled"] and data["j_wrist_node"] > 0:
         jw_r = data["j_wrist_node"]
         jw_l = data["ns"] - jw_r
         ax.scatter(
@@ -622,61 +680,51 @@ def _draw_3d_scene(
     ax.set_ylabel("y [m] (span)", fontsize=8, labelpad=2)
     ax.set_zlabel("z [m] (lift ↑)", fontsize=8, labelpad=2)
     ax.tick_params(labelsize=7)
-    ax.set_title(title, fontsize=9.2, fontweight="bold", pad=4)
+    ax.set_title(title, fontsize=9.0, fontweight="bold", pad=4)
     ax.xaxis.pane.set_facecolor((0.95, 0.97, 0.99, 0.9))
     ax.yaxis.pane.set_facecolor((0.95, 0.97, 0.99, 0.9))
     ax.zaxis.pane.set_facecolor((0.92, 0.95, 0.98, 0.9))
 
     if show_legend:
         handles = [
-            Patch(facecolor=(0.14, 0.20, 0.30, 0.9), edgecolor="#cbd5e1", label="Flexible Wing + Tail"),
+            Patch(facecolor=(0.14, 0.20, 0.30, 0.85), edgecolor="#cbd5e1", label="Exact Wing + Tail"),
             Patch(facecolor="#f97316", edgecolor="#a21caf", alpha=0.80, label="LEV Cores (|ΔΓ|>0)"),
             Patch(facecolor=(0.98, 0.58, 0.22, 0.16), edgecolor=(0.82, 0.30, 0.05, 0.45), label="LEV Held Sheet"),
             Patch(facecolor="#3b82f6", edgecolor="#dc2626", alpha=0.55, label="TEV Wake (±Γ)"),
-            Line2D([0], [0], color="#f59e0b", lw=2.3, label="LE Spar"),
-            Line2D([0], [0], color="#22c55e", lw=2.3, label="2D Slice"),
+            Line2D([0], [0], color="#f59e0b", lw=2.2, label="LE Spar"),
+            Line2D([0], [0], color="#22c55e", lw=2.2, label="2D Slice"),
         ]
-        if data["fsf_enabled"]:
-            handles.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="#ef4444", ms=6, label="FSF Wrist Hinge"))
-        ax.legend(handles=handles, loc="upper right", fontsize=6.6, framealpha=0.92)
+        if fr["skeleton_3d"] is not None:
+            handles.extend([
+                Line2D([0], [0], color="#dc2626", lw=2.5, label="Humerus (Red)"),
+                Line2D([0], [0], color="#16a34a", lw=2.5, label="Radius (Green)"),
+                Line2D([0], [0], color="#2563eb", lw=2.5, label="Manus (Blue)"),
+            ])
+        ax.legend(handles=handles, loc="upper right", fontsize=6.2, framealpha=0.92)
 
 
-def _draw_front_geometry_view(ax, fr: dict[str, Any], data: dict[str, Any], bounds: dict[str, Any]) -> None:
-    """Pure unobstructed Front View (y-z plane): crystal-clear FSF wrist folding & spar bending!"""
+def _draw_front_geometry_view(ax, fr: dict[str, Any], data: dict[str, Any], bounds: dict[str, Any], show_legend: bool = True) -> None:
+    """Pure unobstructed Front View (y-z plane): flapping stroke, span contraction & spar bending."""
 
     ax.set_facecolor("#ffffff")
     pos = fr["pos_grid"]
     le, te = fr["le_line"], fr["te_line"]
-    # Draw wing surface quads projected cleanly onto y-z
     w_quads = _wing_quads_from_grid(pos)
     for q in w_quads:
-        ax.add_patch(Polygon(q[:, [1, 2]], closed=True, facecolor="#334155", edgecolor="#94a3b8", lw=0.45, alpha=0.55))
-    # Tail projection
+        ax.add_patch(Polygon(q[:, [1, 2]], closed=True, facecolor="#334155", edgecolor="#94a3b8", lw=0.45, alpha=0.48))
     ti = data["tail_info"]
     for q in ti["h_quads"]:
         ax.add_patch(Polygon(q[:, [1, 2]], closed=True, facecolor="#64748b", edgecolor="#cbd5e1", lw=0.45, alpha=0.50))
     for q in ti["v_quads"]:
         ax.add_patch(Polygon(q[:, [1, 2]], closed=True, facecolor="#475569", edgecolor="#cbd5e1", lw=0.50, alpha=0.65))
 
-    # Reference undeformed straight span bar (dashed grey) so bending & wrist fold jump right out!
     half_b = 0.5 * data["span_m"]
     ax.plot([-half_b, half_b], [0.0, 0.0], color="#cbd5e1", ls="--", lw=1.1, label="Full span ref")
-    # Prominent LE carbon spar & TE line
-    ax.plot(le[:, 1], le[:, 2], color="#f59e0b", lw=3.0, zorder=6, label="LE Carbon Spar")
-    ax.plot(te[:, 1], te[:, 2], color="#06b6d4", lw=1.6, zorder=5, label="Trailing Edge")
+    ax.plot(le[:, 1], le[:, 2], color="#f59e0b", lw=2.6, zorder=6, label="LE Carbon Spar")
+    ax.plot(te[:, 1], te[:, 2], color="#06b6d4", lw=1.5, zorder=5, label="Trailing Edge")
 
-    if data["fsf_enabled"] and data["j_wrist_node"] > 0:
-        jw_r = data["j_wrist_node"]
-        jw_l = data["ns"] - jw_r
-        # Highlight inner arm vs outer folding hand spar distinctly
-        ax.plot(le[jw_l : jw_r + 1, 1], le[jw_l : jw_r + 1, 2], color="#0f172a", lw=3.4, zorder=7, label="Inner Arm Spar")
-        ax.plot(le[jw_r:, 1], le[jw_r:, 2], color="#ef4444", lw=3.4, zorder=7, label="Outer Folding Hand")
-        ax.plot(le[: jw_l + 1, 1], le[: jw_l + 1, 2], color="#ef4444", lw=3.4, zorder=7)
-        ax.scatter(
-            [le[jw_r, 1], le[jw_l, 1]],
-            [le[jw_r, 2], le[jw_l, 2]],
-            color="#ef4444", edgecolor="#ffffff", s=62, zorder=9, label="Wrist Hinge",
-        )
+    if fr["skeleton_3d"] is not None:
+        _draw_rf2_skeleton_2d(ax, fr["skeleton_3d"], 1, 2, show_labels=show_legend)
 
     ax.set_xlim(bounds["wing_ylim"])
     ax.set_ylim(bounds["wing_zlim"])
@@ -685,47 +733,43 @@ def _draw_front_geometry_view(ax, fr: dict[str, Any], data: dict[str, Any], boun
     ax.set_xlabel("y [m] (span)", fontsize=8)
     ax.set_ylabel("z [m] (vertical ↑)", fontsize=8)
     ax.tick_params(labelsize=7)
-    if data["fsf_enabled"]:
+    if data["fsf_mode"] == "robofalcon2_eqs1":
         ax.set_title(
-            f"Front View (y-z): φ={fr['phi_deg']:+.1f}° | Wrist Fold={fr['wrist_fold_deg']:+.1f}° | span={fr['span_eff_m']:.2f} m",
-            fontsize=8.8, fontweight="bold",
+            f"Front (y-z): Θ={fr['phi_deg']:+.1f}° | y_ss={fr['semispan_wp_m']*1000:.0f} mm | b_y={fr['span_eff_m']:.2f} m",
+            fontsize=8.5, fontweight="bold",
         )
     else:
         ax.set_title(
-            f"Front View (y-z): φ={fr['phi_deg']:+.1f}° | Spar Bend={fr['q_bend_pct']:+.1f}% b/2",
-            fontsize=8.8, fontweight="bold",
+            f"Front (y-z): φ={fr['phi_deg']:+.1f}° | Spar Bend={fr['q_bend_pct']:+.1f}% b/2",
+            fontsize=8.5, fontweight="bold",
         )
-    ax.legend(loc="upper right", fontsize=6.4, framealpha=0.9)
+    if show_legend:
+        ax.legend(loc="upper right", fontsize=6.0, framealpha=0.9)
 
 
-def _draw_top_geometry_view(ax, fr: dict[str, Any], data: dict[str, Any], bounds: dict[str, Any]) -> None:
-    """Pure unobstructed Top View (x-y plane): verified planform, tail, and FSF forward/aft sweep!"""
+def _draw_top_geometry_view(ax, fr: dict[str, Any], data: dict[str, Any], bounds: dict[str, Any], show_legend: bool = True) -> None:
+    """Pure unobstructed Top View (x-y plane): exact digitized planform, tail, and in-plane 3-seg FSF folding!"""
 
     ax.set_facecolor("#ffffff")
     pos = fr["pos_grid"]
     le, te = fr["le_line"], fr["te_line"]
     w_quads = _wing_quads_from_grid(pos)
+    wing_alpha = 0.42 if fr["skeleton_3d"] is not None else 0.78
     for q in w_quads:
-        ax.add_patch(Polygon(q[:, [0, 1]], closed=True, facecolor="#1e3a5f", edgecolor="#cbd5e1", lw=0.45, alpha=0.80))
+        ax.add_patch(Polygon(q[:, [0, 1]], closed=True, facecolor="#1e3a5f", edgecolor="#94a3b8", lw=0.45, alpha=wing_alpha))
     ti = data["tail_info"]
     if ti["boom_xyz"].shape[0] >= 2:
-        ax.plot(ti["boom_xyz"][:, 0], ti["boom_xyz"][:, 1], color="#0f172a", lw=2.8, zorder=5)
+        ax.plot(ti["boom_xyz"][:, 0], ti["boom_xyz"][:, 1], color="#0f172a", lw=2.6, zorder=5)
     for q in ti["h_quads"]:
-        ax.add_patch(Polygon(q[:, [0, 1]], closed=True, facecolor="#475569", edgecolor="#e2e8f0", lw=0.50, alpha=0.85))
+        ax.add_patch(Polygon(q[:, [0, 1]], closed=True, facecolor="#475569", edgecolor="#e2e8f0", lw=0.50, alpha=0.82))
 
-    ax.plot(le[:, 0], le[:, 1], color="#f59e0b", lw=2.6, zorder=7)
+    ax.plot(le[:, 0], le[:, 1], color="#f59e0b", lw=2.3, zorder=7)
     ax.plot(te[:, 0], te[:, 1], color="#06b6d4", lw=1.4, zorder=6)
     sc = fr["strip_chord_xyz"]
-    ax.plot(sc[:, 0], sc[:, 1], color="#22c55e", lw=2.4, zorder=8)
+    ax.plot(sc[:, 0], sc[:, 1], color="#22c55e", lw=2.2, zorder=8)
 
-    if data["fsf_enabled"] and data["j_wrist_node"] > 0:
-        jw_r = data["j_wrist_node"]
-        jw_l = data["ns"] - jw_r
-        ax.scatter(
-            [le[jw_r, 0], le[jw_l, 0]],
-            [le[jw_r, 1], le[jw_l, 1]],
-            color="#ef4444", edgecolor="#ffffff", s=54, zorder=9,
-        )
+    if fr["skeleton_3d"] is not None:
+        _draw_rf2_skeleton_2d(ax, fr["skeleton_3d"], 0, 1, show_labels=show_legend)
 
     ax.set_xlim(bounds["wing_xlim"])
     ax.set_ylim(bounds["wing_ylim"])
@@ -734,15 +778,17 @@ def _draw_top_geometry_view(ax, fr: dict[str, Any], data: dict[str, Any], bounds
     ax.set_xlabel("x [m] (nose → tail)", fontsize=8)
     ax.set_ylabel("y [m] (span)", fontsize=8)
     ax.tick_params(labelsize=7)
-    if data["fsf_enabled"]:
+    if data["fsf_mode"] == "robofalcon2_eqs1":
         ax.set_title(
-            f"Top View (x-y): FSF Sweep={fr['wrist_sweep_deg']:+.1f}° | b_eff={fr['span_eff_m']:.2f}/{data['span_m']:.2f} m",
-            fontsize=8.8, fontweight="bold",
+            f"Top (x-y) In-Plane FSF: γ={fr['wrist_fold_deg']:.1f}° | Ψ={fr['wrist_sweep_deg']:.1f}° | y_ss={fr['semispan_wp_m']*1000:.0f} mm",
+            fontsize=8.3, fontweight="bold",
         )
+        if show_legend:
+            ax.legend(loc="lower right", fontsize=6.0, framealpha=0.92)
     else:
         ax.set_title(
-            f"Top View (x-y): b={data['span_m']:.2f} m, S={data['area_m2']:.4f} m² + Tail",
-            fontsize=8.8, fontweight="bold",
+            f"Top (x-y): b={data['span_m']:.2f} m, S={data['area_m2']:.4f} m² + Tail",
+            fontsize=8.5, fontweight="bold",
         )
 
 
@@ -760,23 +806,23 @@ def _render_single_frame(args: tuple[int, dict[str, Any], dict[str, Any], str]) 
         hspace=0.28, wspace=0.22, left=0.04, right=0.97, top=0.91, bottom=0.06,
     )
 
-    # Row 0, Col 0: 3D Isometric Perspective View (Wing + Tail + Clean LEV + TEV)
+    # Row 0, Col 0: 3D Isometric Perspective View
     ax3d = fig.add_subplot(gs[0, 0], projection="3d")
     _draw_3d_scene(
         ax3d, fr, data, bounds, elev=24, azim=-128,
-        title="3D Flow: Flexible Wing + Tail + Rebased LEV + TEV",
+        title="3D Flow: Exact Wing + Tail + Rebased LEV + TEV",
         show_legend=True,
     )
 
-    # Row 0, Col 1: Pure Front View (y-z) — unmistakable FSF wrist fold & spar bending!
+    # Row 0, Col 1: Pure Front View (y-z)
     ax_front = fig.add_subplot(gs[0, 1])
-    _draw_front_geometry_view(ax_front, fr, data, bounds)
+    _draw_front_geometry_view(ax_front, fr, data, bounds, show_legend=True)
 
-    # Row 0, Col 2: Pure Top View (x-y) — unmistakable FSF sweep, planform & tail!
+    # Row 0, Col 2: Pure Top View (x-y) — unmistakable in-plane 3-segment FSF & exact planform!
     ax_top = fig.add_subplot(gs[0, 2])
-    _draw_top_geometry_view(ax_top, fr, data, bounds)
+    _draw_top_geometry_view(ax_top, fr, data, bounds, show_legend=True)
 
-    # Row 1, Col 0: 2D Side-View Cross-Section (curved flexible airfoil + clean LEV/TEV!)
+    # Row 1, Col 0: 2D Side-View Cross-Section
     ax2d = fig.add_subplot(gs[1, 0])
     ax2d.set_facecolor("#ffffff")
     tev_pts, tev_g = fr["tev_slice_pts"], fr["tev_slice_g"]
@@ -814,31 +860,38 @@ def _render_single_frame(args: tuple[int, dict[str, Any], dict[str, Any], str]) 
     )
     ax2d.legend(loc="upper right", fontsize=6.8, framealpha=0.9)
 
-    # Row 1, Col 1: 2-Way FSI Flexible Deformation & FSF Wrist Kinematics Trace
+    # Row 1, Col 1: 2-Way FSI Flexible Deformation & Eq. S1 FSF Kinematics Trace
     ax_fsi = fig.add_subplot(gs[1, 1])
     ax_fsi.set_facecolor("#ffffff")
     ph = data["phase_trace"]
-    ax_fsi.plot(ph, data["q_twist_deg_trace"], color="#7c3aed", lw=1.8, label=f"FSI Tip Twist θ [deg]")
-    if data["fsf_enabled"]:
-        ax_fsi.plot(ph, data["wrist_fold_deg_trace"], color="#ef4444", lw=2.0, ls="-", label="FSF Wrist Fold γ [deg]")
-        ax_fsi.plot(ph, data["wrist_sweep_deg_trace"], color="#f59e0b", lw=1.4, ls="--", label="FSF Sweep ψ [deg]")
+    ax_fsi.plot(ph, data["q_twist_deg_trace"], color="#7c3aed", lw=1.8, label="FSI Tip Twist θ [deg]")
+    if data["fsf_mode"] == "robofalcon2_eqs1":
+        ax_fsi.plot(ph, data["wrist_fold_deg_trace"], color="#2563eb", lw=2.0, ls="-", label="Manus Fold γ [deg]")
+        ax_fsi.plot(ph, data["wrist_sweep_deg_trace"], color="#f59e0b", lw=1.6, ls="--", label="Wing Sweep Ψ [deg]")
+    elif data["fsf_enabled"]:
+        ax_fsi.plot(ph, data["wrist_fold_deg_trace"], color="#ef4444", lw=2.0, ls="-", label="FSF Fold [deg]")
+        ax_fsi.plot(ph, data["wrist_sweep_deg_trace"], color="#f59e0b", lw=1.4, ls="--", label="FSF Sweep [deg]")
     ax_fsi.axvline(fr["phase"], color="#111827", lw=1.5, ls="-", alpha=0.8)
     ax_fsi.axhline(0.0, color="#cbd5e1", lw=0.8)
     ax_fsi.set_xlim(0.0, 1.0)
-    ax_fsi.set_xlabel("Cycle Phase t / T (0.25..0.75 Down | else Up)", fontsize=8)
+    ax_fsi.set_xlabel("Cycle Phase t / T", fontsize=8)
     ax_fsi.set_ylabel("Angle [deg]", fontsize=8, color="#4c1d95")
     ax_fsi.tick_params(labelsize=7.5)
     ax_fsi.grid(True, ls="--", alpha=0.35)
 
     ax_fsi2 = ax_fsi.twinx()
     ax_fsi2.plot(ph, data["q_bend_trace"], color="#0284c7", lw=1.6, ls="-.", label="Spar Bend [% b/2]")
-    ax_fsi2.plot(ph, data["q_camber_trace"], color="#059669", lw=1.6, ls=":", label="Membrane Camber [% c]")
-    ax_fsi2.set_ylabel("Bend [% b/2] / Camber [% c]", fontsize=8, color="#0369a1")
+    ax_fsi2.plot(ph, data["q_camber_trace"], color="#059669", lw=1.6, ls=":", label="Camber [% c]")
+    if data["fsf_mode"] == "robofalcon2_eqs1":
+        ax_fsi2.plot(ph, data["semispan_wp_pct_trace"], color="#16a34a", lw=2.0, ls="-", label="Semispan y_ss [%]")
+        ax_fsi2.set_ylabel("Semispan [%] / Bend / Camber", fontsize=7.8, color="#15803d")
+    else:
+        ax_fsi2.set_ylabel("Bend [% b/2] / Camber [% c]", fontsize=8, color="#0369a1")
     ax_fsi2.tick_params(labelsize=7.5, labelcolor="#0369a1")
     h1, l1 = ax_fsi.get_legend_handles_labels()
     h2, l2 = ax_fsi2.get_legend_handles_labels()
-    ax_fsi.legend(h1 + h2, l1 + l2, loc="upper right", fontsize=6.4, framealpha=0.9)
-    ax_fsi.set_title("2-Way GPU FSI Wing Flexibility & FSF Wrist Angles", fontsize=8.8, fontweight="bold")
+    ax_fsi.legend(h1 + h2, l1 + l2, loc="upper right", fontsize=6.0, framealpha=0.9)
+    ax_fsi.set_title("2-Way GPU FSI Wing Flexibility & FSF Kinematics", fontsize=8.8, fontweight="bold")
 
     # Row 1, Col 2: Instantaneous Lift, Thrust & 1st-Order Motor Power
     ax_ts = fig.add_subplot(gs[1, 2])
@@ -863,13 +916,13 @@ def _render_single_frame(args: tuple[int, dict[str, Any], dict[str, Any], str]) 
     ax_ts.legend(h1 + h2, l1 + l2, loc="upper right", fontsize=6.4, framealpha=0.9)
     ax_ts.set_title("Forces & 1st-Order Motor Power", fontsize=8.8, fontweight="bold")
 
-    stroke_str = "DOWNSTROKE" if (0.25 <= fr["phase"] < 0.75) else "UPSTROKE"
+    stroke_str = "DOWNSTROKE" if fr["phidot_rad_s"] < 0.0 else "UPSTROKE"
     fig.suptitle(
-        f"FLUXVortex GPU 2-Way FSI + Rebased Hirato v2 LEV — {data['name']}  |  "
+        f"FLUXVortex Stage-4 Exact Geometry + 2-Way FSI + Rebased LEV — {data['name']}  |  "
         f"U={data['airspeed_m_s']:.1f} m/s, α={data['alpha_deg']:.2f}°, f={data['frequency_hz']:.2f} Hz, "
         f"t/T={fr['phase']:.2f} ({stroke_str})  |  "
-        f"Twist={fr['q_twist_deg']:+.1f}°, Camb={fr['q_camber_pct']:+.1f}%c, LESP={fr['max_lesp']:.3f}, Neu={fr['neumann_res']:.1e}",
-        fontsize=10.4, fontweight="bold", color="#0f172a", y=0.975,
+        f"Twist={fr['q_twist_deg']:+.1f}°, Bend={fr['q_bend_pct']:+.1f}%, LESP={fr['max_lesp']:.3f}, Neu={fr['neumann_res']:.1e}",
+        fontsize=10.2, fontweight="bold", color="#0f172a", y=0.975,
     )
 
     fig.savefig(out_path, dpi=100)
@@ -878,22 +931,31 @@ def _render_single_frame(args: tuple[int, dict[str, Any], dict[str, Any], str]) 
 
 
 def _render_4phase_contact_sheet(data: dict[str, Any], bounds: dict[str, Any], out_png: Path) -> None:
-    """Create a 3-row x 4-column high-res inspection sheet: 3D Flow + Front View (y-z) + 2D Slice."""
+    """Create a 4-row x 4-column high-res inspection sheet: 3D Flow + Top (x-y) + Front (y-z) + 2D Slice."""
 
-    target_phases = [
-        (0.50, "Mid-Downstroke (Extended / Max Lift)"),
-        (0.75, "Bottom Reversal (φ_min)"),
-        (0.00, "Mid-Upstroke (Folded / Feathered)"),
-        (0.25, "Top Reversal (φ_max)"),
-    ]
+    if data["fsf_mode"] == "robofalcon2_eqs1":
+        target_phases = [
+            (0.04, "Mid-Downstroke (Unfolded 600mm)"),
+            (0.26, "Bottom Reversal (Max Sweep Ψ=24°)"),
+            (0.51, "Mid-Upstroke (In-Plane Fold γ=63°)"),
+            (0.78, "Top Reversal (Unfolding Θ=+38°)"),
+        ]
+    else:
+        target_phases = [
+            (0.50, "Mid-Downstroke (Max Lift)"),
+            (0.75, "Bottom Reversal (φ_min)"),
+            (0.00, "Mid-Upstroke (Feathered)"),
+            (0.25, "Top Reversal (φ_max)"),
+        ]
+
     frames = data["frames"]
     phases = np.array([fr["phase"] for fr in frames])
 
-    fig = plt.figure(figsize=(19.2, 11.4), dpi=125, facecolor="#f8fafc")
+    fig = plt.figure(figsize=(19.2, 14.8), dpi=120, facecolor="#f8fafc")
     gs = GridSpec(
-        3, 4, figure=fig,
-        height_ratios=[1.30, 0.92, 0.92],
-        hspace=0.26, wspace=0.16, left=0.035, right=0.985, top=0.91, bottom=0.05,
+        4, 4, figure=fig,
+        height_ratios=[1.25, 0.95, 0.90, 0.88],
+        hspace=0.28, wspace=0.16, left=0.035, right=0.985, top=0.925, bottom=0.04,
     )
 
     for col, (t_ph, lbl) in enumerate(target_phases):
@@ -904,19 +966,24 @@ def _render_4phase_contact_sheet(data: dict[str, Any], bounds: dict[str, Any], o
         ax3 = fig.add_subplot(gs[0, col], projection="3d")
         _draw_3d_scene(
             ax3, fr, data, bounds, elev=22, azim=-130,
-            title=f"{lbl}\nφ={fr['phi_deg']:+.1f}°, span={fr['span_eff_m']:.2f}m, sep={fr['sep_strips']}/{data['ns']}",
+            title=f"{lbl}\nφ={fr['phi_deg']:+.1f}°, b_y={fr['span_eff_m']:.2f}m, sep={fr['sep_strips']}/{data['ns']}",
             show_legend=(col == 0),
         )
 
-        # Row 1: Pure Front View (y-z) — ZERO wake clutter!
-        axf = fig.add_subplot(gs[1, col])
-        _draw_front_geometry_view(axf, fr, data, bounds)
+        # Row 1: Pure Top View (x-y) — crystal-clear planform, tail, AND RoboFalcon 2.0 in-plane Z-folding!
+        axt = fig.add_subplot(gs[1, col])
+        _draw_top_geometry_view(axt, fr, data, bounds, show_legend=(col == 0))
+        if col > 0:
+            axt.set_ylabel("")
+
+        # Row 2: Pure Front View (y-z) — flapping angle, spar bending & span contraction!
+        axf = fig.add_subplot(gs[2, col])
+        _draw_front_geometry_view(axf, fr, data, bounds, show_legend=(col == 0))
         if col > 0:
             axf.set_ylabel("")
-            axf.legend().set_visible(False)
 
-        # Row 2: 2D Side-View Slice (flexible airfoil camber + clean LEV/TEV!)
-        ax2 = fig.add_subplot(gs[2, col])
+        # Row 3: 2D Side-View Slice (curved E378/GOE225 flexible airfoil + clean LEV/TEV!)
+        ax2 = fig.add_subplot(gs[3, col])
         ax2.set_facecolor("#ffffff")
         if fr["tev_slice_pts"].shape[0] > 0:
             ax2.plot(fr["tev_slice_pts"][:, 0], fr["tev_slice_pts"][:, 2], color="#64748b", lw=1.0, alpha=0.75)
@@ -950,12 +1017,12 @@ def _render_4phase_contact_sheet(data: dict[str, Any], bounds: dict[str, Any], o
         )
 
     fig.suptitle(
-        f"{data['name']} — Full-Fidelity 2-Way FSI + FSF + Rebased LEV Verification Sheet  "
+        f"{data['name']} — Stage-4 Exact Ground-Truth Geometry + 2-Way FSI + FSF Verification Sheet  "
         f"(U={data['airspeed_m_s']:.1f} m/s, α={data['alpha_deg']:.2f}°, f={data['frequency_hz']:.2f} Hz, "
         f"P_elec={data['mean_elec_power_w']:.1f} W)",
-        fontsize=12.5, fontweight="bold", color="#0f172a", y=0.965,
+        fontsize=12.5, fontweight="bold", color="#0f172a", y=0.972,
     )
-    fig.savefig(out_png, dpi=125)
+    fig.savefig(out_png, dpi=120)
     plt.close(fig)
 
 
@@ -1021,12 +1088,12 @@ def main() -> int:
     parser.add_argument(
         "--summary-json",
         type=Path,
-        default=Path("artifacts/experiment/20261127_stage3_fsi_fsf/avian_fsi_cruise_summary.json"),
+        default=Path("artifacts/experiment/20261127_stage4_exact_geom/avian_fsi_cruise_summary.json"),
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("artifacts/experiment/20261127_stage3_fsi_fsf/animations"),
+        default=Path("artifacts/experiment/20261127_stage4_exact_geom/animations"),
     )
     parser.add_argument("--retrim", action="store_true", help="Solve fresh 2-way FSI cruise trim before rendering")
     parser.add_argument("--aircraft", default="all", help="comma-separated IDs or 'all'")
@@ -1113,10 +1180,12 @@ def main() -> int:
         )
         bounds = _compute_global_bounds(data)
         captured[aid] = (data, bounds)
+        bend_mm = 0.01 * np.max(np.abs(data["q_bend_trace"])) * 0.5 * spec.span_m * 1000.0
         print(
             f"  captured {len(data['frames'])} frames (spc={data['spc']}) in {time.perf_counter() - t_sim:.1f}s | "
             f"mean_L={np.mean(data['lift_trace']):.2f} N, mean_P={data['mean_elec_power_w']:.2f} W | "
-            f"bend={np.max(np.abs(data['q_bend_trace'])):.1f}%, twist={np.max(np.abs(data['q_twist_deg_trace'])):.1f} deg, "
+            f"bend={np.max(np.abs(data['q_bend_trace'])):.1f}% ({bend_mm:.1f} mm), "
+            f"twist={np.max(np.abs(data['q_twist_deg_trace'])):.1f} deg, "
             f"camb={np.max(np.abs(data['q_camber_trace'])):.1f}%c",
             flush=True,
         )
@@ -1158,7 +1227,7 @@ def main() -> int:
                 flush=True,
             )
 
-    print(f"All {len(selected)} full-fidelity FSI/FSF animations completed in {time.perf_counter() - t0:.1f}s.", flush=True)
+    print(f"All {len(selected)} Stage-4 exact-geometry FSI/FSF animations completed in {time.perf_counter() - t0:.1f}s.", flush=True)
     return 0
 
 
